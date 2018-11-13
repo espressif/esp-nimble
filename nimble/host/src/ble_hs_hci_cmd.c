@@ -25,6 +25,17 @@
 #include "nimble/hci_common.h"
 #include "ble_hs_priv.h"
 
+/*
+ * HCI Command Header
+ *
+ * Comprises the following fields
+ *  -> Opcode group field & Opcode command field (2)
+ *  -> Parameter Length                          (1)
+ *      Length of all the parameters (does not include any part of the hci
+ *      command header
+ */
+#define BLE_HCI_CMD_HDR_LEN                 (3)
+
 static int
 ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
 {
@@ -46,7 +57,7 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
 static int
 ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 {
-    struct ble_hci_cmd *cmd;
+    uint8_t *buf;
     int rc;
 
     cmd = ble_transport_alloc_cmd();
@@ -55,13 +66,23 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
         return BLE_HS_ENOMEM;
     }
 
-    cmd->opcode = htole16(opcode);
-    cmd->length = len;
+    /* Hack for avoiding memcpy while handling tx pkt to VHCI,
+     * keep one byte for type field*/
+    buf++;
+    put_le16(buf, opcode);
+    buf[2] = len;
     if (len != 0) {
-        memcpy(cmd->data, cmddata, len);
+        memcpy(buf + BLE_HCI_CMD_HDR_LEN, cmddata, len);
     }
+#if !BLE_MONITOR
+    BLE_HS_LOG(DEBUG, "ble_hs_hci_cmd_send: ogf=0x%02x ocf=0x%04x len=%d\n",
+               BLE_HCI_OGF(opcode), BLE_HCI_OCF(opcode), len);
+    ble_hs_log_flat_buf(buf, len + BLE_HCI_CMD_HDR_LEN);
+    BLE_HS_LOG(DEBUG, "\n");
+#endif
+    buf--;
 
-    rc = ble_hs_hci_cmd_transport(cmd);
+    rc = ble_hs_hci_cmd_transport((void *) buf);
 
     if (rc == 0) {
         STATS_INC(ble_hs_stats, hci_cmd);

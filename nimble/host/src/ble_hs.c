@@ -24,11 +24,7 @@
 #include "syscfg/syscfg.h"
 #include "stats/stats.h"
 #include "host/ble_hs.h"
-#if MYNEWT_VAL(BLE_AUDIO) && MYNEWT_VAL(BLE_ISO_BROADCAST_SOURCE)
-#include "audio/ble_audio_broadcast_source.h"
-#endif /* BLE_AUDIO && BLE_ISO_BROADCAST_SOURCE */
 #include "ble_hs_priv.h"
-#include "ble_iso_priv.h"
 #include "nimble/nimble_npl.h"
 #ifndef MYNEWT
 #include "nimble/nimble_port.h"
@@ -89,6 +85,7 @@ uint16_t ble_hs_max_attrs;
 uint16_t ble_hs_max_services;
 uint16_t ble_hs_max_client_configs;
 
+static uint8_t ble_hs_mutex_locked;
 #if MYNEWT_VAL(BLE_HS_DEBUG)
 static uint8_t ble_hs_dbg_mutex_locked;
 #endif
@@ -134,7 +131,7 @@ ble_hs_locked_by_cur_task(void)
     owner = ble_hs_mutex.mu.mu_owner;
     return owner != NULL && owner == os_sched_get_current_task();
 #else
-    return 1;
+    return ble_hs_mutex_locked;
 #endif
 }
 #endif
@@ -164,7 +161,8 @@ ble_hs_lock_nested(void)
     }
 #endif
 
-    rc = ble_npl_mutex_pend(&ble_hs_mutex, BLE_NPL_TIME_FOREVER);
+    ble_hs_mutex_locked = 1;
+    rc = ble_npl_mutex_pend(&ble_hs_mutex, 0xffffffff);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
 
@@ -183,6 +181,7 @@ ble_hs_unlock_nested(void)
     }
 #endif
 
+    ble_hs_mutex_locked = 0;
     rc = ble_npl_mutex_release(&ble_hs_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -193,7 +192,7 @@ ble_hs_unlock_nested(void)
 void
 ble_hs_lock(void)
 {
-    BLE_HS_DBG_ASSERT(!ble_hs_locked_by_cur_task());
+    //BLE_HS_DBG_ASSERT(!ble_hs_locked_by_cur_task());
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     if (!ble_npl_os_started()) {
         BLE_HS_DBG_ASSERT(!ble_hs_dbg_mutex_locked);
@@ -738,11 +737,6 @@ ble_hs_init(void)
     rc = ble_l2cap_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-#endif
-    rc = ble_gap_init();
-    SYSINIT_PANIC_ASSERT(rc == 0);
-#if NIMBLE_BLE_CONNECT
-
     rc = ble_att_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
@@ -755,20 +749,8 @@ ble_hs_init(void)
     rc = ble_gatts_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
-
-#if MYNEWT_VAL(BLE_ISO)
-    rc = ble_iso_init();
+    rc = ble_gap_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
-#if MYNEWT_VAL(BLE_AUDIO) && MYNEWT_VAL(BLE_ISO_BROADCAST_SOURCE)
-    rc = ble_audio_broadcast_init();
-    SYSINIT_PANIC_ASSERT(rc == 0);
-#endif /* BLE_AUDIO && BLE_ISO_BROADCAST_SOURCE */
-#endif
-
-#if MYNEWT_VAL(BLE_AUDIO_MAX_CODEC_RECORDS)
-    rc = ble_audio_codec_init();
-    SYSINIT_PANIC_ASSERT(rc == 0);
-#endif
 
     ble_hs_stop_init();
 
@@ -823,13 +805,9 @@ ble_transport_to_hs_acl_impl(struct os_mbuf *om)
 int
 ble_transport_to_hs_iso_impl(struct os_mbuf *om)
 {
-#if MYNEWT_VAL(BLE_ISO_BROADCAST_SINK)
-    return ble_iso_rx_data(om, NULL);
-#else
     os_mbuf_free_chain(om);
 
     return 0;
-#endif
 }
 
 void

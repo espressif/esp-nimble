@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
+#if 0
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
@@ -950,3 +950,4 @@ hal_timer_stop(struct hal_timer *timer)
 
     return 0;
 }
+#endif
