@@ -18,8 +18,8 @@
  */
 
 #include <stddef.h>
-#include "FreeRTOS.h"
-#include "task.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nimble/nimble_port.h"
 
 #if NIMBLE_CFG_CONTROLLER
@@ -46,6 +46,6 @@ nimble_port_freertos_init(TaskFunction_t host_task_fn)
      * have separate task for NimBLE host, but since something needs to handle
      * default queue it is just easier to make separate task which does this.
      */
-    xTaskCreate(host_task_fn, "ble", configMINIMAL_STACK_SIZE + 400,
-                NULL, tskIDLE_PRIORITY + 1, &host_task_h);
+    xTaskCreate(host_task_fn, "ble", 2048+400,
+                NULL, (configMAX_PRIORITIES - 3), &host_task_h);
 }
