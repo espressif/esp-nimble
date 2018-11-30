@@ -22,6 +22,8 @@
 
 #include "nimble/nimble_npl.h"
 
+#define NIMBLE_CORE (CONFIG_NIMBLE_PINNED_TO_CORE < portNUM_PROCESSORS ? CONFIG_NIMBLE_PINNED_TO_CORE : tskNO_AFFINITY)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
