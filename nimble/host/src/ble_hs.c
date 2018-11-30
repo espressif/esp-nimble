@@ -85,8 +85,9 @@ uint16_t ble_hs_max_attrs;
 uint16_t ble_hs_max_services;
 uint16_t ble_hs_max_client_configs;
 
-static uint8_t ble_hs_mutex_locked;
 #if MYNEWT_VAL(BLE_HS_DEBUG)
+static uint8_t ble_hs_mutex_locked;
+static TaskHandle_t ble_hs_task_handle;
 static uint8_t ble_hs_dbg_mutex_locked;
 #endif
 
@@ -131,7 +132,7 @@ ble_hs_locked_by_cur_task(void)
     owner = ble_hs_mutex.mu.mu_owner;
     return owner != NULL && owner == os_sched_get_current_task();
 #else
-    return ble_hs_mutex_locked;
+    return (ble_hs_mutex_locked && ble_hs_task_handle == xTaskGetCurrentTaskHandle());
 #endif
 }
 #endif
@@ -161,8 +162,12 @@ ble_hs_lock_nested(void)
     }
 #endif
 
-    ble_hs_mutex_locked = 1;
     rc = ble_npl_mutex_pend(&ble_hs_mutex, 0xffffffff);
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    ble_hs_mutex_locked = 1;
+    ble_hs_task_handle = xTaskGetCurrentTaskHandle();
+#endif
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
 
@@ -179,9 +184,12 @@ ble_hs_unlock_nested(void)
         ble_hs_dbg_mutex_locked = 0;
         return;
     }
+    if(ble_hs_task_handle == xTaskGetCurrentTaskHandle()) {
+        ble_hs_task_handle = NULL;
+        ble_hs_mutex_locked = 0;
+    }
 #endif
 
-    ble_hs_mutex_locked = 0;
     rc = ble_npl_mutex_release(&ble_hs_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -192,7 +200,7 @@ ble_hs_unlock_nested(void)
 void
 ble_hs_lock(void)
 {
-    //BLE_HS_DBG_ASSERT(!ble_hs_locked_by_cur_task());
+    BLE_HS_DBG_ASSERT(!ble_hs_locked_by_cur_task());
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     if (!ble_npl_os_started()) {
         BLE_HS_DBG_ASSERT(!ble_hs_dbg_mutex_locked);
