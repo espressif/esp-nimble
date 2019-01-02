@@ -22,19 +22,18 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "nimble/nimble_port.h"
-#include "nimble/transport.h"
 #if NIMBLE_CFG_CONTROLLER
 #include "controller/ble_ll.h"
-#include "os/os_cputime.h"
+#include "nimble/transport.h"
+#endif
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
 #endif
 
 static struct ble_npl_eventq g_eventq_dflt;
 
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
-#if NIMBLE_CFG_CONTROLLER
-extern void ble_ll_init(void);
-#endif
 
 void
 nimble_port_init(void)
@@ -44,11 +43,6 @@ nimble_port_init(void)
     /* Initialize the global memory pool */
     os_mempool_module_init();
     os_msys_init();
-
-#if NIMBLE_CFG_CONTROLLER
-    ble_ll_init();
-#endif
-
     /* Initialize transport */
     ble_transport_init();
     /* Initialize the host */
@@ -59,10 +53,13 @@ nimble_port_init(void)
     hal_timer_init(5, NULL);
     os_cputime_init(32768);
 #endif
+    ble_transport_ll_init();
 #endif
 
-    /* Initialize the controller */
-    ble_transport_ll_init();
+#ifdef ESP_PLATFORM
+    esp_log_level_set("NimBLE", LOG_LOCAL_LEVEL);
+#endif
+
 }
 
 void
