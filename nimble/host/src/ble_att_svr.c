@@ -2987,6 +2987,12 @@ err:
     return rc;
 }
 
+void
+ble_att_svr_stop(void)
+{
+    ble_att_svr_free_start_mem();
+}
+
 int
 ble_att_svr_init(void)
 {

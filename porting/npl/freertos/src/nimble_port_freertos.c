@@ -49,3 +49,11 @@ nimble_port_freertos_init(TaskFunction_t host_task_fn)
     xTaskCreatePinnedToCore(host_task_fn, "ble", 4096,
                 NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
 }
+
+void
+nimble_port_freertos_deinit(void)
+{
+    if (host_task_h) {
+        vTaskDelete(host_task_h);
+    }
+}

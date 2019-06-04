@@ -31,6 +31,9 @@
 #endif
 
 static struct ble_npl_eventq g_eventq_dflt;
+static struct ble_hs_stop_listener stop_listener;
+static struct ble_npl_sem ble_hs_stop_sem;
+static struct ble_npl_event ble_hs_ev_stop;
 
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
@@ -63,15 +66,73 @@ nimble_port_init(void)
 }
 
 void
+nimble_port_deinit(void)
+{
+    ble_npl_eventq_deinit(&g_eventq_dflt);
+
+    ble_hs_deinit();
+}
+
+void
 nimble_port_run(void)
 {
     struct ble_npl_event *ev;
+    int arg;
 
     while (1) {
         ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
         ble_npl_event_run(ev);
+        arg = (int)ble_npl_event_get_arg(ev);
+        if (arg == NIMBLE_PORT_DEINIT_EV_ARG) {
+            break;
+        }
     }
 }
+
+/**
+ * Called when the host stop procedure has completed.
+ */
+static void
+ble_hs_stop_cb(int status, void *arg)
+{
+    ble_npl_sem_release(&ble_hs_stop_sem);
+}
+
+static void
+nimble_port_stop_cb(struct ble_npl_event *ev)
+{
+    ble_npl_sem_release(&ble_hs_stop_sem);
+}
+
+int
+nimble_port_stop(void)
+{
+    int rc;
+
+    ble_npl_sem_init(&ble_hs_stop_sem, 0);
+    /* Initiate a host stop procedure. */
+    rc = ble_hs_stop(&stop_listener, ble_hs_stop_cb,
+            NULL);
+    if (rc != 0) {
+        ble_npl_sem_deinit(&ble_hs_stop_sem);
+        return rc;
+    }
+
+    /* Wait till the host stop procedure is complete */
+    ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
+
+    ble_npl_event_init(&ble_hs_ev_stop, nimble_port_stop_cb,
+            (void *)NIMBLE_PORT_DEINIT_EV_ARG);
+    ble_npl_eventq_put(&g_eventq_dflt, &ble_hs_ev_stop);
+
+    /* Wait till the event is serviced */
+    ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
+
+    ble_npl_sem_deinit(&ble_hs_stop_sem);
+
+    return rc;
+}
+
 
 struct ble_npl_eventq *
 nimble_port_get_dflt_eventq(void)

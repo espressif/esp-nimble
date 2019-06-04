@@ -24,13 +24,17 @@
 
 #define NIMBLE_CORE (CONFIG_BT_NIMBLE_PINNED_TO_CORE < portNUM_PROCESSORS ? CONFIG_BT_NIMBLE_PINNED_TO_CORE : tskNO_AFFINITY)
 
+#define NIMBLE_PORT_DEINIT_EV_ARG -1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void nimble_port_init(void);
+void nimble_port_deinit(void);
 
 void nimble_port_run(void);
+int nimble_port_stop(void);
 
 struct ble_npl_eventq *nimble_port_get_dflt_eventq(void);
 
