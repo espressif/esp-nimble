@@ -7251,3 +7251,9 @@ ble_gap_set_transmit_power_reporting_enable(uint16_t conn_handle,
     return BLE_HS_ENOTSUP;
 #endif
 }
+
+void
+ble_gap_deinit(void)
+{
+    ble_npl_mutex_deinit(&preempt_done_mutex);
+}

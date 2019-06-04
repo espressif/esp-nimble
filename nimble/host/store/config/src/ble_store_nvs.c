@@ -149,7 +149,7 @@ get_nvs_db_attribute(int obj_type, bool empty, void *value, int num_value)
         /* Check if the user is searching for empty index to write to */
         if (err == ESP_ERR_NVS_NOT_FOUND) {
             if (empty) {
-                ESP_LOGI(TAG, "Empty NVS index found = %d", i);
+                ESP_LOGD(TAG, "Empty NVS index found = %d for obj_type = %d", i, obj_type);
                 return i;
             }
         } else if (err == ESP_OK) {
