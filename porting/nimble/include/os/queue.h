@@ -34,7 +34,7 @@
 #define	_QUEUE_H_
 
 /* The common BSD linked list queue macros are already defined here for ESP-IDF */
-#include <rom/queue.h>
+#include <sys/queue.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,7 +43,7 @@ extern "C" {
 /*
  * This file defines circular queues. The other types of data structures:
  * singly-linked lists, singly-linked tail queues, lists and tail queues
- * are used from rom/queue.h
+ * are used from sys/queue.h
  *
  * A singly-linked list is headed by a single forward pointer. The elements
  * are singly linked for minimum space and pointer manipulation overhead at

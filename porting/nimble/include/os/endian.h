@@ -137,6 +137,8 @@ extern "C" {
 #define htonll      ntohll
 #endif
 
+/* These are not used in NimBLE and ESP-IDF uses them from LwIP */
+#if 0
 #ifndef ntohl
 #define ntohl(x)    os_bswap_32(x)
 #endif
@@ -151,6 +153,7 @@ extern "C" {
 
 #ifndef ntohs
 #define ntohs       htons
+#endif
 #endif
 
 #ifndef htobe16
