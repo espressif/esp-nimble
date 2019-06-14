@@ -96,7 +96,7 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
 {
     esp_err_t err;
     size_t required_size = 0;
-    nvs_handle nimble_handle;
+    nvs_handle_t nimble_handle;
 
     err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
     if (err != ESP_OK) {
@@ -191,7 +191,7 @@ static int
 ble_nvs_delete_value(int obj_type, int8_t index)
 {
     esp_err_t err;
-    nvs_handle nimble_handle;
+    nvs_handle_t nimble_handle;
     char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
 
     if (index > get_nvs_max_bonds(obj_type)) {
@@ -227,7 +227,7 @@ error:
 static int
 ble_nvs_write_key_value(char *key, const void *value, size_t required_size)
 {
-    nvs_handle nimble_handle;
+    nvs_handle_t nimble_handle;
     esp_err_t err;
 
     err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
