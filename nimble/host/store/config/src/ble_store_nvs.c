@@ -376,7 +376,7 @@ int ble_store_config_persist_cccds()
         return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_CCCD, &val);
     } else if (nvs_count > ble_store_config_num_cccds) {
         /* NVS db count more than RAM count, delete operation */
-        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_CCCD, -1,
+        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_CCCD, 0,
                                        ble_store_config_cccds, ble_store_config_num_cccds);
         if (nvs_idx == -1) {
             ESP_LOGE(TAG, "NVS delete operation failed for CCCD");
@@ -402,7 +402,7 @@ int ble_store_config_persist_peer_secs()
         return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_PEER_SEC, &val);
     } else if (nvs_count > ble_store_config_num_peer_secs) {
         /* NVS db count more than RAM count, delete operation */
-        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_SEC, -1,
+        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_SEC, 0,
                                        ble_store_config_peer_secs, ble_store_config_num_peer_secs);
         if (nvs_idx == -1) {
             ESP_LOGE(TAG, "NVS delete operation failed for peer sec");
@@ -428,7 +428,7 @@ int ble_store_config_persist_our_secs()
         return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_OUR_SEC, &val);
     } else if (nvs_count > ble_store_config_num_our_secs) {
         /* NVS db count more than RAM count, delete operation */
-        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_OUR_SEC, -1,
+        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_OUR_SEC, 0,
                                        ble_store_config_our_secs, ble_store_config_num_our_secs);
         if (nvs_idx == -1) {
             ESP_LOGE(TAG, "NVS delete operation failed for our sec");
