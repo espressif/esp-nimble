@@ -26,6 +26,18 @@
 extern "C" {
 #endif
 
+#if !defined __cplusplus
+#define static_assert _Static_assert
+#endif
+
+#ifndef min
+#define min(a, b) ((a)<(b)?(a):(b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a)>(b)?(a):(b))
+#endif
+
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_npl.h"
 

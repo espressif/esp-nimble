@@ -247,7 +247,7 @@ os_msys_sanity(struct os_sanity_check *sc, void *arg)
 static void
 os_msys_init_once(void *data, struct os_mempool *mempool,
                   struct os_mbuf_pool *mbuf_pool,
-                  int block_count, int block_size, char *name)
+                  int block_count, int block_size, const char *name)
 {
     int rc;
 
