@@ -38,7 +38,7 @@
 #define OS_MEMPOOL_TRUE_BLOCK_SIZE(mp) OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size)
 #endif
 
-STAILQ_HEAD(, os_mempool) g_os_mempool_list;
+STAILQ_HEAD(, os_mempool) g_os_mempool_list = STAILQ_HEAD_INITIALIZER(g_os_mempool_list);
 
 #if MYNEWT_VAL(OS_MEMPOOL_POISON)
 static uint32_t os_mem_poison = 0xde7ec7ed;
@@ -118,7 +118,7 @@ os_mempool_guard_check(const struct os_mempool *mp, void *start)
 
 static os_error_t
 os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
-                         uint32_t block_size, void *membuf, char *name,
+                         uint32_t block_size, void *membuf, const char *name,
                          uint8_t flags)
 {
     int true_block_size;
@@ -181,14 +181,14 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
 
 os_error_t
 os_mempool_init(struct os_mempool *mp, uint16_t blocks, uint32_t block_size,
-                void *membuf, char *name)
+                void *membuf, const char *name)
 {
     return os_mempool_init_internal(mp, blocks, block_size, membuf, name, 0);
 }
 
 os_error_t
 os_mempool_ext_init(struct os_mempool_ext *mpe, uint16_t blocks,
-                    uint32_t block_size, void *membuf, char *name)
+                    uint32_t block_size, void *membuf, const char *name)
 {
     int rc;
 
