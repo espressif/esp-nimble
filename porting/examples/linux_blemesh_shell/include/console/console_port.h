@@ -17,24 +17,18 @@
  * under the License.
  */
 
-#ifndef __CONSOLE_PORT_H__
-#define __CONSOLE_PORT_H__
+#ifndef __LOG_H__
+#define __LOG_H__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "nimble/nimble_npl.h"
-struct os_eventq;
-
-void console_set_queues(struct os_eventq *avail, struct os_eventq *lines);
-
-void console_set_event_cb(ble_npl_event_fn *cb);
-
-int console_init();
+struct log {
+};
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* __LOG_H__ */
