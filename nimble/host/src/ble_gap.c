@@ -6412,6 +6412,27 @@ ble_gap_identity_event(uint16_t conn_handle)
 }
 
 int
+ble_gap_pairing_req_event(const struct ble_gap_pairing_req *req)
+{
+#if !NIMBLE_BLE_SM
+    return 0;
+#endif
+
+    struct ble_gap_event event;
+    int rc;
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_PAIRING_REQUEST;
+    event.pairing_req.io_cap = req->io_cap;
+    event.pairing_req.oob_data_flag = req->oob_data_flag;
+    event.pairing_req.authreq = req->authreq;
+    event.pairing_req.max_enc_key_size = req->max_enc_key_size;
+
+    rc = ble_gap_call_conn_event_cb(&event, req->conn_handle);
+    return rc;
+}
+
+int
 ble_gap_repeat_pairing_event(const struct ble_gap_repeat_pairing *rp)
 {
 #if NIMBLE_BLE_SM
