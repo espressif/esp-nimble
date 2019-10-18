@@ -155,6 +155,7 @@ void ble_gap_subscribe_event(uint16_t conn_handle, uint16_t attr_handle,
                              uint8_t prev_indicate, uint8_t cur_indicate);
 void ble_gap_mtu_event(uint16_t conn_handle, uint16_t cid, uint16_t mtu);
 void ble_gap_identity_event(uint16_t conn_handle, const ble_addr_t *peer_id_addr);
+int ble_gap_pairing_req_event(const struct ble_gap_pairing_req *req);
 int ble_gap_repeat_pairing_event(const struct ble_gap_repeat_pairing *rp);
 void ble_gap_pairing_complete_event(uint16_t conn_handle, int status);
 void ble_gap_vs_hci_event(const void *buf, uint8_t len);
