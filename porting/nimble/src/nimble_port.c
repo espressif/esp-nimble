@@ -77,13 +77,11 @@ void
 nimble_port_run(void)
 {
     struct ble_npl_event *ev;
-    int arg;
 
     while (1) {
         ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
         ble_npl_event_run(ev);
-        arg = (int)ble_npl_event_get_arg(ev);
-        if (arg == NIMBLE_PORT_DEINIT_EV_ARG) {
+        if (ev == &ble_hs_ev_stop) {
             break;
         }
     }
@@ -122,7 +120,7 @@ nimble_port_stop(void)
     ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
 
     ble_npl_event_init(&ble_hs_ev_stop, nimble_port_stop_cb,
-            (void *)NIMBLE_PORT_DEINIT_EV_ARG);
+            NULL);
     ble_npl_eventq_put(&g_eventq_dflt, &ble_hs_ev_stop);
 
     /* Wait till the event is serviced */
