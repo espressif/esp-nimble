@@ -41,10 +41,11 @@ extern "C" {
  */
 #define BT_MESH_ELEM(_loc, _mods, _vnd_mods)        \
 {                                                   \
+        .addr             = 0                       \
 	.loc              = (_loc),                 \
 	.model_count      = ARRAY_SIZE(_mods),      \
-	.models           = (_mods),                \
 	.vnd_model_count  = ARRAY_SIZE(_vnd_mods),  \
+	.models           = (_mods),                \
 	.vnd_models       = (_vnd_mods),            \
 }
 
