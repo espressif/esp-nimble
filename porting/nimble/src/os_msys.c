@@ -22,7 +22,7 @@
 #include "mem/mem.h"
 #include "sysinit/sysinit.h"
 
-static STAILQ_HEAD(os_mbuf_list, os_mbuf_pool) g_msys_pool_list =
+static STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
     STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
 
 #if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
@@ -31,9 +31,9 @@ static STAILQ_HEAD(os_mbuf_list, os_mbuf_pool) g_msys_pool_list =
 #define SYSINIT_MSYS_1_MEMPOOL_SIZE                 \
     OS_MEMPOOL_SIZE(MYNEWT_VAL(MSYS_1_BLOCK_COUNT),  \
                     SYSINIT_MSYS_1_MEMBLOCK_SIZE)
-static os_membuf_t os_msys_1_data[SYSINIT_MSYS_1_MEMPOOL_SIZE];
-static struct os_mbuf_pool os_msys_1_mbuf_pool;
-static struct os_mempool os_msys_1_mempool;
+static os_membuf_t *os_msys_init_1_data;
+static struct os_mbuf_pool os_msys_init_1_mbuf_pool;
+static struct os_mempool os_msys_init_1_mempool;
 #endif
 
 #if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
@@ -42,9 +42,9 @@ static struct os_mempool os_msys_1_mempool;
 #define SYSINIT_MSYS_2_MEMPOOL_SIZE                 \
     OS_MEMPOOL_SIZE(MYNEWT_VAL(MSYS_2_BLOCK_COUNT),  \
                     SYSINIT_MSYS_2_MEMBLOCK_SIZE)
-static os_membuf_t os_msys_2_data[SYSINIT_MSYS_2_MEMPOOL_SIZE];
-static struct os_mbuf_pool os_msys_2_mbuf_pool;
-static struct os_mempool os_msys_2_mempool;
+static os_membuf_t *os_msys_init_2_data;
+static struct os_mbuf_pool os_msys_init_2_mbuf_pool;
+static struct os_mempool os_msys_init_2_mempool;
 #endif
 
 #define OS_MSYS_SANITY_ENABLED                  \
@@ -54,147 +54,6 @@ static struct os_mempool os_msys_2_mempool;
 #if OS_MSYS_SANITY_ENABLED
 static struct os_sanity_check os_msys_sc;
 #endif
-
-int
-os_msys_register(struct os_mbuf_pool *new_pool)
-{
-    struct os_mbuf_pool *pool;
-    struct os_mbuf_pool *prev;
-
-    /* We want to have order from smallest to biggest mempool. */
-    prev = NULL;
-    pool = NULL;
-    STAILQ_FOREACH(pool, &g_msys_pool_list, omp_next) {
-        if (new_pool->omp_databuf_len < pool->omp_databuf_len) {
-            break;
-        }
-        prev = pool;
-    }
-
-    if (prev) {
-        STAILQ_INSERT_AFTER(&g_msys_pool_list, prev, new_pool, omp_next);
-    } else {
-        STAILQ_INSERT_HEAD(&g_msys_pool_list, new_pool, omp_next);
-    }
-
-    return (0);
-}
-
-void
-os_msys_reset(void)
-{
-    STAILQ_INIT(&g_msys_pool_list);
-}
-
-static struct os_mbuf_pool *os_msys_find_pool(uint16_t dsize);
-
-static struct os_mbuf_pool *
-os_msys_find_biggest_pool(void)
-{
-    return os_msys_find_pool(0xFFFF);
-}
-
-static struct os_mbuf_pool *
-os_msys_find_pool(uint16_t dsize)
-{
-    struct os_mbuf_pool *pool;
-    struct os_mbuf_pool *pool_with_free_blocks = NULL;
-    uint16_t pool_free_blocks;
-
-    STAILQ_FOREACH(pool, &g_msys_pool_list, omp_next) {
-        pool_free_blocks = pool->omp_pool->mp_num_free;
-        if (pool_free_blocks != 0) {
-            pool_with_free_blocks = pool;
-            if (dsize <= pool->omp_databuf_len) {
-                break;
-            }
-        }
-    }
-
-    return pool_with_free_blocks;
-}
-
-
-struct os_mbuf *
-os_msys_get(uint16_t dsize, uint16_t leadingspace)
-{
-    struct os_mbuf *m;
-    struct os_mbuf_pool *pool;
-
-    /* If dsize = 0 that means user has no idea how big block size is needed,
-    * therefore lets find for him the biggest one
-    */
-    if (dsize == 0) {
-        pool = os_msys_find_biggest_pool();
-    } else {
-        pool = os_msys_find_pool(dsize);
-    }
-
-    if (!pool) {
-        goto err;
-    }
-
-    m = os_mbuf_get(pool, leadingspace);
-    return (m);
-err:
-    return (NULL);
-}
-
-struct os_mbuf *
-os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
-{
-    uint16_t total_pkthdr_len;
-    struct os_mbuf *m;
-    struct os_mbuf_pool *pool;
-
-    total_pkthdr_len =  user_hdr_len + sizeof(struct os_mbuf_pkthdr);
-
-    /* If dsize = 0 that means user has no idea how big block size is needed,
-     * therefore lets find for him the biggest one
-     */
-    if (dsize == 0) {
-        pool = os_msys_find_biggest_pool();
-    } else {
-        pool = os_msys_find_pool(dsize + total_pkthdr_len);
-    }
-
-    if (!pool) {
-        goto err;
-    }
-
-    m = os_mbuf_get_pkthdr(pool, user_hdr_len);
-    return (m);
-err:
-    return (NULL);
-}
-
-int
-os_msys_count(void)
-{
-    struct os_mbuf_pool *omp;
-    int total;
-
-    total = 0;
-    STAILQ_FOREACH(omp, &g_msys_pool_list, omp_next) {
-        total += omp->omp_pool->mp_num_blocks;
-    }
-
-    return total;
-}
-
-int
-os_msys_num_free(void)
-{
-    struct os_mbuf_pool *omp;
-    int total;
-
-    total = 0;
-    STAILQ_FOREACH(omp, &g_msys_pool_list, omp_next) {
-        total += omp->omp_pool->mp_num_free;
-    }
-
-    return total;
-}
 
 #if OS_MSYS_SANITY_ENABLED
 
@@ -259,6 +118,41 @@ os_msys_init_once(void *data, struct os_mempool *mempool,
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
 
+int
+os_msys_buf_alloc(void)
+{
+#if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
+    os_msys_init_1_data = (os_membuf_t *)calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_1_MEMPOOL_SIZE));
+    if (!os_msys_init_1_data) {
+        return -1;
+    }
+#endif
+
+#if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
+    os_msys_init_2_data = (os_membuf_t *)calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_2_MEMPOOL_SIZE));
+    if (!os_msys_init_2_data) {
+        return -1;
+    }
+#endif
+
+    return 0;
+}
+
+void
+os_msys_buf_free(void)
+{
+#if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
+    free(os_msys_init_1_data);
+    os_msys_init_1_data = NULL;
+#endif
+
+#if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
+    free(os_msys_init_2_data);
+    os_msys_init_2_data = NULL;
+#endif
+
+}
+
 void
 os_msys_init(void)
 {
@@ -270,18 +164,18 @@ os_msys_init(void)
     (void)rc;
 
 #if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
-    os_msys_init_once(os_msys_1_data,
-                      &os_msys_1_mempool,
-                      &os_msys_1_mbuf_pool,
+    os_msys_init_once(os_msys_init_1_data,
+                      &os_msys_init_1_mempool,
+                      &os_msys_init_1_mbuf_pool,
                       MYNEWT_VAL(MSYS_1_BLOCK_COUNT),
                       SYSINIT_MSYS_1_MEMBLOCK_SIZE,
                       "msys_1");
 #endif
 
 #if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
-    os_msys_init_once(os_msys_2_data,
-                      &os_msys_2_mempool,
-                      &os_msys_2_mbuf_pool,
+    os_msys_init_once(os_msys_init_2_data,
+                      &os_msys_init_2_mempool,
+                      &os_msys_init_2_mbuf_pool,
                       MYNEWT_VAL(MSYS_2_BLOCK_COUNT),
                       SYSINIT_MSYS_2_MEMBLOCK_SIZE,
                       "msys_2");
@@ -295,11 +189,3 @@ os_msys_init(void)
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
 }
-
-#if MYNEWT_VAL(SELFTEST)
-struct os_mbuf_list *
-get_msys_pool_list(void)
-{
-    return &g_msys_pool_list;
-}
-#endif
