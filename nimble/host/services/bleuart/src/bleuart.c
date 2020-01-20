@@ -28,6 +28,7 @@
 #include "bleuart/bleuart.h"
 #include "os/endian.h"
 #include "console/console.h"
+#include "esp_nimble_mem.h"
 
 /* ble uart attr read handle */
 uint16_t g_bleuart_attr_read_handle;
@@ -198,6 +199,6 @@ bleuart_init(void)
     rc = console_init(bleuart_uart_read);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    console_buf = malloc(MYNEWT_VAL(BLEUART_MAX_INPUT));
+    console_buf = nimble_platform_mem_malloc(MYNEWT_VAL(BLEUART_MAX_INPUT));
     SYSINIT_PANIC_ASSERT(console_buf != NULL);
 }

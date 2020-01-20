@@ -21,6 +21,7 @@
 #include "os/os.h"
 #include "mem/mem.h"
 #include "sysinit/sysinit.h"
+#include "esp_nimble_mem.h"
 
 static STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
     STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
@@ -122,14 +123,14 @@ int
 os_msys_buf_alloc(void)
 {
 #if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
-    os_msys_init_1_data = (os_membuf_t *)calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_1_MEMPOOL_SIZE));
+    os_msys_init_1_data = (os_membuf_t *)nimble_platform_mem_calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_1_MEMPOOL_SIZE));
     if (!os_msys_init_1_data) {
         return -1;
     }
 #endif
 
 #if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
-    os_msys_init_2_data = (os_membuf_t *)calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_2_MEMPOOL_SIZE));
+    os_msys_init_2_data = (os_membuf_t *)nimble_platform_mem_calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_2_MEMPOOL_SIZE));
     if (!os_msys_init_2_data) {
         return -1;
     }
@@ -142,12 +143,12 @@ void
 os_msys_buf_free(void)
 {
 #if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
-    free(os_msys_init_1_data);
+    nimble_platform_mem_free(os_msys_init_1_data);
     os_msys_init_1_data = NULL;
 #endif
 
 #if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
-    free(os_msys_init_2_data);
+    nimble_platform_mem_free(os_msys_init_2_data);
     os_msys_init_2_data = NULL;
 #endif
 
