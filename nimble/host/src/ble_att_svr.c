@@ -25,6 +25,7 @@
 #include "nimble/ble.h"
 #include "host/ble_uuid.h"
 #include "ble_hs_priv.h"
+#include "esp_nimble_mem.h"
 
 #if NIMBLE_BLE_CONNECT
 /**
@@ -2889,7 +2890,7 @@ ble_att_svr_reset(void)
 static void
 ble_att_svr_free_start_mem(void)
 {
-    free(ble_att_svr_entry_mem);
+    nimble_platform_mem_free(ble_att_svr_entry_mem);
     ble_att_svr_entry_mem = NULL;
 }
 
@@ -2901,7 +2902,7 @@ ble_att_svr_start(void)
     ble_att_svr_free_start_mem();
 
     if (ble_hs_max_attrs > 0) {
-        ble_att_svr_entry_mem = malloc(
+        ble_att_svr_entry_mem = nimble_platform_mem_malloc(
             OS_MEMPOOL_BYTES(ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry)));
         if (ble_att_svr_entry_mem == NULL) {
