@@ -131,6 +131,11 @@ void ble_hs_notifications_sched(void);
 struct ble_npl_eventq *ble_hs_evq_get(void);
 void ble_hs_stop_init(void);
 
+int
+ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
+                   uint8_t *enc_data);
+
+
 struct ble_mqueue {
     STAILQ_HEAD(, os_mbuf_pkthdr) head;
     struct ble_npl_event ev;

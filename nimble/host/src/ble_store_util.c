@@ -19,6 +19,7 @@
 
 #include "host/ble_store.h"
 #include "ble_hs_priv.h"
+#include "ble_hs_resolv_priv.h"
 
 struct ble_store_util_peer_set {
     ble_addr_t *peer_id_addrs;
@@ -108,6 +109,25 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
     if (rc != 0) {
         return rc;
     }
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    struct ble_hs_dev_records *peer_rec =
+                              ble_rpa_find_peer_dev_rec(key.sec.peer_addr.val);
+
+    if (peer_rec != NULL) {
+        rc = ble_hs_resolv_list_rmv(peer_rec->peer_sec.peer_addr.type,
+                                    peer_rec->peer_sec.peer_addr.val);
+        if (rc != 0) {
+            /* We can't do anything much here, continue with removing from peer_record  */
+            BLE_HS_LOG(DEBUG, "Peer Device was not removed from RL \n");
+        }
+
+        rc = ble_rpa_remove_peer_dev_rec(peer_rec);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
 
     return 0;
 }

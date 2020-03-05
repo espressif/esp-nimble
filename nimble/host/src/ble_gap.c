@@ -26,6 +26,7 @@
 #include "host/ble_hs_hci.h"
 #include "ble_hs_priv.h"
 #include "ble_gap_priv.h"
+#include "ble_hs_resolv_priv.h"
 
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -422,6 +423,23 @@ ble_gap_fill_conn_desc(struct ble_hs_conn *conn,
     ble_hs_conn_addrs(conn, &addrs);
 
     desc->our_id_addr = addrs.our_id_addr;
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    /* Check if the privacy is enabled, change the address type accordingly
+     * */
+    if (ble_host_rpa_enabled())
+    {
+        uint8_t *local_id = NULL;
+        struct ble_hs_resolv_entry *rl = NULL;
+        rl = ble_hs_resolv_list_find(conn->bhc_peer_addr.val);
+
+        if (rl != NULL) {
+            /* Get public ID address here */
+            ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+            memcpy(desc->our_id_addr.val, local_id, BLE_DEV_ADDR_LEN);
+            desc->our_id_addr.type = BLE_ADDR_PUBLIC;
+        }
+    }
+#endif
     desc->peer_id_addr = addrs.peer_id_addr;
     desc->our_ota_addr = addrs.our_ota_addr;
     desc->peer_ota_addr = addrs.peer_ota_addr;
@@ -2396,6 +2414,12 @@ ble_gap_timer(void)
 static int
 ble_gap_wl_busy(void)
 {
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    if (ble_host_rpa_enabled()) {
+        return BLE_HS_ENOTSUP;
+    }
+#endif
     /* Check if an auto or selective connection establishment procedure is in
      * progress.
      */
@@ -2450,6 +2474,12 @@ ble_gap_wl_read_size(uint8_t *size)
 int
 ble_gap_wl_set(const ble_addr_t *addrs, uint8_t white_list_count)
 {
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    if (ble_host_rpa_enabled()) {
+        return BLE_HS_ENOTSUP;
+    }
+#endif
+
 #if MYNEWT_VAL(BLE_WHITELIST)
     int rc;
     int i;
