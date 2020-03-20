@@ -37,8 +37,10 @@ struct ble_hs_resolv_entry {
     uint8_t rl_peer_rpa[BLE_DEV_ADDR_LEN];
 };
 
+#if MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST)
 /* Persist peer records in NVS. XXX Need to handle this in `store` module */
 int ble_store_persist_peer_records(void);
+#endif
 
 struct ble_hs_peer_sec {
     ble_addr_t peer_addr;
