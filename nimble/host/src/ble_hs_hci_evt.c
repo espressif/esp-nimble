@@ -409,16 +409,11 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
         if (ble_host_rpa_enabled()) {
             uint8_t *local_id_rpa = ble_hs_get_rpa_local();
             memcpy(evt.local_rpa, local_id_rpa, BLE_DEV_ADDR_LEN);
-
-            struct ble_hs_resolv_entry *rl = NULL;
-            ble_rpa_replace_peer_params_with_rl(evt.peer_addr,
-                                                &evt.peer_addr_type, &rl);
-            if (rl == NULL) {
-                if (ble_rpa_resolv_add_peer_rec(evt.peer_addr) != 0) {
-                    BLE_HS_LOG(DEBUG, "Memory unavailable for new peer record\n");
-                }
-            }
         }
+
+        struct ble_hs_resolv_entry *rl = NULL;
+        ble_rpa_replace_peer_params_with_rl(evt.peer_addr,
+                                            &evt.peer_addr_type, &rl);
 #endif
         evt.conn_itvl = le16toh(ev->conn_itvl);
         evt.conn_latency = le16toh(ev->conn_latency);
