@@ -504,14 +504,6 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
 
     for (i = 0; i < ev->num_reports; i++) {
         rpt = data;
-#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-        if (ble_host_rpa_enabled()) {
-            /* Now RPA to be resolved here, since controller is unaware of the
-             * address is RPA  */
-            ble_rpa_replace_peer_params_with_rl(desc.addr.val,
-                                                &desc.addr.type, NULL);
-        }
-#endif
 
         data += sizeof(rpt) + rpt->data_len + 1;
 
