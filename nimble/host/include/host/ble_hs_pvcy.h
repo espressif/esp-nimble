@@ -19,6 +19,9 @@
  * under the License.
  */
 
+#ifndef H_BLE_HS_PVCY_
+#define H_BLE_HS_PVCY_
+
 #include "host/ble_hs.h"
 
 #ifdef __cplusplus
@@ -43,3 +46,4 @@ int ble_hs_pvcy_rpa_config(uint8_t enable);
 }
 #endif
 
+#endif
