@@ -38,3 +38,8 @@ extern "C" {
  */
 int ble_hs_pvcy_rpa_config(uint8_t enable);
 #endif
+
+#ifdef __cplusplus
+}
+#endif
+
