@@ -95,4 +95,7 @@
 #define MODLOG(ml_lvl_, ml_mod_, ...) \
     MODLOG_ ## ml_lvl_((ml_mod_), __VA_ARGS__)
 
+#define MODLOG_DFLT(ml_lvl_, ...) \
+    MODLOG(ml_lvl_, LOG_MODULE_DEFAULT, __VA_ARGS__)
+
 #endif
