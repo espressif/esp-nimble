@@ -28,7 +28,14 @@ static TaskHandle_t ll_task_h;
 static TaskHandle_t host_task_h;
 
 void
-nimble_port_freertos_init(TaskFunction_t host_task_fn)
+nimble_port_freertos_init_param(TaskFunction_t host_task_fn, void * const host_task_param);
+
+void nimble_port_freertos_init(TaskFunction_t host_task_fn) {
+  nimble_port_freertos_init_param(host_task_fn, NULL);
+}
+
+void
+nimble_port_freertos_init_param(TaskFunction_t host_task_fn, void * const host_task_param)
 {
 #if NIMBLE_CFG_CONTROLLER
     /*
@@ -47,7 +54,7 @@ nimble_port_freertos_init(TaskFunction_t host_task_fn)
      * default queue it is just easier to make separate task which does this.
      */
     xTaskCreatePinnedToCore(host_task_fn, "ble", NIMBLE_STACK_SIZE,
-                NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
+                            host_task_param, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
 }
 
 void
