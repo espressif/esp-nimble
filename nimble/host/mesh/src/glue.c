@@ -134,13 +134,16 @@ bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
     mbedtls_aes_init(&s);
 
     if (mbedtls_aes_setkey_enc(&s, key, 128) != 0) {
+        mbedtls_aes_free(&s);
         return BLE_HS_EUNKNOWN;
     }
 
     if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, plaintext, enc_data) != 0) {
+        mbedtls_aes_free(&s);
         return BLE_HS_EUNKNOWN;
     }
 
+    mbedtls_aes_free(&s);
     return 0;
 }
 
