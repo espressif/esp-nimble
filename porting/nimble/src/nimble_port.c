@@ -58,11 +58,6 @@ nimble_port_init(void)
 #endif
     ble_transport_ll_init();
 #endif
-
-#ifdef ESP_PLATFORM
-    esp_log_level_set("NimBLE", LOG_LOCAL_LEVEL);
-#endif
-
 }
 
 void
