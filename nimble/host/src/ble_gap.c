@@ -6423,6 +6423,7 @@ ble_gap_pairing_req_event(const struct ble_gap_pairing_req *req)
 
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_PAIRING_REQUEST;
+    event.pairing_req.conn_handle = req->conn_handle;
     event.pairing_req.io_cap = req->io_cap;
     event.pairing_req.oob_data_flag = req->oob_data_flag;
     event.pairing_req.authreq = req->authreq;

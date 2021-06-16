@@ -893,7 +893,6 @@ static int
 ble_sm_pairing_req(uint16_t conn_handle, struct ble_sm_pair_cmd *req)
 {
     struct ble_gap_pairing_req pair_req;
-    int rc;
 
     pair_req.conn_handle = conn_handle;
     pair_req.io_cap = req->io_cap;
