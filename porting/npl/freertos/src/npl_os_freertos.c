@@ -375,8 +375,8 @@ void
 npl_freertos_callout_deinit(struct ble_npl_callout *co)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
-    ESP_ERROR_CHECK(esp_timer_stop(co->handle));
-    ESP_ERROR_CHECK(esp_timer_delete(co->handle));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_stop(co->handle));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_delete(co->handle));
 #else
     if (co->handle) {
         xTimerDelete(co->handle, portMAX_DELAY);
