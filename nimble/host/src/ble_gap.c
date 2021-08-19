@@ -510,6 +510,10 @@ ble_gap_conn_find(uint16_t handle, struct ble_gap_conn_desc *out_desc)
 #if NIMBLE_BLE_CONNECT
     struct ble_hs_conn *conn;
 
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
     ble_hs_lock();
 
     conn = ble_hs_conn_find(handle);
@@ -1358,7 +1362,7 @@ ble_gap_update_failed(uint16_t conn_handle, int status)
 }
 #endif
 
-static void
+void
 ble_gap_conn_broken(uint16_t conn_handle, int reason)
 {
 #if NIMBLE_BLE_CONNECT
@@ -2463,6 +2467,10 @@ ble_gap_set_event_cb(uint16_t conn_handle, ble_gap_event_fn *cb, void *cb_arg)
 #if NIMBLE_BLE_CONNECT
     struct ble_hs_conn *conn;
 
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
     ble_hs_lock();
 
     conn = ble_hs_conn_find(conn_handle);
@@ -2580,6 +2588,10 @@ ble_gap_wl_tx_rmv(const ble_addr_t *addr)
 
     if (addr->type > BLE_ADDR_RANDOM) {
         return BLE_HS_EINVAL;
+    }
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
     }
 
     memcpy(cmd.addr, addr->val, BLE_DEV_ADDR_LEN);
@@ -3259,6 +3271,10 @@ ble_gap_adv_rsp_set_fields(const struct ble_hs_adv_fields *rsp_fields)
     uint8_t buf[BLE_HS_ADV_MAX_SZ];
     uint8_t buf_sz;
     int rc;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
 
     rc = ble_hs_adv_set_fields(rsp_fields, buf, &buf_sz, sizeof buf);
     if (rc != 0) {
@@ -6591,6 +6607,7 @@ ble_gap_security_initiate(uint16_t conn_handle)
     }
 
     ble_hs_lock();
+
     conn = ble_hs_conn_find(conn_handle);
     if (conn != NULL) {
         conn_flags = conn->bhc_flags;
@@ -7188,6 +7205,10 @@ ble_gap_event_listener_register(struct ble_gap_event_listener *listener,
 {
     struct ble_gap_event_listener *evl = NULL;
     int rc;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
 
     SLIST_FOREACH(evl, &ble_gap_event_listener_list, link) {
         if (evl == listener) {
