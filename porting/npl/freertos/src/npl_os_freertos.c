@@ -22,15 +22,11 @@
 #include <string.h>
 #include "nimble/nimble_npl.h"
 #include "freertos/portable.h"
+#include "esp_log.h"
 
 portMUX_TYPE ble_port_mutex = portMUX_INITIALIZER_UNLOCKED;
 
-/* Include the file that defines the SCB for your HW. */
-#ifdef NIMBLE_NPL_OS_EXTRA_INCLUDE
-#include NIMBLE_NPL_OS_EXTRA_INCLUDE
-#endif
-
-volatile uint32_t s_critical_nesting = 0;
+static const char *TAG = "Timer";
 
 static inline bool
 in_isr(void)
@@ -375,8 +371,11 @@ void
 npl_freertos_callout_deinit(struct ble_npl_callout *co)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_stop(co->handle));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_timer_delete(co->handle));
+    if(esp_timer_stop(co->handle))
+	ESP_LOGW(TAG, "Timer not stopped");
+
+    if(esp_timer_delete(co->handle))
+	ESP_LOGW(TAG, "Timer not deleted");
 #else
     if (co->handle) {
         xTimerDelete(co->handle, portMAX_DELAY);
