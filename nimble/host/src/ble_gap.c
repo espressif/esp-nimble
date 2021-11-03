@@ -7206,10 +7206,6 @@ ble_gap_event_listener_register(struct ble_gap_event_listener *listener,
     struct ble_gap_event_listener *evl = NULL;
     int rc;
 
-    if (!ble_hs_is_enabled()) {
-        return BLE_HS_EDISABLED;
-    }
-
     SLIST_FOREACH(evl, &ble_gap_event_listener_list, link) {
         if (evl == listener) {
             break;
