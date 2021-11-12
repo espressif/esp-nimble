@@ -381,6 +381,7 @@ npl_freertos_callout_deinit(struct ble_npl_callout *co)
         xTimerDelete(co->handle, portMAX_DELAY);
     }
 #endif
+    memset(co, 0, sizeof(struct ble_npl_callout));
 }
 
 ble_npl_error_t
