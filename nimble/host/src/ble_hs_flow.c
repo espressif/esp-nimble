@@ -235,7 +235,9 @@ ble_hs_flow_startup(void)
     };
     int rc;
 
-    ble_npl_event_init(&ble_hs_flow_ev, ble_hs_flow_event_cb, NULL);
+    /* Remove previous event from queue, if any*/
+    ble_npl_eventq_remove(ble_hs_evq_get(), &ble_hs_flow_ev);
+   
 
 #if MYNEWT_VAL(SELFTEST)
     ble_npl_callout_stop(&ble_hs_flow_timer);
@@ -277,4 +279,23 @@ ble_hs_flow_stop(void)
 #if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
     ble_npl_callout_deinit(&ble_hs_flow_timer);
 #endif
+}
+
+void
+ble_hs_flow_init(void)
+{
+#if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
+    ble_npl_event_init(&ble_hs_flow_ev, ble_hs_flow_event_cb, NULL);
+    ble_npl_callout_init(&ble_hs_flow_timer, ble_hs_evq_get(),
+                         ble_hs_flow_event_cb, NULL);
+#endif //MYNEWT_VAL(BLE_HS_FLOW_CTRL)
+}
+
+void
+ble_hs_flow_deinit(void)
+{
+#if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
+    ble_npl_event_deinit(&ble_hs_flow_ev);
+    ble_npl_callout_deinit(&ble_hs_flow_timer);
+#endif //MYNEWT_VAL(BLE_HS_FLOW_CTRL)
 }

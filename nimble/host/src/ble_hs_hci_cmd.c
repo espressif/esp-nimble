@@ -66,9 +66,11 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
         return BLE_HS_ENOMEM;
     }
 
+#if !(SOC_ESP_NIMBLE_CONTROLLER)
     /* Hack for avoiding memcpy while handling tx pkt to VHCI,
      * keep one byte for type field*/
     buf++;
+#endif
     put_le16(buf, opcode);
     buf[2] = len;
     if (len != 0) {
@@ -80,7 +82,10 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     ble_hs_log_flat_buf(buf, len + BLE_HCI_CMD_HDR_LEN);
     BLE_HS_LOG(DEBUG, "\n");
 #endif
+
+#if !(SOC_ESP_NIMBLE_CONTROLLER)
     buf--;
+#endif
 
     rc = ble_hs_hci_cmd_transport((void *) buf);
 

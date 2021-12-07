@@ -22,14 +22,35 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "nimble/nimble_port.h"
-#if NIMBLE_CFG_CONTROLLER
-#include "controller/ble_ll.h"
-#include "nimble/transport.h"
-#endif
+#include "nimble/nimble_port_freertos.h"
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #endif
+#include "soc/soc_caps.h"
 
+#if SOC_ESP_NIMBLE_CONTROLLER
+#if CONFIG_SW_COEXIST_ENABLE
+#include "esp_coexist_internal.h"
+#endif
+#endif
+
+#ifdef CONFIG_BT_NIMBLE_CONTROL_USE_UART_HCI
+#include "transport/uart/ble_hci_uart.h"
+#else
+#include "transport/ram/ble_hci_ram.h"
+#endif
+#include "nimble/ble_hci_trans.h"
+
+#include "esp_intr_alloc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_bt.h"
+
+extern void ble_hs_deinit(void);
+#define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
+
+extern void os_msys_init(void);
+ 
 static struct ble_npl_eventq g_eventq_dflt;
 static struct ble_hs_stop_listener stop_listener;
 static struct ble_npl_sem ble_hs_stop_sem;
@@ -41,7 +62,24 @@ extern void os_mempool_module_init(void);
 void
 nimble_port_init(void)
 {
+#if SOC_ESP_NIMBLE_CONTROLLER
+    struct esp_bt_controller_config_t config_opts = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    if(esp_bt_controller_init(&config_opts) != 0) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller init failed\n");
+        return;
+    }
+     /* Initialize the host */
+     ble_hs_init();
+ 
+#else //SOC_ESP_NIMBLE_CONTROLLER
+
+    /* Initialize the function pointers for OS porting */
+    npl_freertos_funcs_init();
+
+    npl_freertos_mempool_init();
+
     /* Initialize default event queue */
+
     ble_npl_eventq_init(&g_eventq_dflt);
     /* Initialize the global memory pool */
     os_mempool_module_init();
@@ -63,24 +101,20 @@ nimble_port_init(void)
 void
 nimble_port_deinit(void)
 {
-    ble_npl_eventq_deinit(&g_eventq_dflt);
+#if SOC_ESP_NIMBLE_CONTROLLER
+   ble_hs_deinit();
 
-    ble_hs_deinit();
+   esp_bt_controller_deinit();
+
+   /* Delete the host task */
+   nimble_port_freertos_deinit();
+#else
+   ble_npl_eventq_deinit(&g_eventq_dflt);
+
+   ble_hs_deinit();
+#endif
 }
 
-void
-nimble_port_run(void)
-{
-    struct ble_npl_event *ev;
-
-    while (1) {
-        ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
-        ble_npl_event_run(ev);
-        if (ev == &ble_hs_ev_stop) {
-            break;
-        }
-    }
-}
 
 /**
  * Called when the host stop procedure has completed.
@@ -126,19 +160,23 @@ nimble_port_stop(void)
     return rc;
 }
 
+void
+IRAM_ATTR nimble_port_run(void)
+{
+    struct ble_npl_event *ev;
+
+    while (1) {
+        ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
+        ble_npl_event_run(ev);
+        if (ev == &ble_hs_ev_stop) {
+            break;
+        }
+
+    }
+}
 
 struct ble_npl_eventq *
-nimble_port_get_dflt_eventq(void)
+IRAM_ATTR nimble_port_get_dflt_eventq(void)
 {
     return &g_eventq_dflt;
 }
-
-#if NIMBLE_CFG_CONTROLLER
-void
-nimble_port_ll_task_func(void *arg)
-{
-    extern void ble_ll_task(void *);
-
-    ble_ll_task(arg);
-}
-#endif

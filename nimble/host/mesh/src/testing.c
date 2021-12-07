@@ -121,13 +121,18 @@ int bt_test_mesh_rpl_clear(void)
 
 void bt_test_print_credentials(void)
 {
+
+#if MYNEWT_VAL(BLE_MESH_CDB)
 	int i;
 	struct bt_mesh_cdb_subnet *sub;
 	struct bt_mesh_cdb_app_key *app_key;
 	struct bt_mesh_subnet *subnet;
+#endif
 
 	console_printf("IV Index: %08lx\n", (long) bt_mesh.iv_index);
 	console_printf("Dev key: %s\n", bt_hex(bt_mesh.dev_key, 16));
+
+#if MYNEWT_VAL(BLE_MESH_CDB)
 
 	for (i = 0; i < ARRAY_SIZE(bt_mesh_cdb.app_keys); ++i)
 	{
@@ -181,6 +186,7 @@ void bt_test_print_credentials(void)
 				       bt_hex(subnet->keys->msg.privacy, 16));
 		}
 	}
+#endif
 }
 
 int bt_test_shell_init(void)

@@ -22,6 +22,7 @@
 #define NET_MIC_LEN(pdu) (((pdu)[1] & 0x80) ? 8 : 4)
 #define APP_MIC_LEN(aszmic) ((aszmic) ? 8 : 4)
 
+
 int bt_mesh_aes_cmac(const uint8_t key[16], struct bt_mesh_sg *sg,
 		     size_t sg_len, uint8_t mac[16])
 {
