@@ -857,6 +857,7 @@ ble_hci_sock_init_task(void)
 {
     ble_npl_eventq_init(&ble_hci_sock_state.evq);
     ble_npl_callout_stop(&ble_hci_sock_state.timer);
+    ble_npl_callout_deinit(&ble_hci_sock_state.timer);
     ble_npl_callout_init(&ble_hci_sock_state.timer, &ble_hci_sock_state.evq,
                     ble_hci_sock_rx_ev, NULL);
 

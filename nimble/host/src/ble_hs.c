@@ -62,6 +62,14 @@ static int ble_hs_reset_reason;
 
 #define BLE_HS_SYNC_RETRY_TIMEOUT_MS    100 /* ms */
 
+extern void ble_hs_hci_deinit(void);
+extern void ble_gap_deinit(void);
+extern void ble_hs_stop_deinit(void);
+extern void ble_mqueue_deinit(struct ble_mqueue *);
+extern void ble_hs_flow_init(void);
+extern void ble_hs_flow_deinit(void);
+extern void ble_monitor_deinit(void);
+
 static void *ble_hs_parent_task;
 
 /**
@@ -441,6 +449,7 @@ ble_hs_timer_reset(uint32_t ticks)
 
     if (!ble_hs_is_enabled()) {
         ble_npl_callout_stop(&ble_hs_timer);
+        ble_npl_callout_deinit(&ble_hs_timer);
     } else {
         rc = ble_npl_callout_reset(&ble_hs_timer, ticks);
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
@@ -463,6 +472,11 @@ ble_hs_timer_sched(int32_t ticks_from_now)
     if (!ble_npl_callout_is_active(&ble_hs_timer) ||
             ((ble_npl_stime_t)(abs_time -
                                ble_npl_callout_get_ticks(&ble_hs_timer))) < 0) {
+        ble_hs_timer_reset(ticks_from_now);
+    }
+    else if (ble_npl_callout_get_ticks(&ble_hs_timer) <= ble_npl_time_get()) {
+        /* Reset timer if currect time is later than expiration time. */
+        BLE_HS_LOG(ERROR,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
         ble_hs_timer_reset(ticks_from_now);
     }
 }
@@ -501,6 +515,9 @@ ble_hs_event_rx_hci_ev(struct ble_npl_event *ev)
     int rc;
 
     hci_ev = ble_npl_event_get_arg(ev);
+
+    /* Deinitialize hci npl event */
+    ble_npl_event_deinit(ev);
 
     rc = os_memblock_put(&ble_hs_hci_ev_pool, ev);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
@@ -794,6 +811,8 @@ ble_hs_init(void)
     ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &ble_hs_ev_start_stage1);
 #endif
 #endif
+    /* Initialize npl variables related to hs flow control */
+    ble_hs_flow_init();                                      
 }
 
 /* Transport APIs for HS side */
@@ -839,5 +858,23 @@ ble_hs_deinit(void)
 
     ble_hs_flow_stop();
 
+#if NIMBLE_BLE_CONNECT
+    ble_npl_event_deinit(&ble_hs_ev_tx_notifications);
+#endif
+
+    ble_npl_event_deinit(&ble_hs_ev_reset);
+
+    ble_npl_event_deinit(&ble_hs_ev_start_stage1);
+
+    ble_npl_event_deinit(&ble_hs_ev_start_stage2);
+
+    ble_mqueue_deinit(&ble_hs_rx_q);
+    
+    ble_hs_flow_deinit();
+    
     ble_hs_stop_deinit();
+
+#if BLE_MONITOR
+    ble_monitor_deinit();
+#endif
 }

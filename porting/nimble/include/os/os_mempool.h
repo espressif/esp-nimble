@@ -194,6 +194,123 @@ typedef __uint128_t os_membuf_t;
 #define OS_MEMPOOL_BYTES(n,blksize)     \
     (sizeof (os_membuf_t) * OS_MEMPOOL_SIZE((n), (blksize)))
 
+#if SOC_ESP_NIMBLE_CONTROLLER
+/**
+ * Initialize a memory pool.
+ *
+ * @param mp            Pointer to a pointer to a mempool
+ * @param blocks        The number of blocks in the pool
+ * @param blocks_size   The size of the block, in bytes.
+ * @param membuf        Pointer to memory to contain blocks.
+ * @param name          Name of the pool.
+ *
+ * @return os_error_t
+ */
+os_error_t r_os_mempool_init(struct os_mempool *mp, uint16_t blocks,
+                           uint32_t block_size, void *membuf, const char *name);
+#define os_mempool_init r_os_mempool_init
+/**
+ * Initializes an extended memory pool.  Extended attributes (e.g., callbacks)
+ * are not specified when this function is called; they are assigned manually
+ * after initialization.
+ *
+ * @param mpe           The extended memory pool to initialize.
+ * @param blocks        The number of blocks in the pool.
+ * @param block_size    The size of each block, in bytes.
+ * @param membuf        Pointer to memory to contain blocks.
+ * @param name          Name of the pool.
+ *
+ * @return os_error_t
+ */
+os_error_t r_os_mempool_ext_init(struct os_mempool_ext *mpe, uint16_t blocks,
+                               uint32_t block_size, void *membuf, const char *name);
+#define os_mempool_ext_init r_os_mempool_ext_init
+/**
+ * Removes the specified mempool from the list of initialized mempools.
+ *
+ * @param mp                    The mempool to unregister.
+ *
+ * @return                      0 on success;
+ *                              OS_INVALID_PARM if the mempool is not
+ *                                  registered.
+ */
+os_error_t r_os_mempool_unregister(struct os_mempool *mp);
+#define os_mempool_unregister r_os_mempool_unregister
+
+
+/**
+ * Clears a memory pool.
+ *
+ * @param mp            The mempool to clear.
+ *
+ * @return os_error_t
+ */
+os_error_t r_os_mempool_clear(struct os_mempool *mp);
+#define os_mempool_clear r_os_mempool_clear
+
+
+/**
+ * Performs an integrity check of the specified mempool.  This function
+ * attempts to detect memory corruption in the specified memory pool.
+ *
+ * @param mp                    The mempool to check.
+ *
+ * @return                      true if the memory pool passes the integrity
+ *                                  check;
+ *                              false if the memory pool is corrupt.
+ */
+bool r_os_mempool_is_sane(const struct os_mempool *mp);
+#define os_mempool_is_sane r_os_mempool_is_sane
+
+
+/**
+ * Checks if a memory block was allocated from the specified mempool.
+ *
+ * @param mp                    The mempool to check as parent.
+ * @param block_addr            The memory block to check as child.
+ *
+ * @return                      0 if the block does not belong to the mempool;
+ *                              1 if the block does belong to the mempool.
+ */
+int r_os_memblock_from(const struct os_mempool *mp, const void *block_addr);
+#define os_memblock_from r_os_memblock_from
+
+
+/**
+ * Get a memory block from a memory pool
+ *
+ * @param mp Pointer to the memory pool
+ *
+ * @return void* Pointer to block if available; NULL otherwise
+ */
+void *r_os_memblock_get(struct os_mempool *mp);
+#define os_memblock_get r_os_memblock_get
+/**
+ * Puts the memory block back into the pool, ignoring the put callback, if any.
+ * This function should only be called from a put callback to free a block
+ * without causing infinite recursion.
+ *
+ * @param mp Pointer to memory pool
+ * @param block_addr Pointer to memory block
+ *
+ * @return os_error_t
+ */
+os_error_t r_os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr);
+#define os_memblock_put_from_cb r_os_memblock_put_from_cb
+
+
+/**
+ * Puts the memory block back into the pool
+ *
+ * @param mp Pointer to memory pool
+ * @param block_addr Pointer to memory block
+ *
+ * @return os_error_t
+ */
+os_error_t r_os_memblock_put(struct os_mempool *mp, void *block_addr);
+#define os_memblock_put r_os_memblock_put
+
+#else
 /**
  * Initialize a memory pool.
  *
@@ -312,6 +429,7 @@ os_error_t os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr);
  *                              Non-zero error code on failure.
  */
 os_error_t os_memblock_put(struct os_mempool *mp, void *block_addr);
+#endif
 
 #ifdef __cplusplus
 }

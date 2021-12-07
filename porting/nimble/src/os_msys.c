@@ -22,6 +22,7 @@
 #include "mem/mem.h"
 #include "sysinit/sysinit.h"
 #include "esp_nimble_mem.h"
+#include "esp_err.h"
 
 static STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
     STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
@@ -68,7 +69,7 @@ static struct os_sanity_check os_msys_sc;
  * @return                      The msys pool's minimum safe buffer count.
  */
 static int
-os_msys_sanity_min_count(int idx)
+IRAM_ATTR os_msys_sanity_min_count(int idx)
 {
     switch (idx) {
     case 0:
@@ -78,13 +79,13 @@ os_msys_sanity_min_count(int idx)
         return MYNEWT_VAL(MSYS_2_SANITY_MIN_COUNT);
 
     default:
-        assert(0);
-        return 0;
+        BLE_LL_ASSERT(0);
+        return ESP_OK;
     }
 }
 
 static int
-os_msys_sanity(struct os_sanity_check *sc, void *arg)
+IRAM_ATTR os_msys_sanity(struct os_sanity_check *sc, void *arg)
 {
     const struct os_mbuf_pool *omp;
     int min_count;
@@ -100,7 +101,7 @@ os_msys_sanity(struct os_sanity_check *sc, void *arg)
         idx++;
     }
 
-    return 0;
+    return ESP_OK;
 }
 #endif
 
@@ -125,18 +126,18 @@ os_msys_buf_alloc(void)
 #if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
     os_msys_init_1_data = (os_membuf_t *)nimble_platform_mem_calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_1_MEMPOOL_SIZE));
     if (!os_msys_init_1_data) {
-        return -1;
+        return ESP_FAIL;
     }
 #endif
 
 #if MYNEWT_VAL(MSYS_2_BLOCK_COUNT) > 0
     os_msys_init_2_data = (os_membuf_t *)nimble_platform_mem_calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_2_MEMPOOL_SIZE));
     if (!os_msys_init_2_data) {
-        return -1;
+        return ESP_FAIL;
     }
 #endif
 
-    return 0;
+    return ESP_OK;
 }
 
 void
@@ -154,15 +155,13 @@ os_msys_buf_free(void)
 
 }
 
-void
-os_msys_init(void)
+void os_msys_init(void)
 {
+#if OS_MSYS_SANITY_ENABLED
     int rc;
+#endif
 
     os_msys_reset();
-
-    (void)os_msys_init_once;
-    (void)rc;
 
 #if MYNEWT_VAL(MSYS_1_BLOCK_COUNT) > 0
     os_msys_init_once(os_msys_init_1_data,

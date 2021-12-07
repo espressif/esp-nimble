@@ -322,4 +322,5 @@ mem_pullup_obj(struct os_mbuf **om, uint16_t len)
     }
 
     return (*om)->om_data;
+
 }

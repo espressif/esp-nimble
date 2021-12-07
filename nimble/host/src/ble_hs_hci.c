@@ -677,10 +677,13 @@ ble_hs_hci_init(void)
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
 }
 
-void
-ble_hs_hci_deinit(void)
+void ble_hs_hci_deinit(void)
 {
-    ble_npl_mutex_deinit(&ble_hs_hci_mutex);
+    int rc;
 
-    ble_npl_sem_deinit(&ble_hs_hci_sem);
+    rc = ble_npl_mutex_deinit(&ble_hs_hci_mutex);
+    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+
+    rc = ble_npl_sem_deinit(&ble_hs_hci_sem);
+    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
 }

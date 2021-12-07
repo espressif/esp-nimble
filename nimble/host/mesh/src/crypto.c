@@ -39,8 +39,8 @@
 #define APP_MIC_LEN(aszmic) ((aszmic) ? 8 : 4)
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
-int bt_mesh_aes_cmac(const u8_t key[16], struct bt_mesh_sg *sg,
-		     size_t sg_len, u8_t mac[16])
+int bt_mesh_aes_cmac(const uint8_t key[16], struct bt_mesh_sg *sg,
+		     size_t sg_len, uint8_t mac[16])
 {
     int rc = BLE_HS_EUNKNOWN;
     mbedtls_cipher_context_t ctx = {0};
@@ -81,8 +81,8 @@ exit:
 }
 
 #else
-int bt_mesh_aes_cmac(const u8_t key[16], struct bt_mesh_sg *sg,
-		     size_t sg_len, u8_t mac[16])
+int bt_mesh_aes_cmac(const uint8_t key[16], struct bt_mesh_sg *sg,
+		     size_t sg_len, uint8_t mac[16])
 {
 	struct tc_aes_key_sched_struct sched;
 	struct tc_cmac_struct state;

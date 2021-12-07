@@ -55,6 +55,7 @@ extern "C" {
       MYNEWT_VAL(OS_CPUTIME_FREQ) == 8192       ||  \
       MYNEWT_VAL(OS_CPUTIME_FREQ) == 16384      ||  \
       MYNEWT_VAL(OS_CPUTIME_FREQ) == 32768      ||  \
+      MYNEWT_VAL(OS_CPUTIME_FREQ) == 32000      ||  \
       MYNEWT_VAL(OS_CPUTIME_FREQ) == 65536      ||  \
       MYNEWT_VAL(OS_CPUTIME_FREQ) == 131072     ||  \
       MYNEWT_VAL(OS_CPUTIME_FREQ) == 262144     ||  \

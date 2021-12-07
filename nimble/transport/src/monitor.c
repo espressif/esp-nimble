@@ -349,6 +349,15 @@ ble_monitor_init(void)
 #endif
 }
 
+void
+ble_monitor_deinit(void)
+{
+#if MYNEWT_VAL(BLE_MONITOR_RTT) && MYNEWT_VAL(BLE_MONITOR_RTT_BUFFERED)
+    ble_npl_callout_deinit(&rtt_drops.tmo);
+#endif
+    ble_npl_mutex_deinit(&lock);
+}
+
 int
 ble_monitor_send(uint16_t opcode, const void *data, size_t len)
 {
