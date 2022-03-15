@@ -267,6 +267,16 @@ ble_hs_startup_le_set_evmask_tx(void)
          * 0x0000000400000000 LE Subrate change event
          */
         mask |= 0x0000000400000000;
+#endif
+
+#if MYNEWT_VAL(BLE_POWER_CONTROL)
+    if (version >= BLE_HCI_VER_BCS_5_2) {
+        /**
+         * Enable the following LE events:
+         * 0x0000000080000000 LE Path Loss Threshold event
+         * 0x0000000100000000 LE Transmit Power Reporting event
+         */
+        mask |= 0x0000000180000000;
     }
 #endif
 
