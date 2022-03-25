@@ -746,7 +746,11 @@ IRAM_ATTR npl_freertos_callout_deinit(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 
-    BLE_LL_ASSERT(callout);
+    /* Since we dynamically deinit timers, function can be called for NULL timers. Return for such scenarios */
+    if (!callout) {
+	return;
+    }
+
     BLE_LL_ASSERT(callout->handle);
 
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
@@ -817,6 +821,11 @@ void
 IRAM_ATTR npl_freertos_callout_stop(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout) {
+	return;
+    }
+
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     esp_timer_stop(callout->handle);
 #else
