@@ -28,6 +28,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+#include "esp_timer.h"
 
 #ifdef __cplusplus
 extern "C" {
