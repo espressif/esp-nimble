@@ -476,7 +476,7 @@ ble_hs_timer_sched(int32_t ticks_from_now)
     }
     else if (ble_npl_callout_get_ticks(&ble_hs_timer) <= ble_npl_time_get()) {
         /* Reset timer if currect time is later than expiration time. */
-        BLE_HS_LOG(ERROR,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
+        BLE_HS_LOG(DEBUG,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
         ble_hs_timer_reset(ticks_from_now);
     }
 }
