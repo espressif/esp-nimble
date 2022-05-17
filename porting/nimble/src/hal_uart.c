@@ -242,7 +242,7 @@ void uart0_init(uint32_t baud)
     REG_SET_BIT(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_UART_CLK_EN_M);
 
     const int sclk_div = 1;
-    uint32_t sclk_freq = 32000000;
+    uint32_t sclk_freq = XTAL_CLK_FREQ;
     uint32_t clk_div = ((sclk_freq) << 4) / baud;
     uart_dev_t *hw = &UART0;
     hw->clk_conf.sclk_en = 0;
@@ -324,7 +324,7 @@ void uart_init(uint32_t baud)
     REG_SET_BIT(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_UART1_CLK_EN_M);
 
     const int sclk_div = 1;
-    uint32_t sclk_freq = 32000000;
+    uint32_t sclk_freq = XTAL_CLK_FREQ;
 
     uint32_t clk_div = ((sclk_freq) << 4) / baud;
     struct hal_uart *u = &uart;
@@ -369,7 +369,7 @@ void uart_init(uint32_t baud)
 
     u->u_rx_sem = xSemaphoreCreateBinary();
 
-    uint8_t TX_IO = 18, RX_IO = 19, ISR_ID = ETS_UART1_INUM;
+    uint8_t TX_IO = CONFIG_HCI_UART_TX_PIN, RX_IO = CONFIG_HCI_UART_RX_PIN, ISR_ID = ETS_UART1_INUM;
     ets_printf("set nimble port tx:%d, rx:%d.\n", TX_IO, RX_IO);
     ets_printf("set baud:%d.\n", baud);
     intr_handler_set(ISR_ID, (intr_handler_t)&uart_tout_isr, NULL);
@@ -383,14 +383,9 @@ void uart_init(uint32_t baud)
     ESP_ERROR_CHECK(uart_set_pin(1, TX_IO, RX_IO, -1, -1));
 
     //Enable hw flow control of UART1 for BQB test, which if not enabled, the tester takes quite long time to send a byte to DUT
-    //RX -> J52.IO0
-    //CTS -> J52.IO1
-    //TX -> J52.IO2
-    //RTS -> J52.IO3
 
-#ifndef CONFIG_WVT_TEST
-    uart_ll_set_hw_flow_ctrl(hw, UART_HW_FLOWCTRL_CTS_RTS, 110);
-#endif
+
+    // uart_ll_set_hw_flow_ctrl(hw, UART_HW_FLOWCTRL_CTS_RTS, 110);
 
     xTaskCreate(uart_rx_task, "uart_rx", CONFIG_BT_NIMBLE_HCI_UART_TASK_STACK_SIZE,
                 NULL, 1, &hci_uart_task_h);
