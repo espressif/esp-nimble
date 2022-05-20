@@ -20,7 +20,11 @@
 #include <stddef.h>
 #include "os/os.h"
 #include "sysinit/sysinit.h"
+
+#if CONFIG_BT_NIMBLE_ENABLED
 #include "host/ble_hs.h"
+#endif //CONFIG_BT_NIMBLE_ENABLED
+
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #ifdef ESP_PLATFORM
@@ -46,13 +50,16 @@
 #include "freertos/task.h"
 #include "esp_bt.h"
 
-extern void ble_hs_deinit(void);
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
 extern void os_msys_init(void);
- 
-static struct ble_npl_eventq g_eventq_dflt;
+
+#if CONFIG_BT_NIMBLE_ENABLED 
+extern void ble_hs_deinit(void);
 static struct ble_hs_stop_listener stop_listener;
+#endif //CONFIG_BT_NIMBLE_ENABLED
+
+static struct ble_npl_eventq g_eventq_dflt;
 static struct ble_npl_sem ble_hs_stop_sem;
 static struct ble_npl_event ble_hs_ev_stop;
 
@@ -68,8 +75,10 @@ nimble_port_init(void)
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller init failed\n");
         return;
     }
+#if CONFIG_BT_NIMBLE_ENABLED
      /* Initialize the host */
      ble_hs_init();
+#endif
  
 #else //SOC_ESP_NIMBLE_CONTROLLER
 
@@ -102,7 +111,10 @@ void
 nimble_port_deinit(void)
 {
 #if SOC_ESP_NIMBLE_CONTROLLER
+
+#if CONFIG_BT_NIMBLE_ENABLED
    ble_hs_deinit();
+#endif //CONFIG_BT_NIMBLE_ENABLED
 
    esp_bt_controller_deinit();
 
@@ -134,9 +146,10 @@ nimble_port_stop_cb(struct ble_npl_event *ev)
 int
 nimble_port_stop(void)
 {
-    int rc;
+    int rc = 0;
 
     ble_npl_sem_init(&ble_hs_stop_sem, 0);
+#if CONFIG_BT_NIMBLE_ENABLED
     /* Initiate a host stop procedure. */
     rc = ble_hs_stop(&stop_listener, ble_hs_stop_cb,
             NULL);
@@ -144,6 +157,7 @@ nimble_port_stop(void)
         ble_npl_sem_deinit(&ble_hs_stop_sem);
         return rc;
     }
+#endif //CONFIG_BT_NIMBLE_ENABLED
 
     /* Wait till the host stop procedure is complete */
     ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
