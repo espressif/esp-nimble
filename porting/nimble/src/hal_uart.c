@@ -14,6 +14,10 @@
 #include "riscv/interrupt.h"
 #include "hal/uart_ll.h"
 #include "freertos/semphr.h"
+#include "rom/ets_sys.h"
+
+#include "driver/uart.h"
+#include "driver/periph_ctrl.h"
 
 struct hal_uart {
     uint8_t u_open:1;
@@ -296,23 +300,11 @@ void uart0_init(uint32_t baud)
 
     esp_intr_reserve(ISR_ID, xPortGetCoreID());
 
-    gpio_set_level(tx_pin, 1);
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[tx_pin], FUNC_U0RXD_U0RXD);
-    gpio_set_pull_mode(tx_pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction(tx_pin, GPIO_MODE_OUTPUT);
-    gpio_matrix_out(tx_pin, U0TXD_OUT_IDX, 0, 0);
-
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[rx_pin], FUNC_U0TXD_U0TXD);
-    gpio_set_pull_mode(rx_pin, GPIO_PULLUP_ONLY);
-    gpio_set_direction(rx_pin, GPIO_MODE_INPUT);
-    gpio_pad_input_enable(rx_pin);
-    gpio_matrix_in(rx_pin, U0RXD_IN_IDX, 0);
+    ESP_ERROR_CHECK(uart_set_pin(0, tx_pin, rx_pin, -1, -1));
 
 }
 
 
-#include "driver/uart.h"
-#include "driver/periph_ctrl.h"
 
 void uart_init(uint32_t baud)
 {
@@ -369,7 +361,7 @@ void uart_init(uint32_t baud)
 
     u->u_rx_sem = xSemaphoreCreateBinary();
 
-    uint8_t TX_IO = CONFIG_HCI_UART_TX_PIN, RX_IO = CONFIG_HCI_UART_RX_PIN, ISR_ID = ETS_UART1_INUM;
+    uint8_t TX_IO = CONFIG_BT_NIMBLE_HCI_UART_TX_PIN, RX_IO = CONFIG_BT_NIMBLE_HCI_UART_RX_PIN, ISR_ID = ETS_UART1_INUM;
     ets_printf("set nimble port tx:%d, rx:%d.\n", TX_IO, RX_IO);
     ets_printf("set baud:%d.\n", baud);
     intr_handler_set(ISR_ID, (intr_handler_t)&uart_tout_isr, NULL);

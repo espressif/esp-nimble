@@ -37,6 +37,7 @@ nimble_port_freertos_init(TaskFunction_t host_task_fn)
      */
     esp_bt_controller_enable(ESP_BT_MODE_BLE);
 #endif
+#if CONFIG_BT_NIMBLE_ENABLED
     /*
      * Create task where NimBLE host will run. It is not strictly necessary to
      * have separate task for NimBLE host, but since something needs to handle
@@ -44,6 +45,7 @@ nimble_port_freertos_init(TaskFunction_t host_task_fn)
      */
     xTaskCreatePinnedToCore(host_task_fn, "ble", NIMBLE_HS_STACK_SIZE,
                 NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
+#endif //CONFIG_BT_NIMBLE_ENABLED
 }
 
 void
