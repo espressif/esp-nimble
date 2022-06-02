@@ -38,7 +38,7 @@
 #endif
 #endif
 
-#ifdef CONFIG_BT_NIMBLE_HCI_INTERFACE_USE_UART
+#ifdef CONFIG_BT_LE_HCI_INTERFACE_USE_UART
 #include "transport/uart/ble_hci_uart.h"
 #else
 #include "transport/ram/ble_hci_ram.h"
