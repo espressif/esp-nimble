@@ -361,9 +361,9 @@ void uart_init(uint32_t baud)
 
     u->u_rx_sem = xSemaphoreCreateBinary();
 
-    uint8_t TX_IO = CONFIG_BT_NIMBLE_HCI_UART_TX_PIN, RX_IO = CONFIG_BT_NIMBLE_HCI_UART_RX_PIN, ISR_ID = ETS_UART1_INUM;
-    ets_printf("set nimble port tx:%d, rx:%d.\n", TX_IO, RX_IO);
-    ets_printf("set baud:%d.\n", baud);
+    uint8_t TX_IO = CONFIG_BT_LE_HCI_UART_TX_PIN, RX_IO = CONFIG_BT_LE_HCI_UART_RX_PIN, ISR_ID = ETS_UART1_INUM;
+    printf("set nimble port tx:%d, rx:%d.\n", TX_IO, RX_IO);
+    printf("set baud:%d.\n", baud);
     intr_handler_set(ISR_ID, (intr_handler_t)&uart_tout_isr, NULL);
     intr_matrix_route(ETS_UART1_INTR_SOURCE, ISR_ID);
     esprv_intc_int_enable(BIT(ISR_ID));
@@ -379,6 +379,6 @@ void uart_init(uint32_t baud)
 
     // uart_ll_set_hw_flow_ctrl(hw, UART_HW_FLOWCTRL_CTS_RTS, 110);
 
-    xTaskCreate(uart_rx_task, "uart_rx", CONFIG_BT_NIMBLE_HCI_UART_TASK_STACK_SIZE,
+    xTaskCreate(uart_rx_task, "uart_rx", CONFIG_BT_LE_HCI_UART_TASK_STACK_SIZE,
                 NULL, 1, &hci_uart_task_h);
 }

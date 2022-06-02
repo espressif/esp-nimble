@@ -44,9 +44,15 @@ static const char *TAG = "Timer";
 
 #define OS_MEM_ALLOC (1)
 
+#if CONFIG_BT_NIMBLE_ENABLED
 #define BLE_HS_HCI_EVT_COUNT                    \
     (MYNEWT_VAL(BLE_HCI_EVT_HI_BUF_COUNT) +     \
      MYNEWT_VAL(BLE_HCI_EVT_LO_BUF_COUNT))
+#else 
+#define BLE_HS_HCI_EVT_COUNT                    \
+    (CONFIG_BT_LE_HCI_EVT_HI_BUF_COUNT +        \
+     CONFIG_BT_LE_HCI_EVT_LO_BUF_COUNT)
+#endif
 
 #define LL_NPL_BASE_EVENT_COUNT     (11)
 #define LL_SCAN_EXT_AUX_EVT_CNT     (MYNEWT_VAL(BLE_LL_EXT_ADV_AUX_PTR_CNT))
