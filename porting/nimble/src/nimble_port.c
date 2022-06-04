@@ -127,7 +127,7 @@ nimble_port_deinit(void)
 #endif
 }
 
-
+#if CONFIG_BT_NIMBLE_ENABLED
 /**
  * Called when the host stop procedure has completed.
  */
@@ -136,6 +136,7 @@ ble_hs_stop_cb(int status, void *arg)
 {
     ble_npl_sem_release(&ble_hs_stop_sem);
 }
+#endif
 
 static void
 nimble_port_stop_cb(struct ble_npl_event *ev)
