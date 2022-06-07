@@ -930,15 +930,22 @@ IRAM_ATTR npl_freertos_callout_set_arg(struct ble_npl_callout *co, void *arg)
 uint32_t
 IRAM_ATTR npl_freertos_time_get(void)
 {
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
+    return esp_timer_get_time() / 1000;
+#else
     return xTaskGetTickCountFromISR();
+#endif
 }
 
 ble_npl_error_t
 IRAM_ATTR npl_freertos_time_ms_to_ticks(uint32_t ms, ble_npl_time_t *out_ticks)
 {
     uint64_t ticks;
-
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
+    ticks = (uint64_t)ms;
+#else
     ticks = ((uint64_t)ms * configTICK_RATE_HZ) / 1000;
+#endif
     if (ticks > UINT32_MAX) {
         return BLE_NPL_EINVAL;
     }
@@ -952,8 +959,11 @@ ble_npl_error_t
 IRAM_ATTR npl_freertos_time_ticks_to_ms(ble_npl_time_t ticks, uint32_t *out_ms)
 {
     uint64_t ms;
-
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
+    ms = ((uint64_t)ticks);
+#else
     ms = ((uint64_t)ticks * 1000) / configTICK_RATE_HZ;
+#endif
     if (ms > UINT32_MAX) {
         return BLE_NPL_EINVAL;
      }
@@ -966,19 +976,31 @@ IRAM_ATTR npl_freertos_time_ticks_to_ms(ble_npl_time_t ticks, uint32_t *out_ms)
 ble_npl_time_t
 IRAM_ATTR npl_freertos_time_ms_to_ticks32(uint32_t ms)
 {
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
+    return ms;
+#else
     return ms * configTICK_RATE_HZ / 1000;
+#endif
 }
 
 uint32_t
 IRAM_ATTR npl_freertos_time_ticks_to_ms32(ble_npl_time_t ticks)
 {
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
+    return ticks;
+#else
     return ticks * 1000 / configTICK_RATE_HZ;
+#endif
 }
 
 void
 IRAM_ATTR npl_freertos_time_delay(ble_npl_time_t ticks)
 {
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
+    vTaskDelay(ticks / portTICK_PERIOD_MS);
+#else
     vTaskDelay(ticks);
+#endif
 }
 
 #if NIMBLE_CFG_CONTROLLER || CONFIG_NIMBLE_CONTROLLER_MODE
