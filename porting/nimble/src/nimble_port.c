@@ -70,7 +70,7 @@ void
 nimble_port_init(void)
 {
 #if SOC_ESP_NIMBLE_CONTROLLER
-    struct esp_bt_controller_config_t config_opts = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    esp_bt_controller_config_t config_opts = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     if(esp_bt_controller_init(&config_opts) != 0) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller init failed\n");
         return;
