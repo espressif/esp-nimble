@@ -98,7 +98,7 @@ static const char *TAG = "Timer";
 
 #define BLE_TOTAL_EVQ_COUNT (10)
 
-#define BLE_TOTAL_CO_COUNT (20)
+#define BLE_TOTAL_CO_COUNT (40)
 
 #define BLE_TOTAL_SEM_COUNT (10)
 
