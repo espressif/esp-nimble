@@ -45,7 +45,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_bt.h"
+#if !SOC_ESP_NIMBLE_CONTROLLER
 #include "esp_nimble_hci.h"
+#endif
 
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
@@ -119,23 +121,28 @@ esp_err_t esp_nimble_init(void)
  */
 esp_err_t esp_nimble_deinit(void)
 {
-#if false && !SOC_ESP_NIMBLE_CONTROLLER //need delete esp_nimble_hci_and_controller_init then can be use
+#if !SOC_ESP_NIMBLE_CONTROLLER
     if(esp_nimble_hci_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "hci deinit failed\n");
         return ESP_FAIL;
     }
-#endif
-#if !(SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+
     ble_npl_eventq_deinit(&g_eventq_dflt);
 #endif
     ble_hs_deinit();
+#if !SOC_ESP_NIMBLE_CONTROLLER
+    npl_freertos_funcs_deinit();
+#endif
     return ESP_OK;
 }
 
 void
 nimble_port_init(void)
 {
-#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
+#if CONFIG_IDF_TARGET_ESP32
+    esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+#endif
+#if CONFIG_BT_CONTROLLER_ENABLED
     esp_bt_controller_config_t config_opts = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     if(esp_bt_controller_init(&config_opts) != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller init failed\n");
