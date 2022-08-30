@@ -38,21 +38,21 @@ static uint32_t ble_hs_hci_sup_feat;
 
 static uint8_t ble_hs_hci_version;
 
-static struct ble_hs_hci_sup_cmd ble_hs_hci_sup_cmd;
-
-#if MYNEWT_VAL(BLE_CONTROLLER)
+#if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
 #define BLE_HS_HCI_FRAG_DATABUF_SIZE    \
     (BLE_ACL_MAX_PKT_SIZE +             \
      BLE_HCI_DATA_HDR_SZ +              \
      sizeof (struct os_mbuf_pkthdr) +   \
-     sizeof (struct ble_mbuf_hdr) +      \
+     sizeof (struct ble_mbuf_hdr) +     \
      sizeof (struct os_mbuf))
 #else
 #define BLE_HS_HCI_FRAG_DATABUF_SIZE    \
-    (BLE_ACL_MAX_PKT_SIZE +             \
-     BLE_HCI_DATA_HDR_SZ +              \
-     sizeof (struct os_mbuf_pkthdr) +   \
-     sizeof (struct os_mbuf))
+     (BLE_ACL_MAX_PKT_SIZE +            \
+      BLE_HCI_DATA_HDR_SZ +             \
+      BLE_HS_CTRL_DATA_HDR_SZ +         \
+      sizeof (struct os_mbuf_pkthdr) +  \
+      sizeof (struct ble_mbuf_hdr) +    \
+      sizeof (struct os_mbuf))
 #endif
 
 #define BLE_HS_HCI_FRAG_MEMBLOCK_SIZE   \
@@ -442,7 +442,11 @@ ble_hs_hci_frag_alloc(uint16_t frag_size, void *arg)
     om = os_mbuf_get_pkthdr(&ble_hs_hci_frag_mbuf_pool, 0);
 #endif
     if (om != NULL) {
+#if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
         om->om_data += BLE_HCI_DATA_HDR_SZ;
+#else
+        om->om_data += BLE_HCI_DATA_HDR_SZ + BLE_HS_CTRL_DATA_HDR_SZ;
+#endif
         return om;
     }
 
@@ -514,17 +518,6 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
     int rc;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
-
-    /* conn may be already disconnected but GAP events were not yet
-     * processed and thus connection object is stil on list, just ignore it
-     * in such case as ACL handle is not valid anymore and conn object will
-     * be removed shortly.
-     */
-    if (conn->bhc_flags & BLE_HS_CONN_F_TERMINATED) {
-        os_mbuf_free_chain(*om);
-        *om = NULL;
-        return 0;
-    }
 
     txom = *om;
     *om = NULL;
@@ -643,18 +636,6 @@ uint8_t
 ble_hs_hci_get_hci_version(void)
 {
     return ble_hs_hci_version;
-}
-
-void
-ble_hs_hci_set_hci_supported_cmd(struct ble_hs_hci_sup_cmd sup_cmd)
-{
-    ble_hs_hci_sup_cmd = sup_cmd;
-}
-
-struct ble_hs_hci_sup_cmd
-ble_hs_hci_get_hci_supported_cmd(void)
-{
-    return ble_hs_hci_sup_cmd;
 }
 
 void
