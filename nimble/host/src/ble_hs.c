@@ -846,35 +846,34 @@ ble_transport_hs_init(void)
 void
 ble_hs_deinit(void)
 {
-    ble_gatts_stop();
+    ble_hs_flow_deinit();
 
-    ble_npl_callout_deinit(&ble_hs_timer);
+#if BLE_MONITOR
+    ble_monitor_deinit();
+#endif
 
     ble_npl_mutex_deinit(&ble_hs_mutex);
+
+    ble_mqueue_deinit(&ble_hs_rx_q);
+
+    ble_hs_stop_deinit();
 
     ble_gap_deinit();
 
     ble_hs_hci_deinit();
 
-    ble_hs_flow_stop();
-
-#if NIMBLE_BLE_CONNECT
-    ble_npl_event_deinit(&ble_hs_ev_tx_notifications);
-#endif
-
-    ble_npl_event_deinit(&ble_hs_ev_reset);
+    ble_npl_event_deinit(&ble_hs_ev_start_stage2);
 
     ble_npl_event_deinit(&ble_hs_ev_start_stage1);
 
-    ble_npl_event_deinit(&ble_hs_ev_start_stage2);
+    ble_npl_event_deinit(&ble_hs_ev_reset);
 
-    ble_mqueue_deinit(&ble_hs_rx_q);
-    
-    ble_hs_flow_deinit();
-    
-    ble_hs_stop_deinit();
+#if NIMBLE_BLE_CONNECT
+    ble_npl_event_deinit(&ble_hs_ev_tx_notifications);
 
-#if BLE_MONITOR
-    ble_monitor_deinit();
+    ble_gatts_stop();
 #endif
+
+    ble_npl_callout_deinit(&ble_hs_timer);
+
 }
