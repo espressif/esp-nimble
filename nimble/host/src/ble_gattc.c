@@ -60,6 +60,14 @@
 #include "host/ble_gap.h"
 #include "ble_hs_priv.h"
 
+#ifndef min
+#define min(a, b) ((a)<(b)?(a):(b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a)>(b)?(a):(b))
+#endif
+
 /*****************************************************************************
  * $definitions / declarations                                               *
  *****************************************************************************/
