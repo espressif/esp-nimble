@@ -42,6 +42,10 @@
 #define bssnz_t
 #endif
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+#define SET_BIT(t, n)  (t |= 1UL << (n))
+#endif
+
 /**
  * GAP - Generic Access Profile.
  *
@@ -3833,8 +3837,13 @@ ble_gap_periodic_adv_configure(uint8_t instance,
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+int
+ble_gap_periodic_adv_start(uint8_t instance, const struct ble_gap_periodic_adv_enable_params *params)
+#else
 int
 ble_gap_periodic_adv_start(uint8_t instance)
+#endif
 {
     struct ble_hci_le_set_periodic_adv_enable_cp cmd;
     uint16_t opcode;
@@ -3859,6 +3868,12 @@ ble_gap_periodic_adv_start(uint8_t instance)
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_PERIODIC_ADV_ENABLE);
 
     cmd.enable = 0x01;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    if (params && params->include_adi) {
+        SET_BIT(cmd.enable, 1);
+    }
+#endif
     cmd.adv_handle = instance;
 
     rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), NULL, 0);
@@ -3872,6 +3887,25 @@ ble_gap_periodic_adv_start(uint8_t instance)
     ble_hs_unlock();
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+static int
+ble_gap_periodic_adv_update_did(uint8_t instance)
+{
+    static uint8_t buf[sizeof(struct ble_hci_le_set_periodic_adv_data_cp)];
+    struct ble_hci_le_set_periodic_adv_data_cp *cmd = (void *) buf;
+    uint16_t opcode;
+    memset(buf, 0, sizeof(buf));
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_PERIODIC_ADV_DATA);
+
+    cmd->adv_handle = instance;
+    cmd->operation = BLE_HCI_LE_SET_DATA_OPER_UNCHANGED;
+    cmd->adv_data_len = 0;
+    return ble_hs_hci_cmd_tx(opcode, cmd, sizeof(*cmd) + cmd->adv_data_len,
+                             NULL, 0);
+}
+#endif
 
 static int
 ble_gap_periodic_adv_set(uint8_t instance, struct os_mbuf **data)
@@ -3998,8 +4032,14 @@ ble_gap_periodic_adv_set_data_validate(uint8_t instance,
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
 int
-ble_gap_periodic_adv_set_data(uint8_t instance, struct os_mbuf *data)
+ble_gap_periodic_adv_set_data(uint8_t instance,
+                              struct os_mbuf *data,
+                              struct ble_gap_periodic_adv_set_data_params *params)
+#else
+int ble_gap_periodic_adv_set_data(uint8_t instance, struct os_mbuf *data)
+#endif
 {
     int rc;
     if (instance >= BLE_ADV_INSTANCES) {
@@ -4012,6 +4052,14 @@ ble_gap_periodic_adv_set_data(uint8_t instance, struct os_mbuf *data)
         goto done;
     }
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    /* update_did and data cannot be set at the same time */
+    if (params && params -> update_did && data) {
+        rc = BLE_HS_EINVAL;
+        goto done;
+    }
+#endif
+
     ble_hs_lock();
 
     rc = ble_gap_periodic_adv_set_data_validate(instance, data);
@@ -4020,7 +4068,16 @@ ble_gap_periodic_adv_set_data(uint8_t instance, struct os_mbuf *data)
         goto done;
     }
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    if (params && params -> update_did) {
+        rc = ble_gap_periodic_adv_update_did(instance);
+    }
+    else {
+        rc = ble_gap_periodic_adv_set(instance, &data);
+    }
+#else
     rc = ble_gap_periodic_adv_set(instance, &data);
+#endif
 
     ble_hs_unlock();
 
@@ -4157,6 +4214,15 @@ ble_gap_periodic_adv_sync_create(const ble_addr_t *addr, uint8_t adv_sid,
         memcpy(cmd.peer_addr, BLE_ADDR_ANY->val, BLE_DEV_ADDR_LEN);
     }
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    /* LE Periodic Advertising Create Sync command */
+    if (params->reports_disabled) {
+        SET_BIT(cmd.options, 1);
+    }
+    if (params->filter_duplicates) {
+        SET_BIT(cmd.options, 2);
+    }
+#endif
     cmd.sid = adv_sid;
     cmd.skip = params->skip;
     cmd.sync_timeout = htole16(params->sync_timeout);
@@ -4254,8 +4320,16 @@ ble_gap_periodic_adv_sync_terminate(uint16_t sync_handle)
     return rc;
 }
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
+/* LE Set Periodic Advertising Receive Enable command */
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+int
+ble_gap_periodic_adv_sync_reporting(uint16_t sync_handle,
+                                    bool enable,
+                                    const struct ble_gap_periodic_adv_sync_report_params *params)
+#else
 int
 ble_gap_periodic_adv_sync_reporting(uint16_t sync_handle, bool enable)
+#endif
 {
     struct ble_hci_le_periodic_adv_receive_enable_cp cmd;
     struct ble_hs_periodic_sync *psync;
@@ -4283,6 +4357,11 @@ ble_gap_periodic_adv_sync_reporting(uint16_t sync_handle, bool enable)
 
     cmd.sync_handle = htole16(sync_handle);
     cmd.enable = enable ? 0x01 : 0x00;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    if (params && params->filter_duplicates) {
+        SET_BIT(cmd.enable, 1);
+    }
+#endif
 
     rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), NULL, 0);
 
@@ -4383,6 +4462,7 @@ ble_gap_periodic_adv_sync_set_info(uint8_t instance, uint16_t conn_handle,
     return rc;
 }
 
+/* LE Set Periodic Advertising Sync Transfer Parameters command */
 static int
 periodic_adv_transfer_enable(uint16_t conn_handle,
                              const struct ble_gap_periodic_sync_params *params)
@@ -4397,6 +4477,44 @@ periodic_adv_transfer_enable(uint16_t conn_handle,
     cmd.conn_handle = htole16(conn_handle);
     cmd.sync_cte_type = 0x00;
     cmd.mode = params->reports_disabled ? 0x01 : 0x02;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    if (params->filter_duplicates)
+       cmd.mode = 0x03;
+#endif
+
+    cmd.skip = htole16(params->skip);
+    cmd.sync_timeout = htole16(params->sync_timeout);
+
+    rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), &rsp, sizeof(rsp));
+    if (!rc) {
+        BLE_HS_DBG_ASSERT(le16toh(rsp.conn_handle) == conn_handle);
+    }
+
+    return rc;
+}
+
+/* BLE_HCI_OCF_LE_SET_DEFAULT_SYNC_TRANSFER_PARAMS command api */
+int
+periodic_adv_set_default_sync_params(uint16_t conn_handle,
+                                     const struct ble_gap_periodic_sync_params *params)
+{
+    struct ble_hci_le_periodic_adv_sync_transfer_params_cp cmd;
+    struct ble_hci_le_periodic_adv_sync_transfer_params_rp rsp;
+    uint16_t opcode;
+    int rc;
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_DEFAULT_SYNC_TRANSFER_PARAMS);
+
+    cmd.conn_handle = htole16(conn_handle);
+    cmd.sync_cte_type = 0x00;
+    cmd.mode = params->reports_disabled ? 0x01 : 0x02;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+    if (params->filter_duplicates)
+       cmd.mode = 0x03;
+#endif
+
     cmd.skip = htole16(params->skip);
     cmd.sync_timeout = htole16(params->sync_timeout);
 
