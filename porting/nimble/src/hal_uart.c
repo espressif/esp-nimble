@@ -295,7 +295,7 @@ void uart0_init(uint32_t baud)
     intr_handler_set(ISR_ID, (intr_handler_t)&uart0_tout_isr, NULL);
     intr_matrix_route(ETS_UART0_INTR_SOURCE, ISR_ID);
     esprv_intc_int_enable(BIT(ISR_ID));
-    esprv_intc_int_set_type(BIT(ISR_ID), INTR_TYPE_LEVEL);
+    esprv_intc_int_set_type(ISR_ID, INTR_TYPE_LEVEL);
     esprv_intc_int_set_priority(ISR_ID, 1);
 
     esp_intr_reserve(ISR_ID, xPortGetCoreID());
@@ -367,7 +367,7 @@ void uart_init(uint32_t baud)
     intr_handler_set(ISR_ID, (intr_handler_t)&uart_tout_isr, NULL);
     intr_matrix_route(ETS_UART1_INTR_SOURCE, ISR_ID);
     esprv_intc_int_enable(BIT(ISR_ID));
-    esprv_intc_int_set_type(BIT(ISR_ID), INTR_TYPE_LEVEL);
+    esprv_intc_int_set_type(ISR_ID, INTR_TYPE_LEVEL);
     esprv_intc_int_set_priority(ISR_ID, 1);
     // TODO ESP32-C3 IDF-2126, maybe can use interrupt allocation API for all of the above? unsure...
     esp_intr_reserve(ISR_ID, xPortGetCoreID());
