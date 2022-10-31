@@ -1097,6 +1097,10 @@ rx_stress_13_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
     }
 
+    om = ble_hs_mbuf_from_flat(test_6_pattern, 10);
+    rc = ble_gatts_notify_custom(rx_stress_ctx->conn_handle,
+                                 hrs_hrm_handle, om);
+    assert(rc == 0);
     return 0;
 }
 
