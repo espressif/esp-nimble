@@ -34,6 +34,13 @@ const uint8_t bt_mesh_adv_type[BT_MESH_ADV_TYPES] = {
 	[BT_MESH_ADV_BEACON] = BT_DATA_MESH_BEACON,
 	[BT_MESH_ADV_URI]    = BT_DATA_URI,
 };
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 extern uint8_t g_mesh_addr_type;
 
