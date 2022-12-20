@@ -79,7 +79,8 @@ int main(int argc, char *argv[])
         ble_hci_sock_set_device(atoi(argv[1]));
     }
 
-    nimble_port_init();
+    ble_hci_sock_init();
+    ret = nimble_port_init();
 
     ble_svc_gap_init();
     ble_svc_gatt_init();
