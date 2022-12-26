@@ -968,7 +968,7 @@ auth_passkey_display(uint16_t conn_handle, unsigned int passkey)
         return;
     }
 
-    rc = ble_hs_hci_rand(&pk.passkey, sizeof(pk.passkey));
+    rc = ble_hs_hci_util_rand(&pk.passkey, sizeof(pk.passkey));
     assert(rc == 0);
     /* Max value is 999999 */
     pk.passkey %= 1000000;

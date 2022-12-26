@@ -427,7 +427,7 @@ int bt_le_adv_start(const struct ble_gap_adv_params *param,
                     const struct bt_data *ad, size_t ad_len,
                     const struct bt_data *sd, size_t sd_len);
 
-int bt_le_adv_stop();
+int bt_le_adv_stop(void);
 
 struct k_work_delayable {
     struct ble_npl_callout work;

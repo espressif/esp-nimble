@@ -301,6 +301,7 @@ static void prov_dh_key_gen(void)
 	uint8_t remote_pk_le[BT_PUB_KEY_LEN];
 
 	remote_pk = bt_mesh_prov_link.conf_inputs.pub_key_provisioner;
+#if !CONFIG_BT_NIMBLE_CRYPTO_STACK_MBEDTLS
 	if (MYNEWT_VAL(BLE_MESH_PROV_OOB_PUBLIC_KEY) &&
 	    atomic_test_bit(bt_mesh_prov_link.flags, OOB_PUB_KEY)) {
 		if (uECC_valid_public_key(remote_pk, &curve_secp256r1)) {
@@ -317,6 +318,7 @@ static void prov_dh_key_gen(void)
 		prov_fail(PROV_ERR_UNEXP_ERR);
 		return;
 	}
+#endif
 
 	/* Copy remote key in little-endian for bt_dh_key_gen().
 	 * X and Y halves are swapped independently. The bt_dh_key_gen()

@@ -41,7 +41,7 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
 {
     int rc;
 
-    rc = ble_transport_to_ll_cmd(cmd);
+    rc = ble_transport_to_ll_cmd((uint8_t *)cmd);
     switch (rc) {
     case 0:
         return 0;
@@ -61,7 +61,7 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     uint8_t *buf;
     int rc;
 
-    cmd = ble_transport_alloc_cmd();
+    cmd = (struct ble_hci_cmd *)ble_transport_alloc_cmd();
     BLE_HS_DBG_ASSERT(cmd != NULL);
     if (cmd == NULL) {
         return BLE_HS_ENOMEM;

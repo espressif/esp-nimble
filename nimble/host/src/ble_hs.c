@@ -800,6 +800,11 @@ ble_hs_init(void)
     ble_hs_evq_set(nimble_port_get_dflt_eventq());
 #endif
 
+#if SOC_ESP_NIMBLE_CONTROLLER
+    /* Configure the HCI transport to communicate with a host. */
+    ble_hci_trans_cfg_hs(ble_hs_hci_rx_evt, NULL, ble_hs_rx_data, NULL);
+#endif
+
     /* Enqueue the start event to the default event queue.  Using the default
      * queue ensures the event won't run until the end of main().  This allows
      * the application to configure this package in the meantime.
@@ -853,7 +858,9 @@ ble_hs_deinit(void)
     ble_monitor_deinit();
 #endif
 
+#if SOC_ESP_NIMBLE_CONTROLLER
     ble_hci_trans_cfg_hs(NULL, NULL, NULL, NULL);
+#endif
 
     ble_npl_mutex_deinit(&ble_hs_mutex);
 

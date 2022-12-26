@@ -712,7 +712,7 @@ discover_destroy(void)
 }
 
 static void
-read_destroy()
+read_destroy(void)
 {
     gatt_buf_clear();
 }
