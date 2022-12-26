@@ -24,6 +24,9 @@
 extern "C" {
 #endif
 
+#include "os/os_mempool.h"
+#include "syscfg/syscfg.h"
+
 /* Init functions to be implemented for transport acting as HS/LL side */
 extern void ble_transport_ll_init(void);
 extern void ble_transport_hs_init(void);

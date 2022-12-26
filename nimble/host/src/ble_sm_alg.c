@@ -567,7 +567,7 @@ ble_sm_alg_rng(void *arg, unsigned char *buf, size_t size)
 
     return 0;
 #else
-    return ble_hs_hci_rand(buf, size);
+    return ble_hs_hci_util_rand(buf, size);
 #endif
 }
 

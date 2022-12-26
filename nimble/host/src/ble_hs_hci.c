@@ -24,6 +24,8 @@
 #include "mem/mem.h"
 #include "ble_hs_priv.h"
 
+#include "nimble/transport.h"
+
 #define BLE_HCI_CMD_TIMEOUT_MS  2000
 
 static struct ble_npl_mutex ble_hs_hci_mutex;

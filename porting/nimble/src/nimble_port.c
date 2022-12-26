@@ -39,7 +39,6 @@
 #endif
 
 
-#include "nimble/ble_hci_trans.h"
 
 #include "esp_intr_alloc.h"
 #include "freertos/FreeRTOS.h"
@@ -105,9 +104,8 @@ esp_err_t esp_nimble_init(void)
     /* Initialize the global memory pool */
     os_mempool_module_init();
     os_msys_init();
-    /* Initialize transport */
-    ble_transport_init();
-#endif 
+
+#endif
     /* Initialize the host */
     ble_transport_hs_init();
 
