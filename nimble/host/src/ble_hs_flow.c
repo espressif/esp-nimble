@@ -40,7 +40,7 @@ static ble_npl_event_fn ble_hs_flow_event_cb;
 static struct ble_npl_event ble_hs_flow_ev;
 
 /* Connection handle associated with each mbuf in ACL pool */
-static uint16_t ble_hs_flow_mbuf_conn_handle[ MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_HS_COUNT) ];
+static uint16_t ble_hs_flow_mbuf_conn_handle[ MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT) ];
 
 static inline int
 ble_hs_flow_mbuf_index(const struct os_mbuf *om)
@@ -135,7 +135,7 @@ ble_hs_flow_inc_completed_pkts(struct ble_hs_conn *conn)
     conn->bhc_completed_pkts++;
     ble_hs_flow_num_completed_pkts++;
 
-    if (ble_hs_flow_num_completed_pkts > MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_HS_COUNT)) {
+    if (ble_hs_flow_num_completed_pkts > MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT)) {
         ble_hs_sched_reset(BLE_HS_ECONTROLLER);
         return;
     }
@@ -143,7 +143,7 @@ ble_hs_flow_inc_completed_pkts(struct ble_hs_conn *conn)
     /* If the number of free buffers is at or below the configured threshold,
      * send an immediate number-of-copmleted-packets event.
      */
-    num_free = MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_HS_COUNT) -
+    num_free = MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT) -
                ble_hs_flow_num_completed_pkts;
     if (num_free <= MYNEWT_VAL(BLE_HS_FLOW_CTRL_THRESH)) {
         ble_npl_eventq_put(ble_hs_evq_get(), &ble_hs_flow_ev);
@@ -231,7 +231,7 @@ ble_hs_flow_startup(void)
     struct ble_hci_cb_ctlr_to_host_fc_cp enable_cmd;
     struct ble_hci_cb_host_buf_size_cp buf_size_cmd = {
             .acl_data_len = htole16(MYNEWT_VAL(BLE_TRANSPORT_ACL_SIZE)),
-            .acl_num = htole16(MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_HS_COUNT)),
+            .acl_num = htole16(MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT)),
     };
     int rc;
 
