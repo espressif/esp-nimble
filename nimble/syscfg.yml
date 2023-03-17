@@ -141,6 +141,10 @@ syscfg.defs:
         description: >
             This enables LE Connection Subrating feature
         value: 0
+    BLE_GATT_BLOB_TRANSFER:
+        description: >
+            This enables write blob feature
+        value: 1
 
     BLE_PHY_2M:
         description: >
