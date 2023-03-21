@@ -2266,7 +2266,10 @@ ble_att_svr_prep_validate(struct ble_att_prep_entry_list *prep_list,
 {
     struct ble_att_prep_entry *entry;
     struct ble_att_prep_entry *prev;
+
+#if !MYNEWT_VAL(BLE_GATT_BLOB_TRANSFER)
     int cur_len;
+#endif
 
     prev = NULL;
     SLIST_FOREACH(entry, prep_list, bape_next) {
