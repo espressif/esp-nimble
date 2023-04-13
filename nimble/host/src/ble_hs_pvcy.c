@@ -54,7 +54,7 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
 }
 
 #if (!MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
-static int
+int
 ble_hs_pvcy_set_resolve_enabled(int enable)
 {
     struct ble_hci_le_set_addr_res_en_cp cmd;
