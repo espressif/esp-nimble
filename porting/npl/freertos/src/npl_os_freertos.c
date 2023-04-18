@@ -1175,18 +1175,23 @@ _error:
 #if SOC_ESP_NIMBLE_CONTROLLER
     if(ble_freertos_ev_buf) {
         free(ble_freertos_ev_buf);
+	ble_freertos_ev_buf = NULL;
     }
     if(ble_freertos_evq_buf) {
         free(ble_freertos_evq_buf);
+	ble_freertos_evq_buf = NULL;
     }
     if(ble_freertos_co_buf) {
         free(ble_freertos_co_buf);
+	ble_freertos_co_buf = NULL;
     }
     if(ble_freertos_sem_buf) {
         free(ble_freertos_sem_buf);
+	ble_freertos_sem_buf = NULL;
     }
     if(ble_freertos_mutex_buf) {
         free(ble_freertos_mutex_buf);
+	ble_freertos_mutex_buf = NULL;
     }
     return -1;
 #else
@@ -1201,18 +1206,23 @@ void npl_freertos_mempool_deinit(void)
 #if SOC_ESP_NIMBLE_CONTROLLER
     if(ble_freertos_ev_buf) {
         free(ble_freertos_ev_buf);
+	ble_freertos_ev_buf = NULL;
     }
     if(ble_freertos_evq_buf) {
         free(ble_freertos_evq_buf);
+	ble_freertos_evq_buf = NULL;
     }
     if(ble_freertos_co_buf) {
         free(ble_freertos_co_buf);
+	ble_freertos_co_buf = NULL;
     }
     if(ble_freertos_sem_buf) {
         free(ble_freertos_sem_buf);
+	ble_freertos_sem_buf = NULL;
     }
     if(ble_freertos_mutex_buf) {
         free(ble_freertos_mutex_buf);
+	ble_freertos_mutex_buf = NULL;
     }
 #endif
 }

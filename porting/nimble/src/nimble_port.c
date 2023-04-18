@@ -233,6 +233,8 @@ nimble_port_stop(void)
 
     ble_npl_sem_deinit(&ble_hs_stop_sem);
 
+    ble_npl_event_deinit(&ble_hs_ev_stop);
+
     return ESP_OK;
 }
 
