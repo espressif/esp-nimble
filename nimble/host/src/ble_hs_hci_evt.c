@@ -1022,6 +1022,18 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
         STATS_INC(ble_hs_stats, hci_unknown_event);
         rc = BLE_HS_ENOTSUP;
     } else {
+#if !BLE_MONITOR
+	/* Ignore NOCP for debug */
+       if(ev->opcode != 0x13) {
+           BLE_HS_LOG(DEBUG, "ble_hs_event_rx_hci_ev; opcode=0x%x ", ev->opcode);
+
+	   /* For LE Meta, print subevent code */
+           if(ev->opcode == 0x3e)
+              BLE_HS_LOG(DEBUG, "subevent: 0x%x", ev->data[0]);
+
+           BLE_HS_LOG(DEBUG, "\n");
+        }
+#endif
         rc = entry->cb(ev->opcode, ev->data, ev->length);
     }
 
