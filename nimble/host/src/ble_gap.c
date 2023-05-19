@@ -127,7 +127,7 @@ struct ble_gap_connect_reattempt_ctxt {
 };
 
 static struct ble_gap_connect_reattempt_ctxt ble_conn_reattempt[MYNEWT_VAL(BLE_MAX_CONNECTIONS)];
-#if !MYNEWT_VAL(BLE_EXT_ADV)
+#if !MYNEWT_VAL(BLE_EXT_ADV) && MYNEWT_VAL(BLE_ROLE_CENTRAL)
 static uint16_t reattempt_idx;
 #endif
 static bool conn_cookie_enabled;
