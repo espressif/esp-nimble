@@ -2549,7 +2549,7 @@ ble_gap_wl_tx_add(const ble_addr_t *addr)
                              &cmd, sizeof(cmd), NULL, 0);
 }
 
-static int
+int
 ble_gap_wl_tx_clear(void)
 {
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,

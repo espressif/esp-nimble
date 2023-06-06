@@ -2038,6 +2038,13 @@ int ble_gap_wl_set(const ble_addr_t *addrs, uint8_t white_list_count);
 int ble_gap_wl_tx_rmv(const ble_addr_t *addrs);
 
 /**
+ * Clears all addresses from controller's white list.
+ *
+ * @return                      0 on success; nonzero on failure.
+ */
+int ble_gap_wl_tx_clear(void);
+
+/**
  * Initiates a connection parameter update procedure.
  *
  * @param conn_handle           The handle corresponding to the connection to
