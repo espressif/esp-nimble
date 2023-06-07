@@ -787,12 +787,10 @@ IRAM_ATTR npl_freertos_callout_deinit(struct ble_npl_callout *co)
 
     /* Since we dynamically deinit timers, function can be called for NULL timers. Return for such scenarios */
     if (!callout) {
-	return;
-    }
-
-    if (!callout->handle) {
         return;
     }
+
+    BLE_LL_ASSERT(callout->handle);
     ble_npl_event_deinit(&callout->ev);
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     if(esp_timer_stop(callout->handle))
