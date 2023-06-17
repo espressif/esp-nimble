@@ -1141,6 +1141,53 @@ struct ble_gap_event {
     };
 };
 
+
+#if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+/** @brief multiple Connection parameters  */
+struct ble_gap_multi_conn_params {
+    /** The type of address the stack should use for itself. */
+    uint8_t own_addr_type;
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    /** Define on which PHYs connection attempt should be done */
+    uint8_t phy_mask;
+#endif // MYNEWT_VAL(BLE_EXT_ADV)
+
+    /** The address of the peer to connect to. */
+    const ble_addr_t *peer_addr;
+
+    /** The duration of the discovery procedure. */
+    int32_t duration_ms;
+
+    /** 
+     * Additional arguments specifying the particulars of the connect procedure. When extended 
+     * adv is disabled or BLE_GAP_LE_PHY_1M_MASK is set in phy_mask this parameter can't be 
+     * specified to null.
+     */
+    const struct ble_gap_conn_params *phy_1m_conn_params;
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    /** 
+     * Additional arguments specifying the particulars of the connect procedure. When
+     * BLE_GAP_LE_PHY_2M_MASK is set in phy_mask this parameter can't be specified to null.
+     */
+    const struct ble_gap_conn_params *phy_2m_conn_params;
+    
+    /** 
+     * Additional arguments specifying the particulars of the connect procedure. When
+     * BLE_GAP_LE_PHY_CODED_MASK is set in phy_mask this parameter can't be specified to null.
+     */
+    const struct ble_gap_conn_params *phy_coded_conn_params;
+#endif // MYNEWT_VAL(BLE_EXT_ADV)
+
+    /** 
+     * The minimum length occupied by this connection in scheduler. 0 means disable the 
+     * optimization for this connection.
+     */
+    uint32_t scheduling_len_us;
+};
+#endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+
 typedef int ble_gap_event_fn(struct ble_gap_event *event, void *arg);
 typedef int ble_gap_conn_foreach_handle_fn(uint16_t conn_handle, void *arg);
 
@@ -1936,6 +1983,44 @@ int ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                         const struct ble_gap_conn_params *phy_2m_conn_params,
                         const struct ble_gap_conn_params *phy_coded_conn_params,
                         ble_gap_event_fn *cb, void *cb_arg);
+
+#if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+/**
+ * @brief Enable the optimization of multiple connections.
+ * 
+ * @param enable                Enable or disable the optimization.
+ * @param common_factor         The greatest common factor of all intervals in 0.625ms units.
+ * @return                      0 on success; 
+ * 
+ */
+int ble_gap_common_factor_set(bool enable, uint32_t common_factor);
+
+/**
+ * Initiates an extended connect procedure with optimization.
+ *
+ * @param multi_conn_params     Additional arguments specifying the particulars
+ *                                  of the connect procedure.
+ * @param cb                    The callback to associate with this connect
+ *                                  procedure.  When the connect procedure
+ *                                  completes, the result is reported through
+ *                                  this callback.  If the connect procedure
+ *                                  succeeds, the connection inherits this
+ *                                  callback as its event-reporting mechanism.
+ * @param cb_arg                The optional argument to pass to the callback
+ *                                  function.
+ * 
+ * @return                      0 on success;
+ *                              BLE_HS_EALREADY if a connection attempt is
+ *                                  already in progress;
+ *                              BLE_HS_EBUSY if initiating a connection is not
+ *                                  possible because scanning is in progress;
+ *                              BLE_HS_EDONE if the specified peer is already
+ *                                  connected;
+ *                              Other nonzero on error.
+ */
+int ble_gap_multi_connect(struct ble_gap_multi_conn_params *multi_conn_params, 
+                          ble_gap_event_fn *cb, void *cb_arg);
+#endif
 
 /**
  * Aborts a connect procedure in progress.
