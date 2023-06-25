@@ -211,7 +211,14 @@ int
 nimble_port_stop(void)
 {
     esp_err_t err = ESP_OK;
-    ble_npl_sem_init(&ble_hs_stop_sem, 0);
+    ble_npl_error_t rc;
+
+    rc = ble_npl_sem_init(&ble_hs_stop_sem, 0);
+
+    if( rc != 0) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "sem init failed with reason: %d \n", rc);
+	return rc;
+    }
 
     /* Initiate a host stop procedure. */
     err = ble_hs_stop(&stop_listener, ble_hs_stop_cb,
