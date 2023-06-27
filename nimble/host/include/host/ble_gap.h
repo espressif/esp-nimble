@@ -31,6 +31,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_hs_adv.h"
 #include "syscfg/syscfg.h"
+#include "host/ble_esp_gap.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -1310,55 +1311,6 @@ int ble_gap_adv_set_fields(const struct ble_hs_adv_fields *rsp_fields);
  */
 int ble_gap_adv_rsp_set_fields(const struct ble_hs_adv_fields *rsp_fields);
 
-/**
- * Configure LE Data Length in controller (OGF = 0x08, OCF = 0x0022).
- *
- * @param conn_handle      Connection handle.
- * @param tx_octets        The preferred value of payload octets that the Controller
- *                         should use for a new connection (Range
- *                         0x001B-0x00FB).
- * @param tx_time          The preferred maximum number of microseconds that the local Controller
- *                         should use to transmit a single link layer packet
- *                         (Range 0x0148-0x4290).
- *
- * @return              0 on success,
- *                      other error code on failure.
- */
-int ble_hs_hci_util_set_data_len(uint16_t conn_handle, uint16_t tx_octets,
-                                 uint16_t tx_time);
-
-/**
- * Read host's suggested values for the controller's maximum transmitted number of payload octets
- * and maximum packet transmission time (OGF = 0x08, OCF = 0x0024).
- *
- * @param out_sugg_max_tx_octets    The Host's suggested value for the Controller's maximum transmitted
- *                                  number of payload octets in LL Data PDUs to be used for new
- *                                  connections. (Range 0x001B-0x00FB).
- * @param out_sugg_max_tx_time      The Host's suggested value for the Controller's maximum packet
- *                                  transmission time for packets containing LL Data PDUs to be used
- *                                  for new connections. (Range 0x0148-0x4290).
- *
- * @return                          0 on success,
- *                                  other error code on failure.
- */
-int ble_hs_hci_util_read_sugg_def_data_len(uint16_t *out_sugg_max_tx_octets,
-                                           uint16_t *out_sugg_max_tx_time);
-/**
- * Configure host's suggested maximum transmitted number of payload octets and maximum packet
- * transmission time in controller (OGF = 0x08, OCF = 0x0024).
- *
- * @param sugg_max_tx_octets    The Host's suggested value for the Controller's maximum transmitted
- *                              number of payload octets in LL Data PDUs to be used for new
- *                              connections. (Range 0x001B-0x00FB).
- * @param sugg_max_tx_time      The Host's suggested value for the Controller's maximum packet
- *                              transmission time for packets containing LL Data PDUs to be used
- *                              for new connections. (Range 0x0148-0x4290).
- *
- * @return                      0 on success,
- *                              other error code on failure.
- */
-int ble_hs_hci_util_write_sugg_def_data_len(uint16_t sugg_max_tx_octets, uint16_t sugg_max_tx_time);
-
 #if MYNEWT_VAL(BLE_EXT_ADV)
 /** @brief Extended advertising parameters  */
 struct ble_gap_ext_adv_params {
@@ -2027,22 +1979,6 @@ int ble_gap_terminate(uint16_t conn_handle, uint8_t hci_reason);
  * @return                      0 on success; nonzero on failure.
  */
 int ble_gap_wl_set(const ble_addr_t *addrs, uint8_t white_list_count);
-
-/**
- * Removes the address from controller's white list.
- *
- * @param addrs                 The entry to be removed from the white list.
- *
- * @return                      0 on success; nonzero on failure.
- */
-int ble_gap_wl_tx_rmv(const ble_addr_t *addrs);
-
-/**
- * Clears all addresses from controller's white list.
- *
- * @return                      0 on success; nonzero on failure.
- */
-int ble_gap_wl_tx_clear(void);
 
 /**
  * Initiates a connection parameter update procedure.
