@@ -235,13 +235,17 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 	        for (i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
                     if (reattempt_conn[i].count == 0) {
 	                    idx = i;
-		                break;
-	                }
+		            break;
+		    }
 	        }
         }
 
         if (idx == MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
             BLE_HS_LOG(DEBUG, "No space left in array ");
+
+	    for (i = 0; i < idx; i++) {
+                 memset(&reattempt_conn[i], 0x0, sizeof(struct ble_gap_reattempt_ctxt));
+	    }
             goto done;
         }
 
@@ -252,7 +256,12 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
             if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
                 if (reattempt_conn[idx].count < MAX_REATTEMPT_ALLOWED) {
                     reattempt_conn[idx].count += 1;
-                    memcpy(&reattempt_conn[idx].peer_addr, &conn->bhc_peer_addr, BLE_DEV_ADDR_LEN);
+
+		    for (i = 0; i < BLE_DEV_ADDR_LEN; i++) {
+		        reattempt_conn[idx].peer_addr.val[i] = conn->bhc_peer_addr.val[i];
+                    }
+
+		    reattempt_conn[idx].peer_addr.type = conn->bhc_peer_addr.type;
 
                     rc = ble_gap_master_connect_reattempt(ev->conn_handle);
                     if (rc != 0) {
