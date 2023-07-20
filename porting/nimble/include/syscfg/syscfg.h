@@ -1234,9 +1234,18 @@
 #define MYNEWT_VAL_BLE_SVC_DIS_SYSTEM_ID_DEFAULT (NULL)
 #endif
 
+#ifndef MYNEWT_VAL_BLE_SVC_DIS_PNP_ID_DEFAULT
+#define MYNEWT_VAL_BLE_SVC_DIS_PNP_ID_DEFAULT (NULL)
+#endif
+
 /* Value copied from BLE_SVC_DIS_DEFAULT_READ_PERM */
 #ifndef MYNEWT_VAL_BLE_SVC_DIS_SYSTEM_ID_READ_PERM
 #define MYNEWT_VAL_BLE_SVC_DIS_SYSTEM_ID_READ_PERM (-1)
+#endif
+
+/* Value copied from BLE_SVC_DIS_DEFAULT_READ_PERM */
+#ifndef MYNEWT_VAL_BLE_SVC_DIS_PNP_ID_READ_PERM
+#define MYNEWT_VAL_BLE_SVC_DIS_PNP_ID_READ_PERM (-1)
 #endif
 
 /*** @apache-mynewt-nimble/nimble/host/services/gap */

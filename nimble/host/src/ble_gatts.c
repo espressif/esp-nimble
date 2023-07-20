@@ -29,6 +29,9 @@
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 #include "services/gatt/ble_svc_gatt.h"
 #endif
+#if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
+#include "services/hid/ble_svc_hid.h"
+#endif
 
 #define BLE_GATTS_INCLUDE_SZ    6
 #define BLE_GATTS_CHR_MAX_SZ    19
@@ -2808,6 +2811,9 @@ ble_gatts_reset(void)
         /* Note: gatts memory gets freed on next call to ble_gatts_start(). */
     }
 
+#if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
+    ble_svc_hid_reset();
+#endif
     ble_hs_unlock();
 
     return rc;
