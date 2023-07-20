@@ -34,14 +34,15 @@
  *
  */
 
-#define BLE_SVC_DIS_UUID16					0x180A
-#define BLE_SVC_DIS_CHR_UUID16_SYSTEM_ID			0x2A23
-#define BLE_SVC_DIS_CHR_UUID16_MODEL_NUMBER			0x2A24
-#define BLE_SVC_DIS_CHR_UUID16_SERIAL_NUMBER			0x2A25
-#define BLE_SVC_DIS_CHR_UUID16_FIRMWARE_REVISION 		0x2A26
-#define BLE_SVC_DIS_CHR_UUID16_HARDWARE_REVISION 		0x2A27
-#define BLE_SVC_DIS_CHR_UUID16_SOFTWARE_REVISION 		0x2A28
-#define BLE_SVC_DIS_CHR_UUID16_MANUFACTURER_NAME		0x2A29
+#define BLE_SVC_DIS_UUID16                          0x180A
+#define BLE_SVC_DIS_CHR_UUID16_SYSTEM_ID            0x2A23
+#define BLE_SVC_DIS_CHR_UUID16_MODEL_NUMBER         0x2A24
+#define BLE_SVC_DIS_CHR_UUID16_SERIAL_NUMBER        0x2A25
+#define BLE_SVC_DIS_CHR_UUID16_FIRMWARE_REVISION    0x2A26
+#define BLE_SVC_DIS_CHR_UUID16_HARDWARE_REVISION    0x2A27
+#define BLE_SVC_DIS_CHR_UUID16_SOFTWARE_REVISION    0x2A28
+#define BLE_SVC_DIS_CHR_UUID16_MANUFACTURER_NAME    0x2A29
+#define BLE_SVC_DIS_CHR_UUID16_PNP_ID               0x2A50
 
 /**
  * Structure holding data for the main characteristics
@@ -82,6 +83,12 @@ struct ble_svc_dis_data {
      * Represent the System Id of the device.
      */
     const char *system_id;
+
+    /**
+     * PNP ID.
+     * Represent the PNP Id of the device.
+     */
+    const char *pnp_id;
 };
 
 /**
@@ -109,5 +116,7 @@ const char *ble_svc_dis_manufacturer_name(void);
 int ble_svc_dis_manufacturer_name_set(const char *value);
 const char *ble_svc_dis_system_id(void);
 int ble_svc_dis_system_id_set(const char *value);
+int ble_svc_dis_pnp_id_set(const char *value);
+const char *ble_svc_dis_pnp_id(void);
 
 #endif

@@ -28,6 +28,9 @@
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 #include "services/gatt/ble_svc_gatt.h"
 #endif
+#if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
+#include "services/hid/ble_svc_hid.h"
+#endif
 
 static uint8_t perm_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE ;
 
@@ -2986,6 +2989,9 @@ ble_gatts_reset(void)
         /* Note: gatts memory gets freed on next call to ble_gatts_start(). */
     }
 
+#if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
+    ble_svc_hid_reset();
+#endif
     ble_hs_unlock();
 
     return rc;

@@ -41,7 +41,8 @@ struct ble_svc_dis_data ble_svc_dis_data = {
     (MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM) >= 0) ||	\
     (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0) ||	\
     (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0) || \
-    (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0)
+    (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0) || \
+    (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
 static int
 ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -106,6 +107,14 @@ static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
             .access_cb = ble_svc_dis_access,
             .flags = BLE_GATT_CHR_F_READ |
                MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM),
+            }, {
+#endif
+#if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
+      /*** Characteristic: PNP Id */
+            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_PNP_ID),
+            .access_cb = ble_svc_dis_access,
+            .flags = BLE_GATT_CHR_F_READ |
+               MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM),
             }, {
 #endif
 
@@ -203,6 +212,16 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_SYSTEM_ID_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT);
+        }
+#endif
+        break;
+#endif
+#if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
+    case BLE_SVC_DIS_CHR_UUID16_PNP_ID:
+        info = ble_svc_dis_data.pnp_id;
+#ifdef MYNEWT_VAL_BLE_SVC_PNP_SYSTEM_ID_DEFAULT
+        if (info == NULL) {
+            info = MYNEWT_VAL(BLE_SVC_PNP_SYSTEM_ID_DEFAULT);
         }
 #endif
         break;
@@ -309,6 +328,19 @@ int
 ble_svc_dis_system_id_set(const char *value)
 {
     ble_svc_dis_data.system_id = value;
+    return 0;
+}
+
+const char *
+ble_svc_dis_pnp_id(void)
+{
+    return ble_svc_dis_data.pnp_id;
+}
+
+int
+ble_svc_dis_pnp_id_set(const char *value)
+{
+    ble_svc_dis_data.pnp_id = value;
     return 0;
 }
 
