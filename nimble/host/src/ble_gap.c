@@ -7130,6 +7130,75 @@ ble_gap_set_transmit_power_reporting_enable(uint16_t conn_handle,
 #endif
 }
 
+#if MYNEWT_VAL(BLE_POWER_CONTROL) && MYNEWT_VAL(BLE_HCI_VS)
+static int
+ble_gap_pcl_param_validate(struct ble_gap_set_auto_pcl_params *params)
+{
+   if(params->m1_upper_limit < params->m1_lower_limit ||
+      params->m2_upper_limit < params->m2_lower_limit ||
+      params->s2_upper_limit < params->s2_lower_limit ||
+      params->s8_upper_limit < params->s8_lower_limit)
+	   return BLE_HS_EINVAL;
+
+   return 0;
+}
+
+int
+ble_gap_set_auto_pcl_param(struct ble_gap_set_auto_pcl_params *params)
+ {
+    int8_t vs_cmd[11] = { 0, 0,
+	                 ESP_1M_LOW, ESP_1M_HIGH,
+		         ESP_2M_LOW, ESP_2M_HIGH,
+		         ESP_S2_LOW, ESP_S2_HIGH,
+		         ESP_S8_LOW, ESP_S8_HIGH,
+			 ESP_MIN_TIME };
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    if(ble_gap_pcl_param_validate(params))
+        return BLE_HS_EINVAL;
+
+    vs_cmd[0] = (uint8_t)(params->conn_handle & 0xFF);
+    vs_cmd[1] = (uint8_t)((params->conn_handle >> 8) & 0xFF);
+
+    if(params->m1_lower_limit)
+        vs_cmd[2] = params->m1_lower_limit;
+
+    if(params->m1_upper_limit)
+        vs_cmd[3] = params->m1_upper_limit;
+
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_2M_PHY)
+    if(params->m2_lower_limit)
+        vs_cmd[4] = params->m2_lower_limit;
+
+    if(params->m2_upper_limit)
+        vs_cmd[5] = params->m2_upper_limit;
+#endif
+
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
+    if(params->s2_lower_limit)
+        vs_cmd[6] = params->s2_lower_limit;
+
+    if(params->s2_upper_limit)
+        vs_cmd[7] = params->s2_upper_limit;
+
+    if(params->s8_lower_limit)
+        vs_cmd[8] = params->s8_lower_limit;
+
+    if(params->s8_upper_limit)
+        vs_cmd[9] = params->s8_upper_limit;
+#endif
+
+    if(params->min_time_spent)
+        vs_cmd[10] = params->min_time_spent;
+
+    return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_PCL_SET_RSSI ,
+                           &vs_cmd, sizeof(vs_cmd), NULL, 0);
+}
+#endif
+
 void
 ble_gap_deinit(void)
 {
