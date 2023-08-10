@@ -4837,6 +4837,10 @@ ble_gap_disc_cancel(void)
         return BLE_HS_EDISABLED;
     }
 
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) 
+    ble_adv_list_refresh();
+#endif
+    
     ble_hs_lock();
     rc = ble_gap_disc_cancel_no_lock();
     ble_hs_unlock();
@@ -5057,6 +5061,11 @@ ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
              ble_gap_event_fn *cb, void *cb_arg)
 {
 #if NIMBLE_BLE_SCAN
+
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+    ble_adv_list_refresh();
+#endif 
+
 #if MYNEWT_VAL(BLE_EXT_ADV)
     struct ble_gap_ext_disc_params p = {0};
 
