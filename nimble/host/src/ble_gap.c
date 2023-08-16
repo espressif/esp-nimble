@@ -3322,6 +3322,8 @@ ble_gap_ext_adv_start(uint8_t instance, int duration, int max_events)
         break;
     }
 
+    BLE_HS_LOG(INFO, "GAP procedure initiated: extended advertise; instance=%u\n", instance);
+
     /* fallback to ID static random address if using random address and instance
      * wasn't configured with own address
      */
@@ -3383,6 +3385,8 @@ ble_gap_ext_adv_stop_no_lock(uint8_t instance)
     }
 
     active = ble_gap_adv_active_instance(instance);
+
+    BLE_HS_LOG(INFO, "GAP procedure initiated: stop extended advertising.\n");
 
     cmd = (void *) buf;
 
@@ -4979,6 +4983,8 @@ ble_gap_ext_disc(uint8_t own_addr_type, uint16_t duration, uint16_t period,
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
 
+    BLE_HS_LOG(INFO, "GAP procedure initiated: extended discovery; \n");
+
     rc = ble_gap_ext_disc_tx_params(own_addr_type, filter_policy,
                                     uncoded_params ? &ucp : NULL,
                                     coded_params ? &cp : NULL);
@@ -5572,6 +5578,8 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     if (rc != 0) {
         goto done;
     }
+
+    BLE_HS_LOG(INFO, "GAP procedure initiated: extended connect; \n");
 
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
