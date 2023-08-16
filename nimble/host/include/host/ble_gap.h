@@ -51,14 +51,24 @@ struct hci_conn_update;
 #define BLE_GAP_SUPERVISION_TIMEOUT_MS(t)   ((t) / 10)
 #define BLE_GAP_PERIODIC_ITVL_MS(t)         ((t) * 1000 / BLE_HCI_PERIODIC_ADV_ITVL)
 
+#if MYNEWT_VAL(BLE_HIGH_DUTY_ADV_ITVL)
+/** 5 ms. */
+#define BLE_GAP_ADV_FAST_INTERVAL1_MIN      BLE_GAP_ADV_ITVL_MS(5)
+#else
 /** 30 ms. */
 #define BLE_GAP_ADV_FAST_INTERVAL1_MIN      BLE_GAP_ADV_ITVL_MS(30)
+#endif
 
 /** 60 ms. */
 #define BLE_GAP_ADV_FAST_INTERVAL1_MAX      BLE_GAP_ADV_ITVL_MS(60)
 
+#if MYNEWT_VAL(BLE_HIGH_DUTY_ADV_ITVL)
+/** 5 ms. */
+#define BLE_GAP_ADV_FAST_INTERVAL2_MIN      BLE_GAP_ADV_ITVL_MS(5)
+#else
 /** 100 ms. */
 #define BLE_GAP_ADV_FAST_INTERVAL2_MIN      BLE_GAP_ADV_ITVL_MS(100)
+#endif
 
 /** 150 ms. */
 #define BLE_GAP_ADV_FAST_INTERVAL2_MAX      BLE_GAP_ADV_ITVL_MS(150)
