@@ -7317,6 +7317,12 @@ ble_gap_set_auto_pcl_param(struct ble_gap_set_auto_pcl_params *params)
 }
 #endif
 
+int
+ble_gap_set_data_related_addr_change_param(uint8_t adv_handle, uint8_t change_reason)
+{
+    return ble_hs_hci_util_set_data_addr_change(adv_handle, change_reason);
+}
+
 void
 ble_gap_deinit(void)
 {
