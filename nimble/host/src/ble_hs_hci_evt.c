@@ -27,7 +27,7 @@
 #include "ble_hs_resolv_priv.h"
 #include "esp_nimble_mem.h"
 
-#if CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 struct ble_gap_reattempt_ctxt {
     ble_addr_t peer_addr;
     uint8_t count;
@@ -197,7 +197,7 @@ ble_hs_hci_evt_le_dispatch_find(uint8_t event_code)
     return ble_hs_hci_evt_le_dispatch[event_code];
 }
 
-#if CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 static int
 ble_gap_find_reattempt_conn_idx(const struct ble_hs_conn *conn)
 {
@@ -232,9 +232,10 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     }
     ble_hs_unlock();
 
-#if CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     if (ev->reason == BLE_ERR_CONN_ESTABLISHMENT) {
         int rc, i, idx;
+        uint16_t handle;
 
         idx = ble_gap_find_reattempt_conn_idx(conn);
 
@@ -271,6 +272,10 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 
 		    reattempt_conn[idx].peer_addr.type = conn->bhc_peer_addr.type;
 
+                    handle = le16toh(ev->conn_handle);
+                    /* Post event to interested application */
+                    ble_gap_reattempt_count(handle, reattempt_conn[idx].count);
+
                     rc = ble_gap_master_connect_reattempt(ev->conn_handle);
                     if (rc != 0) {
                         BLE_HS_LOG(DEBUG, "Master reconnect attempt failed; rc = %d", rc);
@@ -279,8 +284,8 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
                     memset(&reattempt_conn[idx].peer_addr, 0x0, BLE_DEV_ADDR_LEN);
                     reattempt_conn[idx].count = 0;
                 }
-            }
-        } else {
+	    }
+	} else {
             /* Disconnect completed with some other reason than
             * BLE_ERR_CONN_ESTABLISHMENT, reset the corresponding reattempt count
             * */
