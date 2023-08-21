@@ -117,7 +117,7 @@ static const struct ble_gap_conn_params ble_gap_conn_params_dflt = {
 };
 #endif
 
-#if NIMBLE_BLE_CONNECT && CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 struct ble_gap_connect_reattempt_ctxt {
     uint8_t own_addr_type;
     ble_addr_t peer_addr;
@@ -1018,7 +1018,7 @@ ble_gap_master_connect_cancelled(void)
     }
 }
 
-#if CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 static void
 ble_gap_update_notify(uint16_t conn_handle, int status);
 
@@ -1101,6 +1101,19 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
     }
 
     return rc;
+}
+
+void ble_gap_reattempt_count(uint16_t conn_handle, uint8_t count)
+{
+    struct ble_gap_event event;
+    uint16_t handle = conn_handle;
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_REATTEMPT_COUNT;
+    event.reattempt_cnt.count = count;
+    event.reattempt_cnt.conn_handle = le16toh(conn_handle);
+
+    ble_gap_call_conn_event_cb(&event, handle);
 }
 #endif
 
@@ -5720,7 +5733,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
-#if CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     /* ble_gap_connect_reattempt save the connection parameters */
     if ((cb_arg != NULL) && conn_cookie_enabled) {
         struct ble_gap_conn_desc *conn_desc =  cb_arg;

@@ -157,6 +157,7 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_SUBRATE_CHANGE        28
 #define BLE_GAP_EVENT_VS_HCI                29
 #define BLE_GAP_EVENT_BIGINFO_REPORT        30
+#define BLE_GAP_EVENT_REATTEMPT_COUNT       31
 
 /*** Reason codes for the subscribe GAP event. */
 
@@ -1152,9 +1153,25 @@ struct ble_gap_event {
             uint8_t length;
         } vs_hci;
 #endif
+
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+	/**
+	 * Represents a event mentioning connection reattempt
+	 * count
+	 *
+	 * Valid for the following event types:
+	 * 	o BLE_GAP_EVENT_REATTEMPT_COUNT
+	 */
+        struct {
+            /* Connection handle */
+	    uint16_t conn_handle;
+
+	    /* Reattempt connection attempt count */
+	    uint8_t count;
+        } reattempt_cnt;
+#endif
     };
 };
-
 
 #if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
 /** @brief multiple Connection parameters  */
