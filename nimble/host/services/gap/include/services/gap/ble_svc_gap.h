@@ -20,6 +20,7 @@
 #ifndef H_BLE_SVC_GAP_
 #define H_BLE_SVC_GAP_
 
+#include "syscfg/syscfg.h"
 #include <inttypes.h>
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #include "host/ble_ead.h"
