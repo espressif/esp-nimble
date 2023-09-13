@@ -176,6 +176,18 @@ struct hci_conn_update;
 #define BLE_GAP_REPEAT_PAIRING_RETRY        1
 #define BLE_GAP_REPEAT_PAIRING_IGNORE       2
 
+/**
+ * @defgroup Mask for checking random address validity
+ * @{
+ */
+/** Static random address check mask. */
+#define BLE_STATIC_RAND_ADDR_MASK           0xC0
+
+/** Non RPA check mask. */
+#define BLE_NON_RPA_MASK                    0x3F
+
+/** @} */
+
 /** Connection security state */
 struct ble_gap_sec_state {
     /** If connection is encrypted */

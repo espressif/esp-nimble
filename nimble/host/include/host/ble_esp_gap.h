@@ -11,6 +11,7 @@
 extern "C" {
 #endif
 
+
 /**
  * Configure LE Data Length in controller (OGF = 0x08, OCF = 0x0022).
  *
