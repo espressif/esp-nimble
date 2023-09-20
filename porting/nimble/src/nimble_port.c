@@ -32,14 +32,6 @@
 #endif
 #include "soc/soc_caps.h"
 
-#if SOC_ESP_NIMBLE_CONTROLLER
-#if CONFIG_SW_COEXIST_ENABLE
-#include "esp_coexist_internal.h"
-#endif
-#endif
-
-
-
 #include "esp_intr_alloc.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
