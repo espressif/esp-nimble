@@ -527,6 +527,7 @@ static void
 ble_sm_persist_keys(struct ble_sm_proc *proc)
 {
     struct ble_store_value_sec value_sec;
+    struct ble_store_value_rpa_rec value_rpa_rec;
     struct ble_hs_conn *conn;
     ble_addr_t peer_addr;
     int authenticated;
@@ -614,6 +615,9 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
     ble_sm_fill_store_value(&peer_addr, authenticated, sc, &proc->peer_keys,
                             &value_sec);
     ble_store_write_peer_sec(&value_sec);
+    value_rpa_rec.peer_addr=peer_addr;
+    value_rpa_rec.peer_rpa_addr=conn->bhc_peer_rpa_addr;
+    ble_store_write_rpa_rec(&value_rpa_rec);
 }
 
 static int

@@ -348,6 +348,49 @@ ble_store_key_from_value_ead(struct ble_store_key_ead *out_key,
 }
 #endif
 
+int
+ble_store_read_rpa_rec(const struct ble_store_key_rpa_rec *key,
+                   struct ble_store_value_rpa_rec *out_value)
+{
+    union ble_store_value *store_value;
+    union ble_store_key *store_key;
+    int rc;
+
+    store_key = (void *)key;
+    store_value = (void *)out_value;
+    rc = ble_store_read(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_key, store_value);
+    return rc;
+}
+
+int
+ble_store_write_rpa_rec(const struct ble_store_value_rpa_rec *value)
+{
+    union ble_store_value *store_value;
+    int rc;
+
+    store_value = (void *)value;
+    rc = ble_store_write(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_value);
+    return rc;
+}
+
+int
+ble_store_delete_rpa_rec(const struct ble_store_key_rpa_rec *key)
+{
+    union ble_store_key *store_key;
+    int rc;
+
+    store_key = (void *)key;
+    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_key);
+    return rc;
+}
+void
+ble_store_key_from_value_rpa_rec(struct ble_store_key_rpa_rec *out_key,
+                             const struct ble_store_value_rpa_rec *value)
+{
+    out_key->peer_rpa_addr = value->peer_rpa_addr;
+    out_key->idx = 0;
+}
+
 void
 ble_store_key_from_value(int obj_type,
                          union ble_store_key *out_key,
@@ -367,6 +410,9 @@ ble_store_key_from_value(int obj_type,
         ble_store_key_from_value_ead(&out_key->ead, &value->ead);
         break;
 #endif
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+         ble_store_key_from_value_rpa_rec(&out_key->rpa_rec, &value->rpa_rec);
+         break;
     default:
         BLE_HS_DBG_ASSERT(0);
         break;
@@ -402,6 +448,10 @@ ble_store_iterate(int obj_type,
         pidx = &key.ead.idx;
         break;
 #endif
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+        key.rpa_rec.peer_rpa_addr = *BLE_ADDR_ANY;
+        pidx = &key.rpa_rec.idx;
+        break;
     default:
         BLE_HS_DBG_ASSERT(0);
         return BLE_HS_EINVAL;
@@ -446,6 +496,7 @@ ble_store_clear(void)
         BLE_STORE_OBJ_TYPE_OUR_SEC,
         BLE_STORE_OBJ_TYPE_PEER_SEC,
         BLE_STORE_OBJ_TYPE_CCCD,
+        BLE_STORE_OBJ_TYPE_PEER_ADDR,
 #if MYNEWT_VAL(ENC_ADV_DATA)
         BLE_STORE_OBJ_TYPE_ENC_ADV_DATA,
 #endif

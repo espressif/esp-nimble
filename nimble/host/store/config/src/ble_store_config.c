@@ -52,6 +52,12 @@ struct ble_store_value_ead
 int ble_store_config_num_eads;
 #endif
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+struct ble_store_value_rpa_rec
+    ble_store_config_rpa_recs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+#endif
+int ble_store_config_num_rpa_recs;
+
 /*****************************************************************************
  * $sec                                                                      *
  *****************************************************************************/
@@ -556,6 +562,109 @@ ble_store_config_write_ead(const struct ble_store_value_ead *value_ead)
 #endif
 
 /*****************************************************************************
+ * $rpa-map                                                                  *
+ *****************************************************************************/
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+static int
+ble_store_config_find_rpa_rec(const struct ble_store_key_rpa_rec *key)
+{
+    struct ble_store_value_rpa_rec *rpa_rec;
+    int skipped = 0;
+    int i = 0;
+
+    for(i = 0; i < ble_store_config_num_rpa_recs; i++){
+        rpa_rec = ble_store_config_rpa_recs + i;
+
+        if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr)) {
+            continue;
+        }
+        if (key->idx > skipped) {
+            skipped++;
+            continue;
+        }
+        return i;
+    }
+    return -1;
+}
+#endif
+
+static int
+ble_store_config_read_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec,struct ble_store_value_rpa_rec *value_rpa_rec)
+{
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    int idx;
+
+    idx = ble_store_config_find_rpa_rec(key_rpa_rec);
+    if (idx == -1) {
+        return BLE_HS_ENOENT;
+    }
+    *value_rpa_rec = ble_store_config_rpa_recs[idx];
+    return 0;
+#else
+    return BLE_HS_ENOENT;
+#endif
+}
+
+static int
+ble_store_config_write_rpa_rec(const struct ble_store_value_rpa_rec *value_rpa_rec){
+
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    struct ble_store_key_rpa_rec key_rpa_rec;
+    int idx;
+    int rc;
+    ble_store_key_from_value_rpa_rec(&key_rpa_rec, value_rpa_rec);
+    idx = ble_store_config_find_rpa_rec(&key_rpa_rec);
+
+    if (idx == -1) {
+        if (ble_store_config_num_rpa_recs >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
+            BLE_HS_LOG(DEBUG, "error persisting peer addrr; too many entries (%d)\n",
+                       ble_store_config_num_rpa_recs);
+            return BLE_HS_ESTORE_CAP;
+        }
+
+        idx = ble_store_config_num_rpa_recs;
+        ble_store_config_num_rpa_recs++;
+    }
+    ble_store_config_rpa_recs[idx] = *value_rpa_rec;
+
+    rc = ble_store_config_persist_rpa_recs();
+    if (rc != 0) {
+        return rc;
+    }
+    return 0;
+#else
+    return BLE_HS_ENOENT;
+#endif
+}
+
+static int
+ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
+{
+    int idx;
+    int rc;
+
+    idx = ble_store_config_find_rpa_rec(key_rpa_rec);
+    if (idx == -1) {
+        return BLE_HS_ENOENT;
+    }
+
+    rc = ble_store_config_delete_obj(ble_store_config_rpa_recs,
+                                     sizeof *ble_store_config_rpa_recs,
+                                     idx,
+                                     &ble_store_config_num_rpa_recs);
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = ble_store_config_persist_rpa_recs();
+    if (rc != 0) {
+        return rc;
+    }
+
+    return 0;
+}
+
+/*****************************************************************************
  * $api                                                                      *
  *****************************************************************************/
 
@@ -603,6 +712,10 @@ ble_store_config_read(int obj_type, const union ble_store_key *key,
         return rc;
 #endif
 
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+        rc = ble_store_config_read_rpa_rec(&key->rpa_rec, &value->rpa_rec);
+        return rc;
+
     default:
         return BLE_HS_ENOTSUP;
     }
@@ -638,6 +751,10 @@ ble_store_config_write(int obj_type, const union ble_store_value *val)
         return rc;
 #endif
 
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+        rc = ble_store_config_write_rpa_rec(&val->rpa_rec);
+        return rc;
+
     default:
         return BLE_HS_ENOTSUP;
     }
@@ -667,6 +784,9 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
         return rc;
 #endif
 
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+        rc = ble_store_config_delete_rpa_rec(&key->rpa_rec);
+
     default:
         return BLE_HS_ENOTSUP;
     }
@@ -689,6 +809,6 @@ ble_store_config_init(void)
 #if MYNEWT_VAL(ENC_ADV_DATA)
     ble_store_config_num_eads = 0;
 #endif
-
+    ble_store_config_num_rpa_recs = 0;
     ble_store_config_conf_init();
 }

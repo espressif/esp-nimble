@@ -46,6 +46,8 @@
 #define NIMBLE_NVS_EAD_SEC_KEY                   "ead_sec"
 #endif
 
+#define NIMBLE_NVS_RPA_RECORDS_KEY               "rpa_rec"
+
 static const char *TAG = "NIMBLE_NVS";
 
 /*****************************************************************************
@@ -66,7 +68,9 @@ get_nvs_key_string(int obj_type, int index, char *key_string)
         } else if (obj_type == NIMBLE_NVS_EAD_SEC_KEY) {
             sprintf(key_string, "%s_%d", NIMBLE_NVS_EAD_SEC_KEY, index);
 #endif
-        } else {
+        } else if (obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR){
+            sprintf(key_string, "%s_%d", NIMBLE_NVS_RPA_RECORDS_KEY, index);
+        }else {
             sprintf(key_string, "%s_%d", NIMBLE_NVS_CCCD_SEC_KEY, index);
         }
     }
@@ -173,6 +177,10 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
         err = nvs_get_blob(nimble_handle, key_string, &val->ead,
                            &required_size);
 #endif
+    } else if(obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR){
+         err = nvs_get_blob(nimble_handle, key_string, &val->rpa_rec,
+                           &required_size);
+
     } else {
         err = nvs_get_blob(nimble_handle, key_string, &val->sec,
                            &required_size);
@@ -244,6 +252,9 @@ get_nvs_db_attribute(int obj_type, bool empty, void *value, int num_value)
                         err = get_nvs_matching_index(&cur.sec, value, num_value,
                                                      sizeof(struct ble_store_value_ead));
 #endif
+                    } else if (obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR){
+                        err = get_nvs_matching_index(&cur.rpa_rec,value,num_value,
+                                                     sizeof(struct ble_store_value_rpa_rec));
                     } else {
                         err = get_nvs_matching_index(&cur.cccd, value, num_value,
                                                      sizeof(struct ble_store_value_sec));
@@ -374,6 +385,10 @@ ble_store_nvs_write(int obj_type, const union ble_store_value *val)
         return ble_nvs_write_key_value(key_string, &val->ead, sizeof(struct
                                        ble_store_value_ead));
 #endif
+    } else if (obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR) {
+         return ble_nvs_write_key_value(key_string, &val->rpa_rec, sizeof(struct
+                                       ble_store_value_rpa_rec));
+
     } else {
         return ble_nvs_write_key_value(key_string, &val->sec, sizeof(struct
                                        ble_store_value_sec));
@@ -465,6 +480,11 @@ populate_db_from_nvs(int obj_type, void *dst, int *db_num)
                   db_item += sizeof(struct ble_store_value_ead);
                   (*db_num)++;
 #endif
+            } else if(obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR) {
+                  ESP_LOGD(TAG, "RPA_REC in RAM is filled up from NVS index = %d", i);
+                  memcpy(db_item, &cur.rpa_rec, sizeof(struct ble_store_value_rpa_rec));
+                  db_item += sizeof(struct ble_store_value_rpa_rec);
+                  (*db_num)++;
             } else {
                 ESP_LOGD(TAG, "KEY in RAM is filled up from NVS index = %d", i);
                 memcpy(db_item, &cur.sec, sizeof(struct ble_store_value_sec));
@@ -520,6 +540,15 @@ ble_nvs_restore_sec_keys(void)
     ESP_LOGD(TAG, "ble_store_config_eads restored %d bonds",
              ble_store_config_num_eads);
 #endif
+    err = populate_db_from_nvs(BLE_STORE_OBJ_TYPE_PEER_ADDR, ble_store_config_rpa_recs,
+                               &ble_store_config_num_rpa_recs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "NVS operation failed for 'RPA_REC'");
+        return err;
+    }
+    ESP_LOGD(TAG, "ble_store_config_rpa_recs restored %d bonds",
+             ble_store_config_num_rpa_recs);
+
     return 0;
 }
 
@@ -595,7 +624,7 @@ int ble_store_config_persist_eads(void)
         return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &val);
     } else if (nvs_count > ble_store_config_num_eads) {
         /* NVS db count more than RAM count, delete operation */
-        vvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, 0,
+        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, 0,
                                        ble_store_config_eads, ble_store_config_num_eads);
         if (nvs_idx == -1) {
             ESP_LOGE(TAG, "NVS delete operation failed for EAD");
@@ -607,6 +636,35 @@ int ble_store_config_persist_eads(void)
     return 0;
 }
 #endif
+
+int ble_store_config_persist_rpa_recs(void)
+{
+    int nvs_count, nvs_idx;
+    union ble_store_value val;
+    nvs_count = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_ADDR, 0, NULL, 0);
+     if (nvs_count == -1) {
+        ESP_LOGE(TAG, "NVS operation failed while persisting RPA_RECS");
+        return BLE_HS_ESTORE_FAIL;
+    }
+    if (nvs_count < ble_store_config_num_rpa_recs) {
+        /* NVS db count less than RAM count, write operation */
+        ESP_LOGD(TAG, "Persisting RPA_RECS value in NVS...");
+        val.rpa_rec = ble_store_config_rpa_recs[ble_store_config_num_rpa_recs - 1];
+        return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_PEER_ADDR, &val);
+    } else if (nvs_count > ble_store_config_num_rpa_recs) {
+        /* NVS db count more than RAM count, delete operation */
+        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_ADDR, 0,
+                                       ble_store_config_rpa_recs, ble_store_config_num_rpa_recs);
+        if (nvs_idx == -1) {
+            ESP_LOGE(TAG, "NVS delete operation failed for RPA_REC");
+            return BLE_HS_ESTORE_FAIL;
+        }
+        ESP_LOGD(TAG, "Deleting RPA_REC, nvs idx = %d", nvs_idx);
+        return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_ADDR, nvs_idx);
+    }
+    return 0;
+
+}
 
 int ble_store_config_persist_peer_secs(void)
 {

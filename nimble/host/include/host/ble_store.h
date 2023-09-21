@@ -35,6 +35,7 @@ extern "C" {
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #define BLE_STORE_OBJ_TYPE_ENC_ADV_DATA      5
 #endif
+#define BLE_STORE_OBJ_TYPE_PEER_ADDR         6
 
 /** Failed to persist record; insufficient storage capacity. */
 #define BLE_STORE_EVENT_OVERFLOW        1
@@ -144,6 +145,15 @@ struct ble_store_value_ead {
 };
 #endif
 
+struct ble_store_key_rpa_rec{
+    ble_addr_t peer_rpa_addr;
+    uint8_t idx;
+};
+struct ble_store_value_rpa_rec{
+    ble_addr_t peer_rpa_addr;
+    ble_addr_t peer_addr;
+};
+
 /**
  * Used as a key for store lookups.  This union must be accompanied by an
  * object type code to indicate which field is valid.
@@ -154,6 +164,7 @@ union ble_store_key {
 #if MYNEWT_VAL(ENC_ADV_DATA)
     struct ble_store_key_ead ead;
 #endif
+    struct ble_store_key_rpa_rec rpa_rec;
 };
 
 /**
@@ -166,6 +177,7 @@ union ble_store_value {
 #if MYNEWT_VAL(ENC_ADV_DATA)
     struct ble_store_value_ead ead;
 #endif
+   struct ble_store_value_rpa_rec rpa_rec;
 };
 
 struct ble_store_status_event {
@@ -345,6 +357,14 @@ void ble_store_key_from_value_ead(struct ble_store_key_ead *out_key,
                                   const struct ble_store_value_ead *value);
 #endif
 
+/* rpa mapping*/
+int ble_store_read_rpa_rec(const struct ble_store_key_rpa_rec *key,
+                       struct ble_store_value_rpa_rec *out_value);
+int ble_store_write_rpa_rec(const struct ble_store_value_rpa_rec *value);
+int ble_store_delete_rpa_rec(const struct ble_store_key_rpa_rec *key);
+void ble_store_key_from_value_rpa_rec(struct ble_store_key_rpa_rec *out_key,
+                                  const struct ble_store_value_rpa_rec *value);
+/* rpa mapping*/
 void ble_store_key_from_value(int obj_type,
                               union ble_store_key *out_key,
                               const union ble_store_value *value);
