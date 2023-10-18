@@ -7480,6 +7480,12 @@ ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *value, 
     return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_DUPLICATE_EXCEPTION_LIST,
                                 &device_info_array, sizeof(device_info_array), NULL, 0);
 }
+
+int ble_gap_clear_legacy_adv(void)
+{
+     return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_LEGACY_ADV_CLEAR,
+		            NULL, 0, NULL, 0);
+}
 #endif
 
 int
