@@ -134,6 +134,7 @@ static uint16_t reattempt_idx;
 static bool conn_cookie_enabled;
 #endif
 
+
 /**
  * The state of the in-progress master connection.  If no master connection is
  * currently in progress, then the op field is set to BLE_GAP_OP_NULL.
@@ -5737,8 +5738,15 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     /* ble_gap_connect_reattempt save the connection parameters */
     if ((cb_arg != NULL) && conn_cookie_enabled) {
         struct ble_gap_conn_desc *conn_desc =  cb_arg;
-        /* reattempt_idx should follow conn handle corresponding to MASTER role */
-        reattempt_idx = conn_desc->conn_handle;
+        struct ble_gap_conn_desc *curr_conn_desc=NULL;
+        /* reattempt_idx is set to that index where corresponding conn_handle entry was made  */
+        for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+             curr_conn_desc = ble_conn_reattempt[i].cb_arg;
+             if (curr_conn_desc && (conn_desc->conn_handle == curr_conn_desc->conn_handle)) {
+                 reattempt_idx = i;
+                 break;
+             }
+        }
         /* Reset cookie_enabled flag, it will be set again by reattempt call */
         conn_cookie_enabled = false;
     }
