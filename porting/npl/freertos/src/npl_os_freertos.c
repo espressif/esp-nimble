@@ -151,19 +151,19 @@ static os_membuf_t ble_freertos_mutex_buf[
 #endif
 
 bool
-IRAM_ATTR npl_freertos_os_started(void)
+npl_freertos_os_started(void)
 {
     return xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
 }
 
 void *
-IRAM_ATTR npl_freertos_get_current_task_id(void)
+npl_freertos_get_current_task_id(void)
 {
     return xTaskGetCurrentTaskHandle();
 }
 
 void
-IRAM_ATTR npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
+npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
                     void *arg)
 {
     struct ble_npl_event_freertos *event = NULL;
@@ -185,7 +185,7 @@ IRAM_ATTR npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn
 }
 
 void
-IRAM_ATTR npl_freertos_event_deinit(struct ble_npl_event *ev)
+npl_freertos_event_deinit(struct ble_npl_event *ev)
 {
     BLE_LL_ASSERT(ev->event);
 #if OS_MEM_ALLOC
@@ -197,7 +197,7 @@ IRAM_ATTR npl_freertos_event_deinit(struct ble_npl_event *ev)
 }
 
 void
-IRAM_ATTR npl_freertos_event_reset(struct ble_npl_event *ev)
+npl_freertos_event_reset(struct ble_npl_event *ev)
 {
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
     BLE_LL_ASSERT(event);
@@ -205,7 +205,7 @@ IRAM_ATTR npl_freertos_event_reset(struct ble_npl_event *ev)
 }
 
 void
-IRAM_ATTR npl_freertos_eventq_init(struct ble_npl_eventq *evq)
+npl_freertos_eventq_init(struct ble_npl_eventq *evq)
 {
     struct ble_npl_eventq_freertos *eventq = NULL;
 #if OS_MEM_ALLOC
@@ -232,7 +232,7 @@ IRAM_ATTR npl_freertos_eventq_init(struct ble_npl_eventq *evq)
 }
 
 void
-IRAM_ATTR npl_freertos_eventq_deinit(struct ble_npl_eventq *evq)
+npl_freertos_eventq_deinit(struct ble_npl_eventq *evq)
 {
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
 
@@ -247,7 +247,7 @@ IRAM_ATTR npl_freertos_eventq_deinit(struct ble_npl_eventq *evq)
 }
 
 void
-IRAM_ATTR npl_freertos_callout_mem_reset(struct ble_npl_callout *co)
+npl_freertos_callout_mem_reset(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 
@@ -258,14 +258,14 @@ IRAM_ATTR npl_freertos_callout_mem_reset(struct ble_npl_callout *co)
 }
 
 static inline bool
-IRAM_ATTR in_isr(void)
+in_isr(void)
 {
     /* XXX hw specific! */
     return xPortInIsrContext() != 0;
 }
 
 struct ble_npl_event *
-IRAM_ATTR npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
+npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
 {
     struct ble_npl_event *ev = NULL;
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
@@ -294,7 +294,7 @@ IRAM_ATTR npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo
 }
 
 void
-IRAM_ATTR npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
+npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
 {
     BaseType_t woken;
     BaseType_t ret;
@@ -320,7 +320,7 @@ IRAM_ATTR npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_eve
 }
 
 void
-IRAM_ATTR npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
+npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
                        struct ble_npl_event *ev)
 {
     struct ble_npl_event *tmp_ev;
@@ -387,7 +387,7 @@ IRAM_ATTR npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_mutex_init(struct ble_npl_mutex *mu)
+npl_freertos_mutex_init(struct ble_npl_mutex *mu)
 {
     struct ble_npl_mutex_freertos *mutex = NULL;
 #if OS_MEM_ALLOC
@@ -422,7 +422,7 @@ IRAM_ATTR npl_freertos_mutex_init(struct ble_npl_mutex *mu)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_mutex_deinit(struct ble_npl_mutex *mu)
+npl_freertos_mutex_deinit(struct ble_npl_mutex *mu)
 {
     struct ble_npl_mutex_freertos *mutex = (struct ble_npl_mutex_freertos *)mu->mutex;
 
@@ -444,7 +444,7 @@ IRAM_ATTR npl_freertos_mutex_deinit(struct ble_npl_mutex *mu)
 }
 
 void
-IRAM_ATTR npl_freertos_event_run(struct ble_npl_event *ev)
+npl_freertos_event_run(struct ble_npl_event *ev)
 {
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
     if (event) {
@@ -453,14 +453,14 @@ IRAM_ATTR npl_freertos_event_run(struct ble_npl_event *ev)
 }
 
 bool
-IRAM_ATTR npl_freertos_eventq_is_empty(struct ble_npl_eventq *evq)
+npl_freertos_eventq_is_empty(struct ble_npl_eventq *evq)
 {
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
     return xQueueIsQueueEmptyFromISR(eventq->q);
 }
 
 bool
-IRAM_ATTR npl_freertos_event_is_queued(struct ble_npl_event *ev)
+npl_freertos_event_is_queued(struct ble_npl_event *ev)
 {
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
     if (event) {
@@ -470,7 +470,7 @@ IRAM_ATTR npl_freertos_event_is_queued(struct ble_npl_event *ev)
 }
 
 void *
-IRAM_ATTR npl_freertos_event_get_arg(struct ble_npl_event *ev)
+npl_freertos_event_get_arg(struct ble_npl_event *ev)
 {
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
     if (event) {
@@ -480,7 +480,7 @@ IRAM_ATTR npl_freertos_event_get_arg(struct ble_npl_event *ev)
 }
 
 void
-IRAM_ATTR npl_freertos_event_set_arg(struct ble_npl_event *ev, void *arg)
+npl_freertos_event_set_arg(struct ble_npl_event *ev, void *arg)
 {
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
     if (event) {
@@ -490,7 +490,7 @@ IRAM_ATTR npl_freertos_event_set_arg(struct ble_npl_event *ev, void *arg)
 
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_mutex_pend(struct ble_npl_mutex *mu, ble_npl_time_t timeout)
+npl_freertos_mutex_pend(struct ble_npl_mutex *mu, ble_npl_time_t timeout)
 {
     BaseType_t ret;
     struct ble_npl_mutex_freertos *mutex = (struct ble_npl_mutex_freertos *)mu->mutex;
@@ -512,7 +512,7 @@ IRAM_ATTR npl_freertos_mutex_pend(struct ble_npl_mutex *mu, ble_npl_time_t timeo
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_mutex_release(struct ble_npl_mutex *mu)
+npl_freertos_mutex_release(struct ble_npl_mutex *mu)
 {
     struct ble_npl_mutex_freertos *mutex = (struct ble_npl_mutex_freertos *)mu->mutex;
 
@@ -534,7 +534,7 @@ IRAM_ATTR npl_freertos_mutex_release(struct ble_npl_mutex *mu)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_sem_init(struct ble_npl_sem *sem, uint16_t tokens)
+npl_freertos_sem_init(struct ble_npl_sem *sem, uint16_t tokens)
 {
     struct ble_npl_sem_freertos *semaphor = NULL;
 #if OS_MEM_ALLOC
@@ -569,7 +569,7 @@ IRAM_ATTR npl_freertos_sem_init(struct ble_npl_sem *sem, uint16_t tokens)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_sem_deinit(struct ble_npl_sem *sem)
+npl_freertos_sem_deinit(struct ble_npl_sem *sem)
 {
     struct ble_npl_sem_freertos *semaphor = (struct ble_npl_sem_freertos *)sem->sem;
 
@@ -591,7 +591,7 @@ IRAM_ATTR npl_freertos_sem_deinit(struct ble_npl_sem *sem)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_sem_pend(struct ble_npl_sem *sem, ble_npl_time_t timeout)
+npl_freertos_sem_pend(struct ble_npl_sem *sem, ble_npl_time_t timeout)
 {
     BaseType_t woken;
     BaseType_t ret;
@@ -617,7 +617,7 @@ IRAM_ATTR npl_freertos_sem_pend(struct ble_npl_sem *sem, ble_npl_time_t timeout)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_sem_release(struct ble_npl_sem *sem)
+npl_freertos_sem_release(struct ble_npl_sem *sem)
 {
     BaseType_t ret;
     BaseType_t woken;
@@ -644,7 +644,7 @@ IRAM_ATTR npl_freertos_sem_release(struct ble_npl_sem *sem)
 
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
 static void
-IRAM_ATTR ble_npl_event_fn_wrapper(void *arg)
+ble_npl_event_fn_wrapper(void *arg)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)arg;
     BLE_LL_ASSERT(callout);
@@ -658,7 +658,7 @@ IRAM_ATTR ble_npl_event_fn_wrapper(void *arg)
 }
 
 static
-IRAM_ATTR ble_npl_error_t esp_err_to_npl_error(esp_err_t err)
+ble_npl_error_t esp_err_to_npl_error(esp_err_t err)
 {
     switch(err) {
     case ESP_ERR_INVALID_ARG:
@@ -677,7 +677,7 @@ IRAM_ATTR ble_npl_error_t esp_err_to_npl_error(esp_err_t err)
 #else
 
 static void
-IRAM_ATTR os_callout_timer_cb(TimerHandle_t timer)
+os_callout_timer_cb(TimerHandle_t timer)
 {
     struct ble_npl_callout_freertos *callout;
 
@@ -694,7 +694,7 @@ IRAM_ATTR os_callout_timer_cb(TimerHandle_t timer)
 #endif
 
 int
-IRAM_ATTR npl_freertos_callout_init(struct ble_npl_callout *co, struct ble_npl_eventq *evq,
+npl_freertos_callout_init(struct ble_npl_callout *co, struct ble_npl_eventq *evq,
                       ble_npl_event_fn *ev_cb, void *ev_arg)
 {
     struct ble_npl_callout_freertos *callout = NULL;
@@ -791,7 +791,7 @@ IRAM_ATTR npl_freertos_callout_init(struct ble_npl_callout *co, struct ble_npl_e
 }
 
 void
-IRAM_ATTR npl_freertos_callout_deinit(struct ble_npl_callout *co)
+npl_freertos_callout_deinit(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 
@@ -825,7 +825,7 @@ IRAM_ATTR npl_freertos_callout_deinit(struct ble_npl_callout *co)
 }
 
 uint16_t
-IRAM_ATTR npl_freertos_sem_get_count(struct ble_npl_sem *sem)
+npl_freertos_sem_get_count(struct ble_npl_sem *sem)
 {
     struct ble_npl_sem_freertos *semaphor = (struct ble_npl_sem_freertos *)sem->sem;
     return uxSemaphoreGetCount(semaphor->handle);
@@ -833,7 +833,7 @@ IRAM_ATTR npl_freertos_sem_get_count(struct ble_npl_sem *sem)
 
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
+npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
@@ -866,7 +866,7 @@ IRAM_ATTR npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t 
 }
 
 void
-IRAM_ATTR npl_freertos_callout_stop(struct ble_npl_callout *co)
+npl_freertos_callout_stop(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 
@@ -882,7 +882,7 @@ IRAM_ATTR npl_freertos_callout_stop(struct ble_npl_callout *co)
 }
 
 bool
-IRAM_ATTR npl_freertos_callout_is_active(struct ble_npl_callout *co)
+npl_freertos_callout_is_active(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
@@ -893,7 +893,7 @@ IRAM_ATTR npl_freertos_callout_is_active(struct ble_npl_callout *co)
 }
 
 ble_npl_time_t
-IRAM_ATTR npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
+npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
    /* Currently, esp_timer does not support an API which gets the expiry time for
@@ -912,7 +912,7 @@ IRAM_ATTR npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
 }
 
 ble_npl_time_t
-IRAM_ATTR npl_freertos_callout_remaining_ticks(struct ble_npl_callout *co,
+npl_freertos_callout_remaining_ticks(struct ble_npl_callout *co,
                                      ble_npl_time_t now)
 {
     ble_npl_time_t rt;
@@ -953,7 +953,7 @@ IRAM_ATTR npl_freertos_callout_remaining_ticks(struct ble_npl_callout *co,
 }
 
 void
-IRAM_ATTR npl_freertos_callout_set_arg(struct ble_npl_callout *co, void *arg)
+npl_freertos_callout_set_arg(struct ble_npl_callout *co, void *arg)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)callout->ev.event;
@@ -961,7 +961,7 @@ IRAM_ATTR npl_freertos_callout_set_arg(struct ble_npl_callout *co, void *arg)
 }
 
 uint32_t
-IRAM_ATTR npl_freertos_time_get(void)
+npl_freertos_time_get(void)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     return esp_timer_get_time() / 1000;
@@ -971,7 +971,7 @@ IRAM_ATTR npl_freertos_time_get(void)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_time_ms_to_ticks(uint32_t ms, ble_npl_time_t *out_ticks)
+npl_freertos_time_ms_to_ticks(uint32_t ms, ble_npl_time_t *out_ticks)
 {
     uint64_t ticks;
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
@@ -989,7 +989,7 @@ IRAM_ATTR npl_freertos_time_ms_to_ticks(uint32_t ms, ble_npl_time_t *out_ticks)
 }
 
 ble_npl_error_t
-IRAM_ATTR npl_freertos_time_ticks_to_ms(ble_npl_time_t ticks, uint32_t *out_ms)
+npl_freertos_time_ticks_to_ms(ble_npl_time_t ticks, uint32_t *out_ms)
 {
     uint64_t ms;
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
@@ -1007,7 +1007,7 @@ IRAM_ATTR npl_freertos_time_ticks_to_ms(ble_npl_time_t ticks, uint32_t *out_ms)
 }
 
 ble_npl_time_t
-IRAM_ATTR npl_freertos_time_ms_to_ticks32(uint32_t ms)
+npl_freertos_time_ms_to_ticks32(uint32_t ms)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     return ms;
@@ -1017,7 +1017,7 @@ IRAM_ATTR npl_freertos_time_ms_to_ticks32(uint32_t ms)
 }
 
 uint32_t
-IRAM_ATTR npl_freertos_time_ticks_to_ms32(ble_npl_time_t ticks)
+npl_freertos_time_ticks_to_ms32(ble_npl_time_t ticks)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     return ticks;
@@ -1027,7 +1027,7 @@ IRAM_ATTR npl_freertos_time_ticks_to_ms32(ble_npl_time_t ticks)
 }
 
 void
-IRAM_ATTR npl_freertos_time_delay(ble_npl_time_t ticks)
+npl_freertos_time_delay(ble_npl_time_t ticks)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     vTaskDelay(ticks / portTICK_PERIOD_MS);
@@ -1038,7 +1038,7 @@ IRAM_ATTR npl_freertos_time_delay(ble_npl_time_t ticks)
 
 #if NIMBLE_CFG_CONTROLLER || CONFIG_NIMBLE_CONTROLLER_MODE
 void
-IRAM_ATTR npl_freertos_hw_set_isr(int irqn, uint32_t addr)
+npl_freertos_hw_set_isr(int irqn, uint32_t addr)
 {
     //Do nothing
 }
@@ -1048,7 +1048,7 @@ IRAM_ATTR npl_freertos_hw_set_isr(int irqn, uint32_t addr)
 uint8_t hw_critical_state_status = 0;
 
 uint32_t
-IRAM_ATTR npl_freertos_hw_enter_critical(void)
+npl_freertos_hw_enter_critical(void)
 {
     ++hw_critical_state_status;
     portENTER_CRITICAL(&ble_port_mutex);
@@ -1056,13 +1056,13 @@ IRAM_ATTR npl_freertos_hw_enter_critical(void)
 }
 
 uint8_t
-IRAM_ATTR npl_freertos_hw_is_in_critical(void)
+npl_freertos_hw_is_in_critical(void)
 {
     return hw_critical_state_status;
 }
 
 void
-IRAM_ATTR npl_freertos_hw_exit_critical(uint32_t ctx)
+npl_freertos_hw_exit_critical(uint32_t ctx)
 {
     --hw_critical_state_status;
     portEXIT_CRITICAL(&ble_port_mutex);
@@ -1070,7 +1070,7 @@ IRAM_ATTR npl_freertos_hw_exit_critical(uint32_t ctx)
 }
 
 uint32_t
-IRAM_ATTR npl_freertos_get_time_forever(void)
+npl_freertos_get_time_forever(void)
 {
     return portMAX_DELAY;
 }
