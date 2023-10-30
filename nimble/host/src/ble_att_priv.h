@@ -149,6 +149,11 @@ int ble_att_svr_register(const ble_uuid_t *uuid, uint8_t flags,
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 int ble_att_svr_deregister(uint16_t start_handle, uint16_t end_group_handle);
 #endif
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+int ble_att_get_database_size(int *out_size);
+int ble_att_fill_database_info(uint8_t *out_data);
+#endif
+
 
 struct ble_att_svr_entry {
     STAILQ_ENTRY(ble_att_svr_entry) ha_next;
@@ -200,6 +205,8 @@ int ble_att_svr_rx_read(uint16_t conn_handle,
                         struct os_mbuf **rxom);
 int ble_att_svr_rx_read_blob(uint16_t conn_handle,
                              struct os_mbuf **rxom);
+int ble_att_svr_rx_read_mult_var(uint16_t conn_handle,
+                                 struct os_mbuf **rxom);
 int ble_att_svr_rx_read_mult(uint16_t conn_handle,
                              struct os_mbuf **rxom);
 int ble_att_svr_rx_write(uint16_t conn_handle,

@@ -25,6 +25,9 @@
 #include "host/ble_hs_hci.h"
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+#include "ble_gattc_cache_priv.h"
+#endif
 
 #include "host/ble_hs_pvcy.h"
 #include "host/util/util.h"
@@ -1420,6 +1423,9 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
     ble_sm_connection_broken(conn_handle);
     ble_gatts_connection_broken(conn_handle);
     ble_gattc_connection_broken(conn_handle);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    ble_gattc_cache_conn_broken(conn_handle);
+#endif
     ble_hs_flow_connection_broken(conn_handle);;
 
     ble_hs_atomic_conn_delete(conn_handle);
@@ -2125,6 +2131,9 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     struct ble_gap_event event;
     struct ble_hs_conn *conn;
     int rc;
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    struct ble_hs_conn_addrs addrs
+#endif
 
     STATS_INC(ble_gap_stats, rx_conn_complete);
 
@@ -2247,6 +2256,13 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     event.connect.conn_handle = evt->connection_handle;
     event.connect.status = 0;
 
+    /* add gatt connection */
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER) {
+        ble_hs_conn_addrs(conn, &addrs);
+        rc = ble_gattc_cache_conn_create(conn->bhc_handle, addrs.peer_id_addr);
+    }
+#endif
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, evt->connection_handle);
 
@@ -6922,6 +6938,9 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
      */
     if (security_restored) {
         ble_gatts_bonding_restored(conn_handle);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+        ble_gattc_cache_conn_bonding_restored(conn_handle);
+#endif
         return;
     }
 
@@ -6931,6 +6950,9 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
      */
     if (bonded) {
         ble_gatts_bonding_established(conn_handle);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+        ble_gattc_cache_conn_bonding_established(conn_handle);
+#endif
     }
 #endif
 }
@@ -6995,7 +7017,16 @@ ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
 #if (MYNEWT_VAL(BLE_GATT_NOTIFY) || MYNEWT_VAL(BLE_GATT_INDICATE)) && NIMBLE_BLE_CONNECT
 
     struct ble_gap_event event;
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    uint16_t start_handle;
+    uint16_t end_handle;
 
+    if (attr_handle == ble_gattc_cache_conn_get_svc_changed_handle(conn_handle)) {
+        start_handle = get_le16(om->om_data);
+        end_handle = get_le16(om->om_data + 2);
+        ble_gattc_cache_conn_update(conn_handle, start_handle, end_handle);
+    }
+#endif
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_NOTIFY_RX;
     event.notify_rx.conn_handle = conn_handle;

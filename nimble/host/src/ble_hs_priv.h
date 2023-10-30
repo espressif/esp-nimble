@@ -46,6 +46,9 @@
 #include "host/ble_monitor.h"
 #include "nimble/nimble_opt.h"
 #include "stats/stats.h"
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+#include "ble_gattc_cache_priv.h"
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif

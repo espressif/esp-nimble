@@ -90,6 +90,7 @@ extern STATS_SECT_DECL(ble_gatts_stats) ble_gatts_stats;
 
 #define BLE_GATT_CHR_DECL_SZ_16     5
 #define BLE_GATT_CHR_DECL_SZ_128    19
+#define BLE_GATT_CHR_CLI_SUP_FEAT_SZ    1
 
 typedef uint8_t ble_gatts_conn_flags;
 
@@ -100,8 +101,20 @@ struct ble_gatts_conn {
     struct ble_gatts_clt_cfg *clt_cfgs;
 #endif
     int num_clt_cfgs;
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    bool aware_state;
+    bool sent_err;
+#endif
 
     uint16_t indicate_val_handle;
+
+    /**
+     * For now only 3 bits in one octet are defined, but specification expects
+     * this service to be variable length with no upper bound. Let's make this
+     * future proof if more octets might be used.
+     * (Vol. 3, Part G, 7.2)
+     */
+    uint8_t peer_cl_sup_feat[BLE_GATT_CHR_CLI_SUP_FEAT_SZ];
 };
 
 /*** @client. */
@@ -206,10 +219,21 @@ int ble_gatts_clt_cfg_access(uint16_t conn_handle, uint16_t attr_handle,
                              void *arg);
 void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+struct ble_gatts_aware_state {
+    uint8_t peer_id_addr[6];
+    bool aware;
+};
+extern struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+#endif
+
 /*** @misc. */
 int ble_gatts_conn_can_alloc(void);
 int ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn);
 int ble_gatts_init(void);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+int ble_gattc_cache_conn_init();
+#endif
 
 #ifdef __cplusplus
 }
