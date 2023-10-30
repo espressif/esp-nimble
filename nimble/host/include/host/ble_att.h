@@ -109,6 +109,8 @@ struct os_mbuf;
 
 /**Insufficient Resources to complete the request. */
 #define BLE_ATT_ERR_INSUFFICIENT_RES        0x11
+#define BLE_ATT_ERR_DB_OUT_OF_SYNC          0x12
+#define BLE_ATT_ERR_VALUE_NOT_ALLOWED       0x13
 
 /**Requested value is not allowed. */
 #define BLE_ATT_ERR_VALUE_NOT_ALLOWED       0x13
@@ -200,6 +202,13 @@ struct os_mbuf;
 
 /** Execute Write Response. */
 #define BLE_ATT_OP_EXEC_WRITE_RSP           0x19
+
+
+/** Read Multiple Variable Lenght Request */
+#define BLE_ATT_OP_READ_MULT_VAR_REQ        0x20
+
+/** Read Multiple Variable Lenght Response */
+#define BLE_ATT_OP_READ_MULT_VAR_RSP        0x21
 
 /** Notify Request. */
 #define BLE_ATT_OP_NOTIFY_REQ               0x1b
