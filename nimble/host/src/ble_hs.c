@@ -775,6 +775,11 @@ ble_hs_init(void)
     rc = ble_gattc_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_init();
+    SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
+
     rc = ble_gatts_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif

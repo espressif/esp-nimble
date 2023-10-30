@@ -1101,6 +1101,48 @@ int ble_gatts_reset(void);
  */
 int ble_gatts_start(void);
 
+/**
+ * Saves Client Supported Features for specified connection.
+ *
+ * @param conn_handle           Connection handle identifying connection for
+ *                              which Client Supported Features should be saved
+ * @param om                    The mbuf chain to set value from.
+ *
+ * @return                      0 on success;
+ *                              BLE_HS_ENOTCONN if no matching connection
+ *                              was found
+ *                              BLE_HS_EINVAL if supplied buffer is empty or
+ *                              if any Client Supported Feature was
+ *                              attempted to be disabled.
+ *                              A BLE host core return code on unexpected
+ *                              error.
+ *
+ */
+int ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle,
+                                      struct os_mbuf *om);
+
+/**
+ * Gets Client Supported Features for specified connection.
+ *
+ * @param conn_handle           Connection handle identifying connection for
+ *                              which Client Supported Features should be saved
+ * @param out_supported_feat    Client supported features to be returned.
+ *
+ * @return                      0 on success;
+ *                              BLE_HS_ENOTCONN if no matching connection
+ *                              was found
+ *                              BLE_HS_EINVAL if supplied buffer is empty or
+ *                              if any Client Supported Feature was
+ *                              attempted to be disabled.
+ *                              A BLE host core return code on unexpected
+ *                              error.
+ *
+ */
+int ble_gatts_peer_cl_sup_feat_get(uint16_t conn_handle, uint8_t *out_supported_feat, uint8_t len);
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+int ble_gatts_calculate_hash(uint8_t *out_hash_key);
+#endif
 #ifdef __cplusplus
 }
 #endif

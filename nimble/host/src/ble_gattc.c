@@ -60,6 +60,7 @@
 #include "host/ble_uuid.h"
 #include "host/ble_gap.h"
 #include "ble_hs_priv.h"
+#include "ble_gattc_cache_priv.h"
 
 #if NIMBLE_BLE_CONNECT
 
@@ -1603,6 +1604,13 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
 
     STATS_INC(ble_gattc_stats, disc_all_svcs);
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_search_all_svcs(conn_handle, cb, cb_arg);
+    if(rc == 0) {
+        return rc;
+    }
+#endif
+
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -1814,6 +1822,12 @@ ble_gattc_disc_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *uuid,
     struct ble_gattc_proc *proc;
     int rc;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_search_svc_by_uuid(conn_handle, uuid, cb, cb_arg);
+    if(rc == 0) {
+        return rc;
+    }
+#endif
     STATS_INC(ble_gattc_stats, disc_svc_uuid);
 
     proc = ble_gattc_proc_alloc();
@@ -2363,6 +2377,12 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
     struct ble_gattc_proc *proc;
     int rc;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_search_all_chrs(conn_handle, start_handle, end_handle, cb, cb_arg);
+    if(rc == 0) {
+        return rc;
+    }
+#endif
     STATS_INC(ble_gattc_stats, disc_all_chrs);
 
     proc = ble_gattc_proc_alloc();
@@ -2602,6 +2622,12 @@ ble_gattc_disc_chrs_by_uuid(uint16_t conn_handle, uint16_t start_handle,
     struct ble_gattc_proc *proc;
     int rc;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_search_chrs_by_uuid(conn_handle, start_handle, end_handle, uuid, cb, cb_arg);
+    if(rc == 0) {
+        return rc;
+    }
+#endif
     STATS_INC(ble_gattc_stats, disc_chrs_uuid);
 
     proc = ble_gattc_proc_alloc();
@@ -2812,6 +2838,12 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
     struct ble_gattc_proc *proc;
     int rc;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_search_all_dscs(conn_handle, start_handle, end_handle, cb, cb_arg);
+    if(rc == 0) {
+        return rc;
+    }
+#endif
     STATS_INC(ble_gattc_stats, disc_all_dscs);
 
     proc = ble_gattc_proc_alloc();
@@ -2869,6 +2901,11 @@ ble_gattc_read_cb(struct ble_gattc_proc *proc, int status,
         STATS_INC(ble_gattc_stats, read_fail);
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (status == BLE_HS_ATT_ERR(BLE_ATT_ERR_DB_OUT_OF_SYNC)) {
+        ble_gattc_cache_conn_update(proc->conn_handle, 0, 0xFFFF);
+    }
+#endif
     if (proc->read.cb == NULL) {
         rc = 0;
     } else {
@@ -3108,6 +3145,7 @@ ble_gattc_read_by_uuid(uint16_t conn_handle, uint16_t start_handle,
 #if !MYNEWT_VAL(BLE_GATT_READ_UUID)
     return BLE_HS_ENOTSUP;
 #endif
+    /* TODO:Roshan */
 
     struct ble_gattc_proc *proc;
     int rc;
@@ -3168,6 +3206,11 @@ ble_gattc_read_long_cb(struct ble_gattc_proc *proc, int status,
         STATS_INC(ble_gattc_stats, read_long_fail);
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (status == BLE_HS_ATT_ERR(BLE_ATT_ERR_DB_OUT_OF_SYNC)) {
+        ble_gattc_cache_conn_update(proc->conn_handle, 0, 0xFFFF);
+    }
+#endif
     if (proc->read_long.cb == NULL) {
         rc = 0;
     } else {
@@ -3443,6 +3486,11 @@ ble_gattc_read_mult_cb(struct ble_gattc_proc *proc, int status,
         attr.om = *om;
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (status == BLE_HS_ATT_ERR(BLE_ATT_ERR_DB_OUT_OF_SYNC)) {
+        ble_gattc_cache_conn_update(proc->conn_handle, 0, 0xFFFF);
+    }
+#endif
     if (proc->read_mult.cb == NULL) {
         rc = 0;
     } else {
@@ -3659,6 +3707,11 @@ ble_gattc_write_cb(struct ble_gattc_proc *proc, int status,
         STATS_INC(ble_gattc_stats, write_fail);
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (status == BLE_HS_ATT_ERR(BLE_ATT_ERR_DB_OUT_OF_SYNC)) {
+        ble_gattc_cache_conn_update(proc->conn_handle, 0, 0xFFFF);
+    }
+#endif
     if (proc->write.cb == NULL) {
         rc = 0;
     } else {
@@ -3783,6 +3836,11 @@ ble_gattc_write_long_cb(struct ble_gattc_proc *proc, int status,
         STATS_INC(ble_gattc_stats, write_long_fail);
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (status == BLE_HS_ATT_ERR(BLE_ATT_ERR_DB_OUT_OF_SYNC)) {
+        ble_gattc_cache_conn_update(proc->conn_handle, 0, 0xFFFF);
+    }
+#endif
     if (proc->write_long.cb == NULL) {
         rc = 0;
     } else {
@@ -4080,6 +4138,11 @@ ble_gattc_write_reliable_cb(struct ble_gattc_proc *proc, int status,
         STATS_INC(ble_gattc_stats, write_reliable_fail);
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (status == BLE_HS_ATT_ERR(BLE_ATT_ERR_DB_OUT_OF_SYNC)) {
+        ble_gattc_cache_conn_update(proc->conn_handle, 0, 0xFFFF);
+    }
+#endif
     if (proc->write_reliable.cb == NULL) {
         rc = 0;
     } else {
@@ -4349,12 +4412,27 @@ done:
  * $notify                                                                   *
  *****************************************************************************/
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+static int ble_gatts_check_conn_aware(uint16_t conn_handle, bool *aware) {
+    struct ble_hs_conn *conn;
+    conn = ble_hs_conn_find(conn_handle);
+    if(conn == NULL) {
+        return BLE_HS_ENOTCONN;
+    }
+    *aware = conn->bhc_gatt_svr.aware_state;
+    return 0;
+}
+#endif
+
 int
 ble_gatts_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
                         struct os_mbuf *txom)
 {
 #if !MYNEWT_VAL(BLE_GATT_NOTIFY)
     return BLE_HS_ENOTSUP;
+#endif
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    bool aware;
 #endif
 
     int rc;
@@ -4363,6 +4441,18 @@ ble_gatts_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 
     ble_gattc_log_notify(chr_val_handle);
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    ble_hs_lock();
+    rc = ble_gatts_check_conn_aware(conn_handle, &aware);
+    ble_hs_unlock();
+    if(rc != 0) {
+        goto done;
+    }
+    if(!aware) {
+        rc = BLE_HS_EREJECT; /* TODO correct error code ?*/
+        goto done;
+    }
+#endif
     if (txom == NULL) {
         /* No custom attribute data; read the value from the specified
          * attribute.
@@ -4656,6 +4746,9 @@ ble_gatts_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
     struct ble_gattc_proc *proc;
     struct ble_hs_conn *conn;
     int rc;
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    bool aware;
+#endif
 
     STATS_INC(ble_gattc_stats, indicate);
 
@@ -4671,6 +4764,20 @@ ble_gatts_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 
     ble_gattc_log_indicate(chr_val_handle);
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if(chr_val_handle != ble_svc_gatt_changed_handle()) {
+        ble_hs_lock();
+        rc = ble_gatts_check_conn_aware(conn_handle, &aware);
+        ble_hs_unlock();
+        if(rc != 0) {
+            goto done;
+        }
+        if(!aware) {
+            rc = BLE_HS_EREJECT;
+            goto done;
+        }
+    }
+#endif
     if (txom == NULL) {
         /* No custom attribute data; read the value from the specified
          * attribute.
