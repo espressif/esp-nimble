@@ -77,6 +77,15 @@ int ble_gap_wl_tx_rmv(const ble_addr_t *addrs);
  */
 int ble_gap_wl_tx_clear(void);
 
+/**
+ * Retrieves the size of the controller's white list.
+ *
+ * @param size                  On success, total size of whitelist will be stored here.
+ *
+ * @return                      0 on success; nonzero on failure.
+ */
+int ble_gap_wl_read_size(uint8_t *size);
+
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
 #if MYNEWT_VAL(BLE_HCI_VS)
 
