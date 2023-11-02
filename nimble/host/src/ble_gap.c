@@ -7374,7 +7374,8 @@ ble_gap_set_transmit_power_reporting_enable(uint16_t conn_handle,
 #endif
 }
 
-#if MYNEWT_VAL(BLE_POWER_CONTROL) && MYNEWT_VAL(BLE_HCI_VS)
+#if MYNEWT_VAL(BLE_HCI_VS)
+#if MYNEWT_VAL(BLE_POWER_CONTROL)
 static int
 ble_gap_pcl_param_validate(struct ble_gap_set_auto_pcl_params *params)
 {
@@ -7440,6 +7441,44 @@ ble_gap_set_auto_pcl_param(struct ble_gap_set_auto_pcl_params *params)
 
     return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_PCL_SET_RSSI ,
                            &vs_cmd, sizeof(vs_cmd), NULL, 0);
+}
+#endif
+
+int
+ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *value, void *cb)
+{
+    uint8_t device_info_array[1 + 4 + BLE_DEV_ADDR_LEN] = {0};
+
+    device_info_array[0] = subcode;
+    device_info_array[1] = type & 0xff;
+    device_info_array[2] = (type >> 8) & 0xff;
+    device_info_array[3] = (type >> 16) & 0xff;
+    device_info_array[4] = (type >> 24) & 0xff;
+    switch (type)
+    {
+        case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_ADV_ADDR:
+            swap_in_place(value, BLE_DEV_ADDR_LEN);
+	    memcpy(&device_info_array[5], value, BLE_DEV_ADDR_LEN);
+            break;
+        case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_LINK_ID:
+            memcpy(&device_info_array[5], value, 4);
+            break;
+        case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_BEACON_TYPE:
+            //do nothing
+            break;
+        case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_PROV_SRV_ADV:
+            //do nothing
+            break;
+        case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_PROXY_SRV_ADV:
+            //do nothing
+            break;
+        default:
+            //do nothing
+            break;
+    }
+
+    return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_DUPLICATE_EXCEPTION_LIST,
+                                &device_info_array, sizeof(device_info_array), NULL, 0);
 }
 #endif
 

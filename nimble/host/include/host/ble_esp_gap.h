@@ -11,6 +11,11 @@
 extern "C" {
 #endif
 
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_ADV_ADDR             0
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_LINK_ID         1
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_BEACON_TYPE     2
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_PROV_SRV_ADV    3
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_PROXY_SRV_ADV   4
 
 /**
  * Configure LE Data Length in controller (OGF = 0x08, OCF = 0x0022).
@@ -86,8 +91,8 @@ int ble_gap_wl_tx_clear(void);
  */
 int ble_gap_wl_read_size(uint8_t *size);
 
-#if MYNEWT_VAL(BLE_POWER_CONTROL)
 #if MYNEWT_VAL(BLE_HCI_VS)
+#if MYNEWT_VAL(BLE_POWER_CONTROL)
 
 #define ESP_1M_LOW    (-70)
 #define ESP_1M_HIGH   (-60)
@@ -160,6 +165,22 @@ struct ble_gap_set_auto_pcl_params {
  */
 int ble_gap_set_auto_pcl_param(struct ble_gap_set_auto_pcl_params *params);
 #endif
+
+/**
+ * This API  is used to send the Duplicate Exception list VSC to controller
+ *
+ * @param subcode	  The operation to be done (add/remove/clean)
+ *
+ * @param type            Exception list type
+ *
+ * @param value           Device address
+ *
+ * @cb 		          Registered callback
+ *
+ * @return                0 on success; nonzero on failure.
+ */
+
+int ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *value, void *cb);
 #endif
 
 #ifdef __cplusplus
