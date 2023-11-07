@@ -1085,7 +1085,6 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
         }
 
         /* Utilize cookie to get the index updated correctly for re-attempt */
-        ble_conn_reattempt[idx].cb_arg = &conn;
         conn_cookie_enabled = true;
 
         rc = ble_gap_connect(ble_conn_reattempt[idx].own_addr_type,
@@ -1093,7 +1092,7 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
                              ble_conn_reattempt[idx].duration_ms,
                              &ble_conn_reattempt[idx].conn_params,
                              ble_conn_reattempt[idx].cb,
-                             ble_conn_reattempt[idx].cb_arg);
+                             &conn);
         if (rc != 0) {
             return rc;
         }
