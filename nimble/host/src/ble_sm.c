@@ -937,6 +937,8 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
     struct ble_sm_proc *prev;
     struct ble_sm_proc *proc;
     int rm;
+    ble_hs_conn_flags_t conn_flags;
+    struct ble_hs_conn *conn;
 
     rm = 0;
 
@@ -979,6 +981,22 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
 
         if (proc == NULL) {
             break;
+        }
+
+	if (res->app_status == 518 ) {
+	    conn = ble_hs_conn_find(conn_handle);
+
+            conn_flags = conn->bhc_flags;
+
+            ble_sm_proc_free(proc);
+
+	    if (conn_flags & BLE_HS_CONN_F_MASTER) {
+	       ble_sm_pair_initiate(conn_handle);
+	    }
+	    else {
+	       ble_sm_slave_initiate(conn_handle);
+            }
+	    break;
         }
 
         if (res->enc_cb) {
