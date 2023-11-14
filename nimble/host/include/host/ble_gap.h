@@ -159,6 +159,13 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_BIGINFO_REPORT        30
 #define BLE_GAP_EVENT_REATTEMPT_COUNT       31
 #define BLE_GAP_EVENT_AUTHORIZE             32
+#define BLE_GAP_EVENT_TEST_UPDATE           33
+
+
+/* DTM events */
+#define BLE_GAP_DTM_TX_START_EVT            0
+#define BLE_GAP_DTM_RX_START_EVT            1
+#define BLE_GAP_DTM_END_EVT                 2
 
 /*** Reason codes for the subscribe GAP event. */
 
@@ -1212,6 +1219,30 @@ struct ble_gap_event {
 	    uint8_t count;
         } reattempt_cnt;
 #endif
+        /**
+	 * Represent a event for DTM test results
+	 *
+	 * Valid for the following event types:
+	 *      o BLE_GAP_EVENT_TEST_UPDATE
+	 */
+	struct {
+            /* Indicate DTM operation status */
+	    uint8_t status;
+
+	    /* DTM state change event. Can be following constants:
+	     *    o BLE_GAP_DTM_TX_START_EVT
+	     *    o BLE_GAP_DTM_RX_START_EVT
+	     *    o BLE_GAP_DTM_END_EVT
+	     */
+            uint8_t update_evt;
+
+	    /* Number of packets received.
+	     *
+	     * Valid only for BLE_GAP_DTM_END_EVT
+	     * shall be 0 for a transmitter.
+	     */
+            uint8_t num_pkt;
+	} dtm_state;
     };
 };
 
@@ -2739,6 +2770,71 @@ int ble_gap_set_path_loss_reporting_param(uint16_t conn_handle, uint8_t high_thr
  * @return                  0 on success; nonzero on failure.
  */
 int ble_gap_set_data_related_addr_change_param(uint8_t adv_handle, uint8_t change_reason);
+
+/**
+ * Start a test where the DUT generates reference packets at a fixed interval.
+ *
+ * @param tx_chan          Channel for sending test data,
+ *                         tx_channel = (Frequency -2402)/2, tx_channel range = 0x00-0x27,
+ *                         Frequency range = 2402 MHz to 2480 MHz.
+ *
+ * @param test_data_len    Length in bytes of payload data in each packet
+ * @param payload	   Packet Payload type. Valid range: 0x00 - 0x07
+ *
+ * @return                 0 on success; nonzero on failure
+ */
+
+int ble_gap_dtm_tx_start(uint8_t tx_chan, uint8_t test_data_len, uint8_t payload);
+
+/**
+ * Start a test where the DUT receives test reference packets at a fixed interval.
+ *
+ * @param rx_chan          Channel for test data reception,
+ *                         rx_channel = (Frequency -2402)/2, tx_channel range = 0x00-0x27,
+ *                         Frequency range = 2402 MHz to 2480 MHz.
+ *
+ * @return                 0 on success; nonzero on failure
+ */
+
+int ble_gap_dtm_rx_start(uint8_t rx_chan);
+
+/**
+ * Stop any test which is in progress
+ *
+ * @return	           0 on success; nonzero on failure
+ */
+
+int ble_gap_dtm_stop(void);
+
+/**
+ * Start a test where the DUT generates reference packets at a fixed interval.
+ *
+ * @param tx_chan          Channel for sending test data,
+ *                         tx_channel = (Frequency -2402)/2, tx_channel range = 0x00-0x27,
+ *                         Frequency range: 2402 MHz to 2480 MHz
+ *
+ * @param test_data_len    Length in bytes of payload data in each packet
+ * @param payload	   Packet payload type. Valid range: 0x00 - 0x07
+ * @param phy              Phy used by transmitter 1M phy: 0x01, 2M phy:0x02, coded phy:0x03.
+ *
+ * @return                 0 on sucess; nonzero on failure
+ */
+int ble_gap_dtm_enh_tx_start(uint8_t tx_chan, uint8_t test_data_len, uint8_t payload,
+		             uint8_t phy);
+
+/**
+ * Start a test where the DUT receives test reference packets at fixed interval
+ *
+ * @param  rx_chan        Channel for test data reception,
+ *                        rx_channel = (Frequency -2402)/2, tx_channel range = 0x00-0x27,
+ *                        Frequency range: 2402 MHz to 2480 MHz
+ *
+ * @param index 	  modulation index, 0x00:standard modulation index, 0x01:stable modulation index
+ * @param phy             Phy type used by the receiver, 1M phy: 0x01, 2M phy:0x02, coded phy:0x03
+ *
+ * @return                0 on success; nonzero on failure
+ */
+int ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy);
 
 #ifdef __cplusplus
 }

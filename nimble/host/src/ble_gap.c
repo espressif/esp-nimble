@@ -7153,6 +7153,65 @@ ble_gap_authorize_event(uint16_t conn_handle, uint16_t attr_handle,
     return BLE_GAP_AUTHORIZE_REJECT;
 }
 
+void
+ble_gap_rx_test_evt(const void *buf, uint8_t len)
+{
+    struct ble_gap_event event;
+    struct ble_hci_ev_command_complete *cmd_complete = (void *) buf;
+    uint8_t status;
+
+    status = cmd_complete->status;
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_TEST_UPDATE;
+    event.dtm_state.status = status ;
+    event.dtm_state.update_evt = BLE_GAP_DTM_RX_START_EVT;
+    event.dtm_state.num_pkt = 0;
+
+    ble_gap_event_listener_call(&event);
+}
+
+void
+ble_gap_tx_test_evt(const void *buf, uint8_t len)
+{
+    struct ble_gap_event event;
+    struct ble_hci_ev_command_complete *cmd_complete = (void *) buf;
+    uint8_t status;
+
+    status = cmd_complete->status;
+
+    memset(&event, 0, sizeof event);
+
+    event.type = BLE_GAP_EVENT_TEST_UPDATE;
+    event.dtm_state.status = status ;
+    event.dtm_state.update_evt = BLE_GAP_DTM_TX_START_EVT;
+    event.dtm_state.num_pkt = 0;
+
+    ble_gap_event_listener_call(&event);
+}
+
+void
+ble_gap_end_test_evt(const void *buf, uint8_t len)
+{
+    struct ble_gap_event event;
+    struct ble_hci_ev_command_complete *cmd_complete = (void *) buf;
+    uint8_t status, *ptr;
+    uint16_t num_pkt;
+
+    status = cmd_complete->status;
+    ptr = (uint8_t *)cmd_complete->return_params;
+
+    num_pkt = htole16(*ptr);
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_TEST_UPDATE;
+    event.dtm_state.status = status ;
+    event.dtm_state.update_evt = BLE_GAP_DTM_END_EVT;
+    event.dtm_state.num_pkt = num_pkt;
+
+    ble_gap_event_listener_call(&event);
+}
+
 /*****************************************************************************
  * $preempt                                                                  *
  *****************************************************************************/
@@ -7663,6 +7722,37 @@ int
 ble_gap_set_data_related_addr_change_param(uint8_t adv_handle, uint8_t change_reason)
 {
     return ble_hs_hci_util_set_data_addr_change(adv_handle, change_reason);
+}
+
+int
+ble_gap_dtm_tx_start(uint8_t tx_chan, uint8_t test_data_len, uint8_t payload)
+{
+    return ble_hs_hci_dtm_tx_start(tx_chan, test_data_len, payload);
+}
+
+int
+ble_gap_dtm_rx_start(uint8_t rx_chan)
+{
+    return ble_hs_hci_dtm_rx_start(rx_chan);
+}
+
+int
+ble_gap_dtm_stop(void)
+{
+    return ble_hs_hci_dtm_stop();
+}
+
+int
+ble_gap_dtm_enh_tx_start(uint8_t tx_chan, uint8_t test_data_len, uint8_t payload,
+		         uint8_t phy)
+{
+    return ble_hs_hci_dtm_enh_tx_start(tx_chan, test_data_len, payload, phy);
+}
+
+int
+ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy)
+{
+    return ble_hs_hci_dtm_enh_rx_start(rx_chan, index, phy);
 }
 
 void
