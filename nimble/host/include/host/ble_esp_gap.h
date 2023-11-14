@@ -197,6 +197,10 @@ int ble_gap_set_chan_select(uint8_t select);
 
 #endif
 
+void ble_gap_rx_test_evt(const void *buf, uint8_t len);
+void ble_gap_tx_test_evt(const void *buf, uint8_t len);
+void ble_gap_end_test_evt(const void *buf, uint8_t len);
+
 #ifdef __cplusplus
 }
 #endif

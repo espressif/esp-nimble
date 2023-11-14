@@ -400,6 +400,17 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
     switch (ev->opcode) {
     case BLE_HCI_EVCODE_COMMAND_COMPLETE:
         enqueue = (cmd_complete->opcode == BLE_HCI_OPCODE_NOP);
+
+	/* Check for BLE transmit opcodes which come in command complete */
+	switch(cmd_complete->opcode) {
+	    case BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_RX_TEST):
+	    case BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_TX_TEST):
+	    case BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_TEST_END):
+	    case BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_RX_TEST_V2):
+	    case BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_TX_TEST_V2):
+	        enqueue = 1;
+	        break;
+	}
         break;
     case BLE_HCI_EVCODE_COMMAND_STATUS:
         enqueue = (cmd_status->opcode == BLE_HCI_OPCODE_NOP);
