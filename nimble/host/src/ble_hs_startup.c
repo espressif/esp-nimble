@@ -412,7 +412,6 @@ ble_hs_startup_go(void)
 {
     //struct ble_store_gen_key gen_key;
     int rc;
-    uint8_t irk[16];
 
     rc = ble_hs_startup_reset_tx();
     if (rc != 0) {
@@ -487,7 +486,7 @@ ble_hs_startup_go(void)
 #endif
     ble_hs_pvcy_set_default_irk();
 
-    ble_hs_pvcy_set_our_irk(irk);
+    ble_hs_pvcy_set_our_irk(NULL);
 
     /* If flow control is enabled, configure the controller to use it. */
     ble_hs_flow_startup();
