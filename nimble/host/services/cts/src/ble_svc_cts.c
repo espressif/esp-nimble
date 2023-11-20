@@ -105,8 +105,7 @@ ble_svc_cts_chr_write(struct os_mbuf *om, uint16_t min_len,
 
 int ble_svc_cts_curr_time_validate(struct ble_svc_cts_curr_time curr_time) {
     if(curr_time.et_256.d_d_t.day_of_week > 7  ||
-       (curr_time.et_256.d_d_t.d_t.year < 1582 &&
-        curr_time.et_256.d_d_t.d_t.year != 0 ) ||
+       (curr_time.et_256.d_d_t.d_t.year < 1582)||
        curr_time.et_256.d_d_t.d_t.year > 9999  ||
        curr_time.et_256.d_d_t.d_t.month > 12   ||
        curr_time.et_256.d_d_t.d_t.day > 31     ||
