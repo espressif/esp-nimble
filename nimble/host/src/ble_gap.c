@@ -6612,6 +6612,7 @@ ble_gap_encryption_initiate(uint16_t conn_handle,
 int
 ble_gap_unpair(const ble_addr_t *peer_addr)
 {
+
 #if NIMBLE_BLE_SM
     int rc;
     int ltk_rc = 0;
@@ -6662,17 +6663,24 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             }
         }
 
-        if (value.sec.ltk_present) {
+        if (value.sec.ltk_present || value.sec.irk_present) {
             // Delete the Peer record from store as LTK is present
             ltk_rc = ble_store_util_delete_peer(&key.sec.peer_addr);
             if (ltk_rc != 0) {
-                 BLE_HS_LOG(ERROR, "Error while removing LTK\n");
+                BLE_HS_LOG(ERROR, "Error while removing LTK\n");
             }
         }
     }
     else {
-         BLE_HS_LOG(ERROR,"No record found for the given address in ble store");
-         return rc;
+         rc = ble_store_read(BLE_STORE_OBJ_TYPE_OUR_SEC, &key, &value);
+         if(!rc) {
+            ble_store_util_delete_peer(&key.sec.peer_addr);
+         }
+         else {
+              BLE_HS_LOG(ERROR,"No record found for the given address in ble store");
+              return rc;
+         }
+
     }
 
     return 0;

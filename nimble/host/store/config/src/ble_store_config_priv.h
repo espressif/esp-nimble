@@ -46,6 +46,10 @@ extern struct ble_store_value_rpa_rec
     ble_store_config_rpa_recs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
 extern int ble_store_config_num_rpa_recs;
 
+extern struct ble_store_value_local_irk
+    ble_store_config_local_irks[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+extern int ble_store_config_num_local_irks;
+
 
 #if MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST)
 
@@ -56,6 +60,7 @@ int ble_store_config_persist_cccds(void);
 int ble_store_config_persist_eads(void);
 #endif
 int ble_store_config_persist_rpa_recs(void);
+int ble_store_config_persist_local_irk(void);
 void ble_store_config_conf_init(void);
 
 #else
@@ -67,6 +72,7 @@ static inline int ble_store_config_persist_cccds(void)      { return 0; }
 static inline int ble_store_config_persist_eads(void)       { return 0; }
 #endif
 static inline int ble_store_config_persist_rpa_recs(void)   { return 0; }
+static inline int ble_store_config_persist_local_irk(void)   { return 0; }
 static inline void ble_store_config_conf_init(void)         { }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
