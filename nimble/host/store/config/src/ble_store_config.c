@@ -58,6 +58,10 @@ struct ble_store_value_rpa_rec
 #endif
 int ble_store_config_num_rpa_recs;
 
+struct ble_store_value_local_irk
+    ble_store_config_local_irks[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+int ble_store_config_num_local_irks;
+
 /*****************************************************************************
  * $sec                                                                      *
  *****************************************************************************/
@@ -561,6 +565,111 @@ ble_store_config_write_ead(const struct ble_store_value_ead *value_ead)
 }
 #endif
 
+// local irk
+
+static int
+ble_store_config_find_local_irk(const struct ble_store_key_local_irk *key)
+{
+    struct ble_store_value_local_irk *local_irk;
+    int skipped;
+    int i;
+
+    skipped = 0;
+    for (i = 0; i < ble_store_config_num_local_irks; i++) {
+        local_irk = ble_store_config_local_irks + i;
+
+        if (ble_addr_cmp(&key->addr, BLE_ADDR_ANY)) {
+            if (ble_addr_cmp(&local_irk->addr, &key->addr)) {
+                continue;
+            }
+        }
+
+        if (key->idx > skipped) {
+            skipped++;
+            continue;
+        }
+
+        return i;
+    }
+
+    return -1;
+}
+
+static int
+ble_store_config_delete_local_irk(const struct ble_store_key_local_irk *key_irk)
+{
+    int idx;
+    int rc;
+
+    idx = ble_store_config_find_local_irk(key_irk);
+    if (idx == -1) {
+        return BLE_HS_ENOENT;
+    }
+
+    rc = ble_store_config_delete_obj(ble_store_config_local_irks,
+                                     sizeof *ble_store_config_local_irks,
+                                     idx,
+                                     &ble_store_config_num_local_irks);
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = ble_store_config_persist_local_irk();
+    if (rc != 0) {
+        return rc;
+    }
+
+    return 0;
+}
+
+static int
+ble_store_config_read_local_irk(const struct ble_store_key_local_irk *key_irk,
+                           struct ble_store_value_local_irk *value_irk)
+{
+    int idx;
+
+    idx = ble_store_config_find_local_irk(key_irk);
+    if (idx == -1) {
+        return BLE_HS_ENOENT;
+    }
+
+    *value_irk = ble_store_config_local_irks[idx];
+    return 0;
+}
+
+static int
+ble_store_config_write_local_irk(const struct ble_store_value_local_irk *value_irk)
+{
+    struct ble_store_key_local_irk key_irk;
+    int idx;
+    int rc;
+
+    ble_store_key_from_value_local_irk(&key_irk, value_irk);
+    idx = ble_store_config_find_local_irk(&key_irk);
+
+    if (idx == -1) {
+        if (ble_store_config_num_local_irks >= 1) {
+            BLE_HS_LOG(DEBUG, "error persisting ead; too many entries (%d)\n",
+                       ble_store_config_num_local_irks);
+            return BLE_HS_ESTORE_CAP;
+        }
+
+        idx = ble_store_config_num_local_irks;
+        ble_store_config_num_local_irks++;
+    }
+
+    ble_store_config_local_irks[idx] = *value_irk;
+
+    rc = ble_store_config_persist_local_irk();
+    if (rc != 0) {
+        return rc;
+    }
+
+    return 0;
+}
+
+
+
 /*****************************************************************************
  * $rpa-map                                                                  *
  *****************************************************************************/
@@ -575,7 +684,7 @@ ble_store_config_find_rpa_rec(const struct ble_store_key_rpa_rec *key)
     for(i = 0; i < ble_store_config_num_rpa_recs; i++){
         rpa_rec = ble_store_config_rpa_recs + i;
 
-        if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr)) {
+        if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr) && ble_addr_cmp(&rpa_rec->peer_addr, &key->peer_rpa_addr)) {
             continue;
         }
         if (key->idx > skipped) {
@@ -715,7 +824,9 @@ ble_store_config_read(int obj_type, const union ble_store_key *key,
     case BLE_STORE_OBJ_TYPE_PEER_ADDR:
         rc = ble_store_config_read_rpa_rec(&key->rpa_rec, &value->rpa_rec);
         return rc;
-
+   case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
+       rc =  ble_store_config_read_local_irk(&key->local_irk, &value->local_irk);
+       return rc;
     default:
         return BLE_HS_ENOTSUP;
     }
@@ -754,6 +865,9 @@ ble_store_config_write(int obj_type, const union ble_store_value *val)
     case BLE_STORE_OBJ_TYPE_PEER_ADDR:
         rc = ble_store_config_write_rpa_rec(&val->rpa_rec);
         return rc;
+   case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
+       rc =  ble_store_config_write_local_irk(&val->local_irk);
+       return rc;
 
     default:
         return BLE_HS_ENOTSUP;
@@ -786,6 +900,10 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
 
     case BLE_STORE_OBJ_TYPE_PEER_ADDR:
         rc = ble_store_config_delete_rpa_rec(&key->rpa_rec);
+        return rc;
+   case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
+        rc =  ble_store_config_delete_local_irk(&key->local_irk);
+        return rc;
 
     default:
         return BLE_HS_ENOTSUP;
@@ -810,5 +928,6 @@ ble_store_config_init(void)
     ble_store_config_num_eads = 0;
 #endif
     ble_store_config_num_rpa_recs = 0;
+    ble_store_config_num_local_irks=0;
     ble_store_config_conf_init();
 }

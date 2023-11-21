@@ -202,25 +202,26 @@ ble_hs_pvcy_ensure_started(void)
 
 void ble_hs_pvcy_set_default_irk(void)
 {
-    struct ble_store_value_sec value_sec;
-    struct ble_store_key_sec key_sec;
+    struct ble_store_value_local_irk  value_local_irk;
+    struct ble_store_key_local_irk key_local_irk;
+
     uint8_t *local_id = NULL;
     int rc;
 
-    memset(&key_sec, 0, sizeof key_sec);
-    memset(&value_sec, 0x0, sizeof value_sec);
+    memset(&key_local_irk, 0, sizeof key_local_irk);
+    memset(&value_local_irk, 0x0, sizeof value_local_irk);
 
     ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
 
     /* Create key / value */
-    memcpy (key_sec.peer_addr.val , local_id, BLE_DEV_ADDR_LEN);
-    key_sec.peer_addr.type = BLE_ADDR_PUBLIC;
+    memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    key_local_irk.addr.type = BLE_ADDR_PUBLIC;
 
     /* Read NVS for local IRK */
-    rc = ble_store_read_our_sec(&key_sec, &value_sec);
 
-    if (value_sec.irk_present) {
-        memcpy(ble_hs_pvcy_default_irk, value_sec.irk, 16);
+    rc = ble_store_read_local_irk(&key_local_irk, &value_local_irk);
+    if (!rc) {
+        memcpy(ble_hs_pvcy_default_irk, value_local_irk.irk, 16);
     } else {
         /* No entry for local IRK found . Generate one and load in NVS */
         memset(ble_hs_pvcy_default_irk, 0x0, 16);
@@ -228,20 +229,18 @@ void ble_hs_pvcy_set_default_irk(void)
 
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "Failed to generate local IRK");
-	    return;
+            return;
         }
 
-        memset(&value_sec, 0x0, sizeof value_sec);
+        memset(&value_local_irk, 0x0, sizeof value_local_irk);
 
-        memcpy(value_sec.irk, ble_hs_pvcy_default_irk, 16);
+        memcpy(&value_local_irk.irk, ble_hs_pvcy_default_irk, 16);
 
-        value_sec.irk_present = 1;
+        memcpy(value_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
 
-        memcpy(value_sec.peer_addr.val, local_id, BLE_DEV_ADDR_LEN);
+        value_local_irk.addr.type = BLE_ADDR_PUBLIC;
 
-        value_sec.peer_addr.type = BLE_ADDR_PUBLIC;
-
-        ble_store_write_our_sec(&value_sec);
+        ble_store_write_local_irk(&value_local_irk);
     }
 }
 
