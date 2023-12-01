@@ -1655,13 +1655,13 @@ struct ble_gap_periodic_adv_params {
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
 /** @brief Periodic advertising enable parameters  */
-struct ble_gap_periodic_adv_enable_params {
+struct ble_gap_periodic_adv_start_params {
     /** If include adi in aux_sync_ind PDU */
     unsigned int include_adi:1;
 };
 
 /** @brief Periodic advertising sync reporting parameters  */
-struct ble_gap_periodic_adv_sync_report_params {
+struct ble_gap_periodic_adv_sync_reporting_params {
     /** If filter duplicates */
     unsigned int filter_duplicates:1;
 };
@@ -1721,7 +1721,7 @@ int ble_gap_periodic_adv_configure(uint8_t instance,
  */
 int
 ble_gap_periodic_adv_start(uint8_t instance,
-                           const struct ble_gap_periodic_adv_enable_params *params);
+                           const struct ble_gap_periodic_adv_start_params *params);
 
 #else
 /**
@@ -1756,8 +1756,8 @@ int ble_gap_periodic_adv_stop(uint8_t instance);
  * @return          0 on success or error code on failure.
  */
 int ble_gap_periodic_adv_set_data(uint8_t instance,
-                              struct os_mbuf *data,
-                              struct ble_gap_periodic_adv_set_data_params *params);
+                                  struct os_mbuf *data,
+                                  struct ble_gap_periodic_adv_set_data_params *params);
 #else
 /**
  * Configures the data to include in periodic advertisements for specified
@@ -1821,7 +1821,7 @@ int ble_gap_periodic_adv_sync_terminate(uint16_t sync_handle);
  */
 int ble_gap_periodic_adv_sync_reporting(uint16_t sync_handle,
                                         bool enable,
-                                        const struct ble_gap_periodic_adv_sync_report_params *params);
+                                        const struct ble_gap_periodic_adv_sync_reporting_params *params);
 #else
 /**
  * Disable or enable periodic reports for specified sync.
@@ -1867,13 +1867,11 @@ int ble_gap_periodic_adv_sync_set_info(uint8_t instance,
  * Set the default periodic sync transfer params.
  *
  *
- * @param conn_handle        Handle identifying connection.
  * @param params             Default Parameters for periodic sync transfer.
  *
  * @return                   0 on success; nonzero on failure.
  */
-int periodic_adv_set_default_sync_params(uint16_t conn_handle,
-                                         const struct ble_gap_periodic_sync_params *params);
+int periodic_adv_set_default_sync_params(const struct ble_gap_periodic_sync_params *params);
 
 /**
  * Enables or disables sync transfer reception on specified connection.
