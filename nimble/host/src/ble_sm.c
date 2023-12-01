@@ -2859,7 +2859,6 @@ ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey)
 
         case BLE_SM_IOACT_NUMCMP:
             if (!pkey->numcmp_accept) {
-                res.app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_NUMCMP);
                 res.sm_err = BLE_SM_ERR_NUMCMP;
             } else {
                 proc->flags |= BLE_SM_PROC_F_IO_INJECTED;
