@@ -5727,6 +5727,11 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         goto done;
     }
 
+    if (peer_addr == NULL) {
+        rc = BLE_HS_EINVAL;
+        goto done;
+    }
+
     if (peer_addr &&
         peer_addr->type != BLE_ADDR_PUBLIC &&
         peer_addr->type != BLE_ADDR_RANDOM &&
