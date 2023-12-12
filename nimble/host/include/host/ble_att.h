@@ -135,6 +135,7 @@ struct os_mbuf;
  */
 
 /** Error Response. */
+
 #define BLE_ATT_OP_ERROR_RSP                0x01
 
 /** MTU Request. */

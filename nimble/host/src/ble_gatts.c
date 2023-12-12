@@ -2050,12 +2050,11 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
     uint16_t len;
     int rc = 0;
     int i;
-    int rfu_mask = 7;
 
     BLE_HS_LOG(DEBUG, "");
 
     if (!om) {
-        return BLE_HS_EINVAL;
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
     /* RFU bits are ignored so we can skip any bytes larger than supported */
@@ -2076,7 +2075,7 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
     ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
     if (conn == NULL) {
-        rc = BLE_HS_ENOTCONN;
+        rc = BLE_ATT_ERR_UNLIKELY;
         goto done;
     }
 
