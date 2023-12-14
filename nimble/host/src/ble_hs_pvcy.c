@@ -214,7 +214,11 @@ void ble_hs_pvcy_set_default_irk(void)
     ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
 
     /* Create key / value */
-    memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    /* Some controllers give all 0s as address. Handle such case */
+    if (local_id) {
+        memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    }
+
     key_local_irk.addr.type = BLE_ADDR_PUBLIC;
 
     /* Read NVS for local IRK */
@@ -236,7 +240,9 @@ void ble_hs_pvcy_set_default_irk(void)
 
         memcpy(&value_local_irk.irk, ble_hs_pvcy_default_irk, 16);
 
-        memcpy(value_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
+        if (local_id) {
+            memcpy(value_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
+        }
 
         value_local_irk.addr.type = BLE_ADDR_PUBLIC;
 
