@@ -187,6 +187,14 @@ int ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *val
  * @return                0 on success; nonzero on failure.
  */
 int ble_gap_clear_legacy_adv(void);
+
+/**
+ * This API is used to let controller know which CSA to use. Not applicable for ESP32
+ *
+ * @return                0 on success; nonzero of failure.
+ */
+int ble_gap_set_chan_select(uint8_t select);
+
 #endif
 
 #ifdef __cplusplus
