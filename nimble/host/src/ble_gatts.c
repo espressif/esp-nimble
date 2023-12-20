@@ -1869,7 +1869,14 @@ ble_gatts_chr_updated(uint16_t chr_val_handle)
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
         clt_cfg = ble_gatts_clt_cfg_find(&conn->bhc_gatt_svr.clt_cfgs,
                                          chr_val_handle);
+
+	if (clt_cfg == NULL) {
+	    break;
+	}
 #else
+	if (conn->bhc_gatt_svr.clt_cfgs == NULL ) {
+	    break;
+	}
         BLE_HS_DBG_ASSERT_EVAL(conn->bhc_gatt_svr.num_clt_cfgs >
                                clt_cfg_idx);
         clt_cfg = conn->bhc_gatt_svr.clt_cfgs + clt_cfg_idx;
