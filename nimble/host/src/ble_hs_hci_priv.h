@@ -80,7 +80,7 @@ struct hci_periodic_adv_params
 #endif
 
 struct ble_hs_hci_sup_cmd {
-    uint8_t commands[64];
+    unsigned event_mask2 : 1; /** Indicates whether the controller supports the set event mask page 2 command */
 };
 
 extern uint16_t ble_hs_hci_avail_pkts;
