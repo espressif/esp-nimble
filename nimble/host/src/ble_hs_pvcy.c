@@ -263,54 +263,51 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
         memcpy(new_irk, ble_hs_pvcy_default_irk, 16);
     }
 
-    /* Clear the resolving list if this is a new IRK. */
-    if (memcmp(ble_hs_pvcy_irk, new_irk, 16) != 0) {
-        memcpy(ble_hs_pvcy_irk, new_irk, 16);
+    memcpy(ble_hs_pvcy_irk, new_irk, 16);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-        if (irk != NULL) {
-            bool rpa_state = false;
+    if (irk != NULL) {
+       bool rpa_state = false;
 
-            if ((rpa_state = ble_host_rpa_enabled()) == true) {
-                ble_hs_resolv_enable(0);
-            }
+       if ((rpa_state = ble_host_rpa_enabled()) == true) {
+            ble_hs_resolv_enable(0);
+       }
 
-            ble_hs_resolv_list_clear_all();
+       ble_hs_resolv_list_clear_all();
 
-            if (rpa_state) {
-                ble_hs_resolv_enable(1);
-            }
-        }
+       if (rpa_state) {
+             ble_hs_resolv_enable(1);
+       }
+   }
 #else
-        rc = ble_hs_pvcy_set_resolve_enabled(0);
-        if (rc != 0) {
-            return rc;
-        }
+    rc = ble_hs_pvcy_set_resolve_enabled(0);
+    if (rc != 0) {
+       return rc;
+    }
 
-        rc = ble_hs_pvcy_clear_entries();
-        if (rc != 0) {
-            return rc;
-        }
+    rc = ble_hs_pvcy_clear_entries();
+    if (rc != 0) {
+       return rc;
+    }
 
-        rc = ble_hs_pvcy_set_resolve_enabled(1);
-        if (rc != 0) {
-            return rc;
-        }
+    rc = ble_hs_pvcy_set_resolve_enabled(1);
+    if (rc != 0) {
+       return rc;
+    }
 
 #endif
-        /*
-         * Add local IRK entry with 00:00:00:00:00:00 address. This entry will
-         * be used to generate RPA for non-directed advertising if own_addr_type
-         * is set to rpa_pub since we use all-zero address as peer addres in
-         * such case. Peer IRK should be left all-zero since this is not for an
-         * actual peer.
-         */
-        memset(tmp_addr, 0, 6);
-        memset(new_irk, 0, 16);
-        rc = ble_hs_pvcy_add_entry(tmp_addr, 0, new_irk);
-        if (rc != 0) {
-            return rc;
-        }
+    /*
+      * Add local IRK entry with 00:00:00:00:00:00 address. This entry will
+      * be used to generate RPA for non-directed advertising if own_addr_type
+      * is set to rpa_pub since we use all-zero address as peer addres in
+      * such case. Peer IRK should be left all-zero since this is not for an
+      * actual peer.
+      */
+    memset(tmp_addr, 0, 6);
+    memset(new_irk, 0, 16);
+    rc = ble_hs_pvcy_add_entry(tmp_addr, 0, new_irk);
+    if (rc != 0) {
+        return rc;
     }
 
     return 0;
