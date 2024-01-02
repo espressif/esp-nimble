@@ -126,7 +126,7 @@ struct ble_gap_connect_reattempt_ctxt {
 };
 
 static struct ble_gap_connect_reattempt_ctxt ble_conn_reattempt[MYNEWT_VAL(BLE_MAX_CONNECTIONS)];
-#if !MYNEWT_VAL(BLE_EXT_ADV) && MYNEWT_VAL(BLE_ROLE_CENTRAL)
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL)
 static uint16_t reattempt_idx;
 #endif
 static bool conn_cookie_enabled;
@@ -5644,6 +5644,55 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    /* ble_gap_connect_reattempt save the connection parameters */
+    if ((cb_arg != NULL) && conn_cookie_enabled) {
+        struct ble_gap_conn_desc *conn_desc =  cb_arg;
+        struct ble_gap_conn_desc *curr_conn_desc=NULL;
+        /* reattempt_idx is set to that index where corresponding conn_handle entry was made  */
+        for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+             curr_conn_desc = ble_conn_reattempt[i].cb_arg;
+             if (curr_conn_desc && (conn_desc->conn_handle == curr_conn_desc->conn_handle)) {
+                 reattempt_idx = i;
+                 break;
+             }
+        }
+        /* Reset cookie_enabled flag, it will be set again by reattempt call */
+        conn_cookie_enabled = false;
+    }
+
+    ble_conn_reattempt[reattempt_idx].own_addr_type = own_addr_type;
+    memcpy(&ble_conn_reattempt[reattempt_idx].peer_addr, peer_addr,
+           sizeof(ble_addr_t));
+    ble_conn_reattempt[reattempt_idx].duration_ms = duration_ms;
+
+    if (phy_mask & BLE_GAP_LE_PHY_1M_MASK) {
+        memcpy(&ble_conn_reattempt[reattempt_idx].conn_params,
+               phy_1m_conn_params,
+               sizeof(struct ble_gap_conn_params));
+    }
+
+    if (phy_mask & BLE_GAP_LE_PHY_2M_MASK) {
+         memcpy(&ble_conn_reattempt[reattempt_idx].conn_params,
+               phy_2m_conn_params,
+               sizeof(struct ble_gap_conn_params));
+    }
+
+    if (phy_mask & BLE_GAP_LE_PHY_CODED_MASK) {
+        memcpy(&ble_conn_reattempt[reattempt_idx].conn_params,
+               phy_coded_conn_params,
+               sizeof(struct ble_gap_conn_params));
+    }
+
+    ble_conn_reattempt[reattempt_idx].cb = cb;
+    ble_conn_reattempt[reattempt_idx].cb_arg = cb_arg;
+    /* reattempt_idx need to be within limits. This may end up being unnecessary
+     * operation. However, it is better to be sure as it can get tricky with
+     * multiple connections and client + server roles XXX*/
+    reattempt_idx = (reattempt_idx + 1) % MYNEWT_VAL(BLE_MAX_CONNECTIONS);
+#endif
+
+
     rc = ble_gap_ext_conn_create_tx(own_addr_type, peer_addr, phy_mask,
                                     phy_1m_conn_params, phy_2m_conn_params,
                                     phy_coded_conn_params);
@@ -5807,6 +5856,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
            sizeof(struct ble_gap_conn_params));
     ble_conn_reattempt[reattempt_idx].cb = cb;
     ble_conn_reattempt[reattempt_idx].cb_arg = cb_arg;
+
     /* reattempt_idx need to be within limits. This may end up being unnecessary
      * operation. However, it is better to be sure as it can get tricky with
      * multiple connections and client + server roles XXX*/
