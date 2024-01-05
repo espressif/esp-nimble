@@ -5750,6 +5750,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                                conn_params, NULL, NULL, cb, cb_arg);
 #else
     uint32_t duration_ticks;
+    ble_addr_t bhc_peer_addr;
     int rc;
 
     STATS_INC(ble_gap_stats, initiate);
@@ -5846,6 +5847,19 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
+    bhc_peer_addr.type = peer_addr->type;
+    memcpy(bhc_peer_addr.val, peer_addr->val, BLE_DEV_ADDR_LEN);
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    struct ble_hs_resolv_entry *rl = NULL;
+    rl = ble_hs_resolv_list_find(bhc_peer_addr.val);
+
+    if (rl != NULL) {
+        memcpy(bhc_peer_addr.val, rl->rl_peer_rpa, BLE_DEV_ADDR_LEN);
+        bhc_peer_addr.type = rl->rl_addr_type;
+    }
+#endif
+
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     /* ble_gap_connect_reattempt save the connection parameters */
     if ((cb_arg != NULL) && conn_cookie_enabled) {
@@ -5864,7 +5878,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     }
 
     ble_conn_reattempt[reattempt_idx].own_addr_type = own_addr_type;
-    memcpy(&ble_conn_reattempt[reattempt_idx].peer_addr, peer_addr,
+    memcpy(&ble_conn_reattempt[reattempt_idx].peer_addr, &bhc_peer_addr,
            sizeof(ble_addr_t));
     ble_conn_reattempt[reattempt_idx].duration_ms = duration_ms;
     memcpy(&ble_conn_reattempt[reattempt_idx].conn_params,
@@ -5879,7 +5893,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     reattempt_idx = (reattempt_idx + 1) % MYNEWT_VAL(BLE_MAX_CONNECTIONS);
 #endif
 
-    rc = ble_gap_conn_create_tx(own_addr_type, peer_addr,
+    rc = ble_gap_conn_create_tx(own_addr_type, &bhc_peer_addr,
                                 conn_params);
     if (rc != 0) {
         ble_gap_master_reset_state();
@@ -6706,6 +6720,10 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
     }
 
     ble_hs_unlock();
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_hs_pvcy_remove_entry(peer_addr->type, peer_addr->val);
+#endif
 
     memset(&key,0,sizeof(key));
     key.rpa_rec.peer_rpa_addr = *peer_addr;
