@@ -500,8 +500,7 @@ ble_hs_is_on_resolv_list(uint8_t *addr, uint8_t addr_type)
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];
 
     for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
-        if ((rl->rl_addr_type == addr_type) &&
-                (!memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN))) {
+        if ((!memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN)) || (!memcmp(rl->rl_peer_rpa, addr, BLE_DEV_ADDR_LEN))) {
             return i;
         }
         ++rl;
@@ -721,6 +720,25 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
                           (int32_t)g_ble_hs_resolv_data.rpa_tmo);
 
     return 0;
+}
+
+struct ble_hs_resolv_entry *
+ble_hs_resolv_rpa_addr(uint8_t *addr, uint8_t addr_type) {
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    int i;
+    struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];
+
+    for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
+        if(ble_hs_resolv_rpa(addr, rl->rl_peer_irk) == 0) {
+            memcpy(g_ble_hs_resolv_list[i].rl_peer_rpa, addr, BLE_DEV_ADDR_LEN);
+            g_ble_hs_resolv_list[i].rl_addr_type = addr_type;
+            return rl;
+        }
+
+        ++rl;
+    }
+#endif
+    return NULL;
 }
 
 /**

@@ -79,6 +79,10 @@ void ble_hs_resolv_nrpa_disable(void);
 struct ble_hs_resolv_entry *
 ble_hs_resolv_list_find(uint8_t *addr);
 
+/* Resolve a Resolvable Private Address and maintain mapping of RPA */
+struct ble_hs_resolv_entry *
+ble_hs_resolv_rpa_addr(uint8_t *addr, uint8_t addr_type);
+
 /* Returns true if host based RPA (privacy) is enabled */
 bool ble_host_rpa_enabled(void);
 
