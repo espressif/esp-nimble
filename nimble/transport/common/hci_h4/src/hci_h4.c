@@ -31,10 +31,6 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
-#ifndef max
-#define max(a, b) ((a) > (b) ? (a) : (b))
-#endif
-
 #define HCI_H4_SM_W4_PKT_TYPE   0
 #define HCI_H4_SM_W4_HEADER     1
 #define HCI_H4_SM_W4_PAYLOAD    2
@@ -168,9 +164,6 @@ hci_h4_sm_w4_header(struct hci_h4_sm *h4sm, struct hci_h4_input_buffer *ib)
         }
 
         h4sm->exp_len = h4sm->hdr[1] + 2;
-        if (h4sm->exp_len > MYNEWT_VAL(BLE_TRANSPORT_EVT_SIZE)) {
-            return -1;
-        }
         break;
     case HCI_H4_ISO:
         assert(h4sm->allocs && h4sm->allocs->iso);
@@ -180,7 +173,7 @@ hci_h4_sm_w4_header(struct hci_h4_sm *h4sm, struct hci_h4_input_buffer *ib)
         }
 
         os_mbuf_append(h4sm->om, h4sm->hdr, h4sm->len);
-        h4sm->exp_len = BLE_HCI_ISO_LENGTH(get_le16(&h4sm->hdr[2])) + 4;
+        h4sm->exp_len = (get_le16(&h4sm->hdr[2]) & 0x7fff) + 4;
         break;
     default:
         assert(0);

@@ -104,7 +104,7 @@ static const char *TAG = "Timer";
 
 #define BLE_TOTAL_MUTEX_COUNT (10)
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
 
 struct os_mempool ble_freertos_ev_pool;
 static os_membuf_t *ble_freertos_ev_buf = NULL;
@@ -1145,7 +1145,7 @@ int npl_freertos_mempool_init(void)
 {
     int rc = -1;
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     ble_freertos_ev_buf  = malloc(OS_MEMPOOL_SIZE(BLE_TOTAL_EV_COUNT, sizeof (struct ble_npl_event_freertos)) * sizeof(os_membuf_t));
     if(!ble_freertos_ev_buf) {
         goto _error;
@@ -1205,7 +1205,7 @@ int npl_freertos_mempool_init(void)
     }
 _error:
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     if(ble_freertos_ev_buf) {
         free(ble_freertos_ev_buf);
 	ble_freertos_ev_buf = NULL;
@@ -1236,7 +1236,7 @@ _error:
 
 void npl_freertos_mempool_deinit(void)
 {
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     if(ble_freertos_ev_buf) {
         free(ble_freertos_ev_buf);
 	ble_freertos_ev_buf = NULL;

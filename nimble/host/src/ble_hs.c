@@ -808,7 +808,7 @@ ble_hs_init(void)
     ble_hs_evq_set(nimble_port_get_dflt_eventq());
 #endif
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     /* Configure the HCI transport to communicate with a host. */
     ble_hci_trans_cfg_hs(ble_hs_hci_rx_evt, NULL, ble_hs_rx_data, NULL);
 #endif
@@ -866,7 +866,7 @@ ble_hs_deinit(void)
     ble_monitor_deinit();
 #endif
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     ble_hci_trans_cfg_hs(NULL, NULL, NULL, NULL);
 #endif
 

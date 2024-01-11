@@ -265,7 +265,7 @@ ble_hs_flow_startup(void)
 
     /* Flow control successfully enabled. */
     ble_hs_flow_num_completed_pkts = 0;
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     ble_hci_trans_set_acl_free_cb(ble_hs_flow_acl_free, NULL);
 #else
     ble_transport_register_put_acl_from_ll_cb(ble_hs_flow_acl_free);
