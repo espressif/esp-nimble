@@ -21,7 +21,7 @@
 #include "host/util/util.h"
 #include "../src/ble_hs_hci_priv.h"
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
 #include "esp_bt.h"
 #endif
 
@@ -43,7 +43,7 @@ ble_hs_util_load_rand_addr(ble_addr_t *addr)
     }
 #endif
 
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     rc = esp_ble_hw_get_static_addr((esp_ble_addr_t *)addr);
     if (rc == 0) {
         return 0;

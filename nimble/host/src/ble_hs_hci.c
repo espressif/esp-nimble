@@ -429,7 +429,7 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
     return 0;
 }
 
-#if !(SOC_ESP_NIMBLE_CONTROLLER)
+#if !(SOC_ESP_NIMBLE_CONTROLLER) || !(CONFIG_BT_CONTROLLER_ENABLED)
 /**
  * Calculates the largest ACL payload that the controller can accept.
  */
@@ -552,7 +552,7 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
 
     /* Send fragments until the entire packet has been sent. */
     while (txom != NULL && ble_hs_hci_avail_pkts > 0) {
-#if SOC_ESP_NIMBLE_CONTROLLER
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
         frag = mem_split_frag(&txom, BLE_ACL_MAX_PKT_SIZE, ble_hs_hci_frag_alloc, NULL);
 #else
         frag = mem_split_frag(&txom, ble_hs_hci_max_acl_payload_sz(), ble_hs_hci_frag_alloc, NULL);

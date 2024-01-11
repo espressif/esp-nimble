@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 #include <inttypes.h>
-
+#include "driver/uart.h"
 
 /**
  * Function prototype for UART driver to ask for more data to send.

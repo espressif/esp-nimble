@@ -21,7 +21,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nimble/nimble_port.h"
+#if CONFIG_BT_CONTROLLER_ENABLED
 #include "esp_bt.h"
+#endif
 
 static TaskHandle_t host_task_h = NULL;
 
