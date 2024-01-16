@@ -158,6 +158,7 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_VS_HCI                29
 #define BLE_GAP_EVENT_BIGINFO_REPORT        30
 #define BLE_GAP_EVENT_REATTEMPT_COUNT       31
+#define BLE_GAP_EVENT_AUTHORIZE             32
 
 /*** Reason codes for the subscribe GAP event. */
 
@@ -187,6 +188,10 @@ struct hci_conn_update;
 #define BLE_NON_RPA_MASK                    0x3F
 
 /** @} */
+
+/* Response values for gatt read/write authorization event */
+#define BLE_GAP_AUTHORIZE_ACCEPT            1
+#define BLE_GAP_AUTHORIZE_REJECT            2
 
 /** Connection security state */
 struct ble_gap_sec_state {
@@ -1165,6 +1170,31 @@ struct ble_gap_event {
             uint8_t length;
         } vs_hci;
 #endif
+
+        /**
+         * GATT Authorization Event. Ask the user to authorize a GATT
+         * read/write operation.
+         *
+         * Valid for the following event types:
+         * o BLE_GAP_EVENT_AUTHORIZE
+         *
+         * Valid responses from user:
+         * o BLE_GAP_AUTHORIZE_ACCEPT
+         * o BLE_GAP_AUTHORIZE_REJECT
+         */
+        struct {
+            /* Connection Handle */
+            uint16_t conn_handle;
+
+            /* Attribute handle of the attribute being accessed. */
+            uint16_t attr_handle;
+
+            /* Weather the operation is a read or write operation. */
+            int is_read;
+
+            /* User's response */
+            int out_response;
+        } authorize;
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 	/**
