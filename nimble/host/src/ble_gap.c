@@ -122,6 +122,7 @@ static const struct ble_gap_conn_params ble_gap_conn_params_dflt = {
 struct ble_gap_connect_reattempt_ctxt {
     uint8_t own_addr_type;
     ble_addr_t peer_addr;
+    uint8_t peer_addr_present:1;
     int32_t duration_ms;
     struct ble_gap_conn_params conn_params;
     ble_gap_event_fn *cb;
@@ -1030,7 +1031,7 @@ ble_gap_find_retry_conn_param(const struct ble_gap_conn_desc *conn_desc)
     int i;
 
     for(i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
-        if (memcmp(&ble_conn_reattempt[i].peer_addr, &conn_desc->peer_ota_addr, sizeof(ble_addr_t)) == 0) {
+        if (ble_conn_reattempt[i].peer_addr_present == 1 && memcmp(&ble_conn_reattempt[i].peer_addr, &conn_desc->peer_ota_addr, sizeof(ble_addr_t)) == 0) {
             return i;
         }
     }
@@ -1089,7 +1090,7 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
         conn_cookie_enabled = true;
 
         rc = ble_gap_connect(ble_conn_reattempt[idx].own_addr_type,
-                             &ble_conn_reattempt[idx].peer_addr,
+                             (ble_conn_reattempt[idx].peer_addr_present == 1 ? &ble_conn_reattempt[idx].peer_addr : NULL),
                              ble_conn_reattempt[idx].duration_ms,
                              &ble_conn_reattempt[idx].conn_params,
                              ble_conn_reattempt[idx].cb,
@@ -1651,18 +1652,35 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
         return -1;
     }
 
+    if (MYNEWT_VAL(BLE_ROLE_OBSERVER)) {
+        /* Observer role is enabled; All adv reports regardless of
+         * Flags AD Type need to be discovered.
+         */
+        return 0;
+    }
+
+    rc = ble_hs_adv_find_field(BLE_HS_ADV_TYPE_FLAGS, adv_data, adv_data_len, &flags);
+
     /* If a limited discovery procedure is active, discard non-limited
      * advertisements.
      */
     if (ble_gap_master.disc.limited) {
-        rc = ble_hs_adv_find_field(BLE_HS_ADV_TYPE_FLAGS, adv_data,
-                                   adv_data_len, &flags);
-        if ((rc == 0) && (flags->length == 2) &&
-            !(flags->value[0] & BLE_HS_ADV_F_DISC_LTD)) {
+        if (rc != 0) {
+            /* The advertisement does not have Flags AD Type. Rejected */
+            return -1;
+        } else if ((flags->length == 2) && !(flags->value[0] & BLE_HS_ADV_F_DISC_LTD)) {
+            /* Limited flag is not set in Flags AD Type. Rejected */
+            return -1;
+        }
+    } else {
+        if (rc != 0) {
+            /* The advertisement does not have Flags AD Type. Rejected */
+            return -1;
+        } else if ((flags->length == 2) && !(flags->value[0] & (BLE_HS_ADV_F_DISC_LTD | BLE_HS_ADV_F_DISC_GEN))) {
+            /* General or Limited flag is not set in Flags AD Type. Rejected */
             return -1;
         }
     }
-
     return 0;
 }
 #endif
@@ -5791,11 +5809,6 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         goto done;
     }
 
-    if (peer_addr == NULL) {
-        rc = BLE_HS_EINVAL;
-        goto done;
-    }
-
     if (peer_addr &&
         peer_addr->type != BLE_ADDR_PUBLIC &&
         peer_addr->type != BLE_ADDR_RANDOM &&
@@ -5847,18 +5860,22 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
-    bhc_peer_addr.type = peer_addr->type;
-    memcpy(bhc_peer_addr.val, peer_addr->val, BLE_DEV_ADDR_LEN);
+    if (peer_addr != NULL) {
+        bhc_peer_addr.type = peer_addr->type;
+        memcpy(bhc_peer_addr.val, peer_addr->val, BLE_DEV_ADDR_LEN);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-    struct ble_hs_resolv_entry *rl = NULL;
-    rl = ble_hs_resolv_list_find(bhc_peer_addr.val);
+        struct ble_hs_resolv_entry *rl = NULL;
+        rl = ble_hs_resolv_list_find(bhc_peer_addr.val);
 
-    if (rl != NULL) {
-        memcpy(bhc_peer_addr.val, rl->rl_peer_rpa, BLE_DEV_ADDR_LEN);
-        bhc_peer_addr.type = rl->rl_addr_type;
-    }
+        if (rl != NULL) {
+            memcpy(bhc_peer_addr.val, rl->rl_peer_rpa, BLE_DEV_ADDR_LEN);
+            bhc_peer_addr.type = rl->rl_addr_type;
+        }
 #endif
+    } else {
+        memset(&bhc_peer_addr, 0, sizeof bhc_peer_addr);
+    }
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     /* ble_gap_connect_reattempt save the connection parameters */
@@ -5878,8 +5895,15 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     }
 
     ble_conn_reattempt[reattempt_idx].own_addr_type = own_addr_type;
-    memcpy(&ble_conn_reattempt[reattempt_idx].peer_addr, &bhc_peer_addr,
-           sizeof(ble_addr_t));
+    if (peer_addr != NULL) {
+        ble_conn_reattempt[reattempt_idx].peer_addr_present = 1;
+        memcpy(&ble_conn_reattempt[reattempt_idx].peer_addr, &bhc_peer_addr,
+               sizeof(ble_addr_t));
+    } else {
+        ble_conn_reattempt[reattempt_idx].peer_addr_present = 0;
+        memset(&ble_conn_reattempt[reattempt_idx].peer_addr, 0,
+               sizeof(ble_addr_t));
+    }
     ble_conn_reattempt[reattempt_idx].duration_ms = duration_ms;
     memcpy(&ble_conn_reattempt[reattempt_idx].conn_params,
            conn_params,
@@ -5893,8 +5917,13 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     reattempt_idx = (reattempt_idx + 1) % MYNEWT_VAL(BLE_MAX_CONNECTIONS);
 #endif
 
-    rc = ble_gap_conn_create_tx(own_addr_type, &bhc_peer_addr,
-                                conn_params);
+    if (peer_addr != NULL) {
+        rc = ble_gap_conn_create_tx(own_addr_type, &bhc_peer_addr,
+                                    conn_params);
+    } else {
+        rc = ble_gap_conn_create_tx(own_addr_type, NULL,
+                                    conn_params);
+    }
     if (rc != 0) {
         ble_gap_master_reset_state();
         goto done;
