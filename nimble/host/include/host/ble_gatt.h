@@ -1394,6 +1394,12 @@ int ble_gatts_peer_cl_sup_feat_get(uint16_t conn_handle, uint8_t *out_supported_
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 int ble_gatts_calculate_hash(uint8_t *out_hash_key);
 #endif
+
+/**
+ *  Returns the current number of configured characteristics
+ */
+int ble_gatts_get_cfgable_chrs(void);
+
 #ifdef __cplusplus
 }
 #endif

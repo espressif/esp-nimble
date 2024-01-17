@@ -327,7 +327,7 @@ ble_rpa_replace_peer_params_with_rl(uint8_t *peer_addr, uint8_t *addr_type,
  *
  * @return uint8_t
  */
-static uint8_t
+uint8_t
 is_ble_hs_resolv_enabled(void)
 {
     return g_ble_hs_resolv_data.addr_res_enabled;

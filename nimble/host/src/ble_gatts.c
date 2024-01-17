@@ -3149,6 +3149,12 @@ ble_gatts_count_cfg(const struct ble_gatt_svc_def *defs)
     return 0;
 }
 
+int
+ble_gatts_get_cfgable_chrs(void)
+{
+    return ble_gatts_num_cfgable_chrs;
+}
+
 void
 ble_gatts_lcl_svc_foreach(ble_gatt_svc_foreach_fn cb, void *arg)
 {

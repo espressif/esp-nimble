@@ -11,6 +11,19 @@
 extern "C" {
 #endif
 
+enum gap_status {
+    BLE_GAP_STATUS_ADV = 0,
+    BLE_GAP_STATUS_EXT_ADV,
+    BLE_GAP_STATUS_SCAN,
+    BLE_GAP_STATUS_CONN,
+    BLE_GAP_STATUS_PAIRED,
+    BLE_GAP_STATUS_GATTS,
+    BLE_GAP_STATUS_HOST_PRIVACY,
+    BLE_GAP_STATUS_PERIODIC,
+};
+
+typedef enum gap_status gap_status_t;
+
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_ADV_ADDR             0
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_LINK_ID         1
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_BEACON_TYPE     2
@@ -90,6 +103,14 @@ int ble_gap_wl_tx_clear(void);
  * @return                      0 on success; nonzero on failure.
  */
 int ble_gap_wl_read_size(uint8_t *size);
+
+/**
+ * This API gives the current status of various stack operations
+ *
+ * @return                      0 on success; nonzero bits indicating different
+ *                              operations as per enum gap_status.
+ */
+int ble_gap_host_check_status(void);
 
 #if MYNEWT_VAL(BLE_HCI_VS)
 #if MYNEWT_VAL(BLE_POWER_CONTROL)

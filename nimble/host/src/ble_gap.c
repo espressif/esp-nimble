@@ -31,6 +31,9 @@
 #include "ble_gattc_cache_priv.h"
 #endif
 
+#include "host/ble_hs_pvcy.h"
+#include "host/util/util.h"
+
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
@@ -7791,4 +7794,103 @@ void
 ble_gap_deinit(void)
 {
     ble_npl_mutex_deinit(&preempt_done_mutex);
+}
+
+int
+ble_gap_host_check_status(void)
+{
+    int status = 0;
+
+    uint16_t conn_handle = 0;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
+    uint16_t sync_handle = 0;
+#endif
+    struct ble_hs_conn *conn;
+    ble_addr_t oldest_peer_id_addr[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+    int num_peers;
+
+    /* Stop Advertising */
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    int i;
+
+    for (i=0; i< BLE_ADV_INSTANCES; i++) {
+	if (ble_gap_ext_adv_active(i)) {
+	    BLE_HS_LOG(ERROR, "Ext adv in progress for instance %d \n", i);
+	    status |= BIT(BLE_GAP_STATUS_EXT_ADV);
+	    break;
+        }
+    }
+
+#else
+    if (ble_gap_adv_active_instance(0)) {
+        BLE_HS_LOG(ERROR, "Gap Advertising is active \n");
+	status |= BIT(BLE_GAP_STATUS_ADV);
+    }
+#endif
+
+    /* Stop scanning */
+    if (ble_gap_disc_active()) {
+        BLE_HS_LOG(ERROR, "Scanning in progress \n");
+	status |= BIT(BLE_GAP_STATUS_SCAN);
+    }
+
+    /* Terminate links */
+    for (conn_handle=0; conn_handle<50; conn_handle++) {
+        ble_hs_lock();
+
+        conn = ble_hs_conn_find(conn_handle);
+
+	ble_hs_unlock();
+        if (conn != NULL) {
+	     BLE_HS_LOG(ERROR, "Connection exists \n");
+	     status |= BIT(BLE_GAP_STATUS_CONN);
+	     break;
+	}
+    }
+
+    /* Check for paired devices*/
+    ble_store_util_bonded_peers(&oldest_peer_id_addr[0],
+		    &num_peers, MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+
+    if (num_peers) {
+        BLE_HS_LOG(ERROR, "Unpaired device exists\n");
+	status |= BIT(BLE_GAP_STATUS_PAIRED);
+    }
+
+    /* gatts reset */
+    if (ble_gatts_get_cfgable_chrs()) {
+        BLE_HS_LOG(ERROR, "Gatt reset not done \n");
+        status |= BIT(BLE_GAP_STATUS_GATTS);
+    }
+
+    /* Check if privacy is disabled */
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    extern int is_ble_hs_resolv_enabled(void);
+
+    if (is_ble_hs_resolv_enabled()) {
+        BLE_HS_LOG(ERROR, "Host based Privacy not disabled \n");
+        status |= BIT(BLE_GAP_STATUS_HOST_PRIVACY);
+    }
+#endif
+
+    /* Periodic adv termination */
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
+    struct ble_hs_periodic_sync *psync;
+
+    for (sync_handle=0; sync_handle<50; sync_handle++) {
+        ble_hs_lock();
+
+        psync = ble_hs_periodic_sync_find_by_handle(sync_handle);
+
+	ble_hs_unlock();
+
+	if (psync) {
+	    BLE_HS_LOG(ERROR, "Periodic adv not disabled \n");
+            status |= BIT(BLE_GAP_STATUS_PERIODIC);
+	    break;
+	}
+    }
+#endif
+
+    return status;
 }
