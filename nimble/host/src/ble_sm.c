@@ -615,8 +615,13 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
     ble_sm_fill_store_value(&peer_addr, authenticated, sc, &proc->peer_keys,
                             &value_sec);
     ble_store_write_peer_sec(&value_sec);
-    value_rpa_rec.peer_addr=peer_addr;
-    value_rpa_rec.peer_rpa_addr=conn->bhc_peer_rpa_addr;
+
+    value_rpa_rec.peer_addr.type = peer_addr.type;
+    memcpy(value_rpa_rec.peer_addr.val, peer_addr.val, sizeof peer_addr.val);
+
+    value_rpa_rec.peer_rpa_addr.type = conn->bhc_peer_rpa_addr.type;
+    memcpy(value_rpa_rec.peer_rpa_addr.val, conn->bhc_peer_rpa_addr.val, sizeof conn->bhc_peer_rpa_addr.val);
+
     ble_store_write_rpa_rec(&value_rpa_rec);
 }
 
