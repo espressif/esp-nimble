@@ -287,6 +287,7 @@ struct ble_sm_result {
     unsigned enc_cb : 1;
     unsigned bonded : 1;
     unsigned restore : 1;
+    unsigned out_of_order : 1;
 };
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
