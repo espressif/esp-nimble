@@ -325,12 +325,14 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
 
     rc = ble_hs_hci_wait_for_ack();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "HCI wait for ack returned %d \n", rc);
         ble_hs_sched_reset(rc);
         goto done;
     }
 
     rc = ble_hs_hci_process_ack(opcode, rsp, rsp_len, &ack);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "HCI process ack returned %d \n", rc);
         ble_hs_sched_reset(rc);
         goto done;
     }
@@ -339,6 +341,7 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
 
     /* on success we should always get full response */
     if (!rc && (ack.bha_params_len != rsp_len)) {
+        BLE_HS_LOG(ERROR, "Received status %d \n", rc);
         ble_hs_sched_reset(rc);
         goto done;
     }
