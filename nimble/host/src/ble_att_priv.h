@@ -212,6 +212,7 @@ int ble_att_svr_rx_read_mult(uint16_t conn_handle,
 int ble_att_svr_rx_write(uint16_t conn_handle,
                          struct os_mbuf **rxom);
 int ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, struct os_mbuf **rxom);
+int ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom);
 int ble_att_svr_rx_prep_write(uint16_t conn_handle,
                               struct os_mbuf **rxom);
 int ble_att_svr_rx_exec_write(uint16_t conn_handle,
@@ -298,6 +299,9 @@ int ble_att_clt_tx_prep_write(uint16_t conn_handle, uint16_t handle,
                               uint16_t offset, struct os_mbuf *txom);
 int ble_att_clt_rx_prep_write(uint16_t conn_handle, struct os_mbuf **rxom);
 int ble_att_clt_tx_exec_write(uint16_t conn_handle, uint8_t flags);
+int ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t handle,
+                                    uint8_t * csrk, uint32_t counter,
+                                    struct os_mbuf * txom);
 int ble_att_clt_rx_exec_write(uint16_t conn_handle, struct os_mbuf **rxom);
 int ble_att_clt_rx_write(uint16_t conn_handle, struct os_mbuf **rxom);
 int ble_att_clt_tx_notify(uint16_t conn_handle, uint16_t handle,
