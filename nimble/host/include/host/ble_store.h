@@ -81,6 +81,7 @@ struct ble_store_value_sec {
 
     uint8_t csrk[16];
     uint8_t csrk_present:1;
+    uint32_t sign_counter;
 
     unsigned authenticated:1;
     uint8_t sc:1;
