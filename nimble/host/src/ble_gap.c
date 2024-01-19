@@ -2831,6 +2831,20 @@ ble_gap_adv_validate(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         return BLE_HS_EALREADY;
     }
 
+    if (adv_params->itvl_min &&
+#if MYNEWT_VAL(BLE_HIGH_DUTY_ADV_ITVL)
+       (adv_params->itvl_min < 0x5)
+#else
+       (adv_params->itvl_min < 0x20)
+#endif
+       ) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (adv_params->itvl_max && adv_params->itvl_max > 0x4000) {
+        return BLE_HS_EINVAL;
+    }
+
     switch (adv_params->conn_mode) {
     case BLE_GAP_CONN_MODE_NON:
         /* High duty cycle only allowed for directed advertising. */
@@ -3197,6 +3211,20 @@ ble_gap_ext_adv_params_validate(const struct ble_gap_ext_adv_params *params)
     }
 
     if (params->own_addr_type > BLE_HCI_ADV_OWN_ADDR_MAX) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (params->itvl_min &&
+#if MYNEWT_VAL(BLE_HIGH_DUTY_ADV_ITVL)
+       (params->itvl_min < 0x5)
+#else
+       (params->itvl_min < 0x20)
+#endif
+       ) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (params->itvl_max && params->itvl_max > 0xFFFFFF) {
         return BLE_HS_EINVAL;
     }
 
@@ -6470,6 +6498,10 @@ ble_gap_validate_conn_params(const struct ble_gap_upd_params *params)
      */
     if (params->supervision_timeout <=
                    (((1 + params->latency) * params->itvl_max) / 4)) {
+        return false;
+    }
+
+    if (params->supervision_timeout < 0x000A || params->supervision_timeout > 0xC80) {
         return false;
     }
 
