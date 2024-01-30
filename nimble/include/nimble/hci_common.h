@@ -1,4 +1,11 @@
 /*
+ * SPDX-FileCopyrightText: 2015-2023 The Apache Software Foundation (ASF)
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * SPDX-FileContributor: 2019-2022 Espressif Systems (Shanghai) CO LTD
+ */
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -1419,6 +1426,11 @@ struct ble_hci_vs_duplicate_exception_list_cp {
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_VS_LEGACY_ADV_CLEAR                 (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x010C))
+
+#if SOC_BLE_POWER_CONTROL_SUPPORTED
+#define BLE_HCI_OCF_VS_PCL_SET_RSSI                     (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x0111))
+#endif
+
 #define BLE_HCI_OCF_VS_SET_CHAN_SELECT                  (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x0112))
 
 /* Command Specific Definitions */
