@@ -765,6 +765,7 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t handle, uint8_t *
     struct os_mbuf *txom2;
     uint8_t cmac[16];
     uint8_t *message = NULL;
+    uint8_t len;
     int rc;
     int i;
 
@@ -781,27 +782,37 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t handle, uint8_t *
     }
     cmd->handle = htole16(handle);
 
-    /* Message to be signed is message||sign_counter,
+    /* Message to be signed is opcode||handle||message||sign_counter,
      * where || represents concatenation
      */
-    message = nimble_platform_mem_malloc(OS_MBUF_PKTLEN(txom) + sizeof(counter));
-    rc = os_mbuf_copydata(txom, 0, OS_MBUF_PKTLEN(txom), message);
+    len = BLE_ATT_SIGNED_WRITE_DATA_OFFSET + OS_MBUF_PKTLEN(txom) + sizeof(counter);
+    message = nimble_platform_mem_malloc(len);
+
+    /** Copying opcode and handle */
+    rc = os_mbuf_copydata(txom2, 0, BLE_ATT_SIGNED_WRITE_DATA_OFFSET, message);
     if (rc != 0) {
         goto err;
     }
-    memcpy(&message[OS_MBUF_PKTLEN(txom)], &counter, sizeof(counter));
 
+    /** Copying message */
+    rc = os_mbuf_copydata(txom, 0, OS_MBUF_PKTLEN(txom), &message[BLE_ATT_SIGNED_WRITE_DATA_OFFSET]);
+    if (rc != 0) {
+        goto err;
+    }
+
+    /** Copying sign counter */
+    memcpy(&message[BLE_ATT_SIGNED_WRITE_DATA_OFFSET + OS_MBUF_PKTLEN(txom)], &counter, sizeof(counter));
+    
     /* ble_sm_alg_aes_cmac takes data in little-endian format,
      * so converting it to LE.
      */
-    swap_in_place(message, OS_MBUF_PKTLEN(txom) + sizeof(counter));
+    swap_in_place(message, len);
 
     /* Getting the CMAC (Cipher-based Message Authentication Code)
      * for the message using our CSRK for this connection.
      */
     memset(cmac, 0, sizeof cmac);
-    rc = ble_sm_alg_aes_cmac(csrk, message,
-                             OS_MBUF_PKTLEN(txom) + sizeof(counter), cmac);
+    rc = ble_sm_alg_aes_cmac(csrk, message, len, cmac);
     if (rc != 0) {
         goto err;
     }

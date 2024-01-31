@@ -3471,6 +3471,7 @@ ble_gattc_signed_write(uint16_t conn_handle, uint16_t attr_handle,
     struct ble_store_value_sec value_sec;
     struct ble_store_key_sec key_sec;
     struct ble_gap_conn_desc desc;
+    uint8_t csrk[16];
 
     STATS_INC(ble_gattc_stats, signed_write);
 
@@ -3498,8 +3499,11 @@ ble_gattc_signed_write(uint16_t conn_handle, uint16_t attr_handle,
         goto err;
     }
 
+    /* Converting the csrk to little endian */
+    swap_buf(csrk, value_sec.csrk, 16);
+
     rc = ble_att_clt_tx_signed_write_cmd(conn_handle, attr_handle,
-                                         value_sec.csrk, value_sec.sign_counter, txom);
+                                         csrk, value_sec.sign_counter, txom);
     if (rc != 0) {
         goto err;
     }
