@@ -2366,7 +2366,9 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
     uint16_t handle;
     uint8_t sign[12];
     uint8_t cmac[16];
+    uint8_t csrk[16];
     uint8_t *message = NULL;
+    uint16_t len;
     int rc;
 
     rc = ble_gap_conn_find(conn_handle, &desc);
@@ -2396,9 +2398,6 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
 
     handle = le16toh(req->handle);
 
-    /* Strip the request base from the front of the mbuf. */
-    os_mbuf_adj(*rxom, sizeof(*req));
-
     os_mbuf_copydata(*rxom,
                     OS_MBUF_PKTLEN(*rxom) - (BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ - BLE_ATT_SIGNED_WRITE_DATA_OFFSET),
                     BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ - BLE_ATT_SIGNED_WRITE_DATA_OFFSET,
@@ -2408,16 +2407,22 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
     os_mbuf_adj(*rxom, -(BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ - BLE_ATT_SIGNED_WRITE_DATA_OFFSET));
 
     /* Authentication procedure */
-    message = nimble_platform_mem_malloc(OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter));
-    os_mbuf_copydata(*rxom, 0, OS_MBUF_PKTLEN(*rxom), message);
-    memcpy(&message[OS_MBUF_PKTLEN(*rxom)], &value_sec.sign_counter, sizeof(value_sec.sign_counter));
+    len = OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter) + 1;
+    message = nimble_platform_mem_malloc(len);
+
+    message[0] = BLE_ATT_OP_SIGNED_WRITE_CMD;
+    os_mbuf_copydata(*rxom, 0, OS_MBUF_PKTLEN(*rxom), &message[1]);
+    memcpy(&message[1 + OS_MBUF_PKTLEN(*rxom)], &value_sec.sign_counter, sizeof(value_sec.sign_counter));
 
     /* Converting message into little endian format */
-    swap_in_place(message, OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter));
+    swap_in_place(message, len);
+
+    /* Converting CSRK into little endian format */
+    swap_buf(csrk, value_sec.csrk, 16);
 
     /* Using AES-CMAC to get the CMAC from the message and CSRK of this device */
     memset(cmac, 0, sizeof cmac);
-    rc = ble_sm_alg_aes_cmac(value_sec.csrk, message, OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter), cmac);
+    rc = ble_sm_alg_aes_cmac(csrk, message, len, cmac);
     if (rc != 0) {
         goto err;
     }
@@ -2442,6 +2447,9 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
     if (rc != 0) {
         goto err;
     }
+
+    /* Strip the request base from the front of the mbuf. */
+    os_mbuf_adj(*rxom, sizeof(*req));
 
     rc = ble_att_svr_write_handle(conn_handle, handle, 0, rxom, &att_err);
     if (rc != 0) {
