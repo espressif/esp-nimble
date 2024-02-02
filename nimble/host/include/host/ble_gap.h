@@ -213,6 +213,9 @@ struct ble_gap_sec_state {
 
     /** Size of a key used for encryption */
     unsigned key_size:5;
+
+    /** Current device security state*/
+    unsigned authorize:1;
 };
 
 /** Advertising parameters */

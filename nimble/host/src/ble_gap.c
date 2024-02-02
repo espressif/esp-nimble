@@ -6710,6 +6710,34 @@ done:
 }
 
 int
+ble_gap_dev_authorization(uint16_t conn_handle, bool authorized)
+{
+    struct ble_hs_conn *conn = ble_hs_conn_find(conn_handle);
+
+    if (conn != NULL) {
+        if (!(conn->bhc_sec_state.authenticated)) {
+           // Device should be authenticated before authorization
+           BLE_HS_LOG(ERROR, "Authorized should occur after successful Authentication(MITM protection) \n");
+           return BLE_HS_EAUTHOR;
+        }
+
+        // Update connection security flags
+        if (authorized) {
+            conn->bhc_sec_state.authorize = 1;
+        } else {
+            conn->bhc_sec_state.authorize = 0;
+        }
+
+    } else {
+        // Connection handle not found
+        BLE_HS_LOG(ERROR, "Can't find connection \n");
+        return BLE_HS_ENOTCONN;
+    }
+
+    return 0;
+}
+
+int
 ble_gap_pair_initiate(uint16_t conn_handle)
 {
     int rc;
