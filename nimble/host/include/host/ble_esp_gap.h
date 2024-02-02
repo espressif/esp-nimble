@@ -218,6 +218,23 @@ int ble_gap_set_chan_select(uint8_t select);
 
 #endif
 
+/**
+ * Authorizes or deauthorizes a BLE device for a connection.
+ *
+ * This function updates the security flags of a BLE connection to authorize or
+ * deauthorize a device for the specified connection.
+ *
+ * @param conn_handle           The handle corresponding to the connection to
+ *                              authorize.
+ * @param authorized            Authorized the device or not.
+ *
+ * @return                      0 on success;
+ *                              BLE_HS_ENOTCONN if the connection handle is not found.
+ *                              BLE_HS_EAUTHOR if the device is not authenticated before authorization.
+ */
+int
+ble_gap_dev_authorization(uint16_t conn_handle, bool authorized);
+
 void ble_gap_rx_test_evt(const void *buf, uint8_t len);
 void ble_gap_tx_test_evt(const void *buf, uint8_t len);
 void ble_gap_end_test_evt(const void *buf, uint8_t len);

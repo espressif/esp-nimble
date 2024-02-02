@@ -371,10 +371,13 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
 
     if (author) {
         /* XXX: Prompt user for authorization. */
-        rc = ble_gap_authorize_event(conn_handle, entry->ha_handle_id, is_read);
-        if (rc == BLE_GAP_AUTHORIZE_REJECT) {
-            *out_att_err = BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
-            return BLE_HS_ATT_ERR(*out_att_err);
+        conn = ble_hs_conn_find(conn_handle);
+        if(!conn->bhc_sec_state.authorize){
+            rc = ble_gap_authorize_event(conn_handle, entry->ha_handle_id, is_read);
+            if (rc == BLE_GAP_AUTHORIZE_REJECT) {
+                *out_att_err = BLE_ATT_ERR_INSUFFICIENT_AUTHOR;
+                return BLE_HS_ATT_ERR(*out_att_err);
+            }
         }
     }
 
