@@ -100,6 +100,9 @@
 #define BLE_GAP_OP_S_PERIODIC_ADV   2
 #define BLE_GAP_OP_SYNC             1
 
+
+int ble_global_status = 0;
+
 /**
  * If an attempt to cancel an active procedure fails, the attempt is retried
  * at this rate (ms).
@@ -1127,6 +1130,7 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
         return rc;
     }
 
+    ble_global_status=BLE_GAP_ROLE_SLAVE;
     if (conn.role == BLE_GAP_ROLE_MASTER) {
         /* If there was a connection update in progress, indicate to the
          * application that it did not complete.
@@ -1134,6 +1138,8 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
         ble_hs_lock();
         entry = ble_gap_update_entry_remove(conn_handle);
         ble_hs_unlock();
+
+        ble_global_status=BLE_GAP_ROLE_MASTER;
 
         if (entry != NULL) {
             ble_gap_update_notify(conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
@@ -2571,6 +2577,7 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 
     switch (evt->role) {
     case BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER:
+         ble_global_status=0;
         rc = ble_gap_accept_master_conn();
         if (rc != 0) {
             return rc;
@@ -2578,6 +2585,7 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         break;
 
     case BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE:
+         ble_global_status=1;
         rc = ble_gap_accept_slave_conn(instance);
         if (rc != 0) {
             return rc;
@@ -9355,4 +9363,12 @@ ble_gap_host_check_status(void)
 #endif
 
     return status;
+}
+
+int ble_gap_set_host_feat(uint8_t bit_num,uint8_t bit_val) {
+    struct ble_hci_le_set_host_feature_cp cmd;
+    cmd.bit_num=bit_num;
+    cmd.bit_val=bit_val;
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_SET_HOST_FEATURE),&cmd, sizeof(cmd), NULL, 0);
 }
