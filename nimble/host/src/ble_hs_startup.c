@@ -238,6 +238,7 @@ ble_hs_startup_read_bd_addr(void)
     }
 
     ble_hs_id_set_pub(rsp.addr);
+
     return 0;
 }
 
@@ -384,6 +385,7 @@ ble_hs_startup_le_set_evmask_tx(void)
     }
 #endif
 
+<<<<<<< HEAD
 #if MYNEWT_VAL(BLE_ISO)
     if (version >= BLE_HCI_VER_BCS_5_2) {
         /**
@@ -403,6 +405,23 @@ ble_hs_startup_le_set_evmask_tx(void)
 #endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
     }
 #endif /* MYNEWT_VAL(BLE_ISO) */
+
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    if (version >= BLE_HCI_VER_BCS_5_4) {
+        /**
+         * Enable the following LE events:
+         * 0x0000080000000000 LE CS Read Remote Supported Capabilities Complete event
+         * 0x0000100000000000 LE CS Read Remote FAE Table Complete event
+         * 0x0000200000000000 LE CS Security Enable Complete event
+         * 0x0000400000000000 LE CS Config Complete event
+         * 0x0000800000000000 LE CS Procedure Enable Complete event
+         * 0x0001000000000000 LE CS Subevent Result event
+         * 0x0002000000000000 LE CS Subevent Result Continue event
+         * 0x0004000000000000 LE CS Test End Complete event
+         */
+        mask |= 0x0007f80000000000;
+    }
+#endif
 
     cmd.event_mask = htole64(mask);
 

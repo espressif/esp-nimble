@@ -221,6 +221,10 @@ struct hci_conn_update;
 #define BLE_GAP_AUTHORIZE_ACCEPT            1
 #define BLE_GAP_AUTHORIZE_REJECT            2
 
+
+
+extern int ble_global_status;
+
 /** Connection security state */
 struct ble_gap_sec_state {
     /** If connection is encrypted */
@@ -4083,6 +4087,9 @@ int ble_gap_read_rem_ver_info(uint16_t conn_handle, uint8_t *version, uint16_t *
 int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_addr,
                                  uint8_t *out_addr);
 
+
+
+int ble_gap_set_host_feat(uint8_t bit_num,uint8_t bit_val);
 #ifdef __cplusplus
 }
 #endif
