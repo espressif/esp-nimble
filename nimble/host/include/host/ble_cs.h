@@ -24,7 +24,16 @@
 #include "syscfg/syscfg.h"
 
 #define BLE_CS_EVENT_CS_PROCEDURE_COMPLETE (0)
+#define BLE_CS_EVENT_CS_PROCEDURE_ENABLE_COMPLETE (1)
+#define BLE_CS_EVENT_SUBEVET_RESULT (2)
+#define BLE_CS_EVENT_SUBEVET_RESULT_CONTINUE (3)
 
+struct cs_step_data {
+    uint8_t mode;
+    uint8_t channel;
+    uint8_t data_len;
+    uint8_t data[];
+} __attribute__((packed));
 struct ble_cs_event {
     uint8_t type;
     union
@@ -34,8 +43,34 @@ struct ble_cs_event {
             uint16_t conn_handle;
             uint8_t status;
         } procedure_complete;
+        struct
+        {
+            uint16_t conn_handle;
+            uint8_t config_id;
+            uint16_t start_acl_conn_event_counter;
+            uint16_t procedure_counter;
+            uint16_t frequency_compensation;
+            uint8_t reference_power_level;
+            uint8_t procedure_done_status;
+            uint8_t subevent_done_status;
+            uint8_t abort_reason;
+            uint8_t num_antenna_paths;
+            uint8_t num_steps_reported;
+            struct cs_step_data steps[];
+        }subev_result;
+        struct
+        {
+            uint16_t conn_handle;
+            uint8_t config_id;
+            uint8_t procedure_done_status;
+            uint8_t subevent_done_status;
+            uint8_t abort_reason;
+            uint8_t num_antenna_paths;
+            uint8_t num_steps_reported;
+            struct cs_step_data steps[];
+        }subev_result_continue;
+
     };
-    
 };
 
 typedef int ble_cs_event_fn(struct ble_cs_event *event, void *arg);
@@ -50,6 +85,7 @@ struct ble_cs_reflector_setup_params {
     ble_cs_event_fn *cb;
     void *cb_arg;
 };
+
 
 int ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_params *params);
 int ble_cs_initiator_procedure_terminate(uint16_t conn_handle);
