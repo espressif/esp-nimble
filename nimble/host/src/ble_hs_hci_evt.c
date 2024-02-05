@@ -48,6 +48,10 @@ static uint16_t ble_adv_list_count;
 #define  BLE_ADV_LIST_MAX_COUNT     200
 #endif
 
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+#include "ble_cs_priv.h"
+#endif
+
 _Static_assert(sizeof (struct hci_data_hdr) == BLE_HCI_DATA_HDR_SZ,
                "struct hci_data_hdr must be 4 bytes");
 
@@ -224,6 +228,17 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_CIS_ESTABLISHED_V2] = ble_hs_hci_evt_le_cis_estab_v2,
 #endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
 #endif /* MYNEWT_VAL(BLE_ISO) */
+
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    [BLE_HCI_LE_SUBEV_CS_RD_REM_SUPP_CAP_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete,
+    [BLE_HCI_LE_SUBEV_CS_RD_REM_FAE_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_fae_complete,
+    [BLE_HCI_LE_SUBEV_CS_SEC_ENABLE_COMPLETE] = ble_hs_hci_evt_le_cs_sec_enable_complete,
+    [BLE_HCI_LE_SUBEV_CS_CONFIG_COMPLETE] = ble_hs_hci_evt_le_cs_config_complete,
+    [BLE_HCI_LE_SUBEV_CS_PROC_ENABLE_COMPLETE] = ble_hs_hci_evt_le_cs_proc_enable_complete,
+    [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT] = ble_hs_hci_evt_le_cs_subevent_result,
+    [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT_CONTINUE] = ble_hs_hci_evt_le_cs_subevent_result_continue,
+    [BLE_HCI_LE_SUBEV_CS_TEST_END_COMPLETE] = ble_hs_hci_evt_le_cs_test_end_complete,
+#endif
 };
 
 #define BLE_HS_HCI_EVT_LE_DISPATCH_SZ \

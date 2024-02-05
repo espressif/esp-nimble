@@ -221,7 +221,6 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
 {
     const uint8_t *id_addr;
     int nrpa;
-
     switch (id_addr_type) {
     case BLE_ADDR_PUBLIC:
     case BLE_ADDR_PUBLIC_ID:
@@ -314,6 +313,7 @@ ble_hs_id_use_addr(uint8_t own_addr_type)
 
     rc = ble_hs_id_addr_type_usable(own_addr_type);
     if (rc != 0) {
+       printf("usable rc = %d\n",rc);
         return rc;
     }
 
