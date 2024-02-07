@@ -760,7 +760,7 @@ ble_gatts_cpfd_is_sane(const struct ble_gatt_cpfd *cpfd)
         return 0;
     }
 
-    if ((cpfd->namespace == BLE_GATT_CHR_NAMESPACE_BT_SIG) && (cpfd->description > 0x0110)) {
+    if ((cpfd->name_space == BLE_GATT_CHR_NAMESPACE_BT_SIG) && (cpfd->description > 0x0110)) {
         return 0;
     }
 
@@ -1057,7 +1057,7 @@ ble_gatts_cpfd_access(uint16_t conn_handle, uint16_t attr_handle,
     rc += os_mbuf_append(*om, &(cpfd->format), sizeof(cpfd->format));
     rc += os_mbuf_append(*om, &(cpfd->exponent), sizeof(cpfd->exponent));
     rc += os_mbuf_append(*om, &(cpfd->unit), sizeof(cpfd->unit));
-    rc += os_mbuf_append(*om, &(cpfd->namespace), sizeof(cpfd->namespace));
+    rc += os_mbuf_append(*om, &(cpfd->name_space), sizeof(cpfd->name_space));
     rc += os_mbuf_append(*om, &(cpfd->description), sizeof(cpfd->description));
 
     return ((rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES);

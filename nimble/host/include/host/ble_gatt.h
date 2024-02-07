@@ -1035,7 +1035,7 @@ struct ble_gatt_cpfd {
     uint16_t unit;
 
     /** The name space of the description. */
-    uint8_t namespace;
+    uint8_t name_space;
 
     /** The description of this characteristic. Depends on name space. */
     uint16_t description;
