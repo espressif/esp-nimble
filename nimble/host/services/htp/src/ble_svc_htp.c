@@ -75,6 +75,7 @@ static const struct ble_gatt_svc_def ble_svc_htp_defs[] = {
                         0,
                     }
                 },
+                .cpfd = NULL,
             }, {
                 0, /* No more characteristics in this service. */
             }

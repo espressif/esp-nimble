@@ -215,7 +215,7 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan)
             BLE_HS_LOG(ERROR, "Payload larger than expected (%d>%d)\n",
                        om_total, sdu_len + 2);
             /* Disconnect peer with invalid behaviour */
-            rx_sdu = NULL;
+            rx->sdu = NULL;
             rx->data_offset = 0;
             ble_l2cap_disconnect(chan);
             return BLE_HS_EBADDATA;

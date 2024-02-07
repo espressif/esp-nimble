@@ -6338,8 +6338,10 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     ble_conn_reattempt.own_addr_type = own_addr_type;
 
     if (peer_addr != NULL) {
+        ble_conn_reattempt.peer_addr_present = 1;
         memcpy(&ble_conn_reattempt.peer_addr, peer_addr, sizeof(ble_addr_t));
     } else {
+        ble_conn_reattempt.peer_addr_present = 0;
         memset(&ble_conn_reattempt.peer_addr, 0, sizeof(ble_addr_t));
     }
 

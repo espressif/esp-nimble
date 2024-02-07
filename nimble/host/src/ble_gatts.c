@@ -768,33 +768,6 @@ ble_gatts_clt_cfg_find(struct ble_gatts_clt_cfg_list *ble_gatts_clt_cfgs,
 
 #else
 static int
-ble_gatts_cpfd_is_sane(const struct ble_gatt_cpfd *cpfd)
-{
-    /** As per Assigned Numbers Specification (2023-09-07) */
-    if ((cpfd->format < 0x01) || (cpfd->format > 0x1C)) {
-        return 0;
-    }
-
-    if ((cpfd->unit < 0x2700) ||
-        ((cpfd->unit > 0x2707) && (cpfd->unit < 0x2710)) ||
-        (cpfd->unit == 0x271F) ||
-        ((cpfd->unit > 0x2735) && (cpfd->unit < 0x2740)) ||
-        ((cpfd->unit > 0x2757) && (cpfd->unit < 0x2760)) ||
-        ((cpfd->unit > 0x2768) && (cpfd->unit < 0x2780)) ||
-        ((cpfd->unit > 0x2787) && (cpfd->unit < 0x27A0)) ||
-        (cpfd->unit == 0x27BB) ||
-        (cpfd->unit > 0x27C8)) {
-        return 0;
-    }
-
-    if ((cpfd->namespace == BLE_GATT_CHR_NAMESPACE_BT_SIG) && (cpfd->description > 0x0110)) {
-        return 0;
-    }
-
-    return 1;
-}
-
-static int
 ble_gatts_clt_cfg_find_idx(struct ble_gatts_clt_cfg *cfgs,
                            uint16_t chr_val_handle)
 {
@@ -825,6 +798,33 @@ ble_gatts_clt_cfg_find(struct ble_gatts_clt_cfg *cfgs,
     }
 }
 #endif
+
+static int
+ble_gatts_cpfd_is_sane(const struct ble_gatt_cpfd *cpfd)
+{
+    /** As per Assigned Numbers Specification (2023-09-07) */
+    if ((cpfd->format < 0x01) || (cpfd->format > 0x1C)) {
+        return 0;
+    }
+
+    if ((cpfd->unit < 0x2700) ||
+        ((cpfd->unit > 0x2707) && (cpfd->unit < 0x2710)) ||
+        (cpfd->unit == 0x271F) ||
+        ((cpfd->unit > 0x2735) && (cpfd->unit < 0x2740)) ||
+        ((cpfd->unit > 0x2757) && (cpfd->unit < 0x2760)) ||
+        ((cpfd->unit > 0x2768) && (cpfd->unit < 0x2780)) ||
+        ((cpfd->unit > 0x2787) && (cpfd->unit < 0x27A0)) ||
+        (cpfd->unit == 0x27BB) ||
+        (cpfd->unit > 0x27C8)) {
+        return 0;
+    }
+
+    if ((cpfd->name_space == BLE_GATT_CHR_NAMESPACE_BT_SIG) && (cpfd->description > 0x0110)) {
+        return 0;
+    }
+
+    return 1;
+}
 
 static void
 ble_gatts_subscribe_event(uint16_t conn_handle, uint16_t attr_handle,
@@ -1066,7 +1066,7 @@ ble_gatts_cpfd_access(uint16_t conn_handle, uint16_t attr_handle,
     rc += os_mbuf_append(*om, &(cpfd->format), sizeof(cpfd->format));
     rc += os_mbuf_append(*om, &(cpfd->exponent), sizeof(cpfd->exponent));
     rc += os_mbuf_append(*om, &(cpfd->unit), sizeof(cpfd->unit));
-    rc += os_mbuf_append(*om, &(cpfd->namespace), sizeof(cpfd->namespace));
+    rc += os_mbuf_append(*om, &(cpfd->name_space), sizeof(cpfd->name_space));
     rc += os_mbuf_append(*om, &(cpfd->description), sizeof(cpfd->description));
 
     return ((rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES);
@@ -2088,7 +2088,11 @@ ble_gatts_chr_updated(uint16_t chr_val_handle)
          * Consider using a "foreach" function to walk the connection list.
          */
         conn = ble_hs_conn_find_by_idx(i);
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+        if (conn == NULL) {
+#else
         if (conn == NULL || conn->bhc_gatt_svr.clt_cfgs == NULL) {
+#endif
             break;
         }
 
@@ -2201,7 +2205,6 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
     uint16_t len;
     int rc = 0;
     int i;
-    int rfu_mask = 7;
 
     BLE_HS_LOG(DEBUG, "");
 
