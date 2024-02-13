@@ -134,7 +134,7 @@ esp_err_t esp_nimble_init(void)
  */
 esp_err_t esp_nimble_deinit(void)
 {
-#if !SOC_ESP_NIMBLE_CONTROLLER
+#if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "hci deinit failed\n");
