@@ -273,8 +273,9 @@ int ble_att_clt_tx_read_blob(uint16_t conn_handle, uint16_t handle,
                              uint16_t offset);
 int ble_att_clt_rx_read_blob(uint16_t conn_handle, struct os_mbuf **rxom);
 int ble_att_clt_tx_read_mult(uint16_t conn_handle,
-                             const uint16_t *handles, int num_handles);
+                             const uint16_t *handles, int num_handles, bool variable);
 int ble_att_clt_rx_read_mult(uint16_t conn_handle, struct os_mbuf **rxom);
+int ble_att_clt_rx_read_mult_var(uint16_t conn_handle, struct os_mbuf **rxom);
 int ble_att_clt_tx_read_type(uint16_t conn_handle, uint16_t start_handle,
                              uint16_t end_handle, const ble_uuid_t *uuid);
 int ble_att_clt_rx_read_type(uint16_t conn_handle, struct os_mbuf **rxom);
