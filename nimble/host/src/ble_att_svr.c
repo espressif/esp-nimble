@@ -1858,7 +1858,7 @@ done:
 int
 ble_att_svr_rx_read_mult_var(uint16_t conn_handle, struct os_mbuf **rxom)
 {
-#if (!MYNEWT_VAL(BLE_ATT_SVR_READ_MULT) || (MYNEWT_VAL(BLE_VERSION) < 52))
+#if !MYNEWT_VAL(BLE_ATT_SVR_READ_MULT)
     return BLE_HS_ENOTSUP;
 #endif
 
