@@ -244,6 +244,11 @@ syscfg.defs:
             Enables the Read Multiple Characteristic Values GATT procedure.
             (0/1)
         value: MYNEWT_VAL_BLE_ROLE_CENTRAL
+    BLE_GATT_READ_MULT_VAR:
+        description: >
+            Enables the Read Multiple Variable Characteristic Values GATT procedure.
+            (0/1)
+        value: MYNEWT_VAL_BLE_ROLE_CENTRAL
     BLE_GATT_WRITE_NO_RSP:
         description: >
             Enables the Write Without Response GATT procedure. (0/1)
