@@ -35,6 +35,7 @@ struct ble_hs_resolv_entry {
     uint8_t rl_pseudo_id[BLE_DEV_ADDR_LEN];
     uint8_t rl_local_rpa[BLE_DEV_ADDR_LEN];
     uint8_t rl_peer_rpa[BLE_DEV_ADDR_LEN];
+    uint8_t rl_isrpa;
 };
 
 #if MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST)
