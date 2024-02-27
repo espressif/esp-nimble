@@ -5899,7 +5899,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         struct ble_hs_resolv_entry *rl = NULL;
         rl = ble_hs_resolv_list_find(bhc_peer_addr.val);
 
-        if (rl != NULL) {
+        if (rl != NULL && rl->rl_isrpa) {
             memcpy(bhc_peer_addr.val, rl->rl_peer_rpa, BLE_DEV_ADDR_LEN);
             bhc_peer_addr.type = rl->rl_addr_type;
         }
