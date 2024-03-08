@@ -36,10 +36,10 @@ struct ble_hs_cfg;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 #define BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16               0x2b2a
 
-uint16_t ble_svc_gatt_changed_handle();
-uint16_t ble_svc_gatt_hash_handle();
-uint16_t ble_svc_gatt_csf_handle();
-uint8_t ble_svc_gatt_get_csfs();
+uint16_t ble_svc_gatt_changed_handle(void);
+uint16_t ble_svc_gatt_hash_handle(void);
+uint16_t ble_svc_gatt_csf_handle(void);
+uint8_t ble_svc_gatt_get_csfs(void);
 #endif
 
 uint8_t ble_svc_gatt_get_local_cl_supported_feat(void);

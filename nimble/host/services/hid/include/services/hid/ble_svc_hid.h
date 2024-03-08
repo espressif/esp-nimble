@@ -104,9 +104,9 @@ struct ble_svc_hid_params{
     uint16_t ctrl_pt_handle;
 };
 
-void ble_svc_hid_init();
+void ble_svc_hid_init(void);
 int ble_svc_hid_add(struct ble_svc_hid_params params);
-void ble_svc_hid_reset();
+void ble_svc_hid_reset(void);
 
 #endif
 #endif // CONFIG_BT_NIMBLE_HID_SERVICE
