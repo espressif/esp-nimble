@@ -589,8 +589,9 @@ ble_gatts_calculate_hash(uint8_t *out_hash_key)
     int size;
     int rc;
     uint8_t *buf;
-    uint8_t key[16] = {0};
+    uint8_t key[16];
 
+    memset(key, 0, sizeof(key));
     /* data with all zeroes */
     rc = ble_att_get_database_size(&size);
     if(rc != 0) {
