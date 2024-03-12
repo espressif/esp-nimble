@@ -974,7 +974,7 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
                                 &prev);
 
         if (proc != NULL) {
-            if (res->execute) {
+            if (res && res->execute) {
                 ble_sm_exec(proc, res, res->state_arg);
             }
 
@@ -993,7 +993,7 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
             }
         }
 
-        if (res->sm_err != 0 && tx_fail) {
+        if (res && (res->sm_err != 0) && tx_fail) {
             ble_sm_pair_fail_tx(conn_handle, res->sm_err);
         }
 
