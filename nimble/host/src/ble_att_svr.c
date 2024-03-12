@@ -2456,10 +2456,10 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
         goto err;
     }
 
-    if(message != NULL) nimble_platform_mem_free(message);
+    nimble_platform_mem_free(message);
     return 0;
 err:
-    if(message != NULL) nimble_platform_mem_free(message);
+    nimble_platform_mem_free(message);
     return rc;
 }
 
