@@ -3084,7 +3084,6 @@ ble_gattc_read_by_uuid(uint16_t conn_handle, uint16_t start_handle,
 #if !MYNEWT_VAL(BLE_GATT_READ_UUID)
     return BLE_HS_ENOTSUP;
 #endif
-    /* TODO:Roshan */
 
     struct ble_gattc_proc *proc;
     int rc;

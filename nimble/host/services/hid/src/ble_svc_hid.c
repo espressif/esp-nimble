@@ -95,7 +95,7 @@ ble_svc_hid_get_dsc(uint8_t num)
 }
 
 static struct ble_gatt_chr_def*
-ble_svc_hid_get_chr_block()
+ble_svc_hid_get_chr_block(void)
 {
     if (ble_svc_hid_chr_index >= HID_MAX_CHRS) {
         return NULL;
@@ -106,14 +106,14 @@ ble_svc_hid_get_chr_block()
 
 /*returns current chr index */
 static uint8_t
-ble_svc_hid_get_curr_chr_idx()
+ble_svc_hid_get_curr_chr_idx(void)
 {
     return ble_svc_hid_chr_index;
 }
 
 /*returns current svc index */
 static uint8_t
-get_curr_svc_idx()
+get_curr_svc_idx(void)
 {
     return ble_svc_hid_svc_index;
 }
@@ -138,7 +138,7 @@ find_rpt_by_handle(uint16_t handle)
 }
 
 static struct ble_gatt_svc_def*
-ble_svc_get_svc_block()
+ble_svc_get_svc_block(void)
 {
     if (ble_svc_hid_svc_index >= HID_MAX_SVC_INSTANCES) {
         return NULL;
@@ -412,7 +412,7 @@ fill_ctrl_pt(uint8_t instance)
  * value set to zero
  */
 static void
-ble_svc_hid_end_chrs()
+ble_svc_hid_end_chrs(void)
 {
     struct ble_gatt_chr_def *chr;
     chr = ble_svc_hid_get_chr_block();
@@ -647,7 +647,7 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
  * with value set to 0
  */
 static int
-ble_svc_hid_end()
+ble_svc_hid_end(void)
 {
     struct ble_gatt_svc_def *svc;
 
@@ -664,7 +664,7 @@ ble_svc_hid_end()
    call ble_svc_hid_reset() to reinitialize the service.
  */
 void
-ble_svc_hid_reset()
+ble_svc_hid_reset(void)
 {
     ble_svc_hid_dsc_index = 0;
     ble_svc_hid_chr_index = 0;
@@ -675,7 +675,7 @@ ble_svc_hid_reset()
  * Initialize the HID Service.
  */
 void
-ble_svc_hid_init()
+ble_svc_hid_init(void)
 {
     int rc;
 
