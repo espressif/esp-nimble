@@ -2289,6 +2289,25 @@ ble_gap_rx_phy_update_complete(const struct ble_hci_ev_le_subev_phy_update_compl
 #endif
 }
 
+void
+ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev)
+{
+#if NIMBLE_BLE_CONNECT
+    struct ble_gap_event event;
+    uint16_t conn_handle = le16toh(ev->conn_handle);
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_DATA_LEN_CHG;
+    event.data_len_chg.max_tx_octets = le16toh(ev->max_tx_octets);
+    event.data_len_chg.max_rx_octets = le16toh(ev->max_rx_octets);
+    event.data_len_chg.max_tx_time = le16toh(ev->max_tx_time);
+    event.data_len_chg.max_rx_time = le16toh(ev->max_rx_time);
+
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
+}
+
 static int32_t
 ble_gap_master_timer(void)
 {

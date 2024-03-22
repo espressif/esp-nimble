@@ -164,6 +164,8 @@ int ble_gap_dbg_update_active(uint16_t conn_handle);
 void ble_gap_reattempt_count(uint16_t conn_handle, uint8_t count);
 #endif
 
+void ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev);
+
 #ifdef __cplusplus
 }
 #endif
