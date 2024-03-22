@@ -65,6 +65,7 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_adv_rpt;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_upd_complete;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_lt_key_req;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_parm_req;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_data_len_change;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_dir_adv_rpt;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_phy_update_complete;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_ext_adv_rpt;
@@ -116,6 +117,7 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_CONN_UPD_COMPLETE] = ble_hs_hci_evt_le_conn_upd_complete,
     [BLE_HCI_LE_SUBEV_LT_KEY_REQ] = ble_hs_hci_evt_le_lt_key_req,
     [BLE_HCI_LE_SUBEV_REM_CONN_PARM_REQ] = ble_hs_hci_evt_le_conn_parm_req,
+    [BLE_HCI_LE_SUBEV_DATA_LEN_CHG] = ble_hs_hci_evt_le_data_len_change,
     [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE] = ble_hs_hci_evt_le_enh_conn_complete,
     [BLE_HCI_LE_SUBEV_DIRECT_ADV_RPT] = ble_hs_hci_evt_le_dir_adv_rpt,
     [BLE_HCI_LE_SUBEV_PHY_UPDATE_COMPLETE] = ble_hs_hci_evt_le_phy_update_complete,
@@ -884,6 +886,22 @@ ble_hs_hci_evt_le_phy_update_complete(uint8_t subevent, const void *data,
     ble_gap_rx_phy_update_complete(ev);
 
     return 0;
+}
+
+static int
+ble_hs_hci_evt_le_data_len_change(uint8_t subevent, const void *data,
+				  unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_data_len_chg *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_data_len_change(ev);
+
+    return 0;
+
 }
 
 int
