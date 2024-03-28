@@ -29,6 +29,7 @@ static uint8_t ble_hs_pvcy_irk[16];
 
 /** Use this as a default IRK if none gets set. */
 uint8_t ble_hs_pvcy_default_irk[16];
+uint16_t rpa_timeout;
 
 static int
 ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
@@ -48,6 +49,23 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SET_RPA_TMO),
                              &cmd, sizeof(cmd), NULL, 0);
+}
+
+void ble_hs_set_rpa_timeout (uint16_t timeout)
+{
+    rpa_timeout = timeout;
+
+    ble_hs_pvcy_set_addr_timeout(rpa_timeout);
+}
+
+uint16_t ble_hs_get_rpa_timeout(void)
+{
+    return rpa_timeout;
+}
+
+void ble_hs_reset_rpa_timeout(void)
+{
+    rpa_timeout = 0 ;
 }
 
 #if (!MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
@@ -179,6 +197,7 @@ int
 ble_hs_pvcy_ensure_started(void)
 {
     int rc;
+    uint16_t rpa_timeout;
 
     if (ble_hs_pvcy_started) {
         return 0;
@@ -189,8 +208,16 @@ ble_hs_pvcy_ensure_started(void)
     ble_hs_resolv_init();
 #endif
 
+    /* Check if user has already set any timeout. If yes, use it */
+    rpa_timeout = ble_hs_get_rpa_timeout();
+
     /* Set up the periodic change of our RPA. */
-    rc = ble_hs_pvcy_set_addr_timeout(MYNEWT_VAL(BLE_RPA_TIMEOUT));
+    if (rpa_timeout) {
+        rc = ble_hs_pvcy_set_addr_timeout(rpa_timeout);
+    } else {
+        rc = ble_hs_pvcy_set_addr_timeout(MYNEWT_VAL(BLE_RPA_TIMEOUT));
+    }
+
     if (rc != 0) {
         return rc;
     }
