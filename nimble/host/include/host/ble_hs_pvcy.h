@@ -69,6 +69,7 @@ void ble_hs_resolv_deinit(void);
 #endif
 
 int ble_hs_pvcy_set_resolve_enabled(int enable);
+void ble_hs_set_rpa_timeout(uint16_t timeout);
 
 #ifdef __cplusplus
 }
