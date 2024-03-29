@@ -6800,7 +6800,7 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             }
         }
 
-        if (value.sec.ltk_present || value.sec.irk_present) {
+        if (value.sec.ltk_present || value.sec.irk_present || value.sec.csrk_present) {
             // Delete the Peer record from store as LTK is present
             ltk_rc = ble_store_util_delete_peer(&key.sec.peer_addr);
             if (ltk_rc != 0) {

@@ -2460,7 +2460,6 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
     return 0;
 err:
     if(message != NULL) nimble_platform_mem_free(message);
-    ble_gap_terminate(conn_handle, BLE_ERR_AUTH_FAIL);
     return rc;
 }
 
