@@ -1023,7 +1023,7 @@ static void
 ble_gap_update_notify(uint16_t conn_handle, int status);
 
 int
-ble_gap_master_connect_reattempt(uint16_t conn_handle, ble_addr_t *peer_addr)
+ble_gap_master_connect_reattempt(uint16_t conn_handle)
 {
     struct ble_gap_snapshot snap;
     struct ble_gap_conn_desc conn;
@@ -1061,7 +1061,7 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle, ble_addr_t *peer_addr)
         }
 
         rc = ble_gap_connect(ble_conn_reattempt.own_addr_type,
-                             (ble_conn_reattempt.peer_addr_present == 1 ? peer_addr : NULL),
+                             (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
                              ble_conn_reattempt.duration_ms,
                              &ble_conn_reattempt.conn_params,
                              ble_conn_reattempt.cb,
@@ -5878,13 +5878,13 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         memset(&ble_conn_reattempt.peer_addr, 0,
                sizeof(ble_addr_t));
     }
+
     ble_conn_reattempt.duration_ms = duration_ms;
     memcpy(&ble_conn_reattempt.conn_params,
            conn_params,
            sizeof(struct ble_gap_conn_params));
     ble_conn_reattempt.cb = cb;
     ble_conn_reattempt.cb_arg = cb_arg;
-
 #endif
 
     if (peer_addr != NULL) {
