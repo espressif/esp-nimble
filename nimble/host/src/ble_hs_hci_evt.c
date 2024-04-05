@@ -33,7 +33,7 @@ struct ble_gap_reattempt_ctxt {
     uint8_t count;
 }reattempt_conn;
 
-extern int ble_gap_master_connect_reattempt(uint16_t conn_handle, ble_addr_t *peer_addr);
+extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
 
 #ifdef CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
 #define MAX_REATTEMPT_ALLOWED CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
@@ -238,26 +238,11 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
             if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
                     reattempt_conn.count += 1;
 
-
-                    switch (conn->bhc_peer_addr.type) {
-                        case BLE_ADDR_PUBLIC:
-                        case BLE_ADDR_RANDOM:
-                            memcpy(&reattempt_conn.peer_addr, &conn->bhc_peer_addr, sizeof(ble_addr_t));
-                            reattempt_conn.peer_addr.type = conn->bhc_peer_addr.type;
-			    break;
-
-                        case BLE_ADDR_PUBLIC_ID:
-                        case BLE_ADDR_RANDOM_ID:
-                            memcpy(&reattempt_conn.peer_addr, &conn->bhc_peer_rpa_addr, sizeof(ble_addr_t));
-                            reattempt_conn.peer_addr.type = conn->bhc_peer_rpa_addr.type;
-                            break;
-                    }
-
                     handle = le16toh(ev->conn_handle);
                     /* Post event to interested application */
                     ble_gap_reattempt_count(handle, reattempt_conn.count);
 
-                    rc = ble_gap_master_connect_reattempt(ev->conn_handle , &reattempt_conn.peer_addr );
+                    rc = ble_gap_master_connect_reattempt(ev->conn_handle);
                     if (rc != 0) {
                         BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
                     }
