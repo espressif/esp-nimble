@@ -386,6 +386,16 @@ struct ble_hs_cfg;
 #define BLE_GATT_CHR_BT_SIG_DESC_INTERNAL               0x010F
 #define BLE_GATT_CHR_BT_SIG_DESC_EXTERNAL               0x0110
 
+/*** @server. */
+/** Represents one notification tuple in a multi notification PDU */
+struct ble_gatt_notif {
+    /** The attribute handle on which to notify. */
+    uint16_t handle;
+
+    /** The notification value. */
+    struct os_mbuf * value;
+};
+
 /*** @client. */
 /** Represents a GATT error. */
 struct ble_gatt_error {
@@ -850,6 +860,33 @@ int ble_gattc_write_reliable(uint16_t conn_handle,
  */
 int ble_gatts_notify_custom(uint16_t conn_handle, uint16_t att_handle,
                             struct os_mbuf *om);
+
+/**
+ * Sends a "free-form" multiple handle variable length characteristic
+ * notification. This function consumes supplied mbufs regardless of the
+ * outcome. Notifications are sent in order of supplied entries.
+ * Function tries to send minimum amount of PDUs. If PDU can't contain all
+ * of the characteristic values, multiple notifications are sent. If only one
+ * handle-value pair fits into PDU, or only one characteristic remains in the
+ * list, regular characteristic notification is sent.
+ *
+ * If GATT client doesn't support receiving multiple handle notifications,
+ * this will use GATT notification for each characteristic, separately.
+ *
+ * If value of characteristic is not specified it will be read from local
+ * GATT database.
+ *
+ * @param conn_handle           The connection over which to execute the
+ *                                  procedure.
+ * @param chr_count             Number of characteristics to notify about.
+ * @param tuples                Handle-value pairs in form of `ble_gatt_notif`
+ *                                  structures.
+ *
+ * @return                      0 on success; nonzero on failure.
+ */
+int ble_gatts_notify_multiple_custom(uint16_t conn_handle,
+                                     size_t chr_count,
+                                     struct ble_gatt_notif *tuples);
 
 /**
  * Deprecated. Should not be used. Use ble_gatts_notify_custom instead.

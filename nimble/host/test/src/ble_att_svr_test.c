@@ -24,6 +24,7 @@
 #include "nimble/hci_common.h"
 #include "ble_hs_test.h"
 #include "host/ble_uuid.h"
+#include "host/ble_l2cap.h"
 #include "ble_hs_test_util.h"
 
 #ifndef min
@@ -482,7 +483,7 @@ ble_att_svr_test_misc_verify_all_read_mult(
 }
 
 static void
-ble_att_svr_test_misc_verify_tx_mtu_rsp(uint16_t conn_handle)
+ble_att_svr_test_misc_verify_tx_mtu_rsp(uint16_t conn_handle, uint16_t cid)
 {
     struct ble_l2cap_chan *chan;
     struct ble_hs_conn *conn;
@@ -491,7 +492,7 @@ ble_att_svr_test_misc_verify_tx_mtu_rsp(uint16_t conn_handle)
 
     ble_hs_lock();
 
-    rc = ble_att_conn_chan_find(conn_handle, &conn, &chan);
+    rc = ble_att_conn_chan_find(conn_handle, cid, &conn, &chan);
     assert(rc == 0);
     my_mtu = chan->my_mtu;
 
@@ -648,7 +649,7 @@ ble_att_svr_test_misc_mtu_exchange(uint16_t my_mtu, uint16_t peer_sent,
                                                 buf, sizeof buf);
     TEST_ASSERT(rc == 0);
 
-    ble_att_svr_test_misc_verify_tx_mtu_rsp(conn_handle);
+    ble_att_svr_test_misc_verify_tx_mtu_rsp(conn_handle, BLE_L2CAP_CID_ATT);
 
     ble_hs_lock();
     rc = ble_hs_misc_conn_chan_find(conn_handle, BLE_L2CAP_CID_ATT,
@@ -1142,19 +1143,19 @@ TEST_CASE_SELF(ble_att_svr_test_find_info)
     conn_handle = ble_att_svr_test_misc_init(128);
 
     /*** Start handle of 0. */
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, 0, 0);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, 0, 0);
     TEST_ASSERT(rc != 0);
     ble_hs_test_util_verify_tx_err_rsp(
         BLE_ATT_OP_FIND_INFO_REQ, 0, BLE_ATT_ERR_INVALID_HANDLE);
 
     /*** Start handle > end handle. */
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, 101, 100);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, 101, 100);
     TEST_ASSERT(rc != 0);
     ble_hs_test_util_verify_tx_err_rsp(
         BLE_ATT_OP_FIND_INFO_REQ, 101, BLE_ATT_ERR_INVALID_HANDLE);
 
     /*** No attributes. */
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, 200, 300);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, 200, 300);
     TEST_ASSERT(rc != 0);
     ble_hs_test_util_verify_tx_err_rsp(
         BLE_ATT_OP_FIND_INFO_REQ, 200, BLE_ATT_ERR_ATTR_NOT_FOUND);
@@ -1164,13 +1165,13 @@ TEST_CASE_SELF(ble_att_svr_test_find_info)
                               ble_att_svr_test_misc_attr_fn_r_1, NULL);
     TEST_ASSERT(rc == 0);
 
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, 200, 300);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, 200, 300);
     TEST_ASSERT(rc != 0);
     ble_hs_test_util_verify_tx_err_rsp(
         BLE_ATT_OP_FIND_INFO_REQ, 200, BLE_ATT_ERR_ATTR_NOT_FOUND);
 
     /*** One 128-bit entry. */
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, handle1, handle1);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, handle1, handle1);
     TEST_ASSERT(rc == 0);
     ble_hs_test_util_verify_tx_find_info_rsp(
         ((struct ble_hs_test_util_att_info_entry[]) { {
@@ -1185,7 +1186,7 @@ TEST_CASE_SELF(ble_att_svr_test_find_info)
                               ble_att_svr_test_misc_attr_fn_r_1, NULL);
     TEST_ASSERT(rc == 0);
 
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, handle1, handle2);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, handle1, handle2);
     TEST_ASSERT(rc == 0);
     ble_hs_test_util_verify_tx_find_info_rsp(
         ((struct ble_hs_test_util_att_info_entry[]) { {
@@ -1203,7 +1204,7 @@ TEST_CASE_SELF(ble_att_svr_test_find_info)
                               ble_att_svr_test_misc_attr_fn_r_1, NULL);
     TEST_ASSERT(rc == 0);
 
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, handle1, handle3);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, handle1, handle3);
     TEST_ASSERT(rc == 0);
     ble_hs_test_util_verify_tx_find_info_rsp(
         ((struct ble_hs_test_util_att_info_entry[]) { {
@@ -1217,7 +1218,7 @@ TEST_CASE_SELF(ble_att_svr_test_find_info)
         } }));
 
     /*** Remaining 16-bit entry requested. */
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, handle3, handle3);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, handle3, handle3);
     TEST_ASSERT(rc == 0);
     ble_hs_test_util_verify_tx_find_info_rsp(
         ((struct ble_hs_test_util_att_info_entry[]) { {
@@ -1943,13 +1944,13 @@ TEST_CASE_SELF(ble_att_svr_test_oom)
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure we were able to send a real response. */
-    ble_att_svr_test_misc_verify_tx_mtu_rsp(conn_handle);
+    ble_att_svr_test_misc_verify_tx_mtu_rsp(conn_handle, BLE_L2CAP_CID_ATT);
 
     /*** Find information; always respond affirmatively, even when no mbufs. */
     ble_hs_test_util_prev_tx_dequeue();
 
     /* Receive a request. */
-    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, 1, 100);
+    rc = ble_hs_test_util_rx_att_find_info_req(conn_handle, BLE_L2CAP_CID_ATT, 1, 100);
     TEST_ASSERT_FATAL(rc == 0);
 
     /* Ensure we were able to send a real response. */

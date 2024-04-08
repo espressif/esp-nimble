@@ -165,6 +165,7 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_CONN_IQ_REPORT        36
 #define BLE_GAP_EVENT_CTE_REQ_FAILED        37
 #define BLE_GAP_EVENT_LINK_ESTAB            38
+#define BLE_GAP_EVENT_EATT                  39
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -1228,6 +1229,31 @@ struct ble_gap_event {
             /* User's response */
             int out_response;
         } authorize;
+
+#if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
+        /**
+         * EATT Event
+         *
+         * Valid for the following event types:
+         * o BLE_GAP_EVENT_EATT
+         *
+         */
+        struct {
+            /* Connection Handle */
+            uint16_t conn_handle;
+
+            /** Connected Status
+             *
+             * EATT Connected: 0
+             * EATT Disconnected: 1
+             */
+            uint8_t status;
+
+            /* CID of the bearer */
+            uint16_t cid;
+
+        } eatt;
+#endif
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 	/**
