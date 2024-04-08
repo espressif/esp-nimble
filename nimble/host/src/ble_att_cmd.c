@@ -17,10 +17,6 @@
  * under the License.
  */
 
-#include <syscfg/syscfg.h>
-#define BLE_NPL_LOG_MODULE BLE_EATT_LOG
-#include <nimble/nimble_npl_log.h>
-
 #include <errno.h>
 #include <string.h>
 #include "os/os.h"
@@ -70,7 +66,6 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
         }
         omp = STAILQ_FIRST(&conn->att_tx_q);
         if (omp == NULL) {
-            BLE_EATT_LOG_ERROR("%s: wakeup but nothing in the queue\n", __func__);
             return 0;
         }
         STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
@@ -114,7 +109,6 @@ ble_att_tx(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom)
     rc = ble_hs_misc_conn_chan_find_reqd(conn_handle, BLE_L2CAP_CID_ATT, &conn,
                                          &chan);
     if (rc != 0) {
-        ble_hs_unlock();
         os_mbuf_free_chain(txom);
         return rc;
     }

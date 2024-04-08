@@ -211,7 +211,7 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan)
 
         sdu_len = get_le16((*om)->om_data);
 
-        BLE_HS_LOG(INFO, "First LE frame received %d, SDU len: %d\n",
+        BLE_HS_LOG(DEBUG, "First LE frame received %d, SDU len: %d\n",
                    om_total, sdu_len + 2);
 
         /* We should receive payload of size sdu_len + 2 bytes of sdu_len field */
