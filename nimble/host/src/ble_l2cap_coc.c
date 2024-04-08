@@ -206,6 +206,21 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan)
         }
 
         sdu_len = get_le16((*om)->om_data);
+
+        BLE_HS_LOG(DEBUG, "First LE frame received %d, SDU len: %d\n",
+                   om_total, sdu_len + 2);
+
+        /* We should receive payload of size sdu_len + 2 bytes of sdu_len field */
+        if (om_total > sdu_len + 2) {
+            BLE_HS_LOG(ERROR, "Payload larger than expected (%d>%d)\n",
+                       om_total, sdu_len + 2);
+            /* Disconnect peer with invalid behaviour */
+            rx_sdu = NULL;
+            rx->data_offset = 0;
+            ble_l2cap_disconnect(chan);
+            return BLE_HS_EBADDATA;
+        }
+
         if (sdu_len > rx->mtu) {
             BLE_HS_LOG(INFO, "error: sdu_len > rx->mtu (%d>%d)\n",
                        sdu_len, rx->mtu);

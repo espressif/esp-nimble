@@ -7214,6 +7214,27 @@ ble_gap_authorize_event(uint16_t conn_handle, uint16_t attr_handle,
 }
 
 /*****************************************************************************
+ * EATT                                                                      *
+ *****************************************************************************/
+void
+ble_gap_eatt_event(uint16_t conn_handle, uint8_t status, uint16_t cid)
+{
+#if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_EATT;
+
+    event.eatt.conn_handle = conn_handle;
+    event.eatt.status = status;
+    event.eatt.cid = cid;
+
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
+}
+
+/*****************************************************************************
  * $preempt                                                                  *
  *****************************************************************************/
 

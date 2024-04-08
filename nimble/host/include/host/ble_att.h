@@ -92,7 +92,13 @@ struct os_mbuf;
 #define BLE_ATT_OP_NOTIFY_REQ               0x1b
 #define BLE_ATT_OP_INDICATE_REQ             0x1d
 #define BLE_ATT_OP_INDICATE_RSP             0x1e
+
+/** Multiple Handle Value Length Notification Request */
+#define BLE_ATT_OP_NOTIFY_MULTI_REQ         0x23
+
 #define BLE_ATT_OP_WRITE_CMD                0x52
+
+/** Signed Write Command */
 #define BLE_ATT_OP_SIGNED_WRITE_CMD         0xD2
 
 #define BLE_ATT_ATTR_MAX_LEN                512
@@ -192,6 +198,9 @@ uint16_t ble_att_preferred_mtu(void);
  *                                  within the allowed range.
  */
 int ble_att_set_preferred_mtu(uint16_t mtu);
+
+int ble_att_set_default_bearer_using_cid(uint16_t conn_handle, uint16_t cid);
+uint16_t ble_att_get_default_bearer_cid(uint16_t conn_handle);
 
 #ifdef __cplusplus
 }
