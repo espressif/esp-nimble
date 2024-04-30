@@ -805,6 +805,27 @@ ble_gap_set_prefered_le_phy(uint16_t conn_handle, uint8_t tx_phys_mask,
 #endif
 }
 
+int ble_gap_get_local_used_addr(ble_addr_t *addr)
+{
+    uint8_t own_addr_type = 0;
+    const uint8_t *out_id_addr;
+    int rc;
+
+    if (addr == NULL) {
+        return ESP_FAIL;
+    }
+
+    own_addr_type = ble_gap_slave[0].our_addr_type;
+
+    rc = ble_hs_id_addr(own_addr_type, &out_id_addr,NULL);
+
+    if (rc == 0) {
+        addr->type = own_addr_type;
+        memcpy(addr->val, out_id_addr, BLE_DEV_ADDR_LEN);
+    }
+
+    return rc;
+}
 /*****************************************************************************
  * $misc                                                                     *
  *****************************************************************************/
