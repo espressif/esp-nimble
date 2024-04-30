@@ -32,6 +32,15 @@ typedef enum gap_status gap_status_t;
  */
 int ble_gap_host_check_status(void);
 
+/**
+ * This API is called to get local used address and address type.
+ *
+ * @param addr                  On success, locally used address will be stored here.
+ *
+ * @return                      0 on success; nonzero on failure.
+*/
+int ble_gap_get_local_used_addr(ble_addr_t *addr);
+
 #if MYNEWT_VAL(BLE_HCI_VS)
 /**
  * This API is used to clean up residue memory in controller for legacy advertisement
