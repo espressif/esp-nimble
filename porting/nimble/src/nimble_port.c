@@ -181,6 +181,10 @@ nimble_port_init(void)
 
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret != ESP_OK) {
+        // Deinit to free any memory the controller is using.
+        if(esp_bt_controller_deinit() != ESP_OK) {
+            ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller deinit failed\n");
+        }
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller enable failed\n");
         return ret;
     }
@@ -188,6 +192,15 @@ nimble_port_init(void)
 
     ret = esp_nimble_init();
     if (ret != ESP_OK) {
+        // Deinit the controller since nimble failed.
+        #if CONFIG_BT_CONTROLLER_ENABLED
+        if(esp_bt_controller_disable() != ESP_OK) {
+            ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller disable failed\n");
+        }
+        if(esp_bt_controller_deinit() != ESP_OK) {
+            ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller deinit failed\n");
+        }
+        #endif
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble host init failed\n");
         return ret;
     }
