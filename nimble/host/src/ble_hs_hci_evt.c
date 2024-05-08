@@ -35,6 +35,7 @@ struct ble_gap_reattempt_ctxt {
 }reattempt_conn;
 
 extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
+extern int ble_gap_slave_adv_reattempt(void);
 
 #ifdef CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
 #define MAX_REATTEMPT_ALLOWED CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
@@ -185,30 +186,43 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     if (conn && ev->reason == BLE_ERR_CONN_ESTABLISHMENT) {
         uint16_t handle;
 	int rc;
-	if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED ) {
-	  /* Got for connection */
-	   BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
-                              "reattempt count = %d ", ev->reason, ev->status,
-                               reattempt_conn.count);
-            if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
-                    reattempt_conn.count += 1;
 
-                    handle = le16toh(ev->conn_handle);
-                    /* Post event to interested application */
-                    ble_gap_reattempt_count(handle, reattempt_conn.count);
+	if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) { //slave
+            BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
+                              ev->reason, ev->status);
 
-                    rc = ble_gap_master_connect_reattempt(ev->conn_handle);
-                    if (rc != 0) {
-                        BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
-                    }
+            rc = ble_gap_slave_adv_reattempt();
+            if (rc != 0) {
+	        BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
+            }
+
+            return 0;  // Restart advertising, so don't post disconnect event
+
+	} else { // master
+            if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED ) {
+	        /* Got for connection */
+	        BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
+                                 "reattempt count = %d ", ev->reason, ev->status,
+                                  reattempt_conn.count);
+                reattempt_conn.count += 1;
+
+                handle = le16toh(ev->conn_handle);
+                /* Post event to interested application */
+                ble_gap_reattempt_count(handle, reattempt_conn.count);
+
+                rc = ble_gap_master_connect_reattempt(ev->conn_handle);
+                if (rc != 0) {
+                    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
                 }
-	} else {
-            /* Exhausted attempts */
-            memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+	    } else {
+                /* Exhausted attempts */
+                memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+	    }
 	}
-    } else {
-        /* Normal disconnect. Reset the structure */
-        memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+    }
+    else {
+            /* Normal disconnect. Reset the structure */
+            memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
     }
 #endif
 
