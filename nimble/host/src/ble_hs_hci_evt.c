@@ -34,6 +34,7 @@ struct ble_gap_reattempt_ctxt {
 }reattempt_conn;
 
 extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
+extern int ble_gap_slave_adv_reattempt(void);
 
 #ifdef CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
 #define MAX_REATTEMPT_ALLOWED CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
@@ -41,13 +42,13 @@ extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
 #define MAX_REATTEMPT_ALLOWED 0
 #endif
 #endif
-   
+
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
-static struct ble_npl_mutex adv_list_lock;          
+static struct ble_npl_mutex adv_list_lock;
 static uint16_t ble_adv_list_count;
-#define  BLE_ADV_LIST_MAX_LENGTH    50 
+#define  BLE_ADV_LIST_MAX_LENGTH    50
 #define  BLE_ADV_LIST_MAX_COUNT     200
-#endif    
+#endif
 
 _Static_assert(sizeof (struct hci_data_hdr) == BLE_HCI_DATA_HDR_SZ,
                "struct hci_data_hdr must be 4 bytes");
@@ -232,30 +233,43 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     if (conn && ev->reason == BLE_ERR_CONN_ESTABLISHMENT) {
         uint16_t handle;
 	int rc;
-	if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED ) {
-	  /* Got for connection */
-	   BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
-                              "reattempt count = %d ", ev->reason, ev->status,
-                               reattempt_conn.count);
-            if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
-                    reattempt_conn.count += 1;
 
-                    handle = le16toh(ev->conn_handle);
-                    /* Post event to interested application */
-                    ble_gap_reattempt_count(handle, reattempt_conn.count);
+	if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) { //slave
+            BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
+                              ev->reason, ev->status);
 
-                    rc = ble_gap_master_connect_reattempt(ev->conn_handle);
-                    if (rc != 0) {
-                        BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
-                    }
+            rc = ble_gap_slave_adv_reattempt();
+            if (rc != 0) {
+	        BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
+            }
+
+            return 0;  // Restart advertising, so don't post disconnect event
+
+	} else { // master
+            if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED ) {
+	        /* Got for connection */
+	        BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
+                                 "reattempt count = %d ", ev->reason, ev->status,
+                                  reattempt_conn.count);
+                reattempt_conn.count += 1;
+
+                handle = le16toh(ev->conn_handle);
+                /* Post event to interested application */
+                ble_gap_reattempt_count(handle, reattempt_conn.count);
+
+                rc = ble_gap_master_connect_reattempt(ev->conn_handle);
+                if (rc != 0) {
+                    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
                 }
-	} else {
-            /* Exhausted attempts */
-            memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+	    } else {
+                /* Exhausted attempts */
+                memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+	    }
 	}
-    } else {
-        /* Normal disconnect. Reset the structure */
-        memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+    }
+    else {
+            /* Normal disconnect. Reset the structure */
+            memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
     }
 #endif
 
@@ -592,9 +606,9 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
     data += sizeof(*ev);
 
     desc.direct_addr = *BLE_ADDR_ANY;
-    
+
     /* BLE Queue Congestion check*/
-#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) 
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
     if (ble_get_adv_list_length() > BLE_ADV_LIST_MAX_LENGTH || ble_adv_list_count > BLE_ADV_LIST_MAX_COUNT) {
         ble_adv_list_refresh();
     }
@@ -603,8 +617,8 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
 
     for (i = 0; i < ev->num_reports; i++) {
 
-    /* Avoiding further processing, if the adv report is from the same device*/        
-#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) 
+    /* Avoiding further processing, if the adv report is from the same device*/
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
     if (ble_check_adv_list(ev->reports[i].addr, ev->reports[i].addr_type) == true) {
         continue;
     }
@@ -1207,8 +1221,8 @@ void ble_adv_list_init(void)
     ble_adv_list_count = 0;
 }
 
-void ble_adv_list_deinit(void) 
-{    
+void ble_adv_list_deinit(void)
+{
     struct ble_addr_list_entry *device;
     struct ble_addr_list_entry *temp;
 
@@ -1226,16 +1240,16 @@ void ble_adv_list_deinit(void)
 
 void ble_adv_list_add_packet(void *data)
 {
-    struct ble_addr_list_entry *device; 
+    struct ble_addr_list_entry *device;
 
     if (!data) {
         BLE_HS_LOG(ERROR, "%s data is NULL", __func__);
         return;
     }
-    
+
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 
-    device = (struct ble_addr_list_entry *)data; 
+    device = (struct ble_addr_list_entry *)data;
     SLIST_INSERT_HEAD(&ble_adv_list, device, next);
 
     ble_npl_mutex_release(&adv_list_lock);
@@ -1245,7 +1259,7 @@ uint32_t ble_get_adv_list_length(void)
 {
     uint32_t length = 0;
     struct ble_addr_list_entry *device;
-    
+
     SLIST_FOREACH(device, &ble_adv_list, next) {
         length++;
     }
@@ -1265,7 +1279,7 @@ void ble_adv_list_refresh(void)
     }
 
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
-    
+
     SLIST_FOREACH_SAFE(device, &ble_adv_list, next, temp) {
         SLIST_REMOVE(&ble_adv_list, device, ble_addr_list_entry, next);
         free(device);
@@ -1277,16 +1291,16 @@ void ble_adv_list_refresh(void)
 bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type)
 {
     struct ble_addr_list_entry *device;
-    struct ble_addr_list_entry *adv_packet; 
+    struct ble_addr_list_entry *adv_packet;
     bool found = false;
-    
+
     if (!addr) {
         BLE_HS_LOG(ERROR, "%s addr is NULL", __func__);
         return found;
     }
 
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
-    
+
     SLIST_FOREACH(device, &ble_adv_list, next) {
         if (!memcmp(addr, device->addr.val, BLE_DEV_ADDR_LEN) && device->addr.type == addr_type) {
             found = true;
