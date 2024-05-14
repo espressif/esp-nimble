@@ -6837,6 +6837,53 @@ ble_gap_encryption_initiate(uint16_t conn_handle,
 #endif
 }
 
+#if NIMBLE_BLE_SM && MYNEWT_VAL(BLE_SMP_ID_RESET)
+static void
+ble_gap_reset_irk(void)
+{
+    ble_addr_t oldest_peer_id_addr[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+    struct ble_store_value_local_irk  value_local_irk;
+    struct ble_store_key_local_irk key_local_irk;
+    uint8_t *local_id = NULL;
+    int rc, num_peers;
+    uint8_t tmp_addr[6];
+
+    ble_store_util_bonded_peers(&oldest_peer_id_addr[0], &num_peers,
+		                     MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+
+    if (num_peers != 0) {
+        return ;
+    }
+
+    memset(&key_local_irk, 0, sizeof key_local_irk);
+    memset(&value_local_irk, 0x0, sizeof value_local_irk);
+
+    ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+
+    if (local_id) {
+        memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    }
+
+    key_local_irk.addr.type = BLE_ADDR_PUBLIC;
+
+    ble_store_delete_local_irk(&key_local_irk);
+
+    ble_hs_pvcy_set_default_irk();
+
+    //Remove the previous entry pertaining to 00:00:00:00:00:00 address
+    memset(tmp_addr, 0, 6);
+    rc = ble_hs_pvcy_remove_entry(0, tmp_addr);
+    if (rc != 0) {
+        BLE_HS_LOG(INFO, "Failed to remove old all zero IRK");
+        return;
+    }
+
+    ble_hs_pvcy_set_our_irk(NULL);
+
+    BLE_HS_LOG(INFO,"Local IRK Reset");
+}
+#endif
+
 int
 ble_gap_unpair(const ble_addr_t *peer_addr)
 {
@@ -6914,6 +6961,14 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
          }
 
     }
+
+#if MYNEWT_VAL(BLE_SMP_ID_RESET)
+    /* There are tracking risks associated with using a fixed or static IRK.
+     * A best-practices approach, when all pairing and bonding records are deleted,
+     * assign a new randomly-generated IRK.
+     */
+    ble_gap_reset_irk();
+#endif
 
     return 0;
 #else
