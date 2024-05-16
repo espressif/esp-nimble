@@ -49,6 +49,20 @@ int ble_gap_host_check_status(void);
 int
 ble_gap_dev_authorization(uint16_t conn_handle, bool authorized);
 
+/**
+ * This API is called to get ADV data for a specific type.
+
+ *
+ * @param adv_data                  Pointer of ADV data (unsigned 8 bit integer) which to be resolved.
+ * @param adv_type                  Finding ADV data type.
+ * @param adv_data_len              Total length of Advertising data.
+ * @param length                    Return the length of ADV data not including type.
+ *
+ * @return                          Pointer (unsigned 8 bit integer) of type specific ADV data.
+ */
+uint8_t*
+ble_resolve_adv_data(const uint8_t *adv_data, uint8_t adv_type, uint8_t adv_data_len , uint8_t * length);
+
 #ifdef __cplusplus
 }
 #endif

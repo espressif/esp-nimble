@@ -728,6 +728,22 @@ ble_gap_set_prefered_le_phy(uint16_t conn_handle, uint8_t tx_phys_mask,
                              &cmd, sizeof(cmd), NULL, 0);
 }
 
+uint8_t* ble_resolve_adv_data(const uint8_t *adv_data, uint8_t adv_type, uint8_t adv_data_len , uint8_t * length)
+{
+    int rc = 0;
+    const struct ble_hs_adv_field *fields;
+    const uint8_t *data;
+
+    rc = ble_hs_adv_find_field(adv_type, adv_data, adv_data_len, &fields); /*Fill adv field*/
+
+    if (rc == 0) {
+        *length = fields->length -1 ; /* minus length of type*/
+        data  = fields->value;  /* Type specific adv data*/
+        return (uint8_t*)data;
+    }
+
+    return NULL;
+}
 /*****************************************************************************
  * $misc                                                                     *
  *****************************************************************************/
