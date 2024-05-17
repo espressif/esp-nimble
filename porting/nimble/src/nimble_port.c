@@ -124,7 +124,7 @@ esp_err_t esp_nimble_init(void)
 #endif
     /* Initialize the host */
     ble_transport_hs_init();
-#if CONFIG_BT_CONTROLLER_DISABLED && CONFIG_BT_NIMBLE_TRANSPORT_UART
+#if SOC_ESP_NIMBLE_CONTROLLER || CONFIG_BT_CONTROLLER_DISABLED
     ble_transport_ll_init();
 #endif
 
