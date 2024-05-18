@@ -31,6 +31,10 @@
 #endif
 
 #include "host/ble_hs_pvcy.h"
+#include "bt_common.h"
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+#include "hci_log/bt_hci_log.h"
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
 #define BLE_HS_HCI_EVT_COUNT    (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT) + \
                                  MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))
@@ -693,6 +697,16 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 {
     int rc;
 
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    uint16_t len = OS_MBUF_PKTHDR(om)->omp_len + 1;
+    uint8_t *data = (uint8_t *)malloc(len);
+    assert(data != NULL);
+    data[0] = 0x02;
+    os_mbuf_copydata(om, 0, len - 1, &data[1]);
+    bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len - 1);
+    free(data);
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
+
     /* If flow control is enabled, mark this packet with its corresponding
      * connection handle.
      */
@@ -719,6 +733,17 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 int
 ble_hs_tx_data(struct os_mbuf *om)
 {
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    uint16_t len = 0;
+    uint8_t data[MYNEWT_VAL(BLE_TRANSPORT_ACL_SIZE) + 1];
+    data[0] = 0x02;
+    len++;
+    os_mbuf_copydata(om, 0, OS_MBUF_PKTLEN(om), &data[1]);
+    len += OS_MBUF_PKTLEN(om);
+
+    bt_hci_log_record_hci_data(data[0], &data[1], len - 1);
+#endif
+
     return ble_transport_to_ll_acl(om);
 }
 
