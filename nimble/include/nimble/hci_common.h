@@ -1892,6 +1892,11 @@ struct ble_hci_ev_le_subev_subrate_change {
     uint16_t supervision_tmo;
 } __attribute__((packed));
 
+#if (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)
+// LE vendor hci event
+#define BLE_HCI_LE_SUBEV_DISCARD_REPORT_EVT      0XF0
+#endif // (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)
+
 /* Data buffer overflow event */
 #define BLE_HCI_EVENT_ACL_BUF_OVERFLOW      (0x01)
 

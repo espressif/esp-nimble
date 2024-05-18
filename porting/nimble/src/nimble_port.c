@@ -41,6 +41,10 @@
 #if !SOC_ESP_NIMBLE_CONTROLLER
 #include "esp_nimble_hci.h"
 #endif
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+#include "hci_log/bt_hci_log.h"
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
+#include "bt_common.h"
 
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
@@ -179,6 +183,10 @@ nimble_port_init(void)
         return ret;
     }
 
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    bt_hci_log_init();
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
+
     return ESP_OK;
 }
 
@@ -212,6 +220,10 @@ nimble_port_deinit(void)
         return ret;
     }
 #endif
+
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    bt_hci_log_deinit();
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
     return ESP_OK;
 }

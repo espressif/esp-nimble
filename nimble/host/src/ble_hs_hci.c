@@ -26,6 +26,10 @@
 #include "host/ble_monitor.h"
 #include "ble_hs_priv.h"
 #include "ble_monitor_priv.h"
+#include "bt_common.h"
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+#include "hci_log/bt_hci_log.h"
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
 #define BLE_HCI_CMD_TIMEOUT_MS  2000
 
@@ -393,6 +397,24 @@ ble_hs_hci_rx_ack(uint8_t *ack_ev)
     ble_npl_sem_release(&ble_hs_hci_sem);
 }
 
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+bool host_recv_adv_packet(uint8_t *data)
+{
+    assert(data);
+    if(data[0] == BLE_HCI_EVCODE_LE_META) {
+        if((data[2] ==  BLE_HCI_LE_SUBEV_ADV_RPT) || (data[2] == BLE_HCI_LE_SUBEV_DIRECT_ADV_RPT) ||
+        (data[2] == BLE_HCI_LE_SUBEV_EXT_ADV_RPT) || (data[2] == BLE_HCI_LE_SUBEV_PERIODIC_ADV_RPT)
+#if (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)
+        || (data[2] ==  BLE_HCI_LE_SUBEV_DISCARD_REPORT_EVT)
+#endif
+        ) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif // (BT_HCI_LOG_INCLUDED == TRUE)
+
 int
 ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
 {
@@ -402,6 +424,15 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
     int enqueue;
 
     BLE_HS_DBG_ASSERT(hci_ev != NULL);
+
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    uint16_t len = hci_ev[1] + 3;
+    if (host_recv_adv_packet(hci_ev)) {
+        bt_hci_log_record_hci_adv(HCI_LOG_DATA_TYPE_ADV, &hci_ev[1], len - 2);
+    } else {
+        bt_hci_log_record_hci_data(0x04, &hci_ev[0], len - 1);
+    }
+#endif // #if (BT_HCI_LOG_INCLUDED == TRUE)
 
     switch (ev->opcode) {
     case BLE_HCI_EVCODE_COMMAND_COMPLETE:
