@@ -1051,10 +1051,12 @@ int ble_gap_slave_adv_reattempt(void)
 	    if (rc != 0) {
 		return rc;
 	    }
-	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance, ble_adv_reattempt.data);
 
-	    if (rc != 0)
-		return rc;
+	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance, ble_adv_reattempt.data);
+	    if (rc != 0) {
+                os_mbuf_free_chain(ble_adv_reattempt.data);
+                return rc;
+            }
 
 	    rc = ble_gap_ext_adv_start(ble_adv_reattempt.instance, ble_adv_reattempt.duration,
 		    ble_adv_reattempt.max_events);
@@ -3491,9 +3493,18 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
     }
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    uint16_t len = OS_MBUF_PKTLEN(data);
     ble_adv_reattempt.type = 1;
     ble_adv_reattempt.instance = instance;
     ble_adv_reattempt.data = data;
+    // Allocate if NULL
+    if (ble_adv_reattempt.data == NULL) {
+        ble_adv_reattempt.data = os_msys_get_pkthdr(len , 0);
+    }
+
+    if (ble_adv_reattempt.data) {
+        ble_adv_reattempt.data = data;
+    }
 #endif
 
     ble_hs_lock();
