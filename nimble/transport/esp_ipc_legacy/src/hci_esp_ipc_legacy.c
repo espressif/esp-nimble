@@ -25,3 +25,9 @@ ble_transport_to_ll_acl_impl(struct os_mbuf *om)
     return ble_hci_trans_hs_acl_tx(om);
 }
 
+void
+ble_transport_ll_init(void)
+{
+
+}
+
