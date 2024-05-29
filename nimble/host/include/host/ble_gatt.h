@@ -386,16 +386,6 @@ struct ble_hs_cfg;
 #define BLE_GATT_CHR_BT_SIG_DESC_INTERNAL               0x010F
 #define BLE_GATT_CHR_BT_SIG_DESC_EXTERNAL               0x0110
 
-/*** @server. */
-/** Represents one notification tuple in a multi notification PDU */
-struct ble_gatt_notif_entry {
-    /** The attribute handle on which to notify. */
-    uint16_t handle;
-
-    /** The notification value. */
-    struct os_mbuf * value;
-};
-
 /*** @client. */
 /** Represents a GATT error. */
 struct ble_gatt_error {
@@ -860,22 +850,6 @@ int ble_gattc_write_reliable(uint16_t conn_handle,
  */
 int ble_gatts_notify_custom(uint16_t conn_handle, uint16_t att_handle,
                             struct os_mbuf *om);
-
-/**
- * Sends multiple characteristic notifications on the specified
- * attribute handles. This function consumes the mbuf of the
- * notification value after sending notification.
- *
- * @param conn_handle       The connection over which to execute the
- *                              procedure.
- * @param tuples            The list of attribute handles and notification
- *                              value tuples.
- * @param num_tuples        The number of notifications to send.
- *
- * @return                  0 on success; nonzero on failure.
- */
-int ble_gatts_multi_notify_custom(uint16_t conn_handle,
-                                  struct ble_gatt_notif_entry * tuples, uint16_t num_tuples);
 
 /**
  * Deprecated. Should not be used. Use ble_gatts_notify_custom instead.

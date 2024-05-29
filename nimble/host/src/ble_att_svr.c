@@ -623,7 +623,7 @@ ble_att_svr_write_handle(uint16_t conn_handle, uint16_t attr_handle,
 }
 
 int
-ble_att_svr_tx_error_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom,
+ble_att_svr_tx_error_rsp(uint16_t conn_handle, struct os_mbuf *txom,
                          uint8_t req_op, uint16_t handle, uint8_t error_code)
 {
     struct ble_att_error_rsp *rsp;
@@ -640,7 +640,7 @@ ble_att_svr_tx_error_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txo
     rsp->baep_handle = htole16(handle);
     rsp->baep_error_code = error_code;
 
-    return ble_att_tx(conn_handle, cid, txom);
+    return ble_att_tx(conn_handle, txom);
 }
 
 /**
@@ -667,10 +667,13 @@ ble_att_svr_tx_error_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txo
  *                                  field.
  */
 static int
-ble_att_svr_tx_rsp(uint16_t conn_handle, uint16_t cid, int hs_status, struct os_mbuf *om,
+ble_att_svr_tx_rsp(uint16_t conn_handle, int hs_status, struct os_mbuf *om,
                    uint8_t att_op, uint8_t err_status, uint16_t err_handle)
 {
+    struct ble_l2cap_chan *chan;
+    struct ble_hs_conn *conn;
     int do_tx;
+    int rc;
 
     if (hs_status != 0 && err_status == 0) {
         /* Processing failed, but err_status of 0 means don't send error. */
@@ -680,13 +683,27 @@ ble_att_svr_tx_rsp(uint16_t conn_handle, uint16_t cid, int hs_status, struct os_
     }
 
     if (do_tx) {
-        if (hs_status == 0) {
-            hs_status = ble_att_tx(conn_handle, cid, om);
-            om = NULL;
-            if (hs_status) {
-                err_status = BLE_ATT_ERR_UNLIKELY;
-            }
+        ble_hs_lock();
+
+        rc = ble_att_conn_chan_find(conn_handle, &conn, &chan);
+        if (rc != 0) {
+            /* No longer connected. */
+            hs_status = rc;
+        } else {
+            if (hs_status == 0) {
+                BLE_HS_DBG_ASSERT(om != NULL);
+
+                ble_att_inc_tx_stat(om->om_data[0]);
+                ble_att_truncate_to_mtu(chan, om);
+                hs_status = ble_l2cap_tx(conn, chan, om);
+                om = NULL;
+                if (hs_status != 0) {
+                    err_status = BLE_ATT_ERR_UNLIKELY;
+                }
+           }
         }
+
+        ble_hs_unlock();
 
         if (hs_status != 0) {
             STATS_INC(ble_att_stats, error_rsp_tx);
@@ -698,7 +715,7 @@ ble_att_svr_tx_rsp(uint16_t conn_handle, uint16_t cid, int hs_status, struct os_
                 os_mbuf_adj(om, OS_MBUF_PKTLEN(om));
             }
             if (om != NULL) {
-                ble_att_svr_tx_error_rsp(conn_handle, cid, om, att_op,
+                ble_att_svr_tx_error_rsp(conn_handle, om, att_op,
                                          err_handle, err_status);
                 om = NULL;
             }
@@ -725,7 +742,7 @@ ble_att_svr_build_mtu_rsp(uint16_t conn_handle, struct os_mbuf **rxom,
     txom = NULL;
 
     ble_hs_lock();
-    rc = ble_att_conn_chan_find(conn_handle, BLE_L2CAP_CID_ATT, NULL, &chan);
+    rc = ble_att_conn_chan_find(conn_handle, NULL, &chan);
     if (rc == 0) {
         mtu = chan->my_mtu;
     }
@@ -757,7 +774,7 @@ done:
 }
 
 int
-ble_att_svr_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_mtu(uint16_t conn_handle, struct os_mbuf **rxom)
 {
     struct ble_att_mtu_cmd *cmd;
     struct ble_l2cap_chan *chan;
@@ -769,10 +786,6 @@ ble_att_svr_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 
     txom = NULL;
     mtu = 0;
-
-    if (cid != BLE_L2CAP_CID_ATT) {
-        return BLE_HS_ENOTSUP;
-    }
 
     rc = ble_att_svr_pullup_req_base(rxom, sizeof(*cmd), &att_err);
     if (rc != 0) {
@@ -791,12 +804,12 @@ ble_att_svr_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, BLE_L2CAP_CID_ATT, rc, txom, BLE_ATT_OP_MTU_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_MTU_REQ,
                             att_err, 0);
     if (rc == 0) {
         ble_hs_lock();
 
-        rc = ble_att_conn_chan_find(conn_handle, BLE_L2CAP_CID_ATT, &conn, &chan);
+        rc = ble_att_conn_chan_find(conn_handle, &conn, &chan);
         if (rc == 0) {
             ble_att_set_peer_mtu(chan, mtu);
             chan->flags |= BLE_L2CAP_CHAN_F_TXED_MTU;
@@ -895,7 +908,7 @@ done:
 }
 
 static int
-ble_att_svr_build_find_info_rsp(uint16_t conn_handle, uint16_t cid,
+ble_att_svr_build_find_info_rsp(uint16_t conn_handle,
                                 uint16_t start_handle, uint16_t end_handle,
                                 struct os_mbuf **rxom,
                                 struct os_mbuf **out_txom,
@@ -924,7 +937,7 @@ ble_att_svr_build_find_info_rsp(uint16_t conn_handle, uint16_t cid,
     /* Write the variable length Information Data field, populating the format
      * field as appropriate.
      */
-    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    mtu = ble_att_mtu(conn_handle);
     rc = ble_att_svr_fill_info(start_handle, end_handle, txom, mtu,
                                &rsp->bafp_format);
     if (rc != 0) {
@@ -941,7 +954,7 @@ done:
 }
 
 int
-ble_att_svr_rx_find_info(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_find_info(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_FIND_INFO)
     return BLE_HS_ENOTSUP;
@@ -978,7 +991,7 @@ ble_att_svr_rx_find_info(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
         goto done;
     }
 
-    rc = ble_att_svr_build_find_info_rsp(conn_handle, cid,
+    rc = ble_att_svr_build_find_info_rsp(conn_handle,
                                         start_handle, end_handle,
                                         rxom, &txom, &att_err);
     if (rc != 0) {
@@ -989,7 +1002,7 @@ ble_att_svr_rx_find_info(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_FIND_INFO_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_FIND_INFO_REQ,
                             att_err, err_handle);
     return rc;
 }
@@ -1204,7 +1217,7 @@ done:
 }
 
 static int
-ble_att_svr_build_find_type_value_rsp(uint16_t conn_handle, uint16_t cid,
+ble_att_svr_build_find_type_value_rsp(uint16_t conn_handle,
                                       uint16_t start_handle,
                                       uint16_t end_handle,
                                       ble_uuid16_t attr_type,
@@ -1231,7 +1244,7 @@ ble_att_svr_build_find_type_value_rsp(uint16_t conn_handle, uint16_t cid,
     }
 
     /* Write the variable length Information Data field. */
-    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    mtu = ble_att_mtu(conn_handle);
 
     rc = ble_att_svr_fill_type_value(conn_handle, start_handle, end_handle,
                                      attr_type, *rxom, txom, mtu,
@@ -1248,7 +1261,7 @@ done:
 }
 
 int
-ble_att_svr_rx_find_type_value(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_find_type_value(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_FIND_TYPE)
     return BLE_HS_ENOTSUP;
@@ -1286,7 +1299,7 @@ ble_att_svr_rx_find_type_value(uint16_t conn_handle, uint16_t cid, struct os_mbu
         rc = BLE_HS_EBADDATA;
         goto done;
     }
-    rc = ble_att_svr_build_find_type_value_rsp(conn_handle, cid, start_handle,
+    rc = ble_att_svr_build_find_type_value_rsp(conn_handle, start_handle,
                                                end_handle, attr_type, rxom,
                                                &txom, &att_err);
     if (rc != 0) {
@@ -1297,7 +1310,7 @@ ble_att_svr_rx_find_type_value(uint16_t conn_handle, uint16_t cid, struct os_mbu
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom,
                             BLE_ATT_OP_FIND_TYPE_VALUE_REQ, att_err,
                             err_handle);
     return rc;
@@ -1335,7 +1348,7 @@ static uint8_t * ble_att_svr_get_csfs(uint16_t conn_handle) {
 #endif
 
 static int
-ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
+ble_att_svr_build_read_type_rsp(uint16_t conn_handle,
                                 uint16_t start_handle, uint16_t end_handle,
                                 const ble_uuid_t *uuid,
                                 struct os_mbuf **rxom,
@@ -1378,7 +1391,7 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
         goto done;
     }
 
-    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    mtu = ble_att_mtu(conn_handle);
 
     /* Find all matching attributes, writing a record for each. */
     entry = NULL;
@@ -1450,7 +1463,7 @@ done:
 }
 
 int
-ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_read_type(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_TYPE)
     return BLE_HS_ENOTSUP;
@@ -1511,7 +1524,7 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
         goto done;
     }
 #endif
-    rc = ble_att_svr_build_read_type_rsp(conn_handle, cid, start_handle, end_handle,
+    rc = ble_att_svr_build_read_type_rsp(conn_handle, start_handle, end_handle,
                                          &uuid.u, rxom, &txom, &att_err,
                                          &err_handle);
     if (rc != 0) {
@@ -1521,13 +1534,13 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_READ_TYPE_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_READ_TYPE_REQ,
                             att_err, err_handle);
     return rc;
 }
 
 int
-ble_att_svr_rx_read(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_read(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ)
     return BLE_HS_ENOTSUP;
@@ -1584,13 +1597,13 @@ ble_att_svr_rx_read(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     }
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_READ_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_READ_REQ,
                             att_err, err_handle);
     return rc;
 }
 
 int
-ble_att_svr_rx_read_blob(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_read_blob(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_BLOB)
     return BLE_HS_ENOTSUP;
@@ -1652,13 +1665,13 @@ ble_att_svr_rx_read_blob(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_READ_BLOB_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_READ_BLOB_REQ,
                             att_err, err_handle);
     return rc;
 }
 
 static int
-ble_att_svr_build_read_mult_rsp(uint16_t conn_handle, uint16_t cid,
+ble_att_svr_build_read_mult_rsp(uint16_t conn_handle,
                                 struct os_mbuf **rxom,
                                 struct os_mbuf **out_txom,
                                 uint8_t *att_err,
@@ -1669,7 +1682,7 @@ ble_att_svr_build_read_mult_rsp(uint16_t conn_handle, uint16_t cid,
     uint16_t mtu;
     int rc;
 
-    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    mtu = ble_att_mtu(conn_handle);
 
     rc = ble_att_svr_pkt(rxom, &txom, att_err);
     if (rc != 0) {
@@ -1719,7 +1732,7 @@ done:
 }
 
 int
-ble_att_svr_rx_read_mult(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_read_mult(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_MULT)
     return BLE_HS_ENOTSUP;
@@ -1750,18 +1763,18 @@ ble_att_svr_rx_read_mult(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
     ble_hs_unlock();
 #endif
 
-    rc = ble_att_svr_build_read_mult_rsp(conn_handle, cid, rxom, &txom, &att_err,
+    rc = ble_att_svr_build_read_mult_rsp(conn_handle, rxom, &txom, &att_err,
                                          &err_handle);
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     done :
 #endif
-    return ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_READ_MULT_REQ,
+    return ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_READ_MULT_REQ,
                               att_err, err_handle);
 }
 
 static int
-ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
+ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle,
                                     struct os_mbuf **rxom,
                                     struct os_mbuf **out_txom,
                                     uint8_t *att_err,
@@ -1774,7 +1787,7 @@ ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
     struct os_mbuf *tmp = NULL;
     int rc;
 
-    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    mtu = ble_att_mtu(conn_handle);
 
     rc = ble_att_svr_pkt(rxom, &txom, att_err);
     if (rc != 0) {
@@ -1843,7 +1856,7 @@ done:
 }
 
 int
-ble_att_svr_rx_read_mult_var(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_read_mult_var(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_MULT)
     return BLE_HS_ENOTSUP;
@@ -1874,13 +1887,13 @@ ble_att_svr_rx_read_mult_var(uint16_t conn_handle, uint16_t cid, struct os_mbuf 
     ble_hs_unlock();
 #endif
 
-    rc = ble_att_svr_build_read_mult_rsp_var(conn_handle, cid, rxom, &txom, &att_err,
+    rc = ble_att_svr_build_read_mult_rsp_var(conn_handle, rxom, &txom, &att_err,
                                          &err_handle);
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 done:
 #endif
-    return ble_att_svr_tx_rsp(conn_handle, cid, rc, txom,
+    return ble_att_svr_tx_rsp(conn_handle, rc, txom,
                               BLE_ATT_OP_READ_MULT_VAR_REQ,
                               att_err, err_handle);
 }
@@ -1949,7 +1962,7 @@ ble_att_svr_read_group_type_entry_write(struct os_mbuf *om, uint16_t mtu,
  * @return                      0 on success; BLE_HS error code on failure.
  */
 static int
-ble_att_svr_build_read_group_type_rsp(uint16_t conn_handle, uint16_t cid,
+ble_att_svr_build_read_group_type_rsp(uint16_t conn_handle,
                                       uint16_t start_handle,
                                       uint16_t end_handle,
                                       const ble_uuid_t *group_uuid,
@@ -1979,7 +1992,7 @@ ble_att_svr_build_read_group_type_rsp(uint16_t conn_handle, uint16_t cid,
 
     entry = NULL;
 
-    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    mtu = ble_att_mtu(conn_handle);
 
     /* Just reuse the request buffer for the response. */
     txom = *rxom;
@@ -2121,7 +2134,7 @@ done:
 }
 
 int
-ble_att_svr_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_read_group_type(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_GROUP_TYPE)
     return BLE_HS_ENOTSUP;
@@ -2190,10 +2203,9 @@ ble_att_svr_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbu
         goto done;
     }
 
-    rc = ble_att_svr_build_read_group_type_rsp(conn_handle, cid,
-                                               start_handle, end_handle,
-                                               &uuid.u, rxom,
-                                               &txom, &att_err,
+    rc = ble_att_svr_build_read_group_type_rsp(conn_handle, start_handle,
+                                               end_handle, &uuid.u,
+                                               rxom, &txom, &att_err,
                                                &err_handle);
     if (rc != 0) {
         goto done;
@@ -2202,7 +2214,7 @@ ble_att_svr_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbu
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom,
                             BLE_ATT_OP_READ_GROUP_TYPE_REQ, att_err,
                             err_handle);
     return rc;
@@ -2237,7 +2249,7 @@ done:
 }
 
 int
-ble_att_svr_rx_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_write(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_WRITE)
     return BLE_HS_ENOTSUP;
@@ -2297,13 +2309,13 @@ ble_att_svr_rx_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_WRITE_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_WRITE_REQ,
                             att_err, handle);
     return rc;
 }
 
 int
-ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_WRITE_NO_RSP)
     return BLE_HS_ENOTSUP;
@@ -2340,9 +2352,9 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 }
 
 int
-ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_signed_write(uint16_t conn_handle, struct os_mbuf **rxom)
 {
-#if !MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE) || MYNEWT_VAL(BLE_EATT_CHAN_NUM)
+#if !MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE)
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2715,7 +2727,7 @@ ble_att_svr_insert_prep_entry(uint16_t conn_handle,
 }
 
 int
-ble_att_svr_rx_prep_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_prep_write(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_QUEUED_WRITE)
     return BLE_HS_ENOTSUP;
@@ -2805,13 +2817,13 @@ ble_att_svr_rx_prep_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **r
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_PREP_WRITE_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_PREP_WRITE_REQ,
                             att_err, err_handle);
     return rc;
 }
 
 int
-ble_att_svr_rx_exec_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_exec_write(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_QUEUED_WRITE)
     return BLE_HS_ENOTSUP;
@@ -2895,13 +2907,13 @@ done:
         ble_att_svr_prep_clear(&prep_list);
     }
 
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_EXEC_WRITE_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_EXEC_WRITE_REQ,
                             att_err, err_handle);
     return rc;
 }
 
 int
-ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_notify(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_NOTIFY)
     return BLE_HS_ENOTSUP;
@@ -2943,69 +2955,6 @@ ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     return 0;
 }
 
-int
-ble_att_svr_rx_notify_multi(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
-{
-#if !MYNEWT_VAL(BLE_ATT_SVR_NOTIFY_MULTI)
-    return BLE_HS_ENOTSUP;
-#endif
-
-    struct ble_att_tuple_list *req;
-    uint16_t handle;
-    int rc;
-    uint16_t pkt_len;
-    struct os_mbuf *tmp;
-    uint16_t attr_len;
-
-    pkt_len = OS_MBUF_PKTLEN(*rxom);
-    while (pkt_len > 0) {
-        rc = ble_att_svr_pullup_req_base(rxom, sizeof(struct ble_att_tuple_list), NULL);
-        if (rc != 0) {
-            return BLE_HS_ENOMEM;
-        }
-
-        req = (struct ble_att_tuple_list *)(*rxom)->om_data;
-
-        handle = le16toh(req->handle);
-        attr_len = le16toh(req->value_len);
-
-        os_mbuf_adj(*rxom, 4);
-
-        if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
-            BLE_HS_LOG_ERROR("attr length (%d) > max (%d)",
-                             attr_len, BLE_ATT_ATTR_MAX_LEN);
-            rc = BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            goto done;
-        }
-
-        tmp = os_msys_get_pkthdr(attr_len, 0);
-        if (!tmp) {
-            BLE_HS_LOG_ERROR("not enough resources, aborting");
-            rc = BLE_ATT_ERR_INSUFFICIENT_RES;
-            goto done;
-        }
-
-        rc = os_mbuf_appendfrom(tmp, *rxom, 0, attr_len);
-        if (rc) {
-            BLE_HS_LOG_ERROR("not enough resources, aborting");
-            rc = BLE_ATT_ERR_INSUFFICIENT_RES;
-            goto done;
-        }
-
-        ble_gap_notify_rx_event(conn_handle, handle, tmp, 0);
-
-        os_mbuf_adj(*rxom, attr_len);
-        pkt_len = OS_MBUF_PKTLEN(*rxom);
-    }
-
-    rc = 0;
-done:
-    os_mbuf_free_chain(*rxom);
-    *rxom = NULL;
-
-    return rc;
-}
-
 /**
  * @return                      0 on success; nonzero on failure.
  */
@@ -3039,7 +2988,7 @@ done:
 }
 
 int
-ble_att_svr_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
+ble_att_svr_rx_indicate(uint16_t conn_handle, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_INDICATE)
     return BLE_HS_ENOTSUP;
@@ -3097,7 +3046,7 @@ ble_att_svr_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxo
     rc = 0;
 
 done:
-    rc = ble_att_svr_tx_rsp(conn_handle, cid, rc, txom, BLE_ATT_OP_INDICATE_REQ,
+    rc = ble_att_svr_tx_rsp(conn_handle, rc, txom, BLE_ATT_OP_INDICATE_REQ,
                             att_err, handle);
     return rc;
 }
