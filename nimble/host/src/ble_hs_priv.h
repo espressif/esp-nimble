@@ -24,7 +24,6 @@
 #include <inttypes.h>
 #include "ble_att_cmd_priv.h"
 #include "ble_att_priv.h"
-#include "ble_eatt_priv.h"
 #include "ble_gap_priv.h"
 #include "ble_gatt_priv.h"
 #include "ble_hs_hci_priv.h"
