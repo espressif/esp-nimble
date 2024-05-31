@@ -139,11 +139,12 @@ struct ble_gap_adv_reattempt_ctxt {
      struct ble_gap_ext_adv_params params;
      int8_t selected_tx_power;
      uint8_t selected_tx_power_present:1;
-     struct os_mbuf *data;
+     uint8_t data[1650];
+     uint16_t data_len;
      int duration;
      int max_events;
 #endif
-
+     bool retry;
      ble_gap_event_fn *cb;
      void *cb_arg;
 }ble_adv_reattempt;
@@ -1052,9 +1053,10 @@ int ble_gap_slave_adv_reattempt(void)
 		return rc;
 	    }
 
-	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance, ble_adv_reattempt.data);
+	    ble_adv_reattempt.retry = 1;
+	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance,
+			    ble_hs_mbuf_from_flat(ble_adv_reattempt.data, ble_adv_reattempt.data_len));
 	    if (rc != 0) {
-                os_mbuf_free_chain(ble_adv_reattempt.data);
                 return rc;
             }
 
@@ -3496,14 +3498,11 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
     uint16_t len = OS_MBUF_PKTLEN(data);
     ble_adv_reattempt.type = 1;
     ble_adv_reattempt.instance = instance;
-    ble_adv_reattempt.data = data;
-    // Allocate if NULL
-    if (ble_adv_reattempt.data == NULL) {
-        ble_adv_reattempt.data = os_msys_get_pkthdr(len , 0);
-    }
 
-    if (ble_adv_reattempt.data) {
-        ble_adv_reattempt.data = data;
+    if (!ble_adv_reattempt.retry) {
+        ble_hs_mbuf_to_flat(data, ble_adv_reattempt.data, len, &ble_adv_reattempt.data_len);
+    } else {
+        ble_adv_reattempt.retry = 0;
     }
 #endif
 
@@ -3520,6 +3519,7 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
 
 done:
     os_mbuf_free_chain(data);
+    data = NULL;
     return rc;
 }
 
