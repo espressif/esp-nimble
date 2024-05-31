@@ -3864,7 +3864,8 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
     }
 
     if (ble_adv_reattempt.data) {
-        ble_adv_reattempt.data = data;
+        rc = os_mbuf_appendfrom(ble_adv_reattempt.data, data, 0, len);
+        assert (rc == 0);
     }
 #endif
 
