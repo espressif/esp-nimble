@@ -1117,7 +1117,6 @@ int ble_gap_slave_adv_reattempt(void)
 
 	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance, ble_adv_reattempt.data);
 	    if (rc != 0) {
-                os_mbuf_free_chain(ble_adv_reattempt.data);
                 return rc;
             }
 
@@ -3694,7 +3693,8 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
         ble_adv_reattempt.data = os_msys_get_pkthdr(len , 0);
     }
 
-    if (ble_adv_reattempt.data) {
+    if (ble_adv_reattempt.data && (ble_adv_reattempt.data != data)) {
+        os_mbuf_adj(ble_adv_reattempt.data, len);
         rc = os_mbuf_appendfrom(ble_adv_reattempt.data, data, 0, len);
         assert (rc == 0);
     }
@@ -3712,7 +3712,15 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
     ble_hs_unlock();
 
 done:
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    if (ble_adv_reattempt.data != data) {
+       os_mbuf_free_chain(data);
+       data = NULL;
+    }
+#else
     os_mbuf_free_chain(data);
+    data = NULL;
+#endif
     return rc;
 }
 
