@@ -6532,7 +6532,7 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
            irk_rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,
                                 key.sec.peer_addr.val);
             if (irk_rc != 0) {
-                BLE_HS_LOG(ERROR, "Error while removing IRK\n");
+                BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",irk_rc);
             }
         }
 
@@ -6540,7 +6540,7 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             // Delete the Peer record from store as LTK is present
             ltk_rc = ble_store_util_delete_peer(&key.sec.peer_addr);
             if (ltk_rc != 0) {
-                BLE_HS_LOG(ERROR, "Error while removing LTK\n");
+                BLE_HS_LOG(ERROR, "Error while removing LTK , rc = %x\n",ltk_rc);
             }
         }
     }
@@ -6550,7 +6550,7 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
              ble_store_util_delete_peer(&key.sec.peer_addr);
          }
          else {
-              BLE_HS_LOG(ERROR,"No record found for the given address in ble store");
+              BLE_HS_LOG(ERROR,"No record found for the given address in ble store , rc = %x\n",rc);
               return rc;
          }
     }
