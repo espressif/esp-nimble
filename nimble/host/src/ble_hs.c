@@ -757,7 +757,7 @@ ble_hs_tx_data(struct os_mbuf *om)
 #endif
 #if (BT_HCI_LOG_INCLUDED == TRUE)
     uint16_t len = 0;
-    uint8_t data[MYNEWT_VAL(BLE_TRANSPORT_ACL_SIZE) + 1];
+    uint8_t data[MYNEWT_VAL(BLE_ACL_BUF_SIZE) + 1];
     data[0] = 0x02;
     len++;
     os_mbuf_copydata(om, 0, OS_MBUF_PKTLEN(om), &data[1]);
