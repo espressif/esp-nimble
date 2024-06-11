@@ -139,11 +139,13 @@ struct ble_gap_adv_reattempt_ctxt {
      struct ble_gap_ext_adv_params params;
      int8_t selected_tx_power;
      uint8_t selected_tx_power_present:1;
-     struct os_mbuf *data;
+     uint8_t data[1650];
+     uint16_t data_len;
      int duration;
      int max_events;
 #endif
 
+     bool retry;
      ble_gap_event_fn *cb;
      void *cb_arg;
 }ble_adv_reattempt;
@@ -1115,7 +1117,10 @@ int ble_gap_slave_adv_reattempt(void)
 		return rc;
 	    }
 
-	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance, ble_adv_reattempt.data);
+	    ble_adv_reattempt.retry = 1;
+	    rc = ble_gap_ext_adv_set_data(ble_adv_reattempt.instance,
+			    ble_hs_mbuf_from_flat(ble_adv_reattempt.data, ble_adv_reattempt.data_len));
+
 	    if (rc != 0) {
                 return rc;
             }
@@ -3684,22 +3689,6 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
        goto done;
     }
 
-#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
-    uint16_t len = OS_MBUF_PKTLEN(data);
-    ble_adv_reattempt.type = 1;
-    ble_adv_reattempt.instance = instance;
-    // Allocate if NULL
-    if (ble_adv_reattempt.data == NULL) {
-        ble_adv_reattempt.data = os_msys_get_pkthdr(len , 0);
-    }
-
-    if (ble_adv_reattempt.data && (ble_adv_reattempt.data != data)) {
-        os_mbuf_adj(ble_adv_reattempt.data, len);
-        rc = os_mbuf_appendfrom(ble_adv_reattempt.data, data, 0, len);
-        assert (rc == 0);
-    }
-#endif
-
     ble_hs_lock();
     rc = ble_gap_ext_adv_set_data_validate(instance, data);
     if (rc != 0) {
@@ -3707,20 +3696,26 @@ ble_gap_ext_adv_set_data(uint8_t instance, struct os_mbuf *data)
         goto done;
     }
 
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    uint16_t len = OS_MBUF_PKTLEN(data);
+    ble_adv_reattempt.type = 1;
+    ble_adv_reattempt.instance = instance;
+
+    if (!ble_adv_reattempt.retry) {
+        ble_hs_mbuf_to_flat(data, ble_adv_reattempt.data, len, &ble_adv_reattempt.data_len);
+    } else {
+        ble_adv_reattempt.retry = 0;
+    }
+#endif
+
     rc = ble_gap_ext_adv_set(instance, BLE_HCI_OCF_LE_SET_EXT_ADV_DATA, &data);
 
     ble_hs_unlock();
 
 done:
-#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
-    if (ble_adv_reattempt.data != data) {
-       os_mbuf_free_chain(data);
-       data = NULL;
-    }
-#else
     os_mbuf_free_chain(data);
     data = NULL;
-#endif
+
     return rc;
 }
 
