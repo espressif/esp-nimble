@@ -2883,6 +2883,13 @@ ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
         return BLE_HS_EDISABLED;
     }
 
+    ble_hs_lock();
+
+    rc = ble_gap_adv_validate(own_addr_type, direct_addr, adv_params);
+    if (rc != 0) {
+        goto done;
+    }
+
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     ble_adv_reattempt.type = 0;
     ble_adv_reattempt.own_addr_type = own_addr_type;
@@ -2899,13 +2906,6 @@ ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
     ble_adv_reattempt.cb = cb;
     ble_adv_reattempt.cb_arg = cb_arg;
 #endif
-
-    ble_hs_lock();
-
-    rc = ble_gap_adv_validate(own_addr_type, direct_addr, adv_params);
-    if (rc != 0) {
-        goto done;
-    }
 
     if (duration_ms != BLE_HS_FOREVER) {
         rc = ble_npl_time_ms_to_ticks(duration_ms, &duration_ticks);
