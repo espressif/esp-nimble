@@ -238,6 +238,19 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
             BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
                               ev->reason, ev->status);
 
+            ble_l2cap_sig_conn_broken(ev->conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
+            ble_sm_connection_broken(ev->conn_handle);
+            ble_gatts_connection_broken(ev->conn_handle);
+            ble_gattc_connection_broken(ev->conn_handle);
+            ble_hs_flow_connection_broken(ev->conn_handle);;
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+            ble_gattc_cache_conn_broken(ev->conn_handle);
+#endif
+            rc = ble_hs_atomic_conn_delete(ev->conn_handle);
+            if (rc != 0) {
+                return rc;
+            }
+
             rc = ble_gap_slave_adv_reattempt();
             if (rc != 0) {
 	        BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
