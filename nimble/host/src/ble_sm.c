@@ -999,32 +999,30 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
 
         ble_hs_unlock();
 
-        if (res->enc_cb &&
-            res->app_status != BLE_HS_ENOTCONN) {
-            /* Do not send this event on broken connection */
-            ble_gap_pairing_complete_event(conn_handle, res->sm_err);
-        }
-
         if (proc == NULL) {
             break;
         }
 
-	if (res->app_status == 518 ) {
-	    conn = ble_hs_conn_find(conn_handle);
+        if (res->app_status == 518 ) {
+            conn = ble_hs_conn_find(conn_handle);
 
             conn_flags = conn->bhc_flags;
 
             ble_sm_proc_free(proc);
 
-	    if (conn_flags & BLE_HS_CONN_F_MASTER) {
-	       ble_sm_pair_initiate(conn_handle);
-	    }
-	    else {
-	       ble_sm_slave_initiate(conn_handle);
+            if (conn_flags & BLE_HS_CONN_F_MASTER) {
+                ble_sm_pair_initiate(conn_handle);
+            } else {
+                ble_sm_slave_initiate(conn_handle);
             }
-	    break;
+            break;
         }
 
+        if (res->enc_cb &&
+            res->app_status != BLE_HS_ENOTCONN) {
+            /* Do not send this event on broken connection */
+            ble_gap_pairing_complete_event(conn_handle, res->sm_err);
+        }
         if (res->enc_cb) {
             BLE_HS_DBG_ASSERT(proc == NULL || rm);
             ble_gap_enc_event(conn_handle, res->app_status, res->restore, res->bonded);
