@@ -1059,7 +1059,7 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
                              ble_conn_reattempt.duration_ms,
                              &ble_conn_reattempt.conn_params,
                              ble_conn_reattempt.cb,
-                             &conn);
+                             ble_conn_reattempt.cb_arg);
         if (rc != 0) {
             return rc;
         }
