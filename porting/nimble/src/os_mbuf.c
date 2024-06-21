@@ -35,6 +35,7 @@
 
 #include "os/os.h"
 #include "os/os_trace_api.h"
+#include "modlog/modlog.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -186,6 +187,7 @@ os_msys_get(uint16_t dsize, uint16_t leadingspace)
     m = os_mbuf_get(pool, leadingspace);
     return (m);
 err:
+    MODLOG_DFLT(INFO,"_os_msys_find_pool failed (size %u)\n",dsize);
     return (NULL);
 }
 
@@ -205,6 +207,7 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
     m = os_mbuf_get_pkthdr(pool, user_hdr_len);
     return (m);
 err:
+    MODLOG_DFLT(INFO,"_os_msys_find_pool failed (size %u)\n",dsize);
     return (NULL);
 }
 
