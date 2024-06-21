@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include "syscfg/syscfg.h"
+#include "modlog/modlog.h"
 #if !MYNEWT_VAL(OS_SYSVIEW_TRACE_MEMPOOL)
 #define OS_TRACE_DISABLE_FILE_API
 #endif
@@ -369,6 +370,10 @@ os_memblock_get(struct os_mempool *mp)
     }
 
     os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, (uintptr_t)block);
+
+    if(!block){
+       MODLOG_DFLT(INFO,"os_memblock_get failed (size %u)\n",sizeof *block);
+    }
 
     return (void *)block;
 }
