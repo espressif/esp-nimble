@@ -3185,6 +3185,17 @@ ble_gatts_lcl_svc_foreach(ble_gatt_svc_foreach_fn cb, void *arg)
 #endif
 }
 
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+uint8_t
+ble_gatts_security_mode_1_level() {
+    uint8_t security_level;
+
+    security_level = ble_att_svr_security_mode_1_level();
+
+    return security_level;
+}
+#endif
+
 int
 ble_gatts_reset(void)
 {

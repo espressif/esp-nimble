@@ -100,6 +100,13 @@ static const struct ble_gatt_svc_def ble_svc_gap_defs[] = {
             .flags = BLE_GATT_CHR_F_READ,
         }, {
 #endif
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+            /*** Characteristic: LE GATT Security Levels. */
+            .uuid = BLE_UUID16_DECLARE(BLE_SVC_GAP_CHR_UUID16_LE_GATT_SECURITY_LEVELS),
+            .access_cb = ble_svc_gap_access,
+            .flags = BLE_GATT_CHR_F_READ,
+        }, {
+#endif
             0, /* No more characteristics in this service. */
         } },
     },
@@ -190,6 +197,26 @@ ble_svc_gap_appearance_write_access(struct ble_gatt_access_ctxt *ctxt)
 #endif
 }
 
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+static int
+ble_svc_gap_security_level_read_access(uint16_t conn_handle, struct os_mbuf * om)
+{
+    uint8_t security_level[2];
+    int rc;
+    
+    /* Currently this characteristic is only supported for
+     * Security Mode 1
+     */
+    security_level[0] = 0x01; //Mode 1
+    security_level[1] = ble_gatts_security_mode_1_level(); //Mode 1 Level
+    
+    rc = os_mbuf_append(om, security_level, sizeof(security_level));
+
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+#endif
+
+
 static int
 ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -254,6 +281,13 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
         rc = os_mbuf_append(ctxt->om, &(km.iv), sizeof(km.iv));
 
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+#endif
+
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+    case BLE_SVC_GAP_CHR_UUID16_LE_GATT_SECURITY_LEVELS:
+        assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
+        rc = ble_svc_gap_security_level_read_access(conn_handle, ctxt->om);
+        return rc;
 #endif
 
     default:
