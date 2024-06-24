@@ -240,6 +240,9 @@ void ble_att_svr_restore_range(uint16_t start_handle, uint16_t end_handle);
 int ble_att_svr_tx_error_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom,
                              uint8_t req_op, uint16_t handle,
                              uint8_t error_code);
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+uint8_t ble_att_svr_security_mode_1_level(void);
+#endif
 /*** $clt */
 
 /** An information-data entry in a find information response. */
