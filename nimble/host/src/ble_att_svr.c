@@ -3415,4 +3415,45 @@ int ble_att_fill_database_info(uint8_t *out_data)
     return 0;
 }
 #endif
+
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+/**
+ * Return the highest Security Mode 1 Level requirement.
+ *
+ * @return                      Maximum level requirement
+ */
+uint8_t
+ble_att_svr_security_mode_1_level()
+{
+    struct ble_att_svr_entry *entry;
+    uint8_t highest_security_level = 0x01; //No Security
+    uint8_t sec_level;
+    uint8_t flags;
+
+    for (entry = STAILQ_FIRST(&ble_att_svr_list);
+         entry != NULL;
+         entry = STAILQ_NEXT(entry, ha_next)) {
+
+        flags = entry->ha_flags;
+        if ((flags & BLE_ATT_F_READ_AUTHEN) || (flags & BLE_ATT_F_WRITE_AUTHEN)) {
+            sec_level = 0x03; //Authenticated pairing with encryption
+            /* This is the highest currently supported value.
+             * Break here.
+             */
+            highest_security_level = 0x03;
+            break;
+        } else if ((flags & BLE_ATT_F_READ_ENC) || (flags & BLE_ATT_F_WRITE_ENC)) {
+            sec_level = 0x02; //Unauthenticated pairing with encryption
+        } else {
+            sec_level = 0x01; //No security (No authentication and no encryption)
+        }
+
+        if (sec_level > highest_security_level) {
+            highest_security_level = sec_level;
+        }
+    }
+
+    return highest_security_level;
+}
+#endif
 #endif

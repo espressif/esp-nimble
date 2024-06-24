@@ -1376,6 +1376,14 @@ typedef void (*ble_gatt_svc_foreach_fn)(const struct ble_gatt_svc_def *svc,
  */
 void ble_gatts_show_local(void);
 
+#if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
+/**
+ * Calculates and returns the maximum
+ * Security Mode 1 Level requirement.
+ */
+uint8_t ble_gatts_security_mode_1_level(void);
+#endif
+
 /**
  * Resets the GATT server to its initial state.  On success, this function
  * removes all supported services, characteristics, and descriptors.  This
