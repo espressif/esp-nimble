@@ -225,6 +225,9 @@ struct ble_gattc_proc {
     };
 };
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+static struct ble_gattc_proc_list temp_proc_list;
+#endif
 STAILQ_HEAD(ble_gattc_proc_list, ble_gattc_proc);
 
 /**
@@ -1006,6 +1009,10 @@ ble_gattc_extract(ble_gattc_match_fn *cb, void *arg, int max_procs,
     struct ble_gattc_proc *proc;
     struct ble_gattc_proc *prev;
     struct ble_gattc_proc *next;
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    struct ble_gattc_proc *cur;
+    uint8_t flag = 0;
+#endif
     int num_extracted;
 
     /* Only the parent task is allowed to remove entries from the list. */
@@ -1017,6 +1024,28 @@ ble_gattc_extract(ble_gattc_match_fn *cb, void *arg, int max_procs,
     ble_hs_lock();
 
     prev = NULL;
+
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    proc = STAILQ_FIRST(&temp_proc_list);
+    while (proc != NULL) {
+        next = STAILQ_NEXT(proc, next);
+        STAILQ_FOREACH(cur, &ble_gattc_procs, next) {
+            if (proc == cur) {
+                flag = 1;
+                break;
+            }
+        }
+        if (!flag) {
+        /* Detected a preemption case */
+            STAILQ_INSERT_TAIL(&ble_gattc_procs, proc, next);
+        }
+        flag = 0;
+        proc = next;
+    }
+    /* Clear the temp proc list */
+    STAILQ_INIT(&temp_proc_list);
+#endif
+
     proc = STAILQ_FIRST(&ble_gattc_procs);
     while (proc != NULL) {
         next = STAILQ_NEXT(proc, next);
@@ -1640,6 +1669,11 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
     proc->disc_all_svcs.cb = cb;
     proc->disc_all_svcs.cb_arg = cb_arg;
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    ble_hs_lock();
+    STAILQ_INSERT_TAIL(&temp_proc_list, proc, next);
+    ble_hs_unlock();
+#endif
     ble_gattc_log_proc_init("discover all services\n");
 
     rc = ble_gattc_disc_all_svcs_tx(proc);
@@ -1650,6 +1684,11 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
 done:
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_svcs_fail);
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+        ble_hs_lock();
+        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
+        ble_hs_unlock();
+#endif
     }
 
     ble_gattc_process_status(proc, rc);
@@ -2410,6 +2449,11 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
     proc->disc_all_chrs.cb = cb;
     proc->disc_all_chrs.cb_arg = cb_arg;
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    ble_hs_lock();
+    STAILQ_INSERT_TAIL(&temp_proc_list, proc, next);
+    ble_hs_unlock();
+#endif
     ble_gattc_log_disc_all_chrs(proc);
 
     rc = ble_gattc_disc_all_chrs_tx(proc);
@@ -2420,6 +2464,11 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
 done:
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_chrs_fail);
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+        ble_hs_lock();
+        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
+        ble_hs_unlock();
+#endif
     }
 
     ble_gattc_process_status(proc, rc);
@@ -2872,6 +2921,11 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
     proc->disc_all_dscs.cb = cb;
     proc->disc_all_dscs.cb_arg = cb_arg;
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    ble_hs_lock();
+    STAILQ_INSERT_TAIL(&temp_proc_list, proc, next);
+    ble_hs_unlock();
+#endif
     ble_gattc_log_disc_all_dscs(proc);
 
     rc = ble_gattc_disc_all_dscs_tx(proc);
@@ -2882,6 +2936,11 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
 done:
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_dscs_fail);
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+        ble_hs_lock();
+        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
+        ble_hs_unlock();
+#endif
     }
 
     ble_gattc_process_status(proc, rc);
@@ -5342,6 +5401,9 @@ ble_gattc_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    STAILQ_INIT(&temp_proc_list);
+#endif
     STAILQ_INIT(&ble_gattc_procs);
 
     if (MYNEWT_VAL(BLE_GATT_MAX_PROCS) > 0) {
