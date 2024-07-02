@@ -42,6 +42,7 @@ static char ble_svc_gap_name[BLE_SVC_GAP_NAME_MAX_LEN + 1] =
 static uint16_t ble_svc_gap_appearance = MYNEWT_VAL(BLE_SVC_GAP_APPEARANCE);
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
+static uint16_t ble_svc_gap_enc_adv_data_handle;
 static struct key_material km = {
     .session_key = {0},
     .iv = {0},
@@ -97,7 +98,8 @@ static const struct ble_gatt_svc_def ble_svc_gap_defs[] = {
 #if MYNEWT_VAL(ENC_ADV_DATA)
             .uuid = BLE_UUID16_DECLARE(BLE_SVC_GAP_CHR_UUID16_KEY_MATERIAL),
             .access_cb = ble_svc_gap_access,
-            .flags = BLE_GATT_CHR_F_READ,
+            .val_handle = &ble_svc_gap_enc_adv_data_handle,
+            .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_READ_AUTHOR | BLE_GATT_CHR_F_INDICATE,
         }, {
 #endif
 #if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
@@ -345,6 +347,7 @@ ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv)
 {
     memcpy(&km.session_key, session_key, BLE_EAD_KEY_SIZE);
     memcpy(&km.iv, iv, BLE_EAD_IV_SIZE);
+    ble_gatts_chr_updated(ble_svc_gap_enc_adv_data_handle);
     return 0;
 }
 #endif
