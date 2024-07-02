@@ -121,8 +121,6 @@ int ble_ead_decrypt(const uint8_t session_key[BLE_EAD_KEY_SIZE],
                     const uint8_t iv[BLE_EAD_IV_SIZE], const uint8_t *encrypted_payload,
                     size_t encrypted_payload_size, uint8_t *payload);
 
-int ble_ead_serialize_data(const struct enc_adv_data *input, uint8_t *output);
-
 #endif /* ENC_ADV_DATA */
 
 #ifdef __cplusplus

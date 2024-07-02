@@ -66,7 +66,7 @@ get_nvs_key_string(int obj_type, int index, char *key_string)
         } else if (obj_type == BLE_STORE_OBJ_TYPE_OUR_SEC) {
             sprintf(key_string, "%s_%d", NIMBLE_NVS_OUR_SEC_KEY, index);
 #if MYNEWT_VAL(ENC_ADV_DATA)
-        } else if (obj_type == NIMBLE_NVS_EAD_SEC_KEY) {
+        } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
             sprintf(key_string, "%s_%d", NIMBLE_NVS_EAD_SEC_KEY, index);
 #endif
         } else if (obj_type == BLE_STORE_OBJ_TYPE_LOCAL_IRK) {
@@ -111,7 +111,7 @@ get_nvs_max_obj_value(int obj_type)
         if (obj_type == BLE_STORE_OBJ_TYPE_CCCD) {
             return MYNEWT_VAL(BLE_STORE_MAX_CCCDS);
 #if MYNEWT_VAL(ENC_ADV_DATA)
-        } else if (obj_type == BLE_STORE_OBJ_TYPE_EAD) {
+        } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
             return MYNEWT_VAL(BLE_STORE_MAX_EADS);
 #endif
         } else {
@@ -177,7 +177,7 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
         err = nvs_get_blob(nimble_handle, key_string, &val->cccd,
                            &required_size);
 #if MYNEWT_VAL(ENC_ADV_DATA)
-    } else if (obj_type == BLE_STORE_OBJ_TYPE_EAD) {
+    } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
         err = nvs_get_blob(nimble_handle, key_string, &val->ead,
                            &required_size);
 #endif
@@ -256,7 +256,7 @@ get_nvs_db_attribute(int obj_type, bool empty, void *value, int num_value)
                         err = get_nvs_matching_index(&cur.sec, value, num_value,
                                                      sizeof(struct ble_store_value_cccd));
 #if MYNEWT_VAL(ENC_ADV_DATA)
-                    } else if (obj_type == BLE_STORE_OBJ_TYPE_EAD) {
+                    } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
                         err = get_nvs_matching_index(&cur.sec, value, num_value,
                                                      sizeof(struct ble_store_value_ead));
 #endif
@@ -393,7 +393,7 @@ ble_store_nvs_write(int obj_type, const union ble_store_value *val)
         return ble_nvs_write_key_value(key_string, &val->cccd, sizeof(struct
                                        ble_store_value_cccd));
 #if MYNEWT_VAL(ENC_ADV_DATA)
-    } else if (obj_type == BLE_STORE_OBJ_TYPE_EAD) {
+    } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
         return ble_nvs_write_key_value(key_string, &val->ead, sizeof(struct
                                        ble_store_value_ead));
 #endif
@@ -490,7 +490,7 @@ populate_db_from_nvs(int obj_type, void *dst, int *db_num)
                 db_item += sizeof(struct ble_store_value_cccd);
                 (*db_num)++;
 #if MYNEWT_VAL(ENC_ADV_DATA)
-            } if (obj_type == BLE_STORE_OBJ_TYPE_EAD) {
+            } if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
                   ESP_LOGD(TAG, "EAD in RAM is filled up from NVS index = %d", i);
                   memcpy(db_item, &cur.ead, sizeof(struct ble_store_value_ead));
                   db_item += sizeof(struct ble_store_value_ead);
@@ -582,7 +582,7 @@ ble_nvs_restore_sec_keys(void)
 #endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
-    err = populate_db_from_nvs(BLE_STORE_OBJ_TYPE_EAD, ble_store_config_eads,
+    err = populate_db_from_nvs(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, ble_store_config_eads,
                                &ble_store_config_num_eads);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS operation failed for 'EAD'");
@@ -693,7 +693,7 @@ int ble_store_config_persist_eads(void)
             return BLE_HS_ESTORE_FAIL;
         }
         ESP_LOGD(TAG, "Deleting EAD, nvs idx = %d", nvs_idx);
-        return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_EAD, nvs_idx);
+        return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, nvs_idx);
     }
     return 0;
 }
