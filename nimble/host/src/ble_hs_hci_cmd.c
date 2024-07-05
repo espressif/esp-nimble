@@ -98,7 +98,7 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     buf--;
 #endif
 
-#if (BT_HCI_LOG_INCLUDED == TRUE)
+#if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     uint8_t *data;
 #if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
     data = (uint8_t *)buf + 1;
