@@ -158,7 +158,7 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_REATTEMPT_COUNT       29
 #define BLE_GAP_EVENT_TEST_UPDATE           30
 #define BLE_GAP_EVENT_DATA_LEN_CHG          31
-
+#define BLE_GAP_EVENT_LINK_ESTAB            32
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -533,6 +533,25 @@ struct ble_gap_event {
             /** The handle of the relevant connection. */
             uint16_t conn_handle;
         } connect;
+
+        /**
+         * Represents a successful Link establishment attempt.  Valid for the following event
+         * types:
+         *     o BLE_GAP_EVENT_LINK_ESTAB
+         */
+
+        struct {
+            /**
+             * The final status of the link establishment;
+             *     o 0: the connection was successfully established.
+             *     o BLE host error code: the connection attempt failed for
+             *       the specified reason.
+             */
+            int status;
+
+           /** The handle of the relevant connection. */
+            uint16_t conn_handle;
+        } link_estab;
 
         /**
          * Represents a terminated connection.  Valid for the following event

@@ -988,6 +988,9 @@ ble_gap_master_connect_failure(int status)
         event.connect.status = status;
 
         rc = state.cb(&event, state.cb_arg);
+
+        event.type = BLE_GAP_EVENT_LINK_ESTAB;
+        rc = state.cb(&event, state.cb_arg);
     } else {
         rc = 0;
     }
@@ -1013,6 +1016,9 @@ ble_gap_master_connect_cancelled(void)
             /* Connect procedure timed out. */
             event.connect.status = BLE_HS_ETIMEOUT;
         }
+        state.cb(&event, state.cb_arg);
+
+        event.type = BLE_GAP_EVENT_LINK_ESTAB;
         state.cb(&event, state.cb_arg);
     }
 }
@@ -2244,6 +2250,17 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
     conn = ble_hs_conn_find(le16toh(ev->conn_handle));
     if ((conn != NULL) && (ev->status == 0)) {
         conn->supported_feat = get_le32(ev->features);
+
+        struct ble_gap_event event;
+        uint16_t conn_handle = le16toh(ev->conn_handle);
+
+        memset(&event, 0, sizeof event);
+        event.type = BLE_GAP_EVENT_LINK_ESTAB;
+        event.link_estab.status = ev->status;
+        event.link_estab.conn_handle = conn_handle;
+
+        ble_gap_event_listener_call(&event);
+        ble_gap_call_conn_event_cb(&event, conn_handle);
     }
 
     ble_hs_unlock();
