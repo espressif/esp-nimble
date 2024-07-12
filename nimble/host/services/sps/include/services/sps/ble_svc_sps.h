@@ -24,7 +24,7 @@
 
 
 #define BLE_SVC_SPS_UUID16                              0x1813
-#define BLE_SVC_SPS_CHR_UUID16_SCAN_ITVL_WINDOW	        0x2A23
+#define BLE_SVC_SPS_CHR_UUID16_SCAN_ITVL_WINDOW	        0x2A4F
 #define BLE_SVC_SPS_CHR_UUID16_SCAN_REFRESH             0x2A31
 
 void ble_svc_sps_scan_refresh(void);

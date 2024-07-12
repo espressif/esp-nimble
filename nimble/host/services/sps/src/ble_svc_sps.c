@@ -100,9 +100,9 @@ ble_svc_sps_access(uint16_t conn_handle, uint16_t attr_handle,
     case BLE_SVC_SPS_CHR_UUID16_SCAN_ITVL_WINDOW:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR);
         rc = ble_svc_sps_chr_write(ctxt->om, 0, sizeof(ble_scan_itvl) + sizeof(ble_scan_window), &write_val, NULL);
-        if(rc != 0) {
+        if(rc == 0) {
             ble_scan_itvl = (write_val & 0xffff0000) >> 16;
-            ble_scan_window = (write_val && 0x0000ffff);
+            ble_scan_window = (write_val & 0x0000ffff);
         }
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     case BLE_SVC_SPS_CHR_UUID16_SCAN_REFRESH:
