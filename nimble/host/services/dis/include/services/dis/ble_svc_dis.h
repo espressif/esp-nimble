@@ -42,7 +42,16 @@
 #define BLE_SVC_DIS_CHR_UUID16_HARDWARE_REVISION    0x2A27
 #define BLE_SVC_DIS_CHR_UUID16_SOFTWARE_REVISION    0x2A28
 #define BLE_SVC_DIS_CHR_UUID16_MANUFACTURER_NAME    0x2A29
+#define BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST   0x2A2A
 #define BLE_SVC_DIS_CHR_UUID16_PNP_ID               0x2A50
+#define BLE_SVC_DIS_CHR_UUID16_UDI                  0x2BFF
+
+#if MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
+/** One PTS Case requires this DIS to be included. */
+static const ble_uuid128_t ble_svc_dis_include_uuid =
+    BLE_UUID128_INIT(0x2d, 0x71, 0xa2, 0x59, 0xb4, 0x58, 0xc8, 0x12,
+                     0x99, 0x99, 0x43, 0x95, 0x12, 0x2f, 0x46, 0xFF);
+#endif
 
 /**
  * Structure holding data for the main characteristics
@@ -81,14 +90,26 @@ struct ble_svc_dis_data {
     /**
      * System ID.
      * Represent the System Id of the device.
+     * Length: 8 Octets
      */
     const char *system_id;
 
     /**
      * PNP ID.
      * Represent the PNP Id of the device.
+     * Length: 7 Octets
      */
     const char *pnp_id;
+
+    /**
+     * IEEE 11073-20601 Regulatory Certification Data List
+     */
+    const char *ieee;
+
+    /**
+     * UDI for Medical Devices
+     */
+    const char *udi;
 };
 
 /**

@@ -190,12 +190,11 @@ fill_boot_kbd_inp(uint8_t instance)
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].kbd_inp_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
-                 BLE_GATT_CHR_F_WRITE |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
-                 BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
+                 BLE_GATT_CHR_F_READ_ENC |
 #elif MYNEWT_VAL(BLE_SM_LVL) == 3
-                 BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE_AUTHEN |
-                 BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
+                 BLE_GATT_CHR_F_READ_AUTHEN |
+                 BLE_GATT_CHR_F_READ_ENC |
 #endif
                  0,
     };
@@ -247,12 +246,11 @@ fill_boot_mouse_inp(uint8_t instance)
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].mouse_inp_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
-                 BLE_GATT_CHR_F_WRITE |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
-                 BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
+                 BLE_GATT_CHR_F_READ_ENC |
 #elif MYNEWT_VAL(BLE_SM_LVL) == 3
-                 BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE_AUTHEN |
-                 BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
+                 BLE_GATT_CHR_F_READ_AUTHEN |
+                 BLE_GATT_CHR_F_READ_ENC |
 #endif
                  0,
     };

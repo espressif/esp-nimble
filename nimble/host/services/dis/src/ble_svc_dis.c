@@ -32,6 +32,9 @@ struct ble_svc_dis_data ble_svc_dis_data = {
     .software_revision = MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_DEFAULT),
     .manufacturer_name = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT),
     .system_id         = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT),
+    .pnp_id            = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT),
+    .ieee              = "dummy_data",
+    .udi               = NULL,  /** For now no UID fields are supported */
 };
 
 /* Access function */
@@ -50,7 +53,11 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
 
 static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
     { /*** Service: Device Information Service (DIS). */
+#if !MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
+#else
+        .type = BLE_GATT_SVC_TYPE_SECONDARY,
+#endif
         .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_UUID16),
         .characteristics = (struct ble_gatt_chr_def[]) { {
 #if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM) >= 0)
@@ -109,6 +116,11 @@ static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
                MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM),
             }, {
 #endif
+    /*** Chatacteristic: IEEE 11073-20601 Regulatory Certification Data List */
+            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST),
+            .access_cb = ble_svc_dis_access,
+            .flags =  BLE_GATT_CHR_F_READ,
+        }, {
 #if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
       /*** Characteristic: PNP Id */
             .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_PNP_ID),
@@ -117,6 +129,11 @@ static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
                MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM),
             }, {
 #endif
+    /*** UDI for Medical Devices */
+            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_UDI),
+            .access_cb = ble_svc_dis_access,
+            .flags = BLE_GATT_CHR_F_READ
+        }, {
 
             0, /* No more characteristics in this service */
         }, }
@@ -126,6 +143,17 @@ static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
         0, /* No more services. */
     },
 };
+
+#if MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
+const struct ble_gatt_svc_def *included_services[] = {ble_svc_dis_defs, NULL};
+const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &ble_svc_dis_include_uuid.u,
+        .includes = included_services,
+    }
+};
+#endif
 
 /**
  * Simple read access callback for the device information service
@@ -224,8 +252,22 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
             info = MYNEWT_VAL(BLE_SVC_PNP_SYSTEM_ID_DEFAULT);
         }
 #endif
+        uint8_t flag = 0x01;
+        os_mbuf_append(ctxt->om, &flag, sizeof flag);
         break;
 #endif
+    case BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST:
+        info = ble_svc_dis_data.ieee;
+        break;
+
+    case BLE_SVC_DIS_CHR_UUID16_UDI:
+        info = ble_svc_dis_data.udi;
+        if (info == NULL) {
+            uint8_t flag = 0x00;
+            os_mbuf_append(ctxt->om, &flag, sizeof(flag));
+        }
+        break;
+
     default:
         assert(0);
         return BLE_ATT_ERR_UNLIKELY;
@@ -355,9 +397,15 @@ ble_svc_dis_init(void)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
-    rc = ble_gatts_count_cfg(ble_svc_dis_defs);
+#if !MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
+    const struct ble_gatt_svc_def * defs = ble_svc_dis_defs;
+#else
+    const struct ble_gatt_svc_def * defs = ble_svc_dis_include_def;
+#endif
+
+    rc = ble_gatts_count_cfg(defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    rc = ble_gatts_add_svcs(ble_svc_dis_defs);
+    rc = ble_gatts_add_svcs(defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
