@@ -27,11 +27,7 @@
 static uint8_t ble_hs_pvcy_started;
 static uint8_t ble_hs_pvcy_irk[16];
 
-/** Use this as a default IRK if none gets set. */
-const uint8_t ble_hs_pvcy_default_irk[16] = {
-    0xef, 0x8d, 0xe2, 0x16, 0x4f, 0xec, 0x43, 0x0d,
-    0xbf, 0x5b, 0xdd, 0x34, 0xc0, 0x53, 0x1e, 0xb8,
-};
+uint8_t ble_hs_pvcy_default_irk[16];
 uint16_t rpa_timeout;
 
 static int
@@ -228,6 +224,55 @@ ble_hs_pvcy_ensure_started(void)
     ble_hs_pvcy_started = 1;
 
     return 0;
+}
+
+void ble_hs_pvcy_set_default_irk(void)
+{
+    struct ble_store_value_local_irk  value_local_irk;
+    struct ble_store_key_local_irk key_local_irk;
+
+    uint8_t *local_id = NULL;
+    int rc;
+
+    memset(&key_local_irk, 0, sizeof key_local_irk);
+    memset(&value_local_irk, 0x0, sizeof value_local_irk);
+
+    ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+
+    /* Create key / value */
+    /* Some controllers give all 0s as address. Handle such case */
+    if (local_id) {
+        memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    }
+
+    key_local_irk.addr.type = BLE_ADDR_PUBLIC;
+
+    /* Read NVS for local IRK */
+
+    rc = ble_store_read_local_irk(&key_local_irk, &value_local_irk);
+    if (!rc) {
+        memcpy(ble_hs_pvcy_default_irk, value_local_irk.irk, 16);
+    } else {
+        /* No entry for local IRK found . Generate one and load in NVS */
+        memset(ble_hs_pvcy_default_irk, 0x0, 16);
+        rc = ble_hs_hci_util_rand(ble_hs_pvcy_default_irk, 16);
+
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "Failed to generate local IRK");
+            return;
+        }
+        memset(&value_local_irk, 0x0, sizeof value_local_irk);
+
+        memcpy(&value_local_irk.irk, ble_hs_pvcy_default_irk, 16);
+
+        if (local_id) {
+            memcpy(value_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
+        }
+
+        value_local_irk.addr.type = BLE_ADDR_PUBLIC;
+
+        ble_store_write_local_irk(&value_local_irk);
+    }
 }
 
 int
