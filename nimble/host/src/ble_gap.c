@@ -4896,20 +4896,26 @@ periodic_adv_transfer_enable(uint16_t conn_handle,
 
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_PERIODIC_ADV_SYNC_TRANSFER_PARAMS);
 
+    memset(&cmd, 0, sizeof(cmd));
     cmd.conn_handle = htole16(conn_handle);
-    cmd.mode = params->reports_disabled ? 0x01 : 0x02;
+
+    if (params != NULL) {
 #if MYNEWT_VAL(BLE_AOA_AOD)
-    cmd.sync_cte_type = params->sync_cte_type;
-#else 
-    cmd.sync_cte_type = 0x00;
+        cmd.sync_cte_type = params->sync_cte_type;
+#else
+        cmd.sync_cte_type = 0x00;
 #endif
+        cmd.mode = params->reports_disabled ? 0x01 : 0x02;
+
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
-    if (params->filter_duplicates)
-       cmd.mode = 0x03;
+        if (!params->reports_disabled && params->filter_duplicates) {
+            cmd.mode = 0x03;
+        }
 #endif
 
-    cmd.skip = htole16(params->skip);
-    cmd.sync_timeout = htole16(params->sync_timeout);
+        cmd.skip = htole16(params->skip);
+        cmd.sync_timeout = htole16(params->sync_timeout);
+    }
 
     rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (!rc) {
