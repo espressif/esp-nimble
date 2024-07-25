@@ -69,26 +69,6 @@ ble_hs_startup_read_local_ver_tx(void)
 }
 
 static int
-ble_hs_startup_read_sup_cmd_tx(void)
-{
-    struct ble_hci_ip_rd_loc_supp_cmd_rp rsp;
-    struct ble_hs_hci_sup_cmd sup_cmd;
-    int rc;
-
-    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_INFO_PARAMS,
-                                      BLE_HCI_OCF_IP_RD_LOC_SUPP_CMD),
-                           NULL, 0, &rsp, sizeof(rsp));
-    if (rc != 0) {
-        return rc;
-    }
-
-    memcpy(&sup_cmd.commands, &rsp.commands, sizeof(sup_cmd));
-    ble_hs_hci_set_hci_supported_cmd(sup_cmd);
-
-    return 0;
-}
-
-static int
 ble_hs_startup_le_read_sup_f_tx(void)
 {
     struct ble_hci_le_rd_loc_supp_feat_rp rsp;
@@ -301,42 +281,15 @@ ble_hs_startup_le_set_evmask_tx(void)
     }
 #endif
 
-#if MYNEWT_VAL(BLE_ISO_BROADCAST_SOURCE)
-    if (version >= BLE_HCI_VER_BCS_5_2) {
+#if MYNEWT_VAL(BLE_AOA_AOD)
+    if (version >= BLE_HCI_VER_BCS_5_1) {
         /**
          * Enable the following LE events:
-         * 0x0000000004000000 LE Create BIG Complete event
-         * 0x0000000008000000 LE Terminate BIG Complete event
+         * 0x0000000000100000 LE Connectionless IQ Report event
+         * 0x0000000000200000 LE Connection IQ Report event
+         * 0x0000000000400000 LE CTE Request Failed event
          */
-        mask |= 0x000000000C000000;
-    }
-#endif
-
-#if MYNEWT_VAL(BLE_ISO_BROADCAST_SINK)
-    if (version >= BLE_HCI_VER_BCS_5_2) {
-        /**
-         * Enable the following LE events:
-         * 0x0000000010000000 LE BIG Sync Established Complete event
-         * 0x0000000020000000 LE BIG Sync lost event
-         */
-        mask |= 0x0000000030000000;
-    }
-#endif
-
-#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
-    if (version >= BLE_HCI_VER_BCS_5_4) {
-        /**
-         * Enable the following LE events:
-         * 0x0000080000000000 LE CS Read Remote Supported Capabilities Complete event
-         * 0x0000100000000000 LE CS Read Remote FAE Table Complete event
-         * 0x0000200000000000 LE CS Security Enable Complete event
-         * 0x0000400000000000 LE CS Config Complete event
-         * 0x0000800000000000 LE CS Procedure Enable Complete event
-         * 0x0001000000000000 LE CS Subevent Result event
-         * 0x0002000000000000 LE CS Subevent Result Continue event
-         * 0x0004000000000000 LE CS Test End Complete event
-         */
-        mask |= 0x0007f80000000000;
+        mask |= 0x0000000000700000;
     }
 #endif
 
@@ -358,11 +311,9 @@ ble_hs_startup_set_evmask_tx(void)
     struct ble_hci_cb_set_event_mask_cp cmd;
     struct ble_hci_cb_set_event_mask2_cp cmd2;
     uint8_t version;
-    struct ble_hs_hci_sup_cmd sup_cmd;
     int rc;
 
     version = ble_hs_hci_get_hci_version();
-    sup_cmd = ble_hs_hci_get_hci_supported_cmd();
 
     /**
      * Enable the following events:
@@ -382,7 +333,7 @@ ble_hs_startup_set_evmask_tx(void)
         return rc;
     }
 
-    if ((version >= BLE_HCI_VER_BCS_4_1) && ((sup_cmd.commands[22] & 0x04) != 0)) {
+    if (version >= BLE_HCI_VER_BCS_4_1) {
         /**
          * Enable the following events:
          *     0x0000000000800000 Authenticated Payload Timeout Event
@@ -423,11 +374,7 @@ ble_hs_startup_go(void)
         return rc;
     }
 
-    /* Read local supported commands. */
-    rc = ble_hs_startup_read_sup_cmd_tx();
-    if (rc != 0) {
-        return rc;
-    }
+    /* XXX: Read local supported commands. */
 
     /* we need to check this only if using external controller */
 #if !MYNEWT_VAL(BLE_CONTROLLER)
