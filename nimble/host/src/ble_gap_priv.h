@@ -102,6 +102,11 @@ void ble_gap_rx_subrate_change(const struct ble_hci_ev_le_subev_subrate_change *
 void ble_gap_rx_transmit_power_report(const struct ble_hci_ev_le_subev_transmit_power_report *ev);
 void ble_gap_rx_le_pathloss_threshold(const struct ble_hci_ev_le_subev_path_loss_threshold *ev);
 #endif
+#if MYNEWT_VAL(BLE_AOA_AOD)
+void ble_gap_rx_connless_iq_report(const struct ble_hci_ev_le_subev_connless_iq_rpt *ev);
+void ble_gap_rx_conn_iq_report(const struct ble_hci_ev_le_subev_conn_iq_rpt *ev);
+void ble_gap_rx_cte_req_failed(const struct ble_hci_ev_le_subev_cte_req_failed *ev);
+#endif
 
 struct ble_gap_conn_complete
 {
