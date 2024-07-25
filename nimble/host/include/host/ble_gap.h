@@ -161,6 +161,9 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_AUTHORIZE             32
 #define BLE_GAP_EVENT_TEST_UPDATE           33
 #define BLE_GAP_EVENT_DATA_LEN_CHG          34
+#define BLE_GAP_EVENT_CONNLESS_IQ_REPORT    35
+#define BLE_GAP_EVENT_CONN_IQ_REPORT        36
+#define BLE_GAP_EVENT_CTE_REQ_FAILED        37
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -1246,7 +1249,6 @@ struct ble_gap_event {
 	     */
             uint16_t num_pkt;
 	} dtm_state;
-
         /**
 	 * Represent an event for LE Data length change
 	 *
@@ -1269,6 +1271,57 @@ struct ble_gap_event {
 	    /* Max Rx Time */
 	    uint16_t max_rx_time;
 	} data_len_chg;
+#if MYNEWT_VAL(BLE_AOA_AOD)
+        /**
+         * Represents a AOA/AOD connectionless iq report event
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_CONNLESS_IQ_RPT
+         */
+        struct {
+            uint16_t sync_handle;
+            uint8_t  channel_index;
+            int16_t  rssi;
+            uint8_t  rssi_antenna_id;
+            uint8_t  cte_type;
+            uint8_t  slot_durations;
+            uint8_t  packet_status;
+            uint16_t periodic_event_counter;
+            uint8_t  sample_count;
+            int8_t   *i_samples;
+            int8_t   *q_samples;
+        }connless_iq_report;
+
+        /**
+         * Represents a connection iq report.
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_CONN_IQ_RPT
+         */
+        struct {
+            uint16_t conn_handle;
+            uint8_t  rx_phy;
+            uint8_t  data_channel_index;
+            int16_t  rssi;
+            uint8_t  rssi_antenna_id;
+            uint8_t  cte_type;
+            uint8_t  slot_durations;
+            uint8_t  packet_status;
+            uint16_t conn_event_counter;
+            uint8_t  sample_count;
+            int8_t   *i_samples;
+            int8_t   *q_samples;
+        }conn_iq_report;
+
+        /**
+         * Represents a cte req failed event
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_CTE_REQ_FAILED
+         */
+        struct {
+            uint8_t status;
+            uint16_t conn_handle;
+        } cte_req_fail;
+
+#endif
     };
 };
 
@@ -1779,7 +1832,80 @@ struct ble_gap_periodic_sync_params {
      created */
     unsigned int filter_duplicates:1;
 #endif
+#if MYNEWT_VAL(BLE_AOA_AOD)
+    uint8_t sync_cte_type;
+#endif
 };
+
+
+#if MYNEWT_VAL(BLE_AOA_AOD)
+#define BLE_GAP_CTE_TYPE_AOA        0x0
+#define BLE_GAP_CTE_TYPE_AOD_1US    0x1
+#define BLE_GAP_CTE_TYPE_AOD_2US    0x2
+
+#define BLE_GAP_CTE_RSP_ALLOW_AOA_MASK        BLE_HCI_CTE_RSP_ALLOW_AOA_MASK
+#define BLE_GAP_CTE_RSP_ALLOW_AOD_1US_MASK    BLE_HCI_CTE_RSP_ALLOW_AOD_1US_MASK
+#define BLE_GAP_CTE_RSP_ALLOW_AOD_2US_MASK    BLE_HCI_CTE_RSP_ALLOW_AOD_2US_MASK
+
+
+/** @brief Periodic advertising parameters  */
+struct ble_gap_periodic_adv_cte_params {
+    /**
+     * Constant Tone Extension length in 8 µs units (Range: 0x02 to 0x14)
+     */
+    uint8_t cte_length; 
+
+    /**
+     * Constant Tone Extension type
+     *  0x00 : AoA Constant Tone Extension
+     *  0x01 : AoD Constant Tone Extension with 1 µs slots
+     *  0x02 : AoD Constant Tone Extension with 2 µs slots
+     */
+    uint8_t cte_type;   
+    
+    /**
+     *  The number of Constant Tone Extensions to transmit in each periodic 
+     *  advertising interval (Range: 0x01 to 0x10)
+     */
+    uint8_t cte_count;   
+    
+    /**
+     * The number of Antenna IDs in the pattern
+     * (Range: 0x02 to 0x4B)
+     */
+    uint8_t switching_pattern_length; 
+
+    /**
+     * Antenna ID in the pattern.
+     * there is a pattern pointer
+     */
+    uint8_t* antenna_ids;
+
+};
+
+struct ble_gap_cte_sampling_params {
+    /**
+     * The sampling rate used by the Controller
+     *  0x01 : Switching and sampling slots are 1 μs each
+     *  0x02 : Switching and sampling slots are 2 μs each
+     */
+    uint8_t slot_durations; 
+    
+    /**
+     * The number of Antenna IDs in the pattern
+     * (Range: 0x02 to 0x4B)
+     */
+    uint8_t switching_pattern_length; 
+
+    /**
+     * Antenna ID in the pattern.
+     * there is a pattern pointer
+     */
+    uint8_t* antenna_ids;
+
+};
+
+#endif 
 
 /**
  * Configure periodic advertising for specified advertising instance
@@ -2023,6 +2149,36 @@ int ble_gap_clear_periodic_adv_list(void);
  * @return                   0 on success; nonzero on failure.
  */
 int ble_gap_read_periodic_adv_list_size(uint8_t *per_adv_list_size);
+
+
+
+#if MYNEWT_VAL(BLE_AOA_AOD)
+int ble_gap_set_connless_cte_transmit_params(uint8_t instance, const struct ble_gap_periodic_adv_cte_params *params);
+
+int ble_gap_set_connless_cte_transmit_enable(uint8_t instance, uint8_t cte_enable);
+
+
+int ble_gap_set_connless_iq_sampling_enable(uint16_t sync_handle, uint8_t sampling_enable, uint8_t max_sampled_ctes,
+                                        const struct ble_gap_cte_sampling_params *cte_sampleing_params);
+
+
+int ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, const struct ble_gap_cte_sampling_params *cte_sampleing_params);
+
+
+int ble_gap_set_conn_cte_transmit_param(uint16_t conn_handle, uint8_t cte_types, uint8_t switching_pattern_len, const uint8_t *antenna_ids);
+
+
+int ble_gap_conn_cte_req_enable(uint16_t conn_handle, uint8_t enable, uint16_t cte_request_interval,
+                                       uint8_t requested_cte_length, uint8_t requested_cte_type);
+
+
+int ble_gap_conn_cte_rsp_enable(uint16_t conn_handle, uint8_t enable);
+
+int ble_gap_read_antenna_information(uint8_t *switch_sampling_rates, uint8_t *num_antennae, uint8_t *max_switch_pattern_len, uint8_t *max_cte_len);
+
+#endif // MYNEWT_VAL(BLE_AOA_AOD)
+
+
 #endif
 
 
