@@ -281,6 +281,18 @@ ble_hs_startup_le_set_evmask_tx(void)
     }
 #endif
 
+#if MYNEWT_VAL(BLE_AOA_AOD)
+    if (version >= BLE_HCI_VER_BCS_5_1) {
+        /**
+         * Enable the following LE events:
+         * 0x0000000000100000 LE Connectionless IQ Report event
+         * 0x0000000000200000 LE Connection IQ Report event
+         * 0x0000000000400000 LE CTE Request Failed event
+         */
+        mask |= 0x0000000000700000;
+    }
+#endif
+
     cmd.event_mask = htole64(mask);
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
