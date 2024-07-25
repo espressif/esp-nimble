@@ -100,6 +100,12 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_subrate_change;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_subev_data_req;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_subev_resp_rep;
 #endif
+#if MYNEWT_VAL(BLE_AOA_AOD)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_connless_iq_report;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_iq_report;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cte_req_failed;
+#endif
+
 
 /* Statistics */
 struct host_hci_stats {
@@ -179,6 +185,10 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SUBEV_DATA_REQ] = ble_hs_hci_evt_le_periodic_adv_subev_data_req,
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RESP_REPORT] = ble_hs_hci_evt_le_periodic_adv_subev_resp_rep,
     [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2] = ble_hs_hci_evt_le_enh_conn_complete,
+#if MYNEWT_VAL(BLE_AOA_AOD)
+    [BLE_HCI_LE_SUBEV_CONNLESS_IQ_RPT] = ble_hs_hci_evt_le_connless_iq_report,
+    [BLE_HCI_LE_SUBEV_CONN_IQ_RPT] = ble_hs_hci_evt_le_conn_iq_report,
+    [BLE_HCI_LE_SUBEV_CTE_REQ_FAILED] = ble_hs_hci_evt_le_cte_req_failed,
 #endif
 };
 
@@ -1127,6 +1137,52 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
     return 0;
 }
 #endif
+
+#if MYNEWT_VAL(BLE_AOA_AOD)
+static int
+ble_hs_hci_evt_le_connless_iq_report(uint8_t subevent, const void *data,
+                                 unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_connless_iq_rpt *ev = data;
+
+    if (len < sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_connless_iq_report(ev);
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_conn_iq_report(uint8_t subevent, const void *data,
+                                 unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_conn_iq_rpt *ev = data;
+    if (len < sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_conn_iq_report(ev);
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_cte_req_failed(uint8_t subevent, const void *data,
+                                 unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_cte_req_failed *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+    ble_gap_rx_cte_req_failed(ev);
+ 
+    return 0;
+}
+#endif
+
 
 #if NIMBLE_BLE_CONNECT
 static int
