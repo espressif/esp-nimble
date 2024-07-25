@@ -2036,6 +2036,92 @@ ble_gap_rx_transmit_power_report(const struct ble_hci_ev_le_subev_transmit_power
 }
 #endif
 
+
+#if MYNEWT_VAL(BLE_AOA_AOD)
+
+void
+ble_gap_rx_connless_iq_report(const struct ble_hci_ev_le_subev_connless_iq_rpt *ev)
+{
+    struct ble_hs_periodic_sync *psync;
+    struct ble_gap_event event;
+    ble_gap_event_fn *cb = NULL;
+    void *cb_arg = NULL;
+    uint16_t sync_handle = le16toh(ev->sync_handle);
+
+    /* The handle must be in the list */
+    ble_hs_lock();
+    psync = ble_hs_periodic_sync_find_by_handle(sync_handle);
+    cb = psync->cb;
+    cb_arg = psync->cb_arg;
+    ble_hs_unlock();
+
+    memset(&event, 0, sizeof event);
+
+    event.type = BLE_GAP_EVENT_CONNLESS_IQ_REPORT;
+    event.connless_iq_report.sync_handle = sync_handle;
+    event.connless_iq_report.channel_index = ev->channel_index;
+    event.connless_iq_report.rssi = le16toh(ev->rssi);
+    event.connless_iq_report.rssi_antenna_id = ev->rssi_antenna_id;
+    event.connless_iq_report.cte_type = ev->cte_type;
+    event.connless_iq_report.slot_durations = ev->slot_durations;
+    event.connless_iq_report.packet_status = ev->packet_status;
+    event.connless_iq_report.periodic_event_counter = le16toh(ev->periodic_event_counter);
+    event.connless_iq_report.sample_count = ev->sample_count;
+    event.connless_iq_report.i_samples = (int8_t *)(ev->iq_samples);
+    event.connless_iq_report.q_samples = (int8_t *)(ev->iq_samples + ev->sample_count);
+
+    ble_gap_event_listener_call(&event);
+
+    if (cb) {
+        cb(&event, cb_arg);
+    }
+}
+
+
+void
+ble_gap_rx_conn_iq_report(const struct ble_hci_ev_le_subev_conn_iq_rpt *ev)
+{
+    struct ble_gap_event event;
+    memset(&event, 0, sizeof event);
+
+    event.type = BLE_GAP_EVENT_CONN_IQ_REPORT;
+    event.conn_iq_report.conn_handle = le16toh(ev->conn_handle);
+    event.conn_iq_report.data_channel_index = ev->data_channel_index;
+    event.conn_iq_report.rx_phy = ev->rx_phy;
+    event.conn_iq_report.rssi = le16toh(ev->rssi);
+    event.conn_iq_report.rssi_antenna_id = ev->rssi_antenna_id;
+    event.conn_iq_report.cte_type = ev->cte_type;
+    event.conn_iq_report.slot_durations = ev->slot_durations;
+    event.conn_iq_report.packet_status = ev->packet_status;
+    event.conn_iq_report.conn_event_counter = le16toh(ev->conn_event_counter);
+    event.conn_iq_report.sample_count = ev->sample_count;
+    event.conn_iq_report.i_samples = (int8_t *)(ev->iq_samples);
+    event.conn_iq_report.q_samples = (int8_t *)(ev->iq_samples + ev->sample_count);
+
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, event.conn_iq_report.conn_handle);
+
+}
+
+void
+ble_gap_rx_cte_req_failed(const struct ble_hci_ev_le_subev_cte_req_failed *ev)
+{
+    struct ble_gap_event event;
+    uint16_t conn_handle;
+    conn_handle = le16toh(ev->conn_handle);
+
+    memset(&event, 0x0, sizeof event);
+
+    event.type = BLE_GAP_EVENT_CTE_REQ_FAILED;
+    event.cte_req_fail.status = ev->status;
+    event.cte_req_fail.conn_handle = conn_handle;
+
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, conn_handle);
+}
+
+#endif
+
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
 static int
 periodic_adv_transfer_disable(uint16_t conn_handle)
@@ -4541,7 +4627,11 @@ ble_gap_periodic_adv_sync_create(const ble_addr_t *addr, uint8_t adv_sid,
     cmd.sid = adv_sid;
     cmd.skip = params->skip;
     cmd.sync_timeout = htole16(params->sync_timeout);
+#if MYNEWT_VAL(BLE_AOA_AOD)
+    cmd.sync_cte_type = params->sync_cte_type;
+#else 
     cmd.sync_cte_type = 0x00;
+#endif
 
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_PERIODIC_ADV_CREATE_SYNC);
     rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), NULL, 0);
@@ -4790,9 +4880,12 @@ periodic_adv_transfer_enable(uint16_t conn_handle,
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_PERIODIC_ADV_SYNC_TRANSFER_PARAMS);
 
     cmd.conn_handle = htole16(conn_handle);
-    cmd.sync_cte_type = 0x00;
     cmd.mode = params->reports_disabled ? 0x01 : 0x02;
-
+#if MYNEWT_VAL(BLE_AOA_AOD)
+    cmd.sync_cte_type = params->sync_cte_type;
+#else 
+    cmd.sync_cte_type = 0x00;
+#endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
     if (params->filter_duplicates)
        cmd.mode = 0x03;
@@ -4824,7 +4917,11 @@ periodic_adv_set_default_sync_params(const struct ble_gap_periodic_sync_params *
     memset(&cmd, 0, sizeof(cmd));
 
     if (params != NULL) {
+#if MYNEWT_VAL(BLE_AOA_AOD)
+        cmd.sync_cte_type = params->sync_cte_type;
+#else 
         cmd.sync_cte_type = 0x00;
+#endif
         cmd.mode = params->reports_disabled ? 0x01 : 0x02;
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
@@ -5062,7 +5159,201 @@ ble_gap_ext_disc_enable_tx(uint8_t enable, uint8_t filter_duplicates,
                              &cmd, sizeof(cmd), NULL, 0);
 }
 #endif
+
+#if MYNEWT_VAL(BLE_AOA_AOD)
+int
+ble_gap_set_connless_cte_transmit_params(uint8_t instance, const struct ble_gap_periodic_adv_cte_params *params)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_set_connless_cte_tx_params_cp) +
+                params->switching_pattern_length];
+    struct ble_hci_le_set_connless_cte_tx_params_cp *cmd = (void *)buf;
+    uint8_t len = sizeof(buf);
+    uint16_t opcode;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONNLESS_CTE_TX_PARAMS);
+
+    cmd->adv_handle = instance;
+    cmd->cte_length = params->cte_length;
+    cmd->cte_type = params->cte_type;
+    cmd->cte_count = params->cte_count;
+    cmd->switching_pattern_len = params->switching_pattern_length;
+    memcpy(cmd->switching_pattern, params->antenna_ids, params->switching_pattern_length);
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, NULL, 0);
+}
+
+int 
+ble_gap_set_connless_cte_transmit_enable(uint8_t instance, uint8_t cte_enable)
+{
+    struct ble_hci_le_set_connless_cte_tx_enable_cp cmd;
+    uint16_t opcode;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONNLESS_CTE_TX_ENABLE);
+
+    cmd.adv_handle = instance;
+    cmd.cte_enable = cte_enable;
+
+    return ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), NULL, 0);
+}
+
+int 
+ble_gap_set_connless_iq_sampling_enable(uint16_t sync_handle, uint8_t sampling_enable, uint8_t max_sampled_ctes,
+                                        const struct ble_gap_cte_sampling_params *cte_sampleing_params)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_set_connless_iq_sampling_enable_cp) +
+            cte_sampleing_params->switching_pattern_length];
+    struct ble_hci_le_set_connless_iq_sampling_enable_cp *cmd = buf;
+    struct ble_hci_le_set_connless_iq_sampling_enable_rp rsp;
+    uint8_t len = sizeof(buf);
+    uint16_t opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONNLESS_IQ_SAMPLING_ENABLE);
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    cmd->sync_handle = htole16(sync_handle);
+    cmd->sampling_enable = sampling_enable;
+    cmd->max_sampled_ctes = max_sampled_ctes;
+    cmd->slot_durations = cte_sampleing_params->slot_durations;
+    cmd->switching_pattern_len = cte_sampleing_params->switching_pattern_length;
+    memcpy(cmd->antenna_ids, cte_sampleing_params->antenna_ids, cte_sampleing_params->switching_pattern_length);
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, &rsp, sizeof(rsp));
+}
+
+int 
+ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, const struct ble_gap_cte_sampling_params *cte_sampleing_params)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_set_conn_cte_rx_params_cp) + cte_sampleing_params->switching_pattern_length];
+    struct ble_hci_le_set_conn_cte_rx_params_cp *cmd = (void *)buf;
+    struct ble_hci_le_set_conn_cte_rx_params_rp rsp;
+    uint8_t len = sizeof(buf);
+    uint16_t opcode;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONN_CTE_RX_PARAMS);
+
+    cmd->conn_handle = conn_handle;
+    cmd->sampling_enable = sampling_enable;
+    cmd->slot_durations = cte_sampleing_params->slot_durations;
+    cmd->switching_pattern_len = cte_sampleing_params->switching_pattern_length;
+    memcpy(cmd->antenna_ids, cte_sampleing_params->antenna_ids, cte_sampleing_params->switching_pattern_length);
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, &rsp, sizeof(rsp));
+}
+
+int 
+ble_gap_set_conn_cte_transmit_param(uint16_t conn_handle, uint8_t cte_types, uint8_t switching_pattern_len, const uint8_t *antenna_ids)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_set_conn_cte_tx_params_cp) + switching_pattern_len];
+    struct ble_hci_le_set_conn_cte_tx_params_cp *cmd = (void *)buf;
+    struct ble_hci_le_set_conn_cte_tx_params_rp rsp;
+    uint8_t len = sizeof(buf);
+    uint16_t opcode;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONN_CTE_TX_PARAMS);
+
+    cmd->conn_handle = htole16(conn_handle);
+    cmd->cte_types = cte_types;
+    if (cmd->cte_types != BIT(0) && (switching_pattern_len == 0 || antenna_ids == NULL)) {
+        BLE_HS_LOG(ERROR, "Invalid antenna_ids!\n");
+        return BLE_HS_EINVAL;
+    }
+    cmd->switching_pattern_len = switching_pattern_len;
+    memcpy(cmd->antenna_ids, antenna_ids, switching_pattern_len);
+
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, &rsp, sizeof(rsp));
+}
+
+int
+ble_gap_conn_cte_req_enable(uint16_t conn_handle, uint8_t enable, uint16_t cte_request_interval,
+                                       uint8_t requested_cte_length, uint8_t requested_cte_type)
+{
+    uint8_t buf[sizeof(struct ble_gap_conn_cte_req_enable_cp)];
+    struct ble_gap_conn_cte_req_enable_cp *cmd = (void *)buf;
+    struct ble_gap_conn_cte_req_enable_rp rsp;
+    uint8_t len = sizeof(buf);
+    uint16_t opcode;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONN_CTE_REQ_ENABLE);
+
+    cmd->conn_handle = htole16(conn_handle);
+    cmd->enable = enable;
+    cmd->cte_request_interval = htole16(cte_request_interval);
+    cmd->requested_cte_length = requested_cte_length;
+    cmd->requested_cte_type = requested_cte_type;
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, &rsp, sizeof(rsp));
+}
+
+int 
+ble_gap_conn_cte_rsp_enable(uint16_t conn_handle, uint8_t enable)
+{
+    struct ble_hci_le_set_conn_cte_rsp_enable_cp cmd;
+    struct ble_hci_le_set_conn_cte_rsp_enable_rp rsp;
+    uint16_t opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONN_CTE_RESP_ENABLE);
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    cmd.conn_handle = htole16(conn_handle);
+    cmd.enable = enable;
+
+    return ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), &rsp, sizeof(rsp));
+}
+
+int
+ble_gap_read_antenna_information(uint8_t *switch_sampling_rates, uint8_t *num_antennae, uint8_t *max_switch_pattern_len, uint8_t *max_cte_len)
+{
+    struct ble_hci_le_rd_antenna_info_rp rsp;
+    uint16_t opcode;
+    int rc = 0;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_RD_ANTENNA_INFO);
+
+    rc = ble_hs_hci_cmd_tx(opcode, NULL, 0, &rsp, sizeof(rsp));
+
+    if (rc != 0) {
+        return rc;
+    }
+
+    *switch_sampling_rates = rsp.switch_sampling_rates;
+    *num_antennae = rsp.num_antennae;
+    *max_switch_pattern_len = rsp.max_switch_pattern_len;
+    *max_cte_len = rsp.max_cte_len;
+
+    return 0;
+}
+
+#endif // MYNEWT_VAL(BLE_AOA_AOD)
+
 #endif
+
 #if NIMBLE_BLE_SCAN
 #if !MYNEWT_VAL(BLE_EXT_ADV)
 static int
