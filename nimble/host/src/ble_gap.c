@@ -7546,7 +7546,7 @@ ble_gap_host_check_status(void)
 #endif
     struct ble_hs_conn *conn;
     ble_addr_t oldest_peer_id_addr[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
-    int num_peers;
+    int num_peers = 0;
 
     /* Stop Advertising */
 #if MYNEWT_VAL(BLE_EXT_ADV)
