@@ -1278,8 +1278,17 @@ struct ble_hci_vs_duplicate_exception_list_cp {
 #define BLE_HCI_ADV_PEER_ADDR_MAX           (1)
 
 /* --- LE advertising channel tx power (OCF 0x0007) */
-#define BLE_HCI_ADV_CHAN_TXPWR_MIN             (-20)
-#define BLE_HCI_ADV_CHAN_TXPWR_MAX             (10)
+#if MYNEWT_VAL(BLE_VERSION) == 50
+#define BLE_HCI_ADV_CHAN_TXPWR_MIN          (-20)
+#define BLE_HCI_ADV_CHAN_TXPWR_MAX          (10)
+#elif MYNEWT_VAL(BLE_VERSION) == 51
+#define BLE_HCI_ADV_CHAN_TXPWR_MIN          (-20)
+#define BLE_HCI_ADV_CHAN_TXPWR_MAX          (20)
+#elif MYNEWT_VAL(BLE_VERSION) >= 52
+#define BLE_HCI_ADV_CHAN_TXPWR_MIN          (-127)
+#define BLE_HCI_ADV_CHAN_TXPWR_MAX          (20)
+#endif
+
 
 /* --- LE set scan enable (OCF 0x000c) */
 
