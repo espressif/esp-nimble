@@ -5644,10 +5644,12 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         goto done;
     }
 
+#if !MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
     if (ble_gap_disc_active()) {
         rc = BLE_HS_EBUSY;
         goto done;
     }
+#endif
 
     if (!ble_hs_is_enabled()) {
         rc = BLE_HS_EDISABLED;
@@ -5810,10 +5812,12 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         goto done;
     }
 
+#if !MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
     if (ble_gap_disc_active()) {
         rc = BLE_HS_EBUSY;
         goto done;
     }
+#endif
 
     if (!ble_hs_is_enabled()) {
         rc = BLE_HS_EDISABLED;
