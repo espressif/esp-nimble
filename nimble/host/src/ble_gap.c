@@ -285,6 +285,9 @@ static int ble_gap_conn_cancel_tx(void);
 static int ble_gap_disc_enable_tx(int enable, int filter_duplicates);
 #endif
 
+uint16_t g_max_tx_time, g_max_rx_time;
+uint16_t g_max_tx_octets, g_max_rx_octets;
+
 STATS_SECT_DECL(ble_gap_stats) ble_gap_stats;
 STATS_NAME_START(ble_gap_stats)
     STATS_NAME(ble_gap_stats, wl_set)
@@ -2302,6 +2305,11 @@ ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev)
 
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+
+    g_max_tx_octets = event.data_len_chg.max_tx_octets;
+    g_max_rx_octets = event.data_len_chg.max_rx_octets;
+    g_max_tx_time = event.data_len_chg.max_tx_time;
+    g_max_rx_time = event.data_len_chg.max_rx_time;
 #endif
 }
 
@@ -6425,6 +6433,29 @@ done:
 
 int ble_gap_set_data_len(uint16_t conn_handle, uint16_t tx_octets, uint16_t tx_time)
 {
+    /* Check if host has triggered Set data len for same parameters
+     * which are currently set in controller.
+     * If yes, then just return event to host indicating success
+     * since controller will not send any event in this scenario
+     */
+    if (g_max_tx_time == tx_time && g_max_tx_octets == tx_octets) {
+
+        struct ble_gap_event event;
+
+        memset(&event, 0, sizeof event);
+        event.type = BLE_GAP_EVENT_DATA_LEN_CHG;
+        event.data_len_chg.max_tx_octets = g_max_tx_octets;
+        event.data_len_chg.max_rx_octets = g_max_rx_octets;
+        event.data_len_chg.max_tx_time = g_max_tx_time;
+        event.data_len_chg.max_rx_time = g_max_rx_time;
+        event.data_len_chg.conn_handle = conn_handle;
+
+        ble_gap_event_listener_call(&event);
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+
+	return 0;
+    }
+
     return ble_hs_hci_util_set_data_len(conn_handle, tx_octets, tx_time);
 }
 
