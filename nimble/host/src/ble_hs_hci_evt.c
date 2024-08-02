@@ -243,38 +243,38 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     if (conn && ev->reason == BLE_ERR_CONN_ESTABLISHMENT) {
         uint16_t handle;
-	int rc;
+        int rc;
 
-	if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) { //slave
-            BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
-                              ev->reason, ev->status);
+        if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) { //slave
+                BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
+                                ev->reason, ev->status);
 
-            ble_l2cap_sig_conn_broken(ev->conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
-            ble_sm_connection_broken(ev->conn_handle);
-            ble_gatts_connection_broken(ev->conn_handle);
-            ble_gattc_connection_broken(ev->conn_handle);
-            ble_hs_flow_connection_broken(ev->conn_handle);;
+                ble_l2cap_sig_conn_broken(ev->conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
+                ble_sm_connection_broken(ev->conn_handle);
+                ble_gatts_connection_broken(ev->conn_handle);
+                ble_gattc_connection_broken(ev->conn_handle);
+                ble_hs_flow_connection_broken(ev->conn_handle);;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
-            ble_gattc_cache_conn_broken(ev->conn_handle);
+                ble_gattc_cache_conn_broken(ev->conn_handle);
 #endif
-            rc = ble_hs_atomic_conn_delete(ev->conn_handle);
-            if (rc != 0) {
-                return rc;
-            }
+                rc = ble_hs_atomic_conn_delete(ev->conn_handle);
+                if (rc != 0) {
+                    return rc;
+                }
 
-            rc = ble_gap_slave_adv_reattempt();
-            if (rc != 0) {
-	        BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
-            }
+                rc = ble_gap_slave_adv_reattempt();
+                if (rc != 0) {
+                BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
+                }
 
-            return 0;  // Restart advertising, so don't post disconnect event
+                return 0;  // Restart advertising, so don't post disconnect event
 
-	} else { // master
-            if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED ) {
-	        /* Got for connection */
-	        BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
-                                 "reattempt count = %d ", ev->reason, ev->status,
-                                  reattempt_conn.count);
+        } else { // master
+            if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED) {
+                /* Got for connection */
+                BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
+                                    "reattempt count = %d ", ev->reason, ev->status,
+                                    reattempt_conn.count);
                 reattempt_conn.count += 1;
 
                 handle = le16toh(ev->conn_handle);
@@ -285,13 +285,12 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
                 if (rc != 0) {
                     BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
                 }
-	    } else {
+            } else {
                 /* Exhausted attempts */
                 memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
-	    }
-	}
-    }
-    else {
+            }
+        }
+    } else {
             /* Normal disconnect. Reset the structure */
             memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
     }
