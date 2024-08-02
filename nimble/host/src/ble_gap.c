@@ -127,9 +127,14 @@ struct ble_gap_connect_reattempt_ctxt {
     ble_addr_t peer_addr;
     uint8_t peer_addr_present:1;
     int32_t duration_ms;
-    struct ble_gap_conn_params conn_params;
+    struct ble_gap_conn_params conn_params_1m;
     ble_gap_event_fn *cb;
     void *cb_arg;
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    uint8_t phy_mask;
+    struct ble_gap_conn_params conn_params_2m;
+    struct ble_gap_conn_params conn_params_coded;
+#endif // MYNEWT_VAL(BLE_EXT_ADV)
 }ble_conn_reattempt;
 
 struct ble_gap_adv_reattempt_ctxt {
@@ -1133,12 +1138,33 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
             return rc;
         }
 
+#if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+        /* This reattempt will be done automatically. The `scheduling_len` maybe set in the ble_gap_multi_connect(). */
+        ble_gap_multi_conn.scheduling_len_set = true;
+#endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+        rc = ble_gap_ext_connect(ble_conn_reattempt.own_addr_type,
+                                (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
+                                ble_conn_reattempt.duration_ms, ble_conn_reattempt.phy_mask,
+                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_1M_MASK ? &ble_conn_reattempt.conn_params_1m : NULL,
+                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_2M_MASK ? &ble_conn_reattempt.conn_params_2m : NULL,
+                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_CODED_MASK ? &ble_conn_reattempt.conn_params_coded : NULL,
+                                ble_conn_reattempt.cb,
+                                ble_conn_reattempt.cb_arg);
+#else
         rc = ble_gap_connect(ble_conn_reattempt.own_addr_type,
                              (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
                              ble_conn_reattempt.duration_ms,
-                             &ble_conn_reattempt.conn_params,
+                             &ble_conn_reattempt.conn_params_1m,
                              ble_conn_reattempt.cb,
                              ble_conn_reattempt.cb_arg);
+#endif // #if MYNEWT_VAL(BLE_EXT_ADV)
+
+#if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+        ble_gap_multi_conn.scheduling_len_set = false;
+#endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+
         if (rc != 0) {
             return rc;
         }
@@ -6302,21 +6328,22 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     }
 
     ble_conn_reattempt.duration_ms = duration_ms;
+    ble_conn_reattempt.phy_mask = phy_mask;
 
     if (phy_mask & BLE_GAP_LE_PHY_1M_MASK) {
-        memcpy(&ble_conn_reattempt.conn_params,
+        memcpy(&ble_conn_reattempt.conn_params_1m,
                phy_1m_conn_params,
                sizeof(struct ble_gap_conn_params));
     }
 
     if (phy_mask & BLE_GAP_LE_PHY_2M_MASK) {
-         memcpy(&ble_conn_reattempt.conn_params,
+         memcpy(&ble_conn_reattempt.conn_params_2m,
                phy_2m_conn_params,
                sizeof(struct ble_gap_conn_params));
     }
 
     if (phy_mask & BLE_GAP_LE_PHY_CODED_MASK) {
-        memcpy(&ble_conn_reattempt.conn_params,
+        memcpy(&ble_conn_reattempt.conn_params_coded,
                phy_coded_conn_params,
                sizeof(struct ble_gap_conn_params));
     }
@@ -6494,7 +6521,7 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     }
 
     ble_conn_reattempt.duration_ms = duration_ms;
-    memcpy(&ble_conn_reattempt.conn_params,
+    memcpy(&ble_conn_reattempt.conn_params_1m,
            conn_params,
            sizeof(struct ble_gap_conn_params));
     ble_conn_reattempt.cb = cb;
@@ -6610,6 +6637,7 @@ ble_gap_multi_connect(struct ble_gap_multi_conn_params *multi_conn_params,
 #endif // MYNEWT_VAL(BLE_EXT_ADV)
 
     scheduling_len_us = multi_conn_params->scheduling_len_us;
+
     /* `scheduling_len_us == 0` is allowed.  It indicates that the optimization for this connection
      * is disabled. The connection interval must be an integer multiple of `common factor`.  Note 
      * that the unit of the connection interval is 1.25ms, while the common factor's unit is 0.625ms.
@@ -6668,7 +6696,7 @@ ble_gap_multi_connect(struct ble_gap_multi_conn_params *multi_conn_params,
                              multi_conn_params->phy_2m_conn_params,
                              multi_conn_params->phy_coded_conn_params, cb, cb_arg);
 #else
-    rc = ble_gap_ext_connect(multi_conn_params->own_addr_type, multi_conn_params->peer_addr,
+    rc = ble_gap_connect(multi_conn_params->own_addr_type, multi_conn_params->peer_addr,
                              multi_conn_params->duration_ms, multi_conn_params->phy_1m_conn_params,
                              cb, cb_arg);
 #endif // MYNEWT_VAL(BLE_EXT_ADV)
