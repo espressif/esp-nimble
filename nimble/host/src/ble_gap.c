@@ -2509,6 +2509,11 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
 
         ble_gap_event_listener_call(&event);
         ble_gap_call_conn_event_cb(&event, conn_handle);
+
+#if !SOC_ESP_NIMBLE_CONTROLLER
+        ble_hs_hci_util_set_data_len(le16toh(ev->conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
+				     BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
+#endif
     }
 
     ble_hs_unlock();
