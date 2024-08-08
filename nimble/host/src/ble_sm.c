@@ -1016,6 +1016,14 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res)
 	    break;
         }
 
+        /* Persist keys if bonding has successfully completed. */
+        if (res->app_status == 0    &&
+            rm                      &&
+            proc->flags & BLE_SM_PROC_F_BONDING) {
+
+            ble_sm_persist_keys(proc);
+        }
+
         if (res->enc_cb) {
             BLE_HS_DBG_ASSERT(proc == NULL || rm);
             ble_gap_enc_event(conn_handle, res->app_status, res->restore, res->bonded);
@@ -1027,13 +1035,6 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res)
             ble_gap_passkey_event(conn_handle, &res->passkey_params);
         }
 
-        /* Persist keys if bonding has successfully completed. */
-        if (res->app_status == 0    &&
-            rm                      &&
-            proc->flags & BLE_SM_PROC_F_BONDING) {
-
-            ble_sm_persist_keys(proc);
-        }
 
         if (rm) {
             ble_sm_proc_free(proc);
