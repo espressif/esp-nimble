@@ -183,7 +183,7 @@ nimble_port_init(void)
         return ret;
     }
 
-#if (BT_HCI_LOG_INCLUDED == TRUE)
+#if MYNEWT_VAL(BT_HCI_LOG_INCLUDED)
     bt_hci_log_init();
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
