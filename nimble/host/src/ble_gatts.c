@@ -26,6 +26,8 @@
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
 
+static uint8_t perm_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE ;
+
 #define BLE_GATTS_INCLUDE_SZ    6
 #define BLE_GATTS_CHR_MAX_SZ    19
 
@@ -78,6 +80,11 @@ STATS_NAME_START(ble_gatts_stats)
     STATS_NAME(ble_gatts_stats, dsc_reads)
     STATS_NAME(ble_gatts_stats, dsc_writes)
 STATS_NAME_END(ble_gatts_stats)
+
+void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags)
+{ 
+   perm_flags = flags ;
+}
 
 static int
 ble_gatts_svc_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -791,8 +798,7 @@ static int
 ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle)
 {
     int rc;
-
-    rc = ble_att_svr_register(uuid_ccc, BLE_ATT_F_READ | BLE_ATT_F_WRITE, 0,
+    rc = ble_att_svr_register(uuid_ccc, perm_flags, 0,
                               att_handle, ble_gatts_clt_cfg_access, NULL);
     if (rc != 0) {
         return rc;

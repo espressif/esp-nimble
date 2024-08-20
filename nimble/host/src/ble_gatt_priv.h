@@ -186,6 +186,7 @@ int ble_gatts_register_svcs(const struct ble_gatt_svc_def *svcs,
 int ble_gatts_clt_cfg_access(uint16_t conn_handle, uint16_t attr_handle,
                              uint8_t op, uint16_t offset, struct os_mbuf **om,
                              void *arg);
+void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 
 /*** @misc. */
 int ble_gatts_conn_can_alloc(void);
