@@ -26,6 +26,9 @@
 #include "host/ble_store.h"
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
+
+static uint8_t perm_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE ;
+
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 #include "services/gatt/ble_svc_gatt.h"
 #endif
@@ -174,6 +177,11 @@ ble_gatts_clt_cfg_free(struct ble_gatts_clt_cfg *cfg)
     }
 }
 #endif
+
+void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags)
+{ 
+   perm_flags = flags ;
+}
 
 static int
 ble_gatts_svc_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -1000,8 +1008,7 @@ static int
 ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle)
 {
     int rc;
-
-    rc = ble_att_svr_register(uuid_ccc, BLE_ATT_F_READ | BLE_ATT_F_WRITE, 0,
+    rc = ble_att_svr_register(uuid_ccc, perm_flags, 0,
                               att_handle, ble_gatts_clt_cfg_access, NULL);
     if (rc != 0) {
         return rc;
