@@ -55,6 +55,7 @@ extern struct os_mempool ble_l2cap_chan_pool;
 #define BLE_L2CAP_CID_BLACK_HOLE    0xffff
 
 #define BLE_L2CAP_HDR_SZ    4
+#define BLE_L2CAP_SDU_SZ    2
 
 typedef uint8_t ble_l2cap_chan_flags;
 
@@ -137,6 +138,7 @@ int ble_l2cap_enhanced_connect(uint16_t conn_handle,
                                uint8_t num, struct os_mbuf *sdu_rx[],
                                ble_l2cap_event_fn *cb, void *cb_arg);
 int ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu);
+int ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu, uint16_t new_mps);
 
 #ifdef __cplusplus
 }

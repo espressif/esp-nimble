@@ -207,7 +207,29 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
         }
     }
 
-    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu);
+    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
+}
+
+int
+ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu, uint16_t new_mps)
+{
+    int i;
+    uint16_t conn_handle;
+
+    if (num == 0 || !chans) {
+        return BLE_HS_EINVAL;
+    }
+
+    conn_handle = chans[0]->conn_handle;
+
+    for (i = 1; i < num; i++) {
+        if (conn_handle != chans[i]->conn_handle) {
+            BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
+            return BLE_HS_EINVAL;
+        }
+    }
+
+    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
 }
 
 int
@@ -387,14 +409,27 @@ ble_l2cap_rx(struct ble_hs_conn *conn,
             goto err;
         }
 
+        /* For CIDs from dynamic range we check if SDU size isn't larger than MPS */
+        if (chan->dcid >= 0x0040 && chan->dcid <= 0x007F && l2cap_hdr.len > (chan->my_coc_mps + BLE_L2CAP_SDU_SZ)) {
+            /* Data exceeds MPS */
+            BLE_HS_LOG(ERROR, "error: sdu_len > chan->my_coc_mps (%d>%d)\n",
+                       l2cap_hdr.len, chan->my_coc_mps);
+            ble_l2cap_disconnect(chan);
+            rc = BLE_HS_EBADDATA;
+            goto err;
+        }
+
         if (chan->rx_buf != NULL) {
             /* Previous data packet never completed.  Discard old packet. */
             ble_l2cap_remove_rx(conn, chan);
         }
 
-        if (l2cap_hdr.len > ble_l2cap_get_mtu(chan)) {
-            /* More data then we expected on the channel */
+        if (l2cap_hdr.len - BLE_L2CAP_SDU_SZ > ble_l2cap_get_mtu(chan)) {
+            /* More data than we expected on the channel.
+             * Disconnect peer with invalid behaviour
+             */
             rc = BLE_HS_EBADDATA;
+            ble_l2cap_disconnect(chan);
             goto err;
         }
 
