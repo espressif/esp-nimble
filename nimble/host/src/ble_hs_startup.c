@@ -267,6 +267,7 @@ ble_hs_startup_le_set_evmask_tx(void)
          * 0x0000000400000000 LE Subrate change event
          */
         mask |= 0x0000000400000000;
+    }
 #endif
 
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
