@@ -108,7 +108,10 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_connless_iq_report;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_iq_report;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cte_req_failed;
 #endif
-
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_subev_data_req;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_subev_resp_rep;
+#endif
 
 /* Statistics */
 struct host_hci_stats {
@@ -188,6 +191,14 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_CONN_IQ_RPT] = ble_hs_hci_evt_le_conn_iq_report,
     [BLE_HCI_LE_SUBEV_CTE_REQ_FAILED] = ble_hs_hci_evt_le_cte_req_failed,
 #endif
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_ESTAB_V2] = ble_hs_hci_evt_le_periodic_adv_sync_estab,
+    [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RPT_V2] = ble_hs_hci_evt_le_periodic_adv_rpt,
+    [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_TRANSFER_V2] = ble_hs_hci_evt_le_periodic_adv_sync_transfer,
+    [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SUBEV_DATA_REQ] = ble_hs_hci_evt_le_periodic_adv_subev_data_req,
+    [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RESP_REPORT] = ble_hs_hci_evt_le_periodic_adv_subev_resp_rep,
+    [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2] = ble_hs_hci_evt_le_enh_conn_complete,
+#endif
 };
 
 #define BLE_HS_HCI_EVT_LE_DISPATCH_SZ \
@@ -217,7 +228,6 @@ ble_hs_hci_evt_le_dispatch_find(uint8_t event_code)
     if (event_code >= BLE_HS_HCI_EVT_LE_DISPATCH_SZ) {
         return NULL;
     }
-
     return ble_hs_hci_evt_le_dispatch[event_code];
 }
 
@@ -498,13 +508,18 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
         evt.connection_handle = BLE_HS_CONN_HANDLE_NONE;
 #endif
     }
-#if MYNEWT_VAL(BLE_EXT_ADV)
+#if MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
     /* store this until we get set terminated event with adv handle */
         memcpy(&pend_conn_complete, &evt, sizeof(evt));
         return 0;
     }
+#endif
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+      evt.adv_handle = ev->adv_handle;
+      evt.sync_handle = ev->sync_handle;
 #endif
     return ble_gap_rx_conn_complete(&evt, 0);
 
@@ -1042,6 +1057,64 @@ ble_hs_hci_evt_le_cte_req_failed(uint8_t subevent, const void *data,
 
     ble_gap_rx_cte_req_failed(ev);
  
+    return 0;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+static int
+ble_hs_hci_evt_le_periodic_adv_subev_data_req(uint8_t subevent, const void *data,
+                                 unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_periodic_adv_subev_data_req *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_periodic_adv_subev_data_req(ev);
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_periodic_adv_resp_rep *ev = data;
+    const struct periodic_adv_response *response;
+    struct ble_gap_periodic_adv_response resp;
+
+    if (len < (sizeof(*ev) + ev->num_responses * sizeof(struct periodic_adv_response))) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    len -= sizeof(*ev);
+    data += sizeof(*ev);
+
+    resp.adv_handle = ev->adv_handle;
+    resp.subevent = ev->subevent;
+    resp.tx_status = ev->tx_status;
+
+    for (uint8_t i = 0; i < ev->num_responses; i++) {
+        response = data;
+        if (len < sizeof(*response) + response->data_length) {
+            return BLE_HS_ECONTROLLER;
+        }
+
+        len -= sizeof(*response) + response->data_length;
+        data += sizeof(*response) + response->data_length;
+
+        resp.tx_power = response->tx_power;
+        resp.rssi = response->rssi;
+        resp.cte_type = response->cte_type;
+        resp.response_slot = response->response_slot;
+        resp.data_length = response->data_length;
+        resp.data = response->data;
+        resp.data_status = response->data_status;
+
+        ble_gap_rx_periodic_adv_response(resp);
+    }
+
     return 0;
 }
 #endif
