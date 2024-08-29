@@ -166,6 +166,8 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_CTE_REQ_FAILED        37
 #define BLE_GAP_EVENT_LINK_ESTAB            38
 #define BLE_GAP_EVENT_EATT                  39
+#define BLE_GAP_EVENT_PER_SUBEV_DATA_REQ    40
+#define BLE_GAP_EVENT_PER_SUBEV_RESP        41
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -509,6 +511,66 @@ struct ble_gap_repeat_pairing {
     uint8_t new_bonding:1;
 };
 
+
+#define BLE_GAP_PER_ADV_DATA_STATUS_COMPLETE   0x00
+#define BLE_GAP_PER_ADV_DATA_STATUS_INCOMPLETE 0x01
+#define BLE_GAP_PER_ADV_DATA_STATUS_TRUNCATED  0x02
+#define BLE_GAP_PER_ADV_DATA_STATUS_RX_FAILED  0xFF
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+struct ble_gap_periodic_adv_response {
+    /** The subevent in which the response is received */
+    uint8_t subevent;
+
+    /** Status of the subevent indication.
+     *
+     *  0 if subevent indication was transmitted.
+     *  1 if subevent indication was not transmitted.
+     *  All other values RFU.
+     */
+
+    /** The adv handle of the adv */
+    uint8_t adv_handle;
+
+    uint8_t tx_status;
+
+    /** The TX power of the response in dBm */
+    int8_t tx_power;
+
+    /** The RSSI of the response in dBm */
+    int8_t rssi;
+
+    /** The Constant Tone Extension (CTE) of the advertisement */
+    uint8_t cte_type;
+
+    /** The response slot */
+    uint8_t response_slot;
+
+    /** Data status */
+    uint8_t data_status;
+
+    /** Data length */
+    uint8_t data_length;
+
+    /** response data */
+    const uint8_t *data;
+};
+
+struct ble_gap_periodic_adv_response_params {
+    /** The periodic advertsing event for which response shall be sent in */
+    uint16_t request_event;
+
+    /** The request subevent for which response shall be sent in */
+    uint8_t request_subevent;
+
+    /** The subevent the response shall be sent in */
+    uint8_t response_subevent;
+
+    /** The response slot the response shall be sent in */
+    uint8_t response_slot;
+};
+#endif
+
 /**
  * Represents a GAP-related event.  When such an event occurs, the host
  * notifies the application by passing an instance of this structure to an
@@ -542,6 +604,23 @@ struct ble_gap_event {
 
             /** The handle of the relevant connection. */
             uint16_t conn_handle;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+           /*
+            * Adv_Handle is used to identify an advertising set.
+            * If the connection is established from periodic advertising with responses
+            * and Role is 0x00  then the Advertising_Handle parameter shall be set
+            * according to the periodic advertising train the connection was established from
+            */
+            uint8_t adv_handle;
+
+            /*
+             * Sync_Handle identifying the periodic advertising train
+             * If the connection is established from periodic advertising with responses
+             * and Role is 0x01, then the Sync_Handle parameter shall be set according
+             * to the periodic advertising train the connection was established from
+             */
+            uint16_t sync_handle;
+#endif
         } connect;
 
         /**
@@ -945,6 +1024,18 @@ struct ble_gap_event {
 
             /** Advertiser clock accuracy */
             uint8_t adv_clk_accuracy;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+            /** Number of subevents. If zero, the periodic advertiser will be a broadcaster, 
+             * without responses.
+             */
+            uint8_t num_subevents;
+            /** Interval between subevents (N * 1.25 ms) */
+            uint8_t subevent_interval;
+            /** Time between the advertising packet and the first response slot (N * 1.25 ms). */
+            uint8_t response_slot_delay;
+            /** Time between response slots (N * 0.125 ms) */
+            uint8_t response_slot_spacing;
+#endif
         } periodic_sync;
 
         /**
@@ -962,10 +1053,24 @@ struct ble_gap_event {
             /** Received signal strength indication in dBm (127 if unavailable) */
             int8_t rssi;
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+            /**
+             * It indicates the periodic advertising event counter (paEventCounter) of
+             * the event that the periodic advertising packet was received in.
+             */
+            uint16_t event_counter;
+            /**
+             * It indicates Periodic Advertising with Responses subevent in which
+             * the periodic advertising packet was received in.
+             */
+            uint8_t  subevent;
+#endif
+
             /** Advertising data status, can be one of following constants:
              *  - BLE_HCI_PERIODIC_DATA_STATUS_COMPLETE
              *  - BLE_HCI_PERIODIC_DATA_STATUS_INCOMPLETE
              *  - BLE_HCI_PERIODIC_DATA_STATUS_TRUNCATED
+             *  - BLE_HCI_PERIODIC_DATA_STATUS_RX_FAILED
              */
             uint8_t data_status;
 
@@ -1047,6 +1152,18 @@ struct ble_gap_event {
 
             /** Advertiser clock accuracy */
             uint8_t adv_clk_accuracy;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+            /** Number of subevents. If zero, the periodic advertiser will be a broadcaster,-
+             * without responses.
+            */
+            uint8_t num_subevents;
+            /** Interval between subevents (N * 1.25 ms) */
+            uint8_t subevent_interval;
+            /** Time between the advertising packet and the first response slot (N * 1.25 ms). */
+            uint8_t response_slot_delay;
+            /** Time between response slots (N * 0.125 ms) */
+            uint8_t response_slot_spacing;
+#endif
         } periodic_transfer;
 #endif
 
@@ -1190,6 +1307,30 @@ struct ble_gap_event {
             /** Supervision Timeout */
             uint16_t supervision_tmo;
         } subrate_change;
+#endif
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        /**
+         * Represents a periodic advertising subevent data request
+         * with parameters valid for the following event types:
+         *     o BLE_GAP_EVENT_PER_SUBEV_DATA_REQ
+         */
+        struct {
+            /** Advertising handle */
+            uint8_t adv_handle;
+
+            /** Subevent start */
+            uint8_t subevent_start;
+
+            /** Number of subevents */
+            uint8_t subevent_data_count;
+        } periodic_adv_subev_data_req;
+
+        /**
+         * Represents a periodic advertising response
+         * with parameters valid for the following event types:
+         *     o BLE_GAP_EVENT_PER_SUBEV_RESP
+         */
+        struct ble_gap_periodic_adv_response periodic_adv_response;
 #endif
 
 #if MYNEWT_VAL(BLE_HCI_VS)
@@ -1843,6 +1984,34 @@ struct ble_gap_periodic_adv_params {
      *  defaults
      */
     uint16_t itvl_max;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+	/** Number of subevents
+	 *  If zero, the periodic advertiser will be a broadcaster, without responses.
+	 */
+	uint8_t num_subevents;
+
+	/** Interval between subevents (N * 1.25 ms)
+	 *  Shall be between 7.5ms and 318.75 ms.
+	 */
+	uint8_t subevent_interval;
+
+	/** Time between the advertising packet in a subevent and the
+	 *  first response slot (N * 1.25 ms)
+	 *
+	 */
+	uint8_t response_slot_delay;
+
+	/** Time between response slots (N * 0.125 ms)
+	 *  Shall be between 0.25 and 31.875 ms.
+	 */
+	uint8_t response_slot_spacing;
+
+	/** Number of subevent response slots
+	 *  If zero, response_slot_delay and response_slot_spacing are ignored.
+	 */
+	uint8_t num_response_slots;
+#endif /* PERIODIC_ADV_WITH_RESPONSES */
 };
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
@@ -1957,7 +2126,23 @@ struct ble_gap_cte_sampling_params {
 
 };
 
-#endif 
+#endif
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+struct ble_gap_set_periodic_adv_subev_data_params {
+   /** The subevent to set data for */
+   uint8_t subevent;
+
+   /** The first response slot to listen to */
+   uint8_t response_slot_start;
+
+   /** The number of response slots to listen to */
+   uint8_t response_slot_count;
+
+   /** The data to send */
+    struct os_mbuf *data;
+};
+#endif
 
 /**
  * Configure periodic advertising for specified advertising instance
@@ -2230,7 +2415,18 @@ int ble_gap_read_antenna_information(uint8_t *switch_sampling_rates, uint8_t *nu
 
 #endif // MYNEWT_VAL(BLE_AOA_AOD)
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+int
+ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
+                                    const struct ble_gap_set_periodic_adv_subev_data_params *params);
 
+int ble_gap_periodic_adv_set_response_data(uint16_t sync_handle,
+                                           struct ble_gap_periodic_adv_response_params *param,
+                                           struct os_mbuf *data);
+
+int ble_gap_periodic_adv_sync_subev(uint16_t sync_handle, uint8_t include_tx_power,
+                                    uint8_t num_subevents, uint8_t *subevents);
+#endif
 #endif
 
 
@@ -2386,6 +2582,71 @@ int ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                     const struct ble_gap_conn_params *params,
                     ble_gap_event_fn *cb, void *cb_arg);
 
+/**
+ * Initiates an Sync connect procedure for PAwR.
+ *
+ * @param own_addr_type         The type of address the stack should use for
+ *                                  itself during connection establishment.
+ *                                      - BLE_OWN_ADDR_PUBLIC
+ *                                      - BLE_OWN_ADDR_RANDOM
+ *                                      - BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT
+ *                                      - BLE_OWN_ADDR_RPA_RANDOM_DEFAULT
+ * @param advertising_handle    The advertising_Handle identifying the periodic advertising train
+ *                                  Range: 0x00 to 0xEF or 0xFF
+ * @param subevent              The Subevent parameter is used to identify the subevent where a connection
+                                request shall be initiated from a periodic advertising train.
+                                    The Advertising_Handle and Subevent parameters
+                                    shall be set to 0xFF if these
+                                    parameters are not used.
+ * @param peer_addr             The address of the peer to connect to.
+ *                                  If this parameter is NULL, the white list
+ *                                  is used.
+ * @param duration_ms           The duration of the discovery procedure.
+ *                                  On expiration, the procedure ends and a
+ *                                  BLE_GAP_EVENT_DISC_COMPLETE event is
+ *                                  reported.  Units are milliseconds.
+ * @param phy_mask              Define on which PHYs connection attempt should
+ *                                  be done
+ * @param phy_1m_conn_params     Additional arguments specifying the
+ *                                  particulars of the connect procedure. When
+ *                                  BLE_GAP_LE_PHY_1M_MASK is set in phy_mask
+ *                                  this parameter can be specify to null for
+ *                                  default values.
+ * @param phy_2m_conn_params     Additional arguments specifying the
+ *                                  particulars of the connect procedure. When
+ *                                  BLE_GAP_LE_PHY_2M_MASK is set in phy_mask
+ *                                  this parameter can be specify to null for
+ *                                  default values.
+ * @param phy_coded_conn_params  Additional arguments specifying the
+ *                                  particulars of the connect procedure. When
+ *                                  BLE_GAP_LE_PHY_CODED_MASK is set in
+ *                                  phy_mask this parameter can be specify to
+ *                                  null for default values.
+ * @param cb                    The callback to associate with this connect
+ *                                  procedure.  When the connect procedure
+ *                                  completes, the result is reported through
+ *                                  this callback.  If the connect procedure
+ *                                  succeeds, the connection inherits this
+ *                                  callback as its event-reporting mechanism.
+ * @param cb_arg                The optional argument to pass to the callback
+ *                                  function.
+ *
+ * @return                      0 on success;
+ *                              BLE_HS_EALREADY if a connection attempt is
+ *                                  already in progress;
+ *                              BLE_HS_EBUSY if initiating a connection is not
+ *                                  possible because scanning is in progress;
+ *                              BLE_HS_EDONE if the specified peer is already
+ *                                  connected;
+ *                              Other nonzero on error.
+ */
+int ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
+                uint8_t subevent, const ble_addr_t *peer_addr,
+                int32_t duration_ms, uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                ble_gap_event_fn *cb, void *cb_arg);
 /**
  * Initiates an extended connect procedure.
  *
