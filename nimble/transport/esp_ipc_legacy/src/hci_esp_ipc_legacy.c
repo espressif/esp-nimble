@@ -31,3 +31,9 @@ ble_transport_ll_init(void)
 
 }
 
+void
+ble_transport_ll_deinit(void)
+{
+
+}
+

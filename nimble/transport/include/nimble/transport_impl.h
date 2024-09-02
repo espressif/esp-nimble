@@ -31,6 +31,8 @@ extern "C" {
 extern void ble_transport_ll_init(void);
 extern void ble_transport_hs_init(void);
 
+extern void ble_transport_ll_deinit(void);
+
 /* APIs to be implemented by HS/LL side of transports */
 extern int ble_transport_to_ll_cmd_impl(void *buf);
 extern int ble_transport_to_ll_acl_impl(struct os_mbuf *om);

@@ -50,6 +50,11 @@ typedef int (*hal_uart_rx_char)(void *arg, uint8_t byte);
 int hal_uart_init_cbs(int uart, hal_uart_tx_char tx_func,
   hal_uart_tx_done tx_done, hal_uart_rx_char rx_func, void *arg);
 
+/**
+ * De Initialize already registerd callbacks
+ */
+void hal_uart_deinit_cbs(void);
+
 enum hal_uart_parity {
     /** No Parity */
     HAL_UART_PARITY_NONE = 0,
