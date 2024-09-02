@@ -43,6 +43,14 @@ int hal_uart_init_cbs(int uart_no, hal_uart_tx_char tx_func,
     return 0;
 }
 
+void hal_uart_deinit_cbs(void)
+{
+    hci_uart.tx_char = NULL;
+    hci_uart.rx_char = NULL;
+    hci_uart.tx_done = NULL;
+    hci_uart.u_func_arg = NULL;
+}
+
 static void IRAM_ATTR hci_uart_rx_task(void *pvParameters)
 {
     uart_event_t event;

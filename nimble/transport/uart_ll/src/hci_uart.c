@@ -243,3 +243,13 @@ ble_transport_ll_init(void)
 
     STAILQ_INIT(&tx_q);
 }
+
+void
+ble_transport_ll_deinit(void)
+{
+    memset(&hci_uart_h4sm, 0, sizeof(hci_uart_h4sm));
+
+    hal_uart_close(MYNEWT_VAL(BLE_TRANSPORT_UART_PORT));
+
+    hal_uart_deinit_cbs();
+}

@@ -156,6 +156,8 @@ esp_err_t esp_nimble_deinit(void)
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
     npl_freertos_funcs_deinit();
 #endif
+
+    ble_transport_ll_deinit();
     return ESP_OK;
 }
 
