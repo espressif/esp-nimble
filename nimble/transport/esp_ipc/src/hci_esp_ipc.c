@@ -15,6 +15,13 @@
 #include "esp_hci_internal.h"
 
 static int
+ble_transport_dummy_host_recv_cb(hci_trans_pkt_ind_t type, uint8_t *data, uint16_t len)
+{
+    /* Dummy function */
+    return 0;
+}
+
+static int
 ble_transport_host_recv_cb(hci_trans_pkt_ind_t type, uint8_t *data, uint16_t len)
 {
     int rc;
@@ -43,6 +50,12 @@ void
 ble_transport_ll_init(void)
 {
     hci_transport_host_callback_register(ble_transport_host_recv_cb);
+}
+
+void
+ble_transport_ll_deinit(void)
+{
+    hci_transport_host_callback_register(ble_transport_dummy_host_recv_cb);
 }
 
 void *
