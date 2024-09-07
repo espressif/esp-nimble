@@ -234,6 +234,14 @@ struct ble_hs_cfg {
      */
     unsigned sm_sc:1;
 
+    /** @brief Security Manager - Enable/Disable Secure Connections Only flag
+     *
+     * If set, this will enforce P-256 elliptic curve encryption algorithm
+     * during pairing.
+     * It will force the max key size to be used during pairing.
+     */
+    unsigned sm_sc_only:1;
+
     /** @brief Security Manager Key Press Notification flag
      *
      * Currently unsupported and should not be set.
