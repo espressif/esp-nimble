@@ -325,7 +325,7 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
     /* In SC Only mode all characteristics requiring security
      * require it on level 4
      */
-    if (MYNEWT_VAL(BLE_SM_SC_ONLY)) {
+    if (ble_hs_cfg.sm_sc_only) {
         if (!sec_state.authenticated ||
             !sec_state.encrypted) {
             *out_att_err = BLE_ATT_ERR_INSUFFICIENT_AUTHEN;

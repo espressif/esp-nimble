@@ -1930,7 +1930,7 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
         } else if (req->max_enc_key_size > BLE_SM_PAIR_KEY_SZ_MAX) {
             res->sm_err = BLE_SM_ERR_INVAL;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_INVAL);
-        } else if (MYNEWT_VAL(BLE_SM_SC_ONLY)) {
+        } else if (ble_hs_cfg.sm_sc_only) {
             /* Fail if Secure Connections Only mode is on and remote does not
              * meet key size requirements - MITM was checked in last step.
              * Fail if SC is not supported by peer or key size is too small
@@ -2005,7 +2005,7 @@ ble_sm_pair_rsp_rx(uint16_t conn_handle, struct os_mbuf **om,
         } else if (rsp->max_enc_key_size > BLE_SM_PAIR_KEY_SZ_MAX) {
             res->sm_err = BLE_SM_ERR_INVAL;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_INVAL);
-        } else if (MYNEWT_VAL(BLE_SM_SC_ONLY) && (rsp->max_enc_key_size != BLE_SM_PAIR_KEY_SZ_MAX)) {
+        } else if (ble_hs_cfg.sm_sc_only && (rsp->max_enc_key_size != BLE_SM_PAIR_KEY_SZ_MAX)) {
             /* Fail if Secure Connections Only mode is on and remote does not meet
             * key size requirements - MITM was checked in last step
             */
