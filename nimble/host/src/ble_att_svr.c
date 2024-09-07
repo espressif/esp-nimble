@@ -321,6 +321,23 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
     }
 
     ble_att_svr_get_sec_state(conn_handle, &sec_state);
+
+    /* In SC Only mode all characteristics requiring security
+     * require it on level 4
+     */
+    if (ble_hs_cfg.sm_sc_only) {
+        if (!sec_state.authenticated ||
+            !sec_state.encrypted) {
+            *out_att_err = BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
+            return BLE_HS_ATT_ERR(*out_att_err);
+        } else if (sec_state.authenticated &&
+                   sec_state.encrypted &&
+                   sec_state.key_size != 16) {
+            *out_att_err = BLE_ATT_ERR_INSUFFICIENT_KEY_SZ;
+            return BLE_HS_ATT_ERR(*out_att_err);
+        }
+    }
+
     if ((enc || authen) && !sec_state.encrypted) {
         ble_hs_lock();
         conn = ble_hs_conn_find(conn_handle);
