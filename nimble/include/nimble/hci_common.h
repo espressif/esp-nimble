@@ -600,6 +600,7 @@ struct ble_hci_le_set_ext_adv_params_cp {
     uint8_t sid;
     uint8_t scan_req_notif;
 } __attribute__((packed));
+
 struct ble_hci_le_set_ext_adv_params_rp {
     int8_t  tx_power;
 } __attribute__((packed));
@@ -1233,6 +1234,13 @@ struct ble_hci_le_subrate_req_cp {
     uint16_t subrate_max;
     uint16_t cont_num;
     uint16_t supervision_tmo;
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_LE_SET_EXT_ADV_PARAM_V2             (0x007F)
+struct ble_hci_le_set_ext_adv_params_v2_cp {
+    struct ble_hci_le_set_ext_adv_params_cp cmd;
+    uint8_t pri_phy_opt;
+    uint8_t sec_phy_opt;
 } __attribute__((packed));
 
 /* --- Vendor specific commands (OGF 0x003F) */
