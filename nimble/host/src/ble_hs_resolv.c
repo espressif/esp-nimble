@@ -36,19 +36,19 @@
 #define BLE_RESOLV_LIST_SIZE    (MYNEWT_VAL(BLE_STORE_MAX_BONDS) + 1)
 #define BLE_MAX_RPA_TIMEOUT_VAL 0xA1B8
 
-static struct ble_hs_resolv_data g_ble_hs_resolv_data;
-static struct ble_hs_resolv_entry g_ble_hs_resolv_list[BLE_RESOLV_LIST_SIZE];
-/* Allocate one extra space for peer_records than no. of Bonds, it will take
- * care of storage overflow  */
-static struct ble_hs_dev_records peer_dev_rec[BLE_RESOLV_LIST_SIZE];
-static int ble_store_num_peer_dev_rec;
-
 struct ble_hs_resolv_data {
     uint8_t addr_res_enabled;
     uint8_t rl_cnt;
     uint32_t rpa_tmo;
     struct ble_npl_callout rpa_timer;
 };
+
+static struct ble_hs_resolv_data g_ble_hs_resolv_data;
+static struct ble_hs_resolv_entry g_ble_hs_resolv_list[BLE_RESOLV_LIST_SIZE];
+/* Allocate one extra space for peer_records than no. of Bonds, it will take
+ * care of storage overflow  */
+static struct ble_hs_dev_records peer_dev_rec[BLE_RESOLV_LIST_SIZE];
+static int ble_store_num_peer_dev_rec;
 
 /* NRPA bit: Enables NRPA as private address. */
 static bool nrpa_pvcy;
