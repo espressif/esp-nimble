@@ -480,7 +480,7 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
         /* RPA needs to be resolved here, as controller is not aware of the
          * address is RPA in Host based RPA  */
-        if (ble_host_rpa_enabled() && !memcmp(evt.local_rpa, ble_hs_conn_null_addr, 6) == 0) {
+        if (ble_host_rpa_enabled() && ((!memcmp(evt.local_rpa, ble_hs_conn_null_addr, 6)) == 0)) {
             uint8_t *local_id_rpa = ble_hs_get_rpa_local();
             memcpy(evt.local_rpa, local_id_rpa, BLE_DEV_ADDR_LEN);
         }
