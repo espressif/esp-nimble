@@ -122,9 +122,10 @@ esp_err_t esp_nimble_init(void)
     os_msys_init();
 
 #endif
+
+    ble_transport_ll_init();
     /* Initialize the host */
     ble_transport_hs_init();
-    ble_transport_ll_init();
 
     return ESP_OK;
 }
