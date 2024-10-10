@@ -3376,7 +3376,23 @@ int ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy);
 
  * @return                0 on success; nonzero on failure
 */
+
 int ble_gap_read_rem_ver_info(uint16_t conn_handle, uint8_t *version, uint16_t *manufacturer, uint16_t *subversion);
+
+/**
+ * Read local resolvable address command
+ *
+ * @param  peer_addr_type  Peer Identity Address type
+ *
+ * @param peer_addr        Peer Identity Address
+ *
+ * @param out_addr	   Local Resolvable Address received from controller.
+ *
+ * @return                0 on success; nonzero on failure
+ */
+
+int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_addr,
+                                 uint8_t *out_addr);
 
 #ifdef __cplusplus
 }
