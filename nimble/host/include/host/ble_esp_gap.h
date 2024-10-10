@@ -97,6 +97,15 @@ int ble_hs_hci_util_write_sugg_def_data_len(uint16_t sugg_max_tx_octets, uint16_
 int ble_gap_wl_tx_rmv(const ble_addr_t *addrs);
 
 /**
+ * Adds the address in controller's white list.
+ *
+ * @param addrs                 The entry to be added in the white list.
+ *
+ * @return                      0 on success; nonzero on failure.
+ */
+int ble_gap_wl_tx_add(const ble_addr_t *addrs);
+
+/**
  * Clears all addresses from controller's white list.
  *
  * @return                      0 on success; nonzero on failure.
