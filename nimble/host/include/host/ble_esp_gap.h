@@ -39,6 +39,16 @@ typedef enum gap_status gap_status_t;
 #endif
 #endif
 
+
+/**
+ * Adds the address in controller's white list.
+ *
+ * @param addrs                 The entry to be added in the white list.
+ *
+ * @return                      0 on success; nonzero on failure.
+ */
+int ble_gap_wl_tx_add(const ble_addr_t *addrs);
+
 /**
  * This API gives the current status of various stack operations
  *

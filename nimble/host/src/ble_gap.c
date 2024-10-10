@@ -2896,7 +2896,7 @@ ble_gap_wl_busy(void)
            ble_gap_master.conn.using_wl;
 }
 
-static int
+int
 ble_gap_wl_tx_add(const ble_addr_t *addr)
 {
     struct ble_hci_le_add_whte_list_cp cmd;
@@ -7587,7 +7587,15 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
     // Checking if the device is in ble_store
     if (!rc) {
         if (value.sec.irk_present) {
-           // Delete the IRK as it is Distributed
+	    /* We cannot delete entry from resolving list if there is ongoing
+	     * discovery or advertising in progress */
+
+            if (ble_gap_adv_active() ||
+                ble_gap_disc_active()) {
+                return BLE_HS_EBUSY;
+            }
+
+            // Delete the IRK as it is Distributed
             rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,key.sec.peer_addr.val);
             if (rc != 0) {
                 BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",rc);
@@ -8432,6 +8440,30 @@ ble_gap_set_transmit_power_reporting_enable(uint16_t conn_handle,
 #else
     return BLE_HS_ENOTSUP;
 #endif
+}
+int
+ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_addr,
+		             uint8_t *out_addr)
+{
+    struct ble_hci_le_rd_local_resolv_addr_cp cmd;
+    struct ble_hci_le_rd_local_resolv_addr_rp rsp;
+    uint16_t opcode;
+    int rc;
+
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_RD_LOCAL_RESOLV_ADDR);
+
+    cmd.peer_addr_type = peer_addr_type;
+    memcpy(&cmd.peer_id_addr, peer_addr->val, sizeof(cmd.peer_id_addr));
+
+    rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), &rsp, sizeof(rsp));
+
+    if (rc!=0) {
+        return rc;
+    }
+
+    memcpy(out_addr, &rsp.rpa, sizeof(rsp.rpa));
+
+    return 0;
 }
 
 #if MYNEWT_VAL(BLE_HCI_VS)
