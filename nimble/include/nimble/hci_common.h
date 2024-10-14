@@ -1299,7 +1299,11 @@ struct ble_hci_vs_duplicate_exception_list_cp {
 #define BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MIN     (0x001b)
 #define BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX     (0x00fb)
 #define BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MIN       (0x0148)
+#if BLE_50_FEATURE_SUPPORT
 #define BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX       (0x4290)
+#else
+#define BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX       (0x0848)
+#endif
 
 /* --- LE read maximum default PHY (OCF 0x0030) */
 #define BLE_HCI_LE_PHY_1M                   (1)
