@@ -308,7 +308,6 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
 
 }
 
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 static int
 ble_store_config_delete_obj(void *values, int value_size, int idx,
                             int *num_values)
@@ -330,6 +329,7 @@ ble_store_config_delete_obj(void *values, int value_size, int idx,
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 static int
 ble_store_config_delete_sec(const struct ble_store_key_sec *key_sec,
                             struct ble_store_value_sec *value_secs,
@@ -878,6 +878,7 @@ ble_store_config_write_rpa_rec(const struct ble_store_value_rpa_rec *value_rpa_r
 static int
 ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
 {
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int idx;
     int rc;
 
@@ -900,6 +901,9 @@ ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
     }
 
     return 0;
+#else
+    return BLE_HS_ENOENT;
+#endif
 }
 
 /*****************************************************************************
