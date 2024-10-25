@@ -105,7 +105,7 @@
 #define BLE_ERR_MAX                  0xff
 
 struct err_code {
-    int code;
+    int error_code;
     char *msg;
 };
 
@@ -179,20 +179,26 @@ static struct err_code err_code_list[] = {
       { BLE_HS_HCI_ERR(BLE_ERR_MAX),                  ": BLE_ERR_MAX"}
 };
 
-static void esp_hci_err_to_name(int code)
+static void esp_hci_err_to_name(int error_code, uint16_t *opcode)
 {
-    if (code == 0) {
+    if (error_code == 0) {
         return;
     }
-    else if (code - 0x200 < 0) {
+    else if (error_code - 0x200 < 0) {
         /* Converts error code to HCI base */
-        code = BLE_HS_HCI_ERR(code);
+        error_code = BLE_HS_HCI_ERR(error_code);
     }
 
     for (int i = 0; i<sizeof(err_code_list) / sizeof(err_code_list[0]); i++) {
-        if (err_code_list[i].code == code ) {
-          MODLOG_DFLT(ERROR, "0x%02X %s\n", code, err_code_list[i].msg);
-          break;
+        if (err_code_list[i].error_code == error_code) {
+            if (opcode == NULL) {
+                  MODLOG_DFLT(INFO, "hci_err=0x%02X %s\n", error_code, err_code_list[i].msg);
+            }
+            else {
+                  MODLOG_DFLT(INFO, "ogf=0x%02x, ocf=0x%04x, hci_err=0x%02X %s\n",
+                              BLE_HCI_OGF(*opcode), BLE_HCI_OCF(*opcode), error_code, err_code_list[i].msg);
+            }
+            break;
         }
     }
     return;
@@ -510,6 +516,7 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
     }
 
     rc = ack.bha_status;
+
     /* on success we should always get full response */
     if (!rc && (ack.bha_params_len != rsp_len)) {
         BLE_HS_LOG(ERROR, "Received status %d \n", rc);
@@ -523,7 +530,7 @@ done:
     }
 
     ble_hs_hci_unlock();
-    esp_hci_err_to_name(rc);
+    esp_hci_err_to_name(rc, &opcode);
     return rc;
 }
 
