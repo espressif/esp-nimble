@@ -92,6 +92,19 @@ struct ble_l2cap_chan {
     struct ble_l2cap_coc_endpoint coc_rx;
     struct ble_l2cap_coc_endpoint coc_tx;
     uint16_t initial_credits;
+/**
+ * Disable automatically sending credits to a remote
+ *
+ * This field disables automatically sending extra credit to a
+ * remote that has exhausted all of its available credits.
+ * Setting this field to "true" will enable behaviour to
+ * "not automatically send credits to a peer whose credits are exhausted"
+ * Setting this field to "false" will enable behaviour to
+ * "automatically send credits to a peer whose credits are exhausted"
+ * this behaviour.
+ *                      
+ */
+    bool disable_auto_credit_update;
     ble_l2cap_event_fn *cb;
     void *cb_arg;
 #endif
