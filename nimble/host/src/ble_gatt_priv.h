@@ -109,6 +109,7 @@ struct ble_gatts_conn {
     int num_clt_cfgs;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     bool aware_state;
+    uint8_t half_aware:1;
     bool sent_err;
 #endif
 
@@ -229,6 +230,7 @@ void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 struct ble_gatts_aware_state {
     uint8_t peer_id_addr[6];
     bool aware;
+    uint8_t half_aware:1;
 };
 extern struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
 #endif

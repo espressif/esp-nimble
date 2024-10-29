@@ -1515,7 +1515,13 @@ ble_gatts_connection_broken(uint16_t conn_handle)
             for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
                 if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                           addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val)) {
-                    ble_gatts_conn_aware_states[i].aware = conn->bhc_gatt_svr.aware_state;
+                    if(conn->bhc_gatt_svr.half_aware) {
+                        ble_gatts_conn_aware_states[i].aware = false;
+                        ble_gatts_conn_aware_states[i].half_aware = 0;
+                    } else {
+                        ble_gatts_conn_aware_states[i].aware = conn->bhc_gatt_svr.aware_state;
+                        ble_gatts_conn_aware_states[i].half_aware = conn->bhc_gatt_svr.half_aware;
+                    }
                 }
             }
         }
@@ -2490,6 +2496,7 @@ ble_gatts_bonding_restored(uint16_t conn_handle)
     for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
         if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                           addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val)) {
+            conn->bhc_gatt_svr.half_aware = ble_gatts_conn_aware_states[i].half_aware;
             conn->bhc_gatt_svr.aware_state = ble_gatts_conn_aware_states[i].aware;
         }
     }
@@ -2774,6 +2781,7 @@ static void ble_gatts_remove_clt_cfg(struct ble_gatts_clt_cfg_list *clt_cfgs, ui
 static int
 ble_gatts_conn_unaware(struct ble_hs_conn *conn, void *arg) {
     conn->bhc_gatt_svr.aware_state = false;
+    conn->bhc_gatt_svr.half_aware = 0;
     return 0;
 }
 #endif
@@ -2873,6 +2881,7 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     /* make all bonded connections unaware */
     for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
+        ble_gatts_conn_aware_states[i].half_aware = 0;
         ble_gatts_conn_aware_states[i].aware = false;
     }
     ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
@@ -2974,6 +2983,7 @@ done:
         /* make all bonded connections them unaware */
         for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             ble_gatts_conn_aware_states[i].aware = false;
+            ble_gatts_conn_aware_states[i].half_aware = 0;
         }
         ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
 #endif
