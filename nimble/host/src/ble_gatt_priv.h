@@ -92,7 +92,6 @@ extern STATS_SECT_DECL(ble_gatts_stats) ble_gatts_stats;
 
 #define BLE_GATT_CHR_DECL_SZ_16     5
 #define BLE_GATT_CHR_DECL_SZ_128    19
-#define BLE_GATT_CHR_CLI_SUP_FEAT_SZ    1
 /**
  * For now only 3 bits in first octet are defined
  *
@@ -121,7 +120,7 @@ struct ble_gatts_conn {
      * future proof if more octets might be used.
      * (Vol. 3, Part G, 7.2)
      */
-    uint8_t peer_cl_sup_feat[BLE_GATT_CHR_CLI_SUP_FEAT_SZ];
+    uint8_t peer_cl_sup_feat[MYNEWT_VAL(BLE_GATT_CSFC_SIZE)];
 };
 
 /*** @client. */
