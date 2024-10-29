@@ -37,6 +37,7 @@ extern "C" {
 #define BLE_STORE_OBJ_TYPE_PEER_ADDR         6
 #define BLE_STORE_OBJ_TYPE_LOCAL_IRK         7
 
+#define BLE_STORE_OBJ_TYPE_CSFC              8
 /** Failed to persist record; insufficient storage capacity. */
 #define BLE_STORE_EVENT_OVERFLOW        1
 
@@ -148,6 +149,29 @@ struct ble_store_value_local_irk {
 };
 
 
+/**
+ * Used as a key for lookups of stored client supported features characteristic (CSFC).
+ * This struct corresponds to the BLE_STORE_OBJ_TYPE_CSFC store object type.
+ */
+struct ble_store_key_csfc {
+    /**
+     * Key by peer identity address;
+     */
+    ble_addr_t peer_addr;
+
+    /** Number of results to skip; 0 means retrieve the first match. */
+    uint8_t idx;
+};
+
+/**
+ * Represents a stored client supported features characteristic (CSFC).
+ * This struct corresponds to the BLE_STORE_OBJ_TYPE_CSFC store object type.
+ */
+struct ble_store_value_csfc {
+    ble_addr_t peer_addr;
+    uint8_t csfc[MYNEWT_VAL(BLE_GATT_CSFC_SIZE)];
+};
+
 #if MYNEWT_VAL(ENC_ADV_DATA)
 /**
  * Used as a key for lookups of encrypted advertising data. This struct corresponds
@@ -187,6 +211,7 @@ union ble_store_key {
 #if MYNEWT_VAL(ENC_ADV_DATA)
     struct ble_store_key_ead ead;
 #endif
+    struct ble_store_key_csfc csfc;
 };
 
 /**
@@ -201,6 +226,7 @@ union ble_store_value {
 #if MYNEWT_VAL(ENC_ADV_DATA)
     struct ble_store_value_ead ead;
 #endif
+   struct ble_store_value_csfc csfc;
 };
 
 struct ble_store_status_event {
@@ -331,10 +357,18 @@ int ble_store_read_cccd(const struct ble_store_key_cccd *key,
 int ble_store_write_cccd(const struct ble_store_value_cccd *value);
 int ble_store_delete_cccd(const struct ble_store_key_cccd *key);
 
+int ble_store_read_csfc(const struct ble_store_key_csfc *key,
+                        struct ble_store_value_csfc *out_value);
+int ble_store_write_csfc(const struct ble_store_value_csfc *value);
+int ble_store_delete_csfc(const struct ble_store_key_csfc *key);
+
 void ble_store_key_from_value_sec(struct ble_store_key_sec *out_key,
                                   const struct ble_store_value_sec *value);
 void ble_store_key_from_value_cccd(struct ble_store_key_cccd *out_key,
                                    const struct ble_store_value_cccd *value);
+void ble_store_key_from_value_csfc(struct ble_store_key_csfc *out_key,
+                                   const struct ble_store_value_csfc *value);
+
 #if MYNEWT_VAL(ENC_ADV_DATA)
 int ble_store_read_ead(const struct ble_store_key_ead *key,
                        struct ble_store_value_ead *out_value);

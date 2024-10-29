@@ -62,6 +62,13 @@ static struct conf_handler ble_store_config_conf_handler = {
  
 #define BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ \
     (MYNEWT_VAL(BLE_STORE_MAX_BONDS) * BLE_STORE_CONFIG_RPA_REC_ENCODE_SZ + 1)
+
+#define BLE_STORE_CONFIG_CSFC_ENCODE_SZ     \
+    BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_csfc))
+
+#define BLE_STORE_CONFIG_CSFC_ENCODE_SZ     \
+    BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_csfc))
+
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #define BLE_STORE_CONFIG_EAD_ENCODE_SZ     \
     BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_ead))
@@ -126,6 +133,13 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     sizeof *ble_store_config_cccds,
                     &ble_store_config_num_cccds);
             return rc;
+        } else if (strcmp(argv[0], "csfc") == 0) {
+            rc = ble_store_config_deserialize_arr(
+                    val,
+                    ble_store_config_csfcs,
+                    sizeof *ble_store_config_csfcs,
+                    &&ble_store_config_num_csfcs);
+            return rc;
         }
         else if (strcmp(argv[0],"rpa_rec") == 0){
             rc = ble_store_config_deserialize_arr(
@@ -186,6 +200,14 @@ ble_store_config_conf_export(void (*func)(char *name, char *val),
                                    buf.rpa_rec,
                                    sizeof buf.rpa_rec);
     func("ble_hs/rpa_rec", buf.rpa_rec);
+
+    ble_store_config_serialize_arr(ble_store_config_csfcs,
+                                   sizeof *ble_store_config_csfcs,
+                                   ble_store_config_num_csfcs,
+                                   buf.csfc,
+                                   sizeof buf.csfc);
+    func("ble_hs/csfc", buf.csfc);
+
 #if MYNEWT_VAL(ENC_ADV_DATA)
     ble_store_config_serialize_arr(ble_store_config_eads,
                                    sizeof *ble_store_config_eads,
@@ -257,6 +279,25 @@ ble_store_config_persist_cccds(void)
                                    buf,
                                    sizeof buf);
     rc = conf_save_one("ble_hs/cccd", buf);
+    if (rc != 0) {
+        return BLE_HS_ESTORE_FAIL;
+    }
+
+    return 0;
+}
+
+int
+ble_store_config_persist_csfcs(void)
+{
+    char buf[BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ];
+    int rc;
+
+    ble_store_config_serialize_arr(ble_store_config_csfcs,
+                                   sizeof *ble_store_config_csfcs,
+                                   ble_store_config_num_csfcs,
+                                   buf,
+                                   sizeof buf);
+    rc = conf_save_one("ble_hs/csfc", buf);
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
     }
