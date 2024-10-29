@@ -298,7 +298,7 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan)
      * However, we still have buffer to for next LE Frame so lets give one more
      * credit to peer so it can send us full SDU
      */
-    if (rx->credits == 0) {
+    if (chan->disable_auto_credit_update == false && rx->credits == 0) {
         /* Remote did not send full SDU. Lets give him one more credits to do
          * so since we have still buffer to handle it
          */
@@ -637,7 +637,7 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
     /* We want to back only that much credits which remote side is missing
      * to be able to send complete SDU.
      */
-    if (chan->coc_rx.credits < c->initial_credits) {
+    if (chan->disable_auto_credit_update == false && chan->coc_rx.credits < c->initial_credits) {
         ble_hs_unlock();
         ble_l2cap_sig_le_credits(chan->conn_handle, chan->scid,
                                  c->initial_credits - chan->coc_rx.credits);
