@@ -285,6 +285,42 @@ ble_store_delete_cccd(const struct ble_store_key_cccd *key)
     return rc;
 }
 
+int
+ble_store_read_csfc(const struct ble_store_key_csfc *key,
+                    struct ble_store_value_csfc *out_value)
+{
+    union ble_store_value *store_value;
+    union ble_store_key *store_key;
+    int rc;
+
+    store_key = (void *)key;
+    store_value = (void *)out_value;
+    rc = ble_store_read(BLE_STORE_OBJ_TYPE_CSFC, store_key, store_value);
+    return rc;
+}
+
+int
+ble_store_write_csfc(const struct ble_store_value_csfc *value)
+{
+    union ble_store_value *store_value;
+    int rc;
+
+    store_value = (void *)value;
+    rc = ble_store_write(BLE_STORE_OBJ_TYPE_CSFC, store_value);
+    return rc;
+}
+
+int
+ble_store_delete_csfc(const struct ble_store_key_csfc *key)
+{
+    union ble_store_key *store_key;
+    int rc;
+
+    store_key = (void *)key;
+    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_CSFC, store_key);
+    return rc;
+}
+
 void
 ble_store_key_from_value_cccd(struct ble_store_key_cccd *out_key,
                               const struct ble_store_value_cccd *value)
@@ -437,6 +473,14 @@ ble_store_key_from_value_rpa_rec(struct ble_store_key_rpa_rec *out_key,
 }
 
 void
+ble_store_key_from_value_csfc(struct ble_store_key_csfc *out_key,
+                              const struct ble_store_value_csfc *value)
+{
+    out_key->peer_addr = value->peer_addr;
+    out_key->idx = 0;
+}
+
+void
 ble_store_key_from_value(int obj_type,
                          union ble_store_key *out_key,
                          const union ble_store_value *value)
@@ -456,12 +500,17 @@ ble_store_key_from_value(int obj_type,
         break;
 #endif
     case BLE_STORE_OBJ_TYPE_PEER_ADDR:
-         ble_store_key_from_value_rpa_rec(&out_key->rpa_rec, &value->rpa_rec);
-         break;
+        ble_store_key_from_value_rpa_rec(&out_key->rpa_rec, &value->rpa_rec);
+        break;
 
-   case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
+    case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
         ble_store_key_from_value_local_irk(&out_key->local_irk, &value->local_irk);
-         break;
+        break;
+
+    case BLE_STORE_OBJ_TYPE_CSFC:
+        ble_store_key_from_value_csfc(&out_key->csfc, &value->csfc);
+        break;
+
 
     default:
         BLE_HS_DBG_ASSERT(0);
@@ -505,6 +554,10 @@ ble_store_iterate(int obj_type,
     case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
         key.local_irk.addr = *BLE_ADDR_ANY;
         pidx = &key.local_irk.idx;
+        break;
+    case BLE_STORE_OBJ_TYPE_CSFC:
+        key.csfc.peer_addr = *BLE_ADDR_ANY;
+        pidx = &key.csfc.idx;
         break;
     default:
         BLE_HS_DBG_ASSERT(0);
@@ -550,6 +603,7 @@ ble_store_clear(void)
         BLE_STORE_OBJ_TYPE_OUR_SEC,
         BLE_STORE_OBJ_TYPE_PEER_SEC,
         BLE_STORE_OBJ_TYPE_CCCD,
+        BLE_STORE_OBJ_TYPE_CSFC,
         BLE_STORE_OBJ_TYPE_PEER_ADDR,
         BLE_STORE_OBJ_TYPE_LOCAL_IRK,
 #if MYNEWT_VAL(ENC_ADV_DATA)

@@ -2180,8 +2180,8 @@ ble_gatts_peer_cl_sup_feat_get(uint16_t conn_handle, uint8_t *out_supported_feat
         goto done;
     }
 
-    if (BLE_GATT_CHR_CLI_SUP_FEAT_SZ < len) {
-        len = BLE_GATT_CHR_CLI_SUP_FEAT_SZ;
+    if (MYNEWT_VAL(BLE_GATT_CSFC_SIZE) < len) {
+        len = MYNEWT_VAL(BLE_GATT_CSFC_SIZE);
     }
 
     memcpy(out_supported_feat, conn->bhc_gatt_svr.peer_cl_sup_feat,
@@ -2196,7 +2196,9 @@ int
 ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
 {
     struct ble_hs_conn *conn;
-    uint8_t feat[BLE_GATT_CHR_CLI_SUP_FEAT_SZ] = {};
+    struct ble_store_value_csfc value_csfc;
+    struct ble_store_key_csfc key_csfc;
+    uint8_t feat[MYNEWT_VAL(BLE_GATT_CSFC_SIZE)] = {};
     uint16_t len;
     int rc = 0;
     int i;
@@ -2209,8 +2211,8 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
 
     /* RFU bits are ignored so we can skip any bytes larger than supported */
     len = os_mbuf_len(om);
-    if (len > BLE_GATT_CHR_CLI_SUP_FEAT_SZ) {
-        len = BLE_GATT_CHR_CLI_SUP_FEAT_SZ;
+    if (len > MYNEWT_VAL(BLE_GATT_CSFC_SIZE)) {
+        len = MYNEWT_VAL(BLE_GATT_CSFC_SIZE);
     }
 
     if (os_mbuf_copydata(om, 0, len, feat) < 0) {
@@ -2218,7 +2220,7 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
     }
 
     /* clear RFU bits */
-    for (i = 0; i < BLE_GATT_CHR_CLI_SUP_FEAT_SZ; i++) {
+    for (i = 0; i < MYNEWT_VAL(BLE_GATT_CSFC_SIZE); i++) {
         feat[i] &= (BLE_GATT_CHR_CLI_SUP_FEAT_MASK >> (8 * i));
     }
 
@@ -2233,7 +2235,7 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
      * Disabling already enabled features is not permitted
      * (Vol. 3, Part F, 3.3.3)
      */
-    for (i = 0; i < BLE_GATT_CHR_CLI_SUP_FEAT_SZ; i++) {
+    for (i = 0; i < MYNEWT_VAL(BLE_GATT_CSFC_SIZE); i++) {
         if ((conn->bhc_gatt_svr.peer_cl_sup_feat[i] & feat[i]) !=
             conn->bhc_gatt_svr.peer_cl_sup_feat[i]) {
             rc = BLE_ATT_ERR_VALUE_NOT_ALLOWED;
@@ -2241,7 +2243,25 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
         }
     }
 
-    memcpy(conn->bhc_gatt_svr.peer_cl_sup_feat, feat, BLE_GATT_CHR_CLI_SUP_FEAT_SZ);
+    memcpy(conn->bhc_gatt_svr.peer_cl_sup_feat, feat, MYNEWT_VAL(BLE_GATT_CSFC_SIZE));
+
+    if (conn->bhc_sec_state.bonded) {
+        memset(&key_csfc, 0, sizeof key_csfc);
+        key_csfc.peer_addr = conn->bhc_peer_addr;
+
+        rc = ble_store_delete_csfc(&key_csfc);
+        if (rc != 0) {
+            goto done;
+        }
+
+        value_csfc.peer_addr = conn->bhc_peer_addr;
+        memcpy(value_csfc.csfc, feat, MYNEWT_VAL(BLE_GATT_CSFC_SIZE));
+
+        rc = ble_store_write_csfc(&value_csfc);
+        if (rc != 0) {
+            goto done;
+        }
+    }
 
 done:
     ble_hs_unlock();
@@ -2357,6 +2377,7 @@ void
 ble_gatts_bonding_established(uint16_t conn_handle)
 {
     struct ble_store_value_cccd cccd_value;
+    struct ble_store_value_csfc csfc;
     struct ble_gatts_clt_cfg *clt_cfg;
     struct ble_gatts_conn *gatt_srv;
     struct ble_hs_conn *conn;
@@ -2401,6 +2422,16 @@ ble_gatts_bonding_established(uint16_t conn_handle)
         }
     }
 
+    csfc.peer_addr = conn->bhc_peer_addr;
+    memcpy(csfc.csfc, conn->bhc_gatt_svr.peer_cl_sup_feat, MYNEWT_VAL(BLE_GATT_CSFC_SIZE));
+
+    ble_hs_unlock();
+    ble_store_write_csfc(&csfc);
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find(conn_handle);
+    BLE_HS_DBG_ASSERT(conn != NULL);
+
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     /* store the bonded peer aware_state
        if space not available delete the
@@ -2430,6 +2461,8 @@ ble_gatts_bonding_restored(uint16_t conn_handle)
 {
     struct ble_store_value_cccd cccd_value;
     struct ble_store_key_cccd cccd_key;
+    struct ble_store_value_csfc csfc_value;
+    struct ble_store_key_csfc csfc_key;
     struct ble_gatts_clt_cfg *clt_cfg;
     struct ble_hs_conn *conn;
     uint8_t att_op;
@@ -2529,6 +2562,14 @@ ble_gatts_bonding_restored(uint16_t conn_handle)
 
         cccd_key.idx++;
     }
+
+    memset(&csfc_key, 0, sizeof csfc_key);
+    csfc_key.peer_addr = conn->bhc_peer_addr;
+    rc = ble_store_read_csfc(&csfc_key, &csfc_value);
+    if (rc != 0) {
+        return;
+    }
+    memcpy(conn->bhc_gatt_svr.peer_cl_sup_feat, csfc_value.csfc, MYNEWT_VAL(BLE_GATT_CSFC_SIZE));
 }
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
