@@ -330,6 +330,15 @@ struct ble_hs_cfg {
      */
     unsigned sm_keypress:1;
 
+    /** @brief Enable/Disable Enhanced ATT Support
+     *
+     * Primarily used to enable EATT behaviour; denotes the number of eatt
+     * channels. Set to 0 to disable eatt.
+     *
+     * Default value is CONFIG_BT_NIMBLE_EATT_CHAN_NUM.
+     */
+    uint8_t eatt;
+
     /** @brief Security Manager Local Key Distribution Mask */
     uint8_t sm_our_key_dist;
 

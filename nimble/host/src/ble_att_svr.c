@@ -1476,8 +1476,10 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
 
     struct ble_att_read_type_req *req;
     uint16_t start_handle, end_handle;
+#if MYNEWT_VAL(BLE_GATT_CACHING)
     struct ble_hs_conn *conn;
     struct ble_hs_conn_addrs addrs;
+#endif
     struct os_mbuf *txom;
     uint16_t err_handle;
     uint16_t pktlen;
@@ -2390,9 +2392,13 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 int
 ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
-#if !MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE) || MYNEWT_VAL(BLE_EATT_CHAN_NUM)
+#if !MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE)
     return BLE_HS_ENOTSUP;
 #endif
+
+    if (MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0 && ble_hs_cfg.eatt) {
+        return BLE_HS_ENOTSUP;
+    }
 
     struct ble_att_signed_write_cmd *req;
     struct ble_store_value_sec value_sec;

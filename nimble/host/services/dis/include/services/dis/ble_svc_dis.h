@@ -46,12 +46,12 @@
 #define BLE_SVC_DIS_CHR_UUID16_PNP_ID               0x2A50
 #define BLE_SVC_DIS_CHR_UUID16_UDI                  0x2BFF
 
-#if MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
-/** One PTS Case requires this DIS to be included. */
+/* One PTS Case requires DIS to be included. 
+ * The UUID below is randomly chosen.
+ */
 static const ble_uuid128_t ble_svc_dis_include_uuid =
     BLE_UUID128_INIT(0x2d, 0x71, 0xa2, 0x59, 0xb4, 0x58, 0xc8, 0x12,
                      0x99, 0x99, 0x43, 0x95, 0x12, 0x2f, 0x46, 0xFF);
-#endif
 
 /**
  * Structure holding data for the main characteristics
@@ -122,6 +122,11 @@ extern struct ble_svc_dis_data ble_svc_dis_data;
  * Automatically called during package initialisation.
  */
 void ble_svc_dis_init(void);
+
+/**
+ * Service initialisation as an included service.
+ */
+void ble_svc_dis_included_init(void);
 
 const char *ble_svc_dis_model_number(void);
 int ble_svc_dis_model_number_set(const char *value);

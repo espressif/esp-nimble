@@ -123,7 +123,7 @@ ble_att_clt_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     mtu = 0;
 
 #if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
-    if (cid != BLE_L2CAP_CID_ATT) {
+    if (ble_hs_cfg.eatt && cid != BLE_L2CAP_CID_ATT) {
         return BLE_HS_ENOTSUP;
     }
 #endif
