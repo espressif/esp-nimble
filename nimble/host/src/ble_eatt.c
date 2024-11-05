@@ -442,6 +442,10 @@ ble_eatt_gap_event(struct ble_gap_event *event, void *arg)
             return 0;
         }
 
+        if (ble_hs_cfg.eatt == 0) {
+            return 0;
+        }
+
         /* Don't try to connect if already connected */
         if (ble_eatt_find_by_conn_handle(event->enc_change.conn_handle)) {
             return 0;
@@ -553,7 +557,7 @@ ble_eatt_start(uint16_t conn_handle)
         return;
     }
 
-    for (int i = 0; i < MYNEWT_VAL(BLE_EATT_CHAN_NUM); i++) {
+    for (int i = 0; i < ble_hs_cfg.eatt; i++) {
         eatt = ble_eatt_alloc();
         if (!eatt) {
             return;

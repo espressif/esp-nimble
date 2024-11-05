@@ -53,11 +53,7 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
 
 static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
     { /*** Service: Device Information Service (DIS). */
-#if !MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-#else
-        .type = BLE_GATT_SVC_TYPE_SECONDARY,
-#endif
         .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_UUID16),
         .characteristics = (struct ble_gatt_chr_def[]) { {
 #if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM) >= 0)
@@ -144,7 +140,6 @@ static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
     },
 };
 
-#if MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
 const struct ble_gatt_svc_def *included_services[] = {ble_svc_dis_defs, NULL};
 const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
     {
@@ -153,7 +148,6 @@ const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
         .includes = included_services,
     }
 };
-#endif
 
 /**
  * Simple read access callback for the device information service
@@ -386,6 +380,21 @@ ble_svc_dis_pnp_id_set(const char *value)
     return 0;
 }
 
+void
+ble_svc_dis_included_init(void)
+{
+    int rc;
+
+    SYSINIT_ASSERT_ACTIVE();
+
+    rc = ble_gatts_count_cfg(ble_svc_dis_include_def);
+    SYSINIT_PANIC_ASSERT(rc == 0);
+
+    rc = ble_gatts_add_svcs(ble_svc_dis_include_def);
+    SYSINIT_PANIC_ASSERT(rc == 0);
+}
+
+
 /**
  * Initialize the DIS package.
  */
@@ -397,15 +406,9 @@ ble_svc_dis_init(void)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
-#if !MYNEWT_VAL(BLE_SVC_DIS_INCLUDED)
-    const struct ble_gatt_svc_def * defs = ble_svc_dis_defs;
-#else
-    const struct ble_gatt_svc_def * defs = ble_svc_dis_include_def;
-#endif
-
-    rc = ble_gatts_count_cfg(defs);
+    rc = ble_gatts_count_cfg(ble_svc_dis_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    rc = ble_gatts_add_svcs(defs);
+    rc = ble_gatts_add_svcs(ble_svc_dis_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
