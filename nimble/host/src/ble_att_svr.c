@@ -1526,9 +1526,10 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     ble_hs_lock();
-    if(start_handle == 0x0001 && end_handle == 0xFFFF && uuid.u.type == BLE_UUID_TYPE_16 &&
-       (uuid.u16.value == BLE_ATT_UUID_INCLUDE || uuid.u16.value == BLE_ATT_UUID_CHARACTERISTIC)
-    ) {
+    if (uuid.u.type == BLE_UUID_TYPE_16 && (
+        uuid.u16.value == BLE_ATT_UUID_INCLUDE ||
+        uuid.u16.value == BLE_ATT_UUID_CHARACTERISTIC ||
+        uuid.u16.value == BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16)) {
         int i = 0;
 
         conn = ble_hs_conn_find_assert(conn_handle);
@@ -1542,10 +1543,6 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
                 ble_gatts_conn_aware_states[i].aware = true;
                 ble_gatts_conn_aware_states[i].half_aware = 0;
             }
-        }
-    } else if (uuid.u.type == BLE_UUID_TYPE_16 && uuid.u16.value == BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16) {
-        if (!ble_att_svr_check_conn_aware(conn_handle)) {
-            ble_att_svr_make_conn_aware(conn_handle);
         }
     } else {
         if((ble_att_svr_get_csfs(conn_handle)[0] & 1)
