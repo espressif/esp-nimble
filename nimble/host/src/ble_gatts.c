@@ -613,16 +613,20 @@ ble_gatts_calculate_hash(uint8_t *out_hash_key)
 
     rc = ble_att_fill_database_info(buf);
     if(rc != 0) {
-        return rc;
+        goto done;
     }
 
     rc = ble_sm_alg_aes_cmac(key, buf, size, out_hash_key);
     if(rc != 0) {
-        return rc;
+        goto done;
     }
 
     swap_in_place(out_hash_key, 16);
-    return 0;
+
+    rc = 0;
+done:
+    nimble_platform_mem_free(buf);
+    return rc;
 }
 #endif
 
@@ -2449,6 +2453,8 @@ ble_gatts_bonding_established(uint16_t conn_handle)
            sizeof(struct ble_gatts_aware_state));
     memcpy(ble_gatts_conn_aware_states[new_idx].peer_id_addr,
            addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val);
+    ble_gatts_conn_aware_states[new_idx].aware = conn->bhc_gatt_svr.aware_state;
+    ble_gatts_conn_aware_states[new_idx].half_aware = conn->bhc_gatt_svr.half_aware;
     last_conn_aware_state_index = new_idx;
 #endif
     ble_hs_unlock();

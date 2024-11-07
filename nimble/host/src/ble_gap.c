@@ -2478,6 +2478,18 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER) {
         ble_hs_conn_addrs(conn, &addrs);
         rc = ble_gattc_cache_conn_create(conn->bhc_handle, addrs.peer_id_addr);
+    } else {
+        conn->bhc_gatt_svr.aware_state = true;
+        conn->bhc_gatt_svr.half_aware = 0;
+        /* This is also done when bonding is restored, so `conn` and `ble_gatts_conn_aware_states` need to be kept in sync */
+        ble_hs_conn_addrs(conn, &addrs);
+        for (int i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
+            if (memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
+                              addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val)) {
+                conn->bhc_gatt_svr.half_aware = ble_gatts_conn_aware_states[i].half_aware;
+                conn->bhc_gatt_svr.aware_state = ble_gatts_conn_aware_states[i].aware;
+            }
+        }
     }
 #endif
     ble_gap_event_listener_call(&event);

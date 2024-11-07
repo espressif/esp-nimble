@@ -28,6 +28,7 @@
  */
 
 #include <inttypes.h>
+#include "nimble/ble.h"
 #include "host/ble_att.h"
 #include "host/ble_uuid.h"
 #include "host/ble_esp_gatt.h"
@@ -953,6 +954,8 @@ int ble_gatts_indicate(uint16_t conn_handle, uint16_t chr_val_handle);
  * Deprecated. Should not be used. Use ble_gatts_indicate instead.
  */
 int ble_gattc_indicate(uint16_t conn_handle, uint16_t chr_val_handle);
+
+void ble_gattc_cache_conn_undisc_all(ble_addr_t peer_addr);
 
 /** Initialize the BLE GATT client. */
 int ble_gattc_init(void);
