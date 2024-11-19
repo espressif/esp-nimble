@@ -3032,6 +3032,19 @@ done:
     return rc;
 }
 
+void ble_gatts_free_svcs(void)
+{
+    /* Ensure the memory is freed only if it was previously allocated */
+    if (ble_gatts_svc_defs != NULL) {
+        /* Free the memory for the service definitions */
+        free(ble_gatts_svc_defs);
+        /* Set the pointer to NULL to avoid dangling pointer */
+        ble_gatts_svc_defs = NULL;
+        /* Reset the number of service definitions to 0 */
+        ble_gatts_num_svc_defs = 0;
+    }
+}
+
 int
 ble_gatts_svc_set_visibility(uint16_t handle, int visible)
 {
