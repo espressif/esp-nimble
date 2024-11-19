@@ -370,3 +370,9 @@ ble_svc_gap_init(void)
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
 }
+
+void
+ble_svc_gap_deinit(void)
+{
+    ble_gatts_free_svcs();
+}
