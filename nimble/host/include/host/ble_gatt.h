@@ -1250,7 +1250,7 @@ STAILQ_HEAD(ble_gatts_clt_cfg_list, ble_gatts_clt_cfg);
  *                              BLE_HS_ENOMEM on heap exhaustion.
  */
 int ble_gatts_add_svcs(const struct ble_gatt_svc_def *svcs);
-
+void ble_gatts_free_svcs(void);
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 /**
  * Adds a set of services for registration.  All services added

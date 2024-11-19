@@ -249,3 +249,9 @@ ble_svc_gatt_init(void)
         ble_svc_gatt_local_cl_sup_feat |= (1 << BLE_SVC_GATT_CLI_SUP_FEAT_ROBUST_CATCHING_BIT);
     }
 }
+
+void
+ble_svc_gatt_deinit(void)
+{
+    ble_gatts_free_svcs();
+}

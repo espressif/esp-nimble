@@ -51,7 +51,7 @@ uint8_t ble_svc_gatt_get_csfs(void);
 uint8_t ble_svc_gatt_get_local_cl_supported_feat(void);
 void ble_svc_gatt_changed(uint16_t start_handle, uint16_t end_handle);
 void ble_svc_gatt_init(void);
-
+void ble_svc_gatt_deinit(void);
 #ifdef __cplusplus
 }
 #endif
