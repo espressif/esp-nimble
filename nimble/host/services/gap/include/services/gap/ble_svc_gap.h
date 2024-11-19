@@ -58,6 +58,7 @@ int ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv);
 #endif
 
 void ble_svc_gap_init(void);
+void ble_svc_gap_deinit(void);
 
 #ifdef __cplusplus
 }
