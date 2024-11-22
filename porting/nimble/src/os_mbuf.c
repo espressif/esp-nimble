@@ -60,6 +60,7 @@
 STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
     STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
 
+static uint8_t log_count;
 
 int
 os_mqueue_init(struct os_mqueue *mq, ble_npl_event_fn *ev_cb, void *arg)
@@ -187,7 +188,12 @@ os_msys_get(uint16_t dsize, uint16_t leadingspace)
     m = os_mbuf_get(pool, leadingspace);
     return (m);
 err:
-    MODLOG_DFLT(INFO,"_os_msys_find_pool failed (size %u)\n",dsize);
+    log_count ++;
+    if ((log_count % 40) == 0) {
+        ets_printf("_os_msys_find_pool failed (size %u)\n",dsize);
+        log_count = 0;
+    }
+
     return (NULL);
 }
 
@@ -207,7 +213,11 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
     m = os_mbuf_get_pkthdr(pool, user_hdr_len);
     return (m);
 err:
-    MODLOG_DFLT(INFO,"_os_msys_find_pool failed (size %u)\n",dsize);
+    log_count ++;
+    if ((log_count % 40) == 0) {
+        ets_printf("_os_msys_find_pool failed (size %u)\n",dsize);
+        log_count = 0;
+    }
     return (NULL);
 }
 
