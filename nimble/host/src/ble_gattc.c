@@ -4674,7 +4674,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
              */
             rc = ble_att_svr_read_local(tuples[i].handle, &tuples[i].value);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "Attribute read failed (err=0x%02x), rc");
+                BLE_HS_LOG(ERROR, "Attribute read failed (err=0x%02x)", rc);
                 goto done;
             }
         }

@@ -1108,7 +1108,6 @@ ble_att_clt_tx_notify_mult(uint16_t conn_handle, struct os_mbuf *txom)
 
     if (ble_att_cmd_get(BLE_ATT_OP_NOTIFY_MULTI_REQ, 0, &txom2) == NULL) {
         return BLE_HS_ENOMEM;
-        goto err;
     }
 
     os_mbuf_concat(txom2, txom);
@@ -1119,7 +1118,6 @@ ble_att_clt_tx_notify_mult(uint16_t conn_handle, struct os_mbuf *txom)
         ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
     }
 
-err:
     return rc;
 }
 
