@@ -1297,8 +1297,9 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
            BLE_HS_LOG(DEBUG, "ble_hs_event_rx_hci_ev; opcode=0x%x ", ev->opcode);
 
 	   /* For LE Meta, print subevent code */
-           if(ev->opcode == 0x3e)
+           if(ev->opcode == 0x3e) {
               BLE_HS_LOG(DEBUG, "subevent: 0x%x", ev->data[0]);
+           }
 
            BLE_HS_LOG(DEBUG, "\n");
         }

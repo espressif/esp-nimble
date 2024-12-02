@@ -557,11 +557,12 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
             switch (peer_addr.type) {
             case BLE_ADDR_PUBLIC:
             case BLE_ADDR_PUBLIC_ID:
-                conn->bhc_peer_addr.type = BLE_ADDR_PUBLIC_ID;
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
                 /* In case of Host based privacy, we should not be changing
                  * peer address type to BLE_ADDR_PUBLIC_ID */
                 conn->bhc_peer_addr.type = BLE_ADDR_PUBLIC;
+#else
+                conn->bhc_peer_addr.type = BLE_ADDR_PUBLIC_ID;
 #endif
                 break;
 
