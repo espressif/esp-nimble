@@ -41,7 +41,6 @@
 
 STAILQ_HEAD(, os_mempool) g_os_mempool_list = STAILQ_HEAD_INITIALIZER(g_os_mempool_list);
 
-static uint8_t log_count;
 #if MYNEWT_VAL(OS_MEMPOOL_POISON)
 static uint32_t os_mem_poison = 0xde7ec7ed;
 
@@ -374,14 +373,6 @@ os_memblock_get(struct os_mempool *mp)
     }
 
     os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, (uint32_t)(uintptr_t)block);
-
-    if(!block){
-        log_count ++;
-        if ((log_count % 40) == 0) {
-            ets_printf("os_memblock_get failed (size %u)\n",sizeof *block);
-            log_count = 0;
-       }
-    }
 
     return (void *)block;
 }
