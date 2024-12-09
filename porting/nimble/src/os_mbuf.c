@@ -36,6 +36,7 @@
 #include "os/os.h"
 #include "os/os_trace_api.h"
 #include "modlog/modlog.h"
+#include "esp_log.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -189,8 +190,8 @@ os_msys_get(uint16_t dsize, uint16_t leadingspace)
     return (m);
 err:
     log_count ++;
-    if ((log_count % 40) == 0) {
-        ets_printf("_os_msys_find_pool failed (size %u)\n",dsize);
+    if ((log_count % 100) == 0) {
+        ESP_LOGI("ESP_LOG_INFO","_os_msys_find_pool failed (size %u)\n",dsize);
         log_count = 0;
     }
 
@@ -214,8 +215,8 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
     return (m);
 err:
     log_count ++;
-    if ((log_count % 40) == 0) {
-        ets_printf("_os_msys_find_pool failed (size %u)\n",dsize);
+    if ((log_count % 100) == 0) {
+        ESP_LOGI("ESP_LOG_INFO","_os_msys_find_pool failed (size %u)\n",dsize);
         log_count = 0;
     }
     return (NULL);
