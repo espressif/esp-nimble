@@ -1410,8 +1410,7 @@ ble_gap_update_next_exp(int32_t *out_ticks_from_now)
 
 }
 
-#if (NIMBLE_BLE_SCAN && !MYNEWT_VAL(BLE_EXT_ADV)) || \
-    (MYNEWT_VAL(BLE_ROLE_CENTRAL) &&  MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT))
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL)
 static void
 ble_gap_master_set_timer(uint32_t ticks_from_now)
 {
@@ -6562,7 +6561,6 @@ done:
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL)
-
 
 static int
 ble_gap_ext_conn_create_tx(
