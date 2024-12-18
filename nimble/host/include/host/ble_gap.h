@@ -163,6 +163,7 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_EATT                  34
 #define BLE_GAP_EVENT_PER_SUBEV_DATA_REQ    35
 #define BLE_GAP_EVENT_PER_SUBEV_RESP        36
+#define BLE_GAP_EVENT_PERIODIC_TRANSFER_V2  37
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
