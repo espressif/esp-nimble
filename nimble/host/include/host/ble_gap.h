@@ -624,7 +624,10 @@ struct ble_gap_event {
         } connect;
 
         /**
-         * Represents a successful Link establishment attempt.  Valid for the following event
+         * Represents a successful Link establishment attempt. Sometimes, in noisy environment,
+	 * even if BLE_GAP_EVENT_CONNECT is posted, the link syncronization procedure may fail
+	 * and link gets disconnected with reason 0x3E. Application can wait for below event to ensure
+	 * the link syncronization is completed.   Valid for the following event
          * types:
          *     o BLE_GAP_EVENT_LINK_ESTAB
          */
@@ -640,7 +643,24 @@ struct ble_gap_event {
 
            /** The handle of the relevant connection. */
             uint16_t conn_handle;
-        } link_estab;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+           /*
+            * Adv_Handle is used to identify an advertising set.
+            * If the connection is established from periodic advertising with responses
+            * and Role is 0x00  then the Advertising_Handle parameter shall be set
+            * according to the periodic advertising train the connection was established from
+            */
+            uint8_t adv_handle;
+
+            /*
+             * Sync_Handle identifying the periodic advertising train
+             * If the connection is established from periodic advertising with responses
+             * and Role is 0x01, then the Sync_Handle parameter shall be set according
+             * to the periodic advertising train the connection was established from
+             */
+            uint16_t sync_handle;
+#endif
+	} link_estab;
 
         /**
          * Represents a terminated connection.  Valid for the following event

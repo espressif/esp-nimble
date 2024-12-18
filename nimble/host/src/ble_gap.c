@@ -164,7 +164,6 @@ struct ble_gap_adv_reattempt_ctxt {
 }ble_adv_reattempt;
 #endif
 
-
 /**
  * The state of the in-progress master connection.  If no master connection is
  * currently in progress, then the op field is set to BLE_GAP_OP_NULL.
@@ -279,6 +278,11 @@ struct ble_gap_multi_conn_state
 };
 
 static struct ble_gap_multi_conn_state ble_gap_multi_conn;
+#endif
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+static uint8_t pawr_adv_handle;
+static uint16_t pawr_sync_handle;
 #endif
 
 static void ble_gap_update_entry_free(struct ble_gap_update_entry *entry);
@@ -1063,6 +1067,8 @@ ble_gap_master_connect_failure(int status)
         rc = state.cb(&event, state.cb_arg);
 
         event.type = BLE_GAP_EVENT_LINK_ESTAB;
+        event.link_estab.status = status;
+
         rc = state.cb(&event, state.cb_arg);
     } else {
         rc = 0;
@@ -1092,6 +1098,9 @@ ble_gap_master_connect_cancelled(void)
         state.cb(&event, state.cb_arg);
 
         event.type = BLE_GAP_EVENT_LINK_ESTAB;
+        event.link_estab.conn_handle = event.connect.conn_handle;
+        event.link_estab.status = event.connect.status;
+
         state.cb(&event, state.cb_arg);
     }
 }
@@ -2577,7 +2586,11 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     event.connect.sync_handle = evt->sync_handle;
     event.connect.adv_handle = evt->adv_handle;
+
+    pawr_sync_handle = evt->sync_handle;
+    pawr_adv_handle = evt->adv_handle;
 #endif
+
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, evt->connection_handle);
 
@@ -2608,6 +2621,11 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
         event.type = BLE_GAP_EVENT_LINK_ESTAB;
         event.link_estab.status = ev->status;
         event.link_estab.conn_handle = conn_handle;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        event.link_estab.sync_handle = pawr_sync_handle;
+        event.link_estab.adv_handle  = pawr_adv_handle;
+#endif
 
         ble_gap_event_listener_call(&event);
         ble_gap_call_conn_event_cb(&event, conn_handle);
