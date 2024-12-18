@@ -2000,6 +2000,21 @@ struct ble_hci_ev_le_subev_periodic_adv_rpt {
     uint8_t  data[0];
 } __attribute__((packed));
 
+struct ble_hci_ev_le_subev_periodic_adv_rpt_v2 {
+    uint8_t  subev_code;
+    uint16_t sync_handle;
+    int8_t   tx_power;
+    int8_t   rssi;
+    uint8_t  cte_type;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    uint16_t event_counter;
+    uint8_t  subevent;
+#endif // MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    uint8_t  data_status;
+    uint8_t  data_len;
+    uint8_t  data[0];
+} __attribute__((packed));
+
 #define BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_LOST      (0x10)
 struct ble_hci_ev_le_subev_periodic_adv_sync_lost {
     uint8_t  subev_code;

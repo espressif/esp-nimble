@@ -100,10 +100,6 @@ void ble_gap_link_estab_call(uint16_t conn_handle, int status);
 #if MYNEWT_VAL(BLE_CONN_SUBRATING)
 void ble_gap_rx_subrate_change(const struct ble_hci_ev_le_subev_subrate_change *ev);
 #endif
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-void ble_gap_rx_periodic_adv_subev_data_req(const struct ble_hci_ev_le_subev_periodic_adv_subev_data_req *ev);
-void ble_gap_rx_periodic_adv_response(const struct ble_gap_periodic_adv_response resp);
-#endif
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
 void ble_gap_rx_transmit_power_report(const struct ble_hci_ev_le_subev_transmit_power_report *ev);
 void ble_gap_rx_le_pathloss_threshold(const struct ble_hci_ev_le_subev_path_loss_threshold *ev);
@@ -133,6 +129,11 @@ struct ble_gap_conn_complete
 #endif
 };
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+void ble_gap_rx_periodic_adv_subev_data_req(const struct ble_hci_ev_le_subev_periodic_adv_subev_data_req *ev);
+void ble_gap_rx_periodic_adv_response(const struct ble_gap_periodic_adv_response resp);
+void ble_gap_rx_conn_comp_failed(const struct ble_gap_conn_complete *evt);
+#endif
 int ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance);
 void ble_gap_rx_disconn_complete(const struct ble_hci_ev_disconn_cmp *ev);
 void ble_gap_rx_update_complete(const struct ble_hci_ev_le_subev_conn_upd_complete *ev);

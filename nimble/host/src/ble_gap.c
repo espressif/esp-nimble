@@ -2274,7 +2274,11 @@ ble_gap_rx_periodic_adv_sync_transfer(const struct ble_hci_ev_le_subev_periodic_
 
     memset(&event, 0, sizeof event);
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    event.type = BLE_GAP_EVENT_PERIODIC_TRANSFER_V2;
+#else
     event.type = BLE_GAP_EVENT_PERIODIC_TRANSFER;
+#endif // MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     event.periodic_transfer.status = ev->status;
 
     /* only sync handle is not valid on error */
@@ -2426,6 +2430,31 @@ ble_gap_rx_periodic_adv_response(const struct ble_gap_periodic_adv_response resp
 
     ble_gap_event_listener_call(&event);
 }
+
+void
+ble_gap_rx_conn_comp_failed(const struct ble_gap_conn_complete *evt)
+{
+    struct ble_gap_event event;
+    ble_gap_event_fn *cb;
+    void *cb_arg;
+
+    memset(&event, 0x0, sizeof event);
+
+    event.type = BLE_GAP_EVENT_CONNECT;
+    event.connect.conn_handle = evt->connection_handle;
+    event.connect.status = BLE_ERR_CONN_ESTABLISHMENT;
+
+    event.connect.sync_handle = evt->sync_handle;
+    event.connect.adv_handle = evt->adv_handle;
+
+    ble_gap_master_reset_state();
+    ble_gap_slave_extract_cb(evt->adv_handle, &cb, &cb_arg);
+    if (cb != NULL) {
+        cb(&event, cb_arg);
+    }
+
+    ble_gap_event_listener_call(&event);
+}
 #endif
 
 #if NIMBLE_BLE_CONNECT
@@ -2466,10 +2495,16 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     struct ble_hs_conn *conn;
     int rc;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
-    struct ble_hs_conn_addrs addrs
+    struct ble_hs_conn_addrs addrs;
 #endif
 
     STATS_INC(ble_gap_stats, rx_conn_complete);
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    uint8_t v1_evt = 0;
+    if (evt->adv_handle == 0xFF && evt->sync_handle == 0xFFFF) {
+        v1_evt = 1;
+    }
+#endif // MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
 
     /* in that case *only* status field is valid so we determine role
      * based on error code
@@ -2498,6 +2533,13 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
                 }
             }
             break;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        case BLE_ERR_CONN_ESTABLISHMENT:
+            if (!v1_evt) {
+                ble_gap_rx_conn_comp_failed(evt);
+            }
+            break;
+#endif // MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
         default:
             /* this should never happen, unless controller is broken */
             BLE_HS_LOG(INFO, "controller reported invalid error code in conn"
@@ -2544,21 +2586,6 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     conn->bhc_latency = evt->conn_latency;
     conn->bhc_supervision_timeout = evt->supervision_timeout;
     conn->bhc_master_clock_accuracy = evt->master_clk_acc;
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-    if (ble_gap_master.cb) {
-        conn->bhc_cb = ble_gap_master.cb;
-        conn->bhc_cb_arg = ble_gap_master.cb_arg;
-        conn->bhc_flags |= BLE_HS_CONN_F_MASTER;
-        conn->bhc_our_addr_type = ble_gap_master.conn.our_addr_type;
-        ble_gap_master_reset_state();
-    }
-    else {
-        conn->bhc_cb = ble_gap_slave[instance].cb;
-        conn->bhc_cb_arg = ble_gap_slave[instance].cb_arg;
-        conn->bhc_our_addr_type = ble_gap_slave[instance].our_addr_type;
-        ble_gap_slave_reset_state(instance);
-    }
-#else
     if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER) {
         conn->bhc_cb = ble_gap_master.cb;
         conn->bhc_cb_arg = ble_gap_master.cb_arg;
@@ -2566,6 +2593,17 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         conn->bhc_our_addr_type = ble_gap_master.conn.our_addr_type;
         ble_gap_master_reset_state();
     } else {
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (!v1_evt) {
+            conn->bhc_cb = ble_gap_master.cb;
+            conn->bhc_cb_arg = ble_gap_master.cb_arg;
+            conn->bhc_our_addr_type = ble_gap_master.conn.our_addr_type;
+        } else {
+            conn->bhc_cb = ble_gap_slave[instance].cb;
+            conn->bhc_cb_arg = ble_gap_slave[instance].cb_arg;
+            conn->bhc_our_addr_type = ble_gap_slave[instance].our_addr_type;
+        }
+#else
         conn->bhc_cb = ble_gap_slave[instance].cb;
         conn->bhc_cb_arg = ble_gap_slave[instance].cb_arg;
         conn->bhc_our_addr_type = ble_gap_slave[instance].our_addr_type;
@@ -2573,8 +2611,8 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         memcpy(conn->bhc_our_rnd_addr, ble_gap_slave[instance].rnd_addr, 6);
 #endif
         ble_gap_slave_reset_state(instance);
-    }
 #endif
+}
 
     conn->bhc_peer_addr.type = evt->peer_addr_type;
     memcpy(conn->bhc_peer_addr.val, evt->peer_addr, 6);
@@ -5521,7 +5559,10 @@ int ble_gap_periodic_adv_set_response_data(uint16_t sync_handle,
 	struct ble_hci_le_set_periodic_adv_response_data *cmd;
     uint16_t opcode;
     int len = sizeof(*cmd);
-    int data_len = OS_MBUF_PKTLEN(data);
+    int data_len = 0;
+    if (data) {
+        data_len = OS_MBUF_PKTLEN(data);
+    }
     uint8_t buf[len + data_len];
 
     //!TODO: Check if we can set all of data in one hci command.
@@ -5535,7 +5576,9 @@ int ble_gap_periodic_adv_set_response_data(uint16_t sync_handle,
 	cmd->response_subevent = param->response_subevent;
 	cmd->response_slot = param->response_slot;
 	cmd->response_data_length = data_len;
-    ble_hs_mbuf_to_flat(data, cmd->response_data, data_len, NULL);
+    if (data_len) {
+        ble_hs_mbuf_to_flat(data, cmd->response_data, data_len, NULL);
+    }
 
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_PERIODIC_ADV_RESPONSE_DATA);
 

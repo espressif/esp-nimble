@@ -524,8 +524,13 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #endif
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-      evt.adv_handle = ev->adv_handle;
-      evt.sync_handle = ev->sync_handle;
+    if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE) {
+        evt.adv_handle = 0xFF;
+        evt.sync_handle = 0xFF;
+    } else {
+        evt.adv_handle = ev->adv_handle;
+        evt.sync_handle = ev->sync_handle;
+    }
 #endif
     return ble_gap_rx_conn_complete(&evt, 0);
 
@@ -1154,8 +1159,14 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
     const struct ble_hci_ev_le_subev_periodic_adv_resp_rep *ev = data;
     const struct periodic_adv_response *response;
     struct ble_gap_periodic_adv_response resp;
+    uint32_t size;
 
-    if (len < (sizeof(*ev) + ev->num_responses * sizeof(struct periodic_adv_response))) {
+    /* TODO: compare with the total length including the response data. */
+    size = sizeof(*ev);
+    for (uint8_t i = 0; i < ev->num_responses; i ++) {
+        size += sizeof(struct periodic_adv_response) + ev->responses[i].data_length;
+    }
+    if (len < size) {
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1298,8 +1309,8 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
 
     if(ev->opcode == BLE_HCI_EVCODE_COMMAND_COMPLETE) {
         /* Check if this Command complete has a parsable opcode */
-         struct ble_hci_ev_command_complete *cmd_complete = (void *) ev->data;
-	 entry = ble_hs_hci_evt_dispatch_find(cmd_complete->opcode);
+        struct ble_hci_ev_command_complete *cmd_complete = (void *) ev->data;
+        entry = ble_hs_hci_evt_dispatch_find(cmd_complete->opcode);
     }
     else {
          entry = ble_hs_hci_evt_dispatch_find(ev->opcode);
