@@ -5315,7 +5315,17 @@ ble_gatts_rx_indicate_rsp(uint16_t conn_handle, uint16_t cid)
 void
 ble_gattc_connection_broken(uint16_t conn_handle)
 {
+    struct ble_hs_conn *conn;
+    struct os_mbuf_pkthdr *omp;
+
     ble_gattc_fail_procs(conn_handle, BLE_GATT_OP_NONE, BLE_HS_ENOTCONN);
+
+    conn = ble_hs_conn_find(conn_handle);
+
+    while ((omp = STAILQ_FIRST(&conn->att_tx_q)) != NULL) {
+        STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
+        os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
+    }
 }
 
 /**
