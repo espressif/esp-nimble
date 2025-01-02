@@ -57,6 +57,7 @@ typedef int ble_hs_hci_evt_fn(uint8_t event_code, const void *data,
                               unsigned int len);
 static ble_hs_hci_evt_fn ble_hs_hci_evt_hw_error;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_num_completed_pkts;
+static ble_hs_hci_evt_fn ble_hs_hci_evt_rd_rem_ver_complete;
 #if NIMBLE_BLE_CONNECT
 static ble_hs_hci_evt_fn ble_hs_hci_evt_disconn_complete;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_encrypt_change;
@@ -131,6 +132,7 @@ struct ble_hs_hci_evt_dispatch_entry {
 
 static const struct ble_hs_hci_evt_dispatch_entry ble_hs_hci_evt_dispatch[] = {
     { BLE_HCI_EVCODE_LE_META, ble_hs_hci_evt_le_meta },
+    { BLE_HCI_EVCODE_RD_REM_VER_INFO_CMP, ble_hs_hci_evt_rd_rem_ver_complete },
     { BLE_HCI_EVCODE_NUM_COMP_PKTS, ble_hs_hci_evt_num_completed_pkts },
 #if NIMBLE_BLE_CONNECT
     { BLE_HCI_EVCODE_DISCONN_CMP, ble_hs_hci_evt_disconn_complete },
@@ -737,6 +739,22 @@ ble_hs_hci_evt_le_rd_rem_used_feat_complete(uint8_t subevent, const void *data,
 
     return 0;
 }
+
+static int
+ble_hs_hci_evt_rd_rem_ver_complete(uint8_t subevent, const void *data,
+                                   unsigned int len)
+{
+    const struct ble_hci_ev_rd_rem_ver_info_cmp *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_rd_rem_ver_info_complete(ev);
+
+    return 0;
+}
+
 
 #if MYNEWT_VAL(BLE_EXT_ADV) && NIMBLE_BLE_SCAN
 static int

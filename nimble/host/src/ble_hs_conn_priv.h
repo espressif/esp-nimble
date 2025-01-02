@@ -95,6 +95,7 @@ struct ble_hs_conn {
     struct ble_gatts_conn bhc_gatt_svr;
 
     struct ble_gap_sec_state bhc_sec_state;
+    struct ble_gap_read_rem_ver_params bhc_rd_rem_ver_params;
 
     ble_gap_event_fn *bhc_cb;
     void *bhc_cb_arg;
