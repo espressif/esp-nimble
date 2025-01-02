@@ -574,6 +574,30 @@ ble_gap_conn_find(uint16_t handle, struct ble_gap_conn_desc *out_desc)
 }
 
 int
+ble_gap_read_rem_ver_info(uint16_t conn_handle, uint8_t *version, uint16_t *manufacturer, uint16_t *subversion)
+{
+#if NIMBLE_BLE_CONNECT
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find(conn_handle);
+
+    ble_hs_unlock();
+
+    if (conn == NULL ) {
+        return BLE_HS_ENOTCONN;
+    }
+
+    *version = conn->bhc_rd_rem_ver_params.version;
+    *manufacturer = conn->bhc_rd_rem_ver_params.manufacturer;
+    *subversion = conn->bhc_rd_rem_ver_params.subversion;
+
+    return 0;
+#endif
+}
+
+int
 ble_gap_conn_find_by_addr(const ble_addr_t *addr,
                           struct ble_gap_conn_desc *out_desc)
 {
@@ -2418,6 +2442,18 @@ ble_gap_rd_rem_sup_feat_tx(uint16_t handle)
                              &cmd, sizeof(cmd), NULL, 0);
 }
 #endif
+static int
+ble_gap_rd_rem_ver_tx(uint16_t handle)
+{
+    struct ble_hci_rd_rem_ver_info_cp cmd;
+
+    cmd.conn_handle = htole16(handle);
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LINK_CTRL,
+                                        BLE_HCI_OCF_RD_REM_VER_INFO),
+                             &cmd, sizeof(cmd), NULL, 0);
+}
+
 
 /**
  * Processes an incoming connection-complete HCI event.
@@ -2601,11 +2637,40 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, evt->connection_handle);
 
-    ble_gap_rd_rem_sup_feat_tx(evt->connection_handle);
+    if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
+        ble_gap_rd_rem_ver_tx(evt->connection_handle);
+    } else {
+        ble_gap_rd_rem_sup_feat_tx(evt->connection_handle);
+    }
 
     return 0;
 #else
     return BLE_HS_ENOTSUP;
+#endif
+}
+
+void
+ble_gap_link_estab_call(uint16_t conn_handle, int status)
+{
+    struct ble_gap_event event;
+    uint16_t handle = le16toh(conn_handle);
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_LINK_ESTAB;
+    event.link_estab.status = status;
+    event.link_estab.conn_handle = handle;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+            event.link_estab.sync_handle = pawr_sync_handle;
+            event.link_estab.adv_handle  = pawr_adv_handle;
+#endif
+
+            ble_gap_event_listener_call(&event);
+            ble_gap_call_conn_event_cb(&event, handle);
+
+#if !SOC_ESP_NIMBLE_CONTROLLER
+            ble_hs_hci_util_set_data_len(le16toh(conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
+                        BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
 #endif
 }
 
@@ -2618,32 +2683,44 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
     ble_hs_lock();
 
     conn = ble_hs_conn_find(le16toh(ev->conn_handle));
-    if ((conn != NULL) && (ev->status == 0)) {
-        conn->supported_feat = get_le32(ev->features);
-
-        struct ble_gap_event event;
-        uint16_t conn_handle = le16toh(ev->conn_handle);
-
-        memset(&event, 0, sizeof event);
-        event.type = BLE_GAP_EVENT_LINK_ESTAB;
-        event.link_estab.status = ev->status;
-        event.link_estab.conn_handle = conn_handle;
-
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-        event.link_estab.sync_handle = pawr_sync_handle;
-        event.link_estab.adv_handle  = pawr_adv_handle;
-#endif
-
-        ble_gap_event_listener_call(&event);
-        ble_gap_call_conn_event_cb(&event, conn_handle);
-
-#if !SOC_ESP_NIMBLE_CONTROLLER
-        ble_hs_hci_util_set_data_len(le16toh(ev->conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
-				     BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
-#endif
-    }
 
     ble_hs_unlock();
+
+    if ((conn != NULL) &&  (conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
+        conn->supported_feat = get_le32(ev->features);
+        ble_gap_rd_rem_ver_tx(ev->conn_handle);
+    } else {
+        if ((conn != NULL) && (ev->status == 0)) {
+            conn->supported_feat = get_le32(ev->features);
+            ble_gap_link_estab_call(ev->conn_handle, ev->status);
+        }
+    }
+#endif
+}
+
+void
+ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp *ev)
+{
+#if NIMBLE_BLE_CONNECT
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find(le16toh(ev->conn_handle));
+
+    ble_hs_unlock();
+
+    conn->bhc_rd_rem_ver_params.version = ev->version;
+    conn->bhc_rd_rem_ver_params.manufacturer = ev->manufacturer;
+    conn->bhc_rd_rem_ver_params.subversion = ev->subversion;
+
+    if ((conn != NULL) &&  !(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
+        ble_gap_rd_rem_sup_feat_tx(ev->conn_handle);
+    } else {
+        if ((conn != NULL) && (ev->status == 0)) {
+            ble_gap_link_estab_call(ev->conn_handle, ev->status);
+        }
+    }
 #endif
 }
 

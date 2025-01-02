@@ -225,6 +225,18 @@ struct ble_gap_sec_state {
     unsigned authorize:1;
 };
 
+/** Read Remote Version parameters **/
+struct ble_gap_read_rem_ver_params {
+    /** Version of the Current LMP **/
+    uint8_t  version;
+
+    /** Company Identifier **/
+    uint16_t manufacturer;
+
+    /** Revision of the LMP **/
+    uint16_t subversion;
+};
+
 /** Advertising parameters */
 struct ble_gap_adv_params {
     /** Advertising mode. Can be one of following constants:
@@ -3350,6 +3362,19 @@ int ble_gap_dtm_enh_tx_start(uint8_t tx_chan, uint8_t test_data_len, uint8_t pay
  * @return                0 on success; nonzero on failure
  */
 int ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy);
+
+/**
+ * Set Read Remote Version Information is used to retrieve the version, manufacturer,
+ * and subversion information of remote controller after connection established
+ *
+ * @param conn_handle     Connection handle
+ * @param version         Defines the specification version of the LE Controller
+ * @param manufacturer    Indicates the manufacturer of the remote Controller
+ * @param subversion      Manufacturer specific version
+
+ * @return                0 on success; nonzero on failure
+*/
+int ble_gap_read_rem_ver_info(uint16_t conn_handle, uint8_t *version, uint16_t *manufacturer, uint16_t *subversion);
 
 #ifdef __cplusplus
 }
