@@ -2264,6 +2264,7 @@ ble_gatts_peer_cl_sup_feat_update(uint16_t conn_handle, struct os_mbuf *om)
             goto done;
         }
 
+        memset(&value_csfc, 0, sizeof value_csfc);
         value_csfc.peer_addr = conn->bhc_peer_addr;
         memcpy(value_csfc.csfc, feat, MYNEWT_VAL(BLE_GATT_CSFC_SIZE));
 
@@ -2433,6 +2434,9 @@ ble_gatts_bonding_established(uint16_t conn_handle)
     }
 
     csfc.peer_addr = conn->bhc_peer_addr;
+    csfc.peer_addr.type =
+	    ble_hs_misc_peer_addr_type_to_id(conn->bhc_peer_addr.type);
+
     memcpy(csfc.csfc, conn->bhc_gatt_svr.peer_cl_sup_feat, MYNEWT_VAL(BLE_GATT_CSFC_SIZE));
 
     ble_hs_unlock();

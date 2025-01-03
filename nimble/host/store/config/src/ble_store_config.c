@@ -52,8 +52,8 @@ int ble_store_config_num_cccds;
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 struct ble_store_value_csfc
     ble_store_config_csfcs[MYNEWT_VAL(BLE_STORE_MAX_CSFCS)];
-int ble_store_config_num_csfcs;
 #endif
+int ble_store_config_num_csfcs;
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 struct ble_store_value_ead
@@ -911,28 +911,25 @@ ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
  *****************************************************************************/
 
 static int
-ble_store_config_find_csfc(const struct ble_store_key_csfc *key)
+ble_store_config_find_csfc(const struct ble_store_key_csfc *key,
+                           const struct ble_store_value_csfc *value_csfc,
+                           int num_value_csfc)
 {
-    struct ble_store_value_csfc *csfc;
-    int skipped;
+    const struct ble_store_value_csfc *cur;
     int i;
 
-    skipped = 0;
-    for (i = 0; i < ble_store_config_num_csfcs; i++) {
-        csfc = ble_store_config_csfcs + i;
+    if (!ble_addr_cmp(&key->peer_addr, BLE_ADDR_ANY)) {
+        if (key->idx < num_value_csfc) {
+            return key->idx;
+        }
+    } else if (key->idx == 0) {
+        for (i = 0; i < num_value_csfc; i++) {
+            cur = &value_csfc[i];
 
-        if (ble_addr_cmp(&key->peer_addr, BLE_ADDR_ANY)) {
-            if (ble_addr_cmp(&csfc->peer_addr, &key->peer_addr)) {
-                continue;
+            if (!ble_addr_cmp(&cur->peer_addr, &key->peer_addr)) {
+                return i;
             }
         }
-
-        if (key->idx > skipped) {
-            skipped++;
-            continue;
-        }
-
-        return i;
     }
 
     return -1;
@@ -944,7 +941,8 @@ ble_store_config_delete_csfc(const struct ble_store_key_csfc *key_csfc)
     int idx;
     int rc;
 
-    idx = ble_store_config_find_csfc(key_csfc);
+    idx = ble_store_config_find_csfc(key_csfc, ble_store_config_csfcs,
+                                     ble_store_config_num_csfcs);
     if (idx == -1) {
         return BLE_HS_ENOENT;
     }
@@ -971,7 +969,8 @@ ble_store_config_read_csfc(const struct ble_store_key_csfc *key_csfc,
 {
     int idx;
 
-    idx = ble_store_config_find_csfc(key_csfc);
+    idx = ble_store_config_find_csfc(key_csfc, ble_store_config_csfcs,
+                                    ble_store_config_num_csfcs);
     if (idx == -1) {
         return BLE_HS_ENOENT;
     }
@@ -988,7 +987,8 @@ ble_store_config_write_csfc(const struct ble_store_value_csfc *value_csfc)
     int rc;
 
     ble_store_key_from_value_csfc(&key_csfc, value_csfc);
-    idx = ble_store_config_find_csfc(&key_csfc);
+    idx = ble_store_config_find_csfc(&key_csfc, ble_store_config_csfcs,
+                                     ble_store_config_num_csfcs);
     if (idx == -1) {
         if (ble_store_config_num_csfcs >= MYNEWT_VAL(BLE_STORE_MAX_CSFCS)) {
             BLE_HS_LOG(DEBUG, "error persisting csfc; too many entries (%d)\n",
