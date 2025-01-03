@@ -60,8 +60,8 @@ static struct conf_handler ble_store_config_conf_handler = {
 #define BLE_STORE_CONFIG_CSFC_ENCODE_SZ     \
     BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_csfc))
 
-#define BLE_STORE_CONFIG_CSFC_ENCODE_SZ     \
-    BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_csfc))
+#define BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ     \
+    (MYNEWT_VAL(BLE_STORE_MAX_CSFCS) * BLE_STORE_CONFIG_CSFC_ENCODE_SZ + 1)
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #define BLE_STORE_CONFIG_EAD_ENCODE_SZ     \
