@@ -8023,9 +8023,7 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
 {
 
 #if NIMBLE_BLE_SM
-    int rc;
-    int ltk_rc = 0;
-    int irk_rc = 0;
+    int rc, err = 0;
     struct ble_hs_conn *conn;
     union ble_store_value value;
     union ble_store_key key;
@@ -8068,32 +8066,26 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
     // Checking if the device is in ble_store
     if (!rc) {
         if (value.sec.irk_present) {
-            // Delete the IRK as it is Distributed
-            irk_rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,
-                                key.sec.peer_addr.val);
-            if (irk_rc != 0) {
-                BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",irk_rc);
+           // Delete the IRK as it is Distributed
+            rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,key.sec.peer_addr.val);
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",rc);
             }
         }
 
-        if (value.sec.ltk_present || value.sec.irk_present || value.sec.csrk_present) {
-            // Delete the Peer record from store as LTK is present
-            ltk_rc = ble_store_util_delete_peer(&key.sec.peer_addr);
-            if (ltk_rc != 0) {
-                BLE_HS_LOG(ERROR, "Error while removing LTK , rc = %x\n",ltk_rc);
-            }
+	// Delete the Peer record from store as LTK is present
+        rc = ble_store_util_delete_peer(&key.sec.peer_addr);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "Error while removing LTK , rc = %x\n",rc);
         }
-    }
-    else {
-         rc = ble_store_read(BLE_STORE_OBJ_TYPE_OUR_SEC, &key, &value);
-         if(!rc) {
+    } else {
+        rc = ble_store_read(BLE_STORE_OBJ_TYPE_OUR_SEC, &key, &value);
+        if (!rc) {
             ble_store_util_delete_peer(&key.sec.peer_addr);
-         }
-         else {
-              BLE_HS_LOG(ERROR,"No record found for the given address in ble store , rc = %x\n",rc);
-              return rc;
-         }
-
+        } else {
+            BLE_HS_LOG(ERROR,"No record found for the given address in ble store , rc = %x\n",rc);
+            err = rc ;
+        }
     }
 
 #if MYNEWT_VAL(BLE_SMP_ID_RESET)
@@ -8103,6 +8095,10 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
      */
     ble_gap_reset_irk();
 #endif
+
+    if (err) {
+        return err;
+    }
 
     return 0;
 #else
