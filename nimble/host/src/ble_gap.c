@@ -1552,7 +1552,6 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
 
     ble_hs_atomic_conn_delete(conn_handle);
 
-    printf("In %s, conn_handle %d \n", __func__, conn_handle);
     g_max_tx_time[conn_handle] = 0;
     g_max_rx_time[conn_handle] = 0;
     g_max_tx_octets[conn_handle] = 0;
@@ -2777,7 +2776,6 @@ ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev)
     event.data_len_chg.max_tx_time = le16toh(ev->max_tx_time);
     event.data_len_chg.max_rx_time = le16toh(ev->max_rx_time);
 
-    printf("In %s , conn_handle : %d \n", __func__, conn_handle);
     g_max_tx_octets[conn_handle] = event.data_len_chg.max_tx_octets;
     g_max_rx_octets[conn_handle] = event.data_len_chg.max_rx_octets;
     g_max_tx_time[conn_handle] = event.data_len_chg.max_tx_time;
@@ -7858,7 +7856,6 @@ ble_gap_set_data_len(uint16_t conn_handle, uint16_t tx_octets,
      * If yes, then just return event to host indicating success
      * since controller will not send any event in this scenario
      */
-    printf("In %s, conn_handle: %d \n", __func__, conn_handle);
     if (g_max_tx_time[conn_handle] == tx_time && g_max_tx_octets[conn_handle] == tx_octets) {
 
         struct ble_gap_event event;
