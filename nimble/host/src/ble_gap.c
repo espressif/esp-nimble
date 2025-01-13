@@ -1098,11 +1098,10 @@ ble_gap_master_connect_failure(int status)
         event.type = BLE_GAP_EVENT_CONNECT;
         event.connect.status = status;
 
-        rc = state.cb(&event, state.cb_arg);
-
-        event.type = BLE_GAP_EVENT_LINK_ESTAB;
-        event.link_estab.status = status;
-
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        event.connect.sync_handle = pawr_sync_handle;
+        event.connect.adv_handle  = pawr_adv_handle;
+#endif
         rc = state.cb(&event, state.cb_arg);
     } else {
         rc = 0;
@@ -1129,12 +1128,11 @@ ble_gap_master_connect_cancelled(void)
             /* Connect procedure timed out. */
             event.connect.status = BLE_HS_ETIMEOUT;
         }
-        state.cb(&event, state.cb_arg);
 
-        event.type = BLE_GAP_EVENT_LINK_ESTAB;
-        event.link_estab.conn_handle = event.connect.conn_handle;
-        event.link_estab.status = event.connect.status;
-
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        event.connect.sync_handle = pawr_sync_handle;
+        event.connect.adv_handle  = pawr_adv_handle;
+#endif
         state.cb(&event, state.cb_arg);
     }
 }
@@ -2551,7 +2549,6 @@ int
 ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 {
 #if NIMBLE_BLE_CONNECT
-    struct ble_gap_event event;
     struct ble_hs_conn *conn;
     int rc;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -2695,14 +2692,9 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 
     ble_hs_lock();
 
-    memset(&event, 0, sizeof event);
     ble_hs_conn_insert(conn);
 
     ble_hs_unlock();
-
-    event.type = BLE_GAP_EVENT_CONNECT;
-    event.connect.conn_handle = evt->connection_handle;
-    event.connect.status = 0;
 
     /* add gatt connection */
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -2724,15 +2716,9 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     }
 #endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-    event.connect.sync_handle = evt->sync_handle;
-    event.connect.adv_handle = evt->adv_handle;
-
     pawr_sync_handle = evt->sync_handle;
     pawr_adv_handle = evt->adv_handle;
 #endif
-
-    ble_gap_event_listener_call(&event);
-    ble_gap_call_conn_event_cb(&event, evt->connection_handle);
 
     if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
         ble_gap_rd_rem_ver_tx(evt->connection_handle);
@@ -2747,19 +2733,19 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 }
 
 void
-ble_gap_link_estab_call(uint16_t conn_handle, int status)
+ble_gap_event_connect_call(uint16_t conn_handle, int status)
 {
     struct ble_gap_event event;
     uint16_t handle = le16toh(conn_handle);
 
     memset(&event, 0, sizeof event);
-    event.type = BLE_GAP_EVENT_LINK_ESTAB;
-    event.link_estab.status = status;
-    event.link_estab.conn_handle = handle;
+    event.type = BLE_GAP_EVENT_CONNECT;
+    event.connect.status = status;
+    event.connect.conn_handle = handle;
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-    event.link_estab.sync_handle = pawr_sync_handle;
-    event.link_estab.adv_handle  = pawr_adv_handle;
+    event.connect.sync_handle = pawr_sync_handle;
+    event.connect.adv_handle  = pawr_adv_handle;
 #endif
 
     ble_gap_event_listener_call(&event);
@@ -2789,7 +2775,7 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
     } else {
         if ((conn != NULL) && (ev->status == 0)) {
             conn->supported_feat = get_le32(ev->features);
-            ble_gap_link_estab_call(ev->conn_handle, ev->status);
+            ble_gap_event_connect_call(ev->conn_handle, ev->status);
             slave_conn[ev->conn_handle] = 1;
         }
     }
@@ -2816,7 +2802,7 @@ ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp 
         ble_gap_rd_rem_sup_feat_tx(ev->conn_handle);
     } else {
         if ((conn != NULL) && (ev->status == 0)) {
-            ble_gap_link_estab_call(ev->conn_handle, ev->status);
+            ble_gap_event_connect_call(ev->conn_handle, ev->status);
         }
     }
 #endif

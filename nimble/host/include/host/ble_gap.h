@@ -164,11 +164,13 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_CONNLESS_IQ_REPORT    35
 #define BLE_GAP_EVENT_CONN_IQ_REPORT        36
 #define BLE_GAP_EVENT_CTE_REQ_FAILED        37
-#define BLE_GAP_EVENT_LINK_ESTAB            38
-#define BLE_GAP_EVENT_EATT                  39
-#define BLE_GAP_EVENT_PER_SUBEV_DATA_REQ    40
-#define BLE_GAP_EVENT_PER_SUBEV_RESP        41
-#define BLE_GAP_EVENT_PERIODIC_TRANSFER_V2  42
+
+/* Deprecate the EVENT_LINK_ESTAB */
+#define BLE_GAP_EVENT_LINK_ESTAB            BLE_GAP_EVENT_CONNECT
+#define BLE_GAP_EVENT_EATT                  38
+#define BLE_GAP_EVENT_PER_SUBEV_DATA_REQ    39
+#define BLE_GAP_EVENT_PER_SUBEV_RESP        40
+#define BLE_GAP_EVENT_PERIODIC_TRANSFER_V2  41
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -635,45 +637,6 @@ struct ble_gap_event {
             uint16_t sync_handle;
 #endif
         } connect;
-
-        /**
-         * Represents a successful Link establishment attempt. Sometimes, in noisy environment,
-	 * even if BLE_GAP_EVENT_CONNECT is posted, the link syncronization procedure may fail
-	 * and link gets disconnected with reason 0x3E. Application can wait for below event to ensure
-	 * the link syncronization is completed.   Valid for the following event
-         * types:
-         *     o BLE_GAP_EVENT_LINK_ESTAB
-         */
-
-        struct {
-            /**
-             * The final status of the link establishment;
-             *     o 0: the connection was successfully established.
-             *     o BLE host error code: the connection attempt failed for
-             *       the specified reason.
-             */
-            int status;
-
-           /** The handle of the relevant connection. */
-            uint16_t conn_handle;
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-           /*
-            * Adv_Handle is used to identify an advertising set.
-            * If the connection is established from periodic advertising with responses
-            * and Role is 0x00  then the Advertising_Handle parameter shall be set
-            * according to the periodic advertising train the connection was established from
-            */
-            uint8_t adv_handle;
-
-            /*
-             * Sync_Handle identifying the periodic advertising train
-             * If the connection is established from periodic advertising with responses
-             * and Role is 0x01, then the Sync_Handle parameter shall be set according
-             * to the periodic advertising train the connection was established from
-             */
-            uint16_t sync_handle;
-#endif
-	} link_estab;
 
         /**
          * Represents a terminated connection.  Valid for the following event
