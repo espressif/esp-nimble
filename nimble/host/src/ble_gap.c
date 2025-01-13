@@ -1436,7 +1436,10 @@ ble_gap_update_next_exp(int32_t *out_ticks_from_now)
 
 }
 
-#if MYNEWT_VAL(BLE_ROLE_CENTRAL)
+
+#if (MYNEWT_VAL(BLE_ROLE_CENTRAL) || \
+    (MYNEWT_VAL(BLE_ROLE_CENTRAL) && !MYNEWT_VAL(BLE_EXT_ADV)) ||  \
+    (NIMBLE_BLE_SCAN && !MYNEWT_VAL(BLE_EXT_ADV)))
 static void
 ble_gap_master_set_timer(uint32_t ticks_from_now)
 {
@@ -6408,7 +6411,7 @@ ble_gap_subrate_req(uint16_t conn_handle, uint16_t subrate_min, uint16_t subrate
 }
 #endif
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) || MYNEWT_VAL(BLE_EXT_ADV)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) || (MYNEWT_VAL(BLE_EXT_ADV) && MYNEWT_VAL(BLE_ROLE_CENTRAL))
 static int
 ble_gap_check_conn_params(uint8_t phy, const struct ble_gap_conn_params *params)
 {
@@ -6453,6 +6456,7 @@ ble_gap_check_conn_params(uint8_t phy, const struct ble_gap_conn_params *params)
     return 0;
 }
 #endif
+
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
 static int
 ble_gap_ext_conn_create_conn_synced_tx(uint8_t own_addr_type,
