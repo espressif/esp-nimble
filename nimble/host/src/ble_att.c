@@ -719,7 +719,10 @@ ble_att_set_default_bearer_using_cid(uint16_t conn_handle, uint16_t cid) {
 #if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
     struct ble_hs_conn * conn;
 
+    ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
+    ble_hs_unlock();
+
     if (conn == NULL) {
         return BLE_HS_ENOTCONN;
     }
