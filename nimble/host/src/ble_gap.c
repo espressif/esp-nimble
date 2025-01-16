@@ -7383,7 +7383,9 @@ done:
 int
 ble_gap_dev_authorization(uint16_t conn_handle, bool authorized)
 {
+    ble_hs_lock();
     struct ble_hs_conn *conn = ble_hs_conn_find(conn_handle);
+    ble_hs_unlock();
 
     if (conn != NULL) {
         if (!(conn->bhc_sec_state.authenticated)) {
