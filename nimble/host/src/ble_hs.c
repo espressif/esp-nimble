@@ -99,7 +99,11 @@ uint16_t ble_hs_max_services;
 uint16_t ble_hs_max_client_configs;
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
+#define MAX_NESTED_LOCKS 5
+static TaskHandle_t ble_hs_task_handles[MAX_NESTED_LOCKS];
+static int ble_hs_task_handle_index = 0;
 static uint8_t ble_hs_mutex_locked;
+static uint8_t counter_lock = 0;
 static TaskHandle_t ble_hs_task_handle;
 static uint8_t ble_hs_dbg_mutex_locked;
 #endif
@@ -178,8 +182,11 @@ ble_hs_lock_nested(void)
     rc = ble_npl_mutex_pend(&ble_hs_mutex, 0xffffffff);
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
+    counter_lock++;
     ble_hs_mutex_locked = 1;
     ble_hs_task_handle = xTaskGetCurrentTaskHandle();
+    ble_hs_task_handles[ble_hs_task_handle_index] = xTaskGetCurrentTaskHandle();
+    ble_hs_task_handle_index++;
 #endif
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -197,14 +204,22 @@ ble_hs_unlock_nested(void)
         ble_hs_dbg_mutex_locked = 0;
         return;
     }
-    if(ble_hs_task_handle == xTaskGetCurrentTaskHandle()) {
-        ble_hs_task_handle = NULL;
-        ble_hs_mutex_locked = 0;
+    if (counter_lock > 0) {
+        counter_lock--;
+        if (counter_lock == 0) {
+            ble_hs_mutex_locked = 0;
+        }
+        if (ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
+            ble_hs_task_handle_index--;
+            ble_hs_task_handles[ble_hs_task_handle_index] = NULL;
+            ble_hs_task_handle = ble_hs_task_handles[ble_hs_task_handle_index -1];
+        }
     }
 #endif
 
     rc = ble_npl_mutex_release(&ble_hs_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
+
 }
 
 /**

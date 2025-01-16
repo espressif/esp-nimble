@@ -5379,7 +5379,9 @@ ble_gattc_connection_broken(uint16_t conn_handle)
 
     ble_gattc_fail_procs(conn_handle, BLE_GATT_OP_NONE, BLE_HS_ENOTCONN);
 
+    ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
+    ble_hs_unlock();
 
     while ((omp = STAILQ_FIRST(&conn->att_tx_q)) != NULL) {
         STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
