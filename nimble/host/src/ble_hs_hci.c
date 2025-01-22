@@ -29,6 +29,7 @@
 #include "bt_common.h"
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
+#include "host/ble_hs.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
 #define BLE_HCI_CMD_TIMEOUT_MS  2000
@@ -110,6 +111,40 @@ struct err_code {
     char *msg;
 };
 
+static struct err_code core_err_code_list[] = {
+      { BLE_HS_EAGAIN,                                ": BLE_HS_EAGAIN (Temporary failure; try again)" },
+      { BLE_HS_EALREADY,                              ": BLE_HS_EALREADY (Operation already in progress or completed)" },
+      { BLE_HS_EINVAL,                                ": BLE_HS_EINVAL (One or more arguments are invalid)" },
+      { BLE_HS_EMSGSIZE,                              ": BLE_HS_EMSGSIZE (The provided buffer is too small)" },
+      { BLE_HS_ENOENT,                                ": BLE_HS_ENOENT (No entry matching the specified criteria)" },
+      { BLE_HS_ENOMEM,                                ": BLE_HS_ENOMEM (Operation failed due to resource exhaustion)" },
+      { BLE_HS_ENOTCONN,                              ": BLE_HS_ENOTCONN (No open connection with the specified handle)" },
+      { BLE_HS_ENOTSUP,                               ": BLE_HS_ENOTSUP (Operation disabled at compile time)" },
+      { BLE_HS_EAPP,                                  ": BLE_HS_EAPP (Application callback behaved unexpectedly)" },
+      { BLE_HS_EBADDATA,                              ": BLE_HS_EBADDATA (Command from peer is invalid)" },
+      { BLE_HS_EOS,                                   ": BLE_HS_EOS (Mynewt OS error)" },
+      { BLE_HS_ECONTROLLER,                           ": BLE_HS_ECONTROLLER (Event from controller is invalid)" },
+      { BLE_HS_ETIMEOUT,                              ": BLE_HS_ETIMEOUT (Operation timed out)" },
+      { BLE_HS_EDONE,                                 ": BLE_HS_EDONE (Operation completed successfully)" },
+      { BLE_HS_EBUSY,                                 ": BLE_HS_EBUSY (Operation cannot be performed until procedure completes)" },
+      { BLE_HS_EREJECT,                               ": BLE_HS_EREJECT (Peer rejected a connection parameter update request)" },
+      { BLE_HS_EUNKNOWN,                              ": BLE_HS_EUNKNOWN (Unexpected failure; catch all)" },
+      { BLE_HS_EROLE,                                 ": BLE_HS_EROLE (Operation requires different role (e.g., central vs. peripheral))" },
+      { BLE_HS_ETIMEOUT_HCI,                          ": BLE_HS_ETIMEOUT_HCI (HCI request timed out; controller unresponsive)" },
+      { BLE_HS_ENOMEM_EVT,                            ": BLE_HS_ENOMEM_EVT (Controller failed to send event due to memory exhaustion)" },
+      { BLE_HS_ENOADDR,                               ": BLE_HS_ENOADDR (Operation requires an identity address but none configured)" },
+      { BLE_HS_ENOTSYNCED,                            ": BLE_HS_ENOTSYNCED (Attempt to use the host before it is synced with controller)" },
+      { BLE_HS_EAUTHEN,                               ": BLE_HS_EAUTHEN (Insufficient authentication)" },
+      { BLE_HS_EAUTHOR,                               ": BLE_HS_EAUTHOR (Insufficient authorization)" },
+      { BLE_HS_EENCRYPT,                              ": BLE_HS_EENCRYPT (Insufficient encryption level)" },
+      { BLE_HS_EENCRYPT_KEY_SZ,                       ": BLE_HS_EENCRYPT_KEY_SZ (Insufficient key size" },
+      { BLE_HS_ESTORE_CAP,                            ": BLE_HS_ESTORE_CAP (BLE_HS_ESTORE_FAIL,)" },
+      { BLE_HS_ESTORE_FAIL,                           ": BLE_HS_ESTORE_FAIL (Storage IO error)" },
+      { BLE_HS_EPREEMPTED,                            ": BLE_HS_EPREEMPTED (ation was preempted)" },
+      { BLE_HS_EDISABLED,                             ": BLE_HS_EDISABLED (Operation disabled)" },
+      { BLE_HS_ESTALLED,                              ": BLE_HS_ESTALLED (Operation stalled)" }
+};
+
 static struct err_code err_code_list[] = {
       { BLE_HS_HCI_ERR(BLE_ERR_UNKNOWN_HCI_CMD),      ": BLE_ERR_UNKNOWN_HCI_CMD (Unknown HCI Command)" },
       { BLE_HS_HCI_ERR(BLE_ERR_UNK_CONN_ID),          ": BLE_ERR_UNK_CONN_ID (Unknown Connection Identifier)" },
@@ -180,14 +215,31 @@ static struct err_code err_code_list[] = {
       { BLE_HS_HCI_ERR(BLE_ERR_MAX),                  ": BLE_ERR_MAX"}
 };
 
+static void esp_core_err_to_name(int error_code, uint16_t *opcode)
+{
+    for (int i = 0; i<sizeof(core_err_code_list) / sizeof(core_err_code_list[0]); i++) {
+        if (core_err_code_list[i].error_code == error_code) {
+            if (opcode == NULL) {
+                  MODLOG_DFLT(INFO, "core_err=0x%02X %s\n", error_code, core_err_code_list[i].msg);
+            }
+            else {
+                  MODLOG_DFLT(INFO, "ogf=0x%02x, ocf=0x%04x, core_err=0x%02X %s\n",
+                              BLE_HCI_OGF(*opcode), BLE_HCI_OCF(*opcode), error_code, core_err_code_list[i].msg);
+            }
+            break;
+        }
+    }
+    return;
+}
+
 static void esp_hci_err_to_name(int error_code, uint16_t *opcode)
 {
     if (error_code == 0) {
         return;
     }
-    else if (error_code - 0x200 < 0) {
-        /* Converts error code to HCI base */
-        error_code = BLE_HS_HCI_ERR(error_code);
+    else if (error_code <  0x20) {
+       esp_core_err_to_name(error_code, opcode);
+       return;
     }
 
     for (int i = 0; i<sizeof(err_code_list) / sizeof(err_code_list[0]); i++) {
@@ -472,7 +524,6 @@ ble_hs_hci_wait_for_ack(void)
         break;
     }
 #endif
-
     return rc;
 }
 
