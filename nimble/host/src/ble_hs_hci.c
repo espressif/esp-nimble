@@ -106,7 +106,7 @@
 
 struct err_code {
     int error_code;
-    char *msg;
+    const char *msg;
 };
 
 static struct err_code err_code_list[] = {
