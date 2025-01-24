@@ -807,7 +807,7 @@ int ble_store_config_persist_eads(void)
         return ble_store_nvs_write(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &val);
     } else if (nvs_count > ble_store_config_num_eads) {
         /* NVS db count more than RAM count, delete operation */
-        vvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, 0,
+        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, 0,
                                        ble_store_config_eads, ble_store_config_num_eads);
         if (nvs_idx == -1) {
             ESP_LOGE(TAG, "NVS delete operation failed for EAD");
