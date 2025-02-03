@@ -37,12 +37,6 @@ struct ble_gap_reattempt_ctxt {
 
 extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
 extern int ble_gap_slave_adv_reattempt(void);
-
-#ifdef CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
-#define MAX_REATTEMPT_ALLOWED CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
-#else
-#define MAX_REATTEMPT_ALLOWED 0
-#endif
 #endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)

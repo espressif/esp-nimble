@@ -24,6 +24,14 @@ enum gap_status {
 
 typedef enum gap_status gap_status_t;
 
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+#ifdef CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
+#define MAX_REATTEMPT_ALLOWED CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
+#else
+#define MAX_REATTEMPT_ALLOWED 0
+#endif
+#endif
+
 /**
  * This API gives the current status of various stack operations
  *
