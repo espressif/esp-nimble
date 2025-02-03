@@ -130,6 +130,13 @@ struct ble_gap_connect_reattempt_ctxt {
     struct ble_gap_conn_params conn_params;
     ble_gap_event_fn *cb;
     void *cb_arg;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
+     ble_addr_t periodic_addr;
+     uint8_t adv_sid;
+     int sync_reattempt;
+     int count;
+     struct ble_gap_periodic_sync_params periodic_params;
+#endif // MYNEWT_VAL(BLE_PERIODIC_ADV)
 }ble_conn_reattempt;
 
 struct ble_gap_adv_reattempt_ctxt {
@@ -1878,7 +1885,9 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
     struct ble_gap_event event;
     ble_gap_event_fn *cb;
     void *cb_arg;
-
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    int rc;
+#endif
     memset(&event, 0, sizeof event);
 
     event.type = BLE_GAP_EVENT_PERIODIC_SYNC;
@@ -1891,6 +1900,11 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
     if (!ev->status) {
         sync_handle = le16toh(ev->sync_handle);
 
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+        if (ble_conn_reattempt.sync_reattempt) {
+            ble_conn_reattempt.sync_reattempt = 0;
+        }
+#endif
         ble_gap_sync.psync->sync_handle = sync_handle;
         ble_gap_sync.psync->adv_sid = ev->sid;
         memcpy(ble_gap_sync.psync->advertiser_addr.val, ev->peer_addr, 6);
@@ -1915,22 +1929,47 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
         ble_hs_periodic_sync_insert(ble_gap_sync.psync);
     } else {
         ble_hs_periodic_sync_free(ble_gap_sync.psync);
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+        if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
+            if (ble_conn_reattempt.count < MAX_REATTEMPT_ALLOWED) {
+                if (ble_gap_sync.op == BLE_GAP_OP_SYNC) {
+                    memset(&ble_gap_sync, 0, sizeof(ble_gap_sync));
+                }
+                ble_conn_reattempt.count += 1;
+                ble_conn_reattempt.sync_reattempt = 1;
+                rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr, ble_conn_reattempt.adv_sid,
+                                                          &ble_conn_reattempt.periodic_params,
+                                                          ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
+                if (rc != 0) {
+                    return;
+                }
+            }
+       }
+#endif
     }
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    if (!ble_conn_reattempt.sync_reattempt || ble_conn_reattempt.count >= MAX_REATTEMPT_ALLOWED) {
+        memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
+        ble_conn_reattempt.adv_sid = 0;
+        ble_conn_reattempt.count = 0;
+        memset(&ble_conn_reattempt.periodic_params, 0x0, sizeof(struct ble_gap_periodic_sync_params));
+#endif
+        cb = ble_gap_sync.cb;
+        cb_arg = ble_gap_sync.cb_arg;
 
-    cb = ble_gap_sync.cb;
-    cb_arg = ble_gap_sync.cb_arg;
+        ble_gap_sync.op = BLE_GAP_OP_NULL;
+        ble_gap_sync.cb_arg = NULL;
+        ble_gap_sync.cb_arg = NULL;
+        ble_gap_sync.psync = NULL;
 
-    ble_gap_sync.op = BLE_GAP_OP_NULL;
-    ble_gap_sync.cb_arg = NULL;
-    ble_gap_sync.cb_arg = NULL;
-    ble_gap_sync.psync = NULL;
-
+        ble_gap_event_listener_call(&event);
+        if (cb) {
+            cb(&event, cb_arg);
+        }
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    }
+#endif
     ble_hs_unlock();
-
-    ble_gap_event_listener_call(&event);
-    if (cb) {
-        cb(&event, cb_arg);
-    }
 }
 
 void
@@ -4708,6 +4747,18 @@ ble_gap_periodic_adv_sync_create(const ble_addr_t *addr, uint8_t adv_sid,
         return BLE_HS_ENOMEM;
     }
 
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    ble_conn_reattempt.adv_sid = adv_sid;
+
+    if (addr != NULL ) {
+        memcpy(&ble_conn_reattempt.periodic_addr, addr, sizeof(ble_addr_t));
+    }
+    if (params != NULL ) {
+        memcpy(&ble_conn_reattempt.periodic_params, params, sizeof(struct ble_gap_periodic_sync_params));
+    }
+    ble_conn_reattempt.cb = cb;
+    ble_conn_reattempt.cb_arg = cb_arg;
+#endif
     ble_npl_event_init(&psync->lost_ev, ble_gap_npl_sync_lost, psync);
 
     if (addr) {
