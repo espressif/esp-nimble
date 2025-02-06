@@ -762,6 +762,7 @@ ble_hs_hci_decode_legacy_type(uint16_t evt_type)
      case BLE_HCI_LEGACY_ADV_EVTYPE_ADV_NONCON_IND:
          return BLE_HCI_ADV_RPT_EVTYPE_NONCONN_IND;
      case BLE_HCI_LEGACY_ADV_EVTYPE_SCAN_RSP_ADV_IND:
+     case BLE_HCI_LEGACY_ADV_EVTYPE_SCAN_RSP_ADV_SCAN_IND:
          return BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP;
      default:
          return -1;
