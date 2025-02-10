@@ -37,6 +37,7 @@ struct ble_gap_reattempt_ctxt {
 
 extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
 extern int ble_gap_slave_adv_reattempt(void);
+extern int slave_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
 #endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
@@ -233,15 +234,47 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     ble_hs_unlock();
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
-    if (conn && ev->reason == BLE_ERR_CONN_ESTABLISHMENT) {
+    if (conn) {
         uint16_t handle;
 	int rc;
 
-	if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) { //slave
-            BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
-                              ev->reason, ev->status);
+	/* For master role, check if failure reason is 0x3E, to restart connect attempt
+	 * For slave role, check whether
+	 *   a. Failure reason is 0x3E
+	 *   b. Connect event was not posted and 0x8 was received
+	 *  Restart advertising in above reasons for slave.
+	 */
 
-            ble_l2cap_sig_conn_broken(ev->conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
+        if ((conn->bhc_flags & BLE_HS_CONN_F_MASTER) && \
+	    (ev->reason == BLE_ERR_CONN_ESTABLISHMENT)) {  // master
+	    if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED) {
+                /* Go for connection */
+                BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
+                                 "reattempt count = %d ", ev->reason, ev->status,
+                                  reattempt_conn.count);
+                reattempt_conn.count += 1;
+
+		handle = le16toh(ev->conn_handle);
+		/* Post event to interested application */
+		ble_gap_reattempt_count(handle, reattempt_conn.count);
+
+                rc = ble_gap_master_connect_reattempt(ev->conn_handle);
+		if (rc != 0) {
+		    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
+		}
+	    } else {
+	        /* Exhausted attempts */
+		memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+	    }
+	}
+	else if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER) && \
+		((ev->reason == BLE_ERR_CONN_ESTABLISHMENT) || \
+		(!slave_conn[ev->conn_handle] && ev->reason == BLE_ERR_CONN_SPVN_TMO))) { //slave
+
+	    BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
+                             ev->reason, ev->status);
+
+	    ble_l2cap_sig_conn_broken(ev->conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
             ble_sm_connection_broken(ev->conn_handle);
             ble_gatts_connection_broken(ev->conn_handle);
             ble_gattc_connection_broken(ev->conn_handle);
@@ -256,36 +289,14 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 
             rc = ble_gap_slave_adv_reattempt();
             if (rc != 0) {
-	        BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
+                BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
             }
 
             return 0;  // Restart advertising, so don't post disconnect event
-
-	} else { // master
-            if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED ) {
-	        /* Got for connection */
-	        BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
-                                 "reattempt count = %d ", ev->reason, ev->status,
-                                  reattempt_conn.count);
-                reattempt_conn.count += 1;
-
-                handle = le16toh(ev->conn_handle);
-                /* Post event to interested application */
-                ble_gap_reattempt_count(handle, reattempt_conn.count);
-
-                rc = ble_gap_master_connect_reattempt(ev->conn_handle);
-                if (rc != 0) {
-                    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
-                }
-	    } else {
-                /* Exhausted attempts */
-                memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
-	    }
-	}
-    }
-    else {
+	} else {
             /* Normal disconnect. Reset the structure */
             memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
+	}
     }
 #endif
 

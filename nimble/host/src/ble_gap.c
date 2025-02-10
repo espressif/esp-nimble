@@ -274,6 +274,7 @@ static uint8_t pawr_adv_handle;
 static uint16_t pawr_sync_handle;
 #endif
 
+int slave_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
 static void ble_gap_update_entry_free(struct ble_gap_update_entry *entry);
 
 #if NIMBLE_BLE_CONNECT
@@ -1434,6 +1435,8 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
     struct ble_gap_update_entry *entry;
     struct ble_gap_snapshot snap;
     struct ble_gap_event event;
+    struct ble_hs_conn *conn;
+    bool send = 1;
     int rc;
 
     memset(&event, 0, sizeof event);
@@ -1470,6 +1473,19 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
 #endif
     ble_hs_flow_connection_broken(conn_handle);;
 
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    ble_hs_unlock();
+
+    // Send disconnect event in slave role if connect was sent
+    if ((conn != NULL) &&  !(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
+        if (slave_conn[conn_handle]) {
+            slave_conn[conn_handle] = 0;
+	} else {
+	    send = 0;
+	}
+    }
+
     ble_hs_atomic_conn_delete(conn_handle);
 
     g_max_tx_time[conn_handle] = 0;
@@ -1480,8 +1496,10 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
     event.type = BLE_GAP_EVENT_DISCONNECT;
     event.disconnect.reason = reason;
 
-    ble_gap_event_listener_call(&event);
-    ble_gap_call_event_cb(&event, snap.cb, snap.cb_arg);
+    if (send) {
+        ble_gap_event_listener_call(&event);
+        ble_gap_call_event_cb(&event, snap.cb, snap.cb_arg);
+    }
 
     STATS_INC(ble_gap_stats, disconnect);
 #endif
@@ -2556,6 +2574,7 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
         if ((conn != NULL) && (ev->status == 0)) {
             conn->supported_feat = get_le32(ev->features);
             ble_gap_link_estab_call(ev->conn_handle, ev->status);
+            slave_conn[ev->conn_handle] = 1;
         }
     }
 #endif
