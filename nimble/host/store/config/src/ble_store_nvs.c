@@ -509,7 +509,7 @@ populate_db_from_nvs(int obj_type, void *dst, int *db_num)
                 db_item += sizeof(struct ble_store_value_csfc);
                 (*db_num)++;
 #if MYNEWT_VAL(ENC_ADV_DATA)
-            } if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
+            } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
                   ESP_LOGD(TAG, "EAD in RAM is filled up from NVS index = %d", i);
                   memcpy(db_item, &cur.ead, sizeof(struct ble_store_value_ead));
                   db_item += sizeof(struct ble_store_value_ead);
