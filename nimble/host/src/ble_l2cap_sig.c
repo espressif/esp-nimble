@@ -428,6 +428,10 @@ ble_l2cap_sig_update_req_rx(uint16_t conn_handle,
         return rc;
     }
 
+    if (OS_MBUF_PKTLEN(*om) != BLE_L2CAP_SIG_UPDATE_REQ_SZ) {
+        return BLE_HS_EBADDATA;
+    }
+
     rc = ble_hs_atomic_conn_flags(conn_handle, &conn_flags);
     if (rc != 0) {
         return rc;
@@ -504,6 +508,10 @@ ble_l2cap_sig_update_rsp_rx(uint16_t conn_handle,
     if (rc != 0) {
         cb_status = rc;
         goto done;
+    }
+
+    if (OS_MBUF_PKTLEN(*om) != BLE_L2CAP_SIG_UPDATE_RSP_SZ) {
+        return BLE_HS_EBADDATA;
     }
 
     rsp = (struct ble_l2cap_sig_update_rsp *)(*om)->om_data;
@@ -904,6 +912,10 @@ ble_l2cap_sig_credit_base_reconfig_rsp_rx(uint16_t conn_handle,
         return rc;
     }
 
+    if (OS_MBUF_PKTLEN(*om) != sizeof(*rsp)) {
+        return BLE_HS_EBADDATA;
+    }
+
     rsp = (struct ble_l2cap_sig_credit_base_reconfig_rsp *)(*om)->om_data;
     ble_l2cap_sig_coc_reconfig_cb(proc, (rsp->result > 0) ? BLE_HS_EREJECT : 0);
     ble_l2cap_sig_proc_free(proc);
@@ -1181,9 +1193,13 @@ ble_l2cap_sig_coc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     struct ble_hs_conn *conn;
     uint16_t scid;
 
-    rc = ble_hs_mbuf_pullup_base(om, sizeof(req));
+    rc = ble_hs_mbuf_pullup_base(om, sizeof(*req));
     if (rc != 0) {
         return rc;
+    }
+
+    if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
+        return BLE_HS_EBADDATA;
     }
 
     rsp = ble_l2cap_sig_cmd_get(BLE_L2CAP_SIG_OP_LE_CREDIT_CONNECT_RSP,
@@ -1298,6 +1314,10 @@ ble_l2cap_sig_coc_rsp_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*rsp));
     if (rc != 0) {
         goto done;
+    }
+
+    if (OS_MBUF_PKTLEN(*om) != sizeof(*rsp)) {
+        return BLE_HS_EBADDATA;
     }
 
     rsp = (struct ble_l2cap_sig_le_con_rsp *)(*om)->om_data;
@@ -1592,6 +1612,10 @@ ble_l2cap_sig_disc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     ble_hs_lock();
     conn = ble_hs_conn_find_assert(conn_handle);
 
+    if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
+        return BLE_HS_EBADDATA;
+    }
+
     req = (struct ble_l2cap_sig_disc_req *) (*om)->om_data;
 
     /* Let's find matching channel. Note that destination CID in the request
@@ -1677,6 +1701,10 @@ ble_l2cap_sig_disc_rsp_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
         goto done;
     }
 
+    if (OS_MBUF_PKTLEN(*om) != sizeof(*rsp)) {
+        return BLE_HS_EBADDATA;
+    }
+
     chan = proc->disconnect.chan;
     if (!chan) {
         goto done;
@@ -1750,6 +1778,10 @@ ble_l2cap_sig_le_credits_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*req));
     if (rc != 0) {
         return 0;
+    }
+
+    if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
+        return BLE_HS_EBADDATA;
     }
 
     req = (struct ble_l2cap_sig_le_credits *) (*om)->om_data;

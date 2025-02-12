@@ -27,6 +27,9 @@
 #define BLE_SVC_SPS_CHR_UUID16_SCAN_ITVL_WINDOW	        0x2A4F
 #define BLE_SVC_SPS_CHR_UUID16_SCAN_REFRESH             0x2A31
 
+typedef int ble_svc_sps_event_fn(uint16_t scan_interval, uint16_t scan_window);
+
 void ble_svc_sps_scan_refresh(void);
 void ble_svc_sps_init(uint16_t scan_itvl, uint16_t scan_window);
+void ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb);
 #endif

@@ -96,7 +96,7 @@ struct ble_gattc_cache_conn_op {
        request comes while the cache is building */
     uint16_t start_handle;
     uint16_t end_handle;
-    ble_uuid_t uuid;
+    const ble_uuid_t *uuid;
     void *cb;
     void *cb_arg;
     uint8_t cb_type;
