@@ -344,6 +344,9 @@ struct ble_gap_ext_disc_params {
 
     /** If passive scan should be used */
     uint8_t passive:1;
+
+    /** If observation procedure is to be disabled. By default all advertisement reports are accepted */
+    uint8_t disable_observer_mode:1;
 };
 
 /** @brief Discovery parameters */
@@ -365,6 +368,9 @@ struct ble_gap_disc_params {
 
     /** If enable duplicates filtering */
     uint8_t filter_duplicates:1;
+
+    /** If observation procedure is to be disabled. By default all advertisement reports are accepted */
+    uint8_t disable_observer_mode:1;
 };
 
 /** @brief Connection parameters update parameters */

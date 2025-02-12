@@ -35,6 +35,9 @@
 
 #define CHECK_CACHE_CONN_STATE(cache_state, cb, cb_arg, opcode, \
                                 s_handle, e_handle, p_uuid) \
+    if (ble_hs_cfg.gatt_use_cache == 0) { \
+        return BLE_HS_ENOTSUP; \
+    } \
     op = &conn->pending_op; \
     switch(cache_state) { \
     case SVC_DISC_IN_PROGRESS: \
@@ -829,7 +832,7 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
             }
             break;
         case BLE_GATT_OP_DISC_SVC_UUID :
-            rc = ble_gattc_cache_conn_search_svc_by_uuid(peer->conn_handle, &op->uuid, op->cb, op->cb_arg);
+            rc = ble_gattc_cache_conn_search_svc_by_uuid(peer->conn_handle, op->uuid, op->cb, op->cb_arg);
             if (rc != 0) {
                 BLE_HS_LOG(ERROR, "search service by uuid failed");
             }
@@ -847,7 +850,7 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
             }
             break;
         case BLE_GATT_OP_DISC_CHR_UUID :
-            rc = ble_gattc_cache_conn_search_chrs_by_uuid(peer->conn_handle, op->start_handle, op->end_handle, &op->uuid, op->cb, op->cb_arg);
+            rc = ble_gattc_cache_conn_search_chrs_by_uuid(peer->conn_handle, op->start_handle, op->end_handle, op->uuid, op->cb, op->cb_arg);
             if (rc != 0) {
                 BLE_HS_LOG(ERROR, "search chars by uuid failed");
             }
@@ -1267,7 +1270,7 @@ ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
                                              BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_SERVICE_CHANGED_UUID16));
 
     if (chr == NULL) {
-        BLE_HS_LOG(ERROR, "Cannot find service change characteristic");
+        BLE_HS_LOG(DEBUG, "Cannot find service change characteristic");
         return -1;
     }
     return chr->chr.val_handle;
@@ -1299,12 +1302,12 @@ ble_gattc_cache_conn_init()
     int max_dscs;
     void *storage_cb;
 
-    max_ble_gattc_cache_conns  = MYNEWT_VAL(BLE_MAX_CONNECTIONS);
-    max_svcs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_ble_gattc_cache_conns  = MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS);
+    max_svcs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_SVCS));
-    max_chrs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_chrs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CHRS));
-    max_dscs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_dscs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_DSCS));
     /* Free memory first in case this function gets called more than once. */
     ble_gattc_cache_conn_free_mem();
@@ -1470,7 +1473,7 @@ static void ble_gattc_cache_search_all_svcs_cb(struct ble_npl_event *ev)
 static void ble_gattc_cache_conn_fill_op(struct ble_gattc_cache_conn_op *op,
                                          uint16_t start_handle,
                                          uint16_t end_handle,
-                                         ble_uuid_t uuid,
+                                         const ble_uuid_t *uuid,
                                          void *cb,
                                          void *cb_arg,
                                          uint8_t cb_type)
@@ -1505,7 +1508,7 @@ ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_SVCS,
-                           0, 0, uuid);
+                           0, 0, &uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_search_all_svcs_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
@@ -1534,7 +1537,7 @@ ble_gattc_cache_conn_search_svc_by_uuid_cb(struct ble_npl_event *ev)
     op = &conn->pending_op;
     dcb = op->cb;
     SLIST_FOREACH(svc, &conn->svcs, next) {
-        if (svc->type == BLE_GATT_SVC_TYPE_PRIMARY && ble_uuid_cmp(&svc->svc.uuid.u, &op->uuid) == 0) {
+        if (svc->type == BLE_GATT_SVC_TYPE_PRIMARY && ble_uuid_cmp(&svc->svc.uuid.u, op->uuid) == 0) {
             dcb(conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
         }
     }
@@ -1566,7 +1569,7 @@ ble_gattc_cache_conn_search_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_SVC_UUID,
-                           0, 0, *uuid);
+                           0, 0, uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_svc_by_uuid_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
@@ -1629,7 +1632,7 @@ ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_CHRS,
-                           start_handle, end_handle, uuid);
+                           start_handle, end_handle, &uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_inc_svcs_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
@@ -1692,7 +1695,7 @@ ble_gattc_cache_conn_search_all_chrs(uint16_t conn_handle, uint16_t start_handle
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_CHRS,
-                           start_handle, end_handle, uuid);
+                           start_handle, end_handle, &uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_all_chrs_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
@@ -1723,7 +1726,7 @@ ble_gattc_cache_conn_search_chrs_by_uuid_cb(struct ble_npl_event *ev)
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
     /* return all chrs */
     SLIST_FOREACH(chr, &svc->chrs, next) {
-        if (ble_uuid_cmp(&chr->chr.uuid.u, &op->uuid) == 0) {
+        if (ble_uuid_cmp(&chr->chr.uuid.u, op->uuid) == 0) {
             dcb(conn_handle, ble_gattc_cache_error(status, 0), &chr->chr, op->cb_arg);
         }
     }
@@ -1756,7 +1759,7 @@ ble_gattc_cache_conn_search_chrs_by_uuid(uint16_t conn_handle, uint16_t start_ha
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_CHR_UUID,
-                           start_handle, end_handle, *uuid);
+                           start_handle, end_handle, uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_chrs_by_uuid_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
@@ -1820,7 +1823,7 @@ ble_gattc_cache_conn_search_all_dscs(uint16_t conn_handle, uint16_t start_handle
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_DSCS,
-                           start_handle, end_handle, uuid);
+                           start_handle, end_handle, &uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_all_dscs_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);

@@ -65,6 +65,8 @@ struct ble_svc_hid_params{
     unsigned int kbd_inp_present : 1;
     unsigned int kbd_out_present : 1;
     unsigned int mouse_inp_present : 1;
+    unsigned int kbd_inp_write_perm:1;
+    unsigned int mouse_inp_write_perm:1;
     /* protocol mode char */
     uint8_t proto_mode;
     uint16_t proto_mode_handle;

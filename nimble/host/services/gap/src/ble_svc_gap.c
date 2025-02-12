@@ -95,6 +95,13 @@ static const struct ble_gatt_svc_def ble_svc_gap_defs[] = {
             .flags = BLE_GATT_CHR_F_READ,
         }, {
 #endif
+#if MYNEWT_VAL(BLE_SVC_GAP_RPA_ONLY)
+            /*** Characteristic: Resolvable Private Address Only. */
+            .uuid = BLE_UUID16_DECLARE(BLE_SVC_GAP_CHR_UUID16_RPA_ONLY),
+            .access_cb = ble_svc_gap_access,
+            .flags = BLE_GATT_CHR_F_READ,
+        }, {
+#endif
 #if MYNEWT_VAL(ENC_ADV_DATA)
             .uuid = BLE_UUID16_DECLARE(BLE_SVC_GAP_CHR_UUID16_KEY_MATERIAL),
             .access_cb = ble_svc_gap_access,
@@ -235,6 +242,15 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
         htole16(MYNEWT_VAL(BLE_SVC_GAP_PPCP_SUPERVISION_TMO))
     };
 #endif
+#if MYNEWT_VAL(BLE_SVC_GAP_RPA_ONLY)
+    /* As per Core Specification 6.0, Vol 3: Host, Part C: GAP, 12.5
+     * The only allowed value for the characteristic is zero.
+     * All other values are RFU.
+     * As such, the presence of the characteristic itself indicates that
+     * the device is RPA only
+     */
+    uint8_t rpa_only = 0;
+#endif
     int rc;
 
     uuid16 = ble_uuid_u16(ctxt->chr->uuid);
@@ -274,6 +290,13 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
     case BLE_SVC_GAP_CHR_UUID16_CENTRAL_ADDRESS_RESOLUTION:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
         rc = os_mbuf_append(ctxt->om, &central_ar, sizeof(central_ar));
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+#endif
+
+#if MYNEWT_VAL(BLE_SVC_GAP_RPA_ONLY)
+    case BLE_SVC_GAP_CHR_UUID16_RPA_ONLY:
+        assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
+        rc = os_mbuf_append(ctxt->om, &rpa_only, sizeof(rpa_only));
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 #endif
 
