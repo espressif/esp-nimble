@@ -134,7 +134,9 @@ void
 ble_svc_lls_on_gap_disconnect(int reason)
 {
     if (reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_SPVN_TMO)) {
+        if (ble_svc_lls_cb_fn != NULL) {
             ble_svc_lls_cb_fn(ble_svc_lls_alert_level);
+        }
     }
 }
 

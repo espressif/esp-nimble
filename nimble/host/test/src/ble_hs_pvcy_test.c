@@ -51,7 +51,7 @@ ble_hs_pvcy_test_util_all_gap_procs(int adv_status,
                                     int conn_status,
                                     int disc_status)
 {
-    struct ble_gap_disc_params disc_params;
+    struct ble_gap_disc_params disc_params = {0};
     ble_addr_t peer_addr;
     int rc;
 
@@ -338,7 +338,7 @@ TEST_CASE_SELF(ble_hs_pvcy_test_case_add_irk_adv)
 /*** Discovery active. */
 TEST_CASE_SELF(ble_hs_pvcy_test_case_add_irk_disc)
 {
-    struct ble_gap_disc_params disc_params;
+    struct ble_gap_disc_params disc_params = {0};
     int rc;
 
     ble_hs_pvcy_test_util_init();
@@ -407,7 +407,7 @@ TEST_CASE_SELF(ble_hs_pvcy_test_case_add_irk_conn)
 /*** Advertising and discovery active. */
 TEST_CASE_SELF(ble_hs_pvcy_test_case_add_irk_adv_disc)
 {
-    struct ble_gap_disc_params disc_params;
+    struct ble_gap_disc_params disc_params = {0};
     int rc;
 
     ble_hs_pvcy_test_util_init();

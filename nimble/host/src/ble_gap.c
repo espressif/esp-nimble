@@ -194,6 +194,7 @@ struct ble_gap_master_state {
 
         struct {
             uint8_t limited:1;
+            uint8_t observer:1;
         } disc;
     };
 };
@@ -1806,7 +1807,7 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
         return -1;
     }
 
-    if (MYNEWT_VAL(BLE_ROLE_OBSERVER)) {
+    if (ble_gap_master.disc.observer) {
         /* Observer role is enabled; All adv reports regardless of
          * Flags AD Type need to be discovered.
          */
@@ -6013,6 +6014,7 @@ ble_gap_ext_disc(uint8_t own_addr_type, uint16_t duration, uint16_t period,
     if (uncoded_params) {
         ble_gap_ext_scan_params_to_hci(uncoded_params, &ucp);
         ble_gap_ext_disc_fill_dflts(limited, &ucp);
+        ble_gap_master.disc.observer = !uncoded_params->disable_observer_mode;
 
         /* XXX: We should do it only once */
         if (!uncoded_params->passive) {
@@ -6026,6 +6028,7 @@ ble_gap_ext_disc(uint8_t own_addr_type, uint16_t duration, uint16_t period,
     if (coded_params) {
         ble_gap_ext_scan_params_to_hci(coded_params, &cp);
         ble_gap_ext_disc_fill_dflts(limited, &cp);
+        ble_gap_master.disc.observer = !coded_params->disable_observer_mode;
 
         /* XXX: We should do it only once */
         if (!coded_params->passive) {
@@ -6139,6 +6142,7 @@ ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
     p.itvl = disc_params->itvl;
     p.passive = disc_params->passive;
     p.window = disc_params->window;
+    p.disable_observer_mode = disc_params->disable_observer_mode;
 
     if (duration_ms == BLE_HS_FOREVER) {
         duration_ms = 0;
@@ -6195,6 +6199,7 @@ ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
     }
 
     ble_gap_master.disc.limited = params.limited;
+    ble_gap_master.disc.observer = !params.disable_observer_mode;
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
 
