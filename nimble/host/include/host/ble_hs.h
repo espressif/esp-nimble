@@ -323,6 +323,17 @@ struct ble_hs_cfg {
      */
     unsigned sm_sc_only:1;
 
+    /** @brief Security Manager - Security Mode 1 Level for GATT related operations
+     *
+     * Possible values are:
+     * 0: Default value, ignored
+     * 1: No security
+     * 2: Unauthenticated pairing with encryption
+     * 3. Authenticated pairing with encryption
+     * 4. Authenticated LE Secure Connections pairing with encryption using a 128-bit strength encryption key
+     */
+    uint8_t sm_sec_lvl;
+
     /** @brief Security Manager Key Press Notification flag
      *
      * Currently unsupported and should not be set.
@@ -343,6 +354,9 @@ struct ble_hs_cfg {
 
     /** @brief Security Manager Remote Key Distribution Mask */
     uint8_t sm_their_key_dist;
+
+    /** @brief Weather to use GATT caching or not for discovery operations */
+    uint8_t gatt_use_cache;
 
     /** @brief Stack reset callback
      *

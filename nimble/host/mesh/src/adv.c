@@ -217,7 +217,7 @@ int bt_mesh_scan_enable(void)
 #if MYNEWT_VAL(BLE_EXT_ADV)
 	struct ble_gap_ext_disc_params uncoded_params =
 		{ .itvl = MESH_SCAN_INTERVAL, .window = MESH_SCAN_WINDOW,
-		.passive = 1 };
+		.passive = 1, .disable_observer_mode = 0};
 
 	BT_DBG("");
 

@@ -29,6 +29,7 @@ static uint8_t ble_scan_refresh;
 static uint16_t ble_scan_itvl_handle;
 static uint16_t ble_scan_refresh_handle;
 
+static ble_svc_sps_event_fn *ble_svc_sps_cb_fn;
 
 /* Access function */
 static int
@@ -104,6 +105,9 @@ ble_svc_sps_access(uint16_t conn_handle, uint16_t attr_handle,
             ble_scan_itvl = (write_val & 0xffff0000) >> 16;
             ble_scan_window = (write_val & 0x0000ffff);
         }
+        if (ble_svc_sps_cb_fn) {
+            ble_svc_sps_cb_fn(ble_scan_itvl, ble_scan_window);
+        }
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     case BLE_SVC_SPS_CHR_UUID16_SCAN_REFRESH:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR && conn_handle == BLE_HS_CONN_HANDLE_NONE);
@@ -118,6 +122,11 @@ ble_svc_sps_access(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
+void
+ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb)
+{
+    ble_svc_sps_cb_fn = cb;
+}
 
 /**
  * Initialize the SPS package.

@@ -1838,7 +1838,7 @@ ble_sm_verify_auth_requirements(uint8_t cmd)
     /* Fail if security level forces MITM protection and remote does not
      * support it
      */
-    if (MYNEWT_VAL(BLE_SM_LVL) >= 3 && !(cmd & BLE_SM_PAIR_AUTHREQ_MITM)) {
+    if (ble_hs_cfg.sm_sec_lvl >= 3 && !(cmd & BLE_SM_PAIR_AUTHREQ_MITM)) {
         return false;
     }
     return true;
@@ -1922,7 +1922,7 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
         if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
             res->sm_err = BLE_SM_ERR_CMD_NOT_SUPP;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CMD_NOT_SUPP);
-        } else if (MYNEWT_VAL(BLE_SM_LVL) == 1) {
+        } else if (ble_hs_cfg.sm_sec_lvl == 1) {
             res->sm_err = BLE_SM_ERR_CMD_NOT_SUPP;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CMD_NOT_SUPP);
         } else if (req->max_enc_key_size < BLE_SM_PAIR_KEY_SZ_MIN) {
