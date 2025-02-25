@@ -2535,10 +2535,8 @@ ble_gap_event_connect_call(uint16_t conn_handle, int status)
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, handle);
 
-#if !SOC_ESP_NIMBLE_CONTROLLER
     ble_hs_hci_util_set_data_len(le16toh(conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
                     BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
-#endif
 }
 
 void
