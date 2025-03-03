@@ -1034,6 +1034,17 @@ ble_gap_master_connect_failure(int status)
         event.connect.adv_handle  = pawr_adv_handle;
 #endif
         rc = state.cb(&event, state.cb_arg);
+
+//TODO  Remove duplication of event fields
+        event.type = BLE_GAP_EVENT_LINK_ESTAB;
+        event.link_estab.status = status;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        event.link_estab.sync_handle = pawr_sync_handle;
+        event.link_estab.adv_handle  = pawr_adv_handle;
+#endif
+        rc = state.cb(&event, state.cb_arg);
+
     } else {
         rc = 0;
     }
@@ -1063,6 +1074,23 @@ ble_gap_master_connect_cancelled(void)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
         event.connect.sync_handle = pawr_sync_handle;
         event.connect.adv_handle  = pawr_adv_handle;
+#endif
+        state.cb(&event, state.cb_arg);
+
+//TODO Remove duplication of event fields
+        event.type = BLE_GAP_EVENT_LINK_ESTAB;
+        event.link_estab.conn_handle = BLE_HS_CONN_HANDLE_NONE;
+        if (state.conn.cancel) {
+            /* Connect procedure successfully cancelled. */
+            event.link_estab.status = BLE_HS_EAPP;
+        } else {
+            /* Connect procedure timed out. */
+            event.link_estab.status = BLE_HS_ETIMEOUT;
+        }
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        event.link_estab.sync_handle = pawr_sync_handle;
+        event.link_estab.adv_handle  = pawr_adv_handle;
 #endif
         state.cb(&event, state.cb_arg);
     }
@@ -2276,11 +2304,12 @@ ble_gap_rx_periodic_adv_response(const struct ble_gap_periodic_adv_response resp
 void
 ble_gap_rx_conn_comp_failed(const struct ble_gap_conn_complete *evt)
 {
-    struct ble_gap_event event;
+    struct ble_gap_event event, event_link_estab;
     ble_gap_event_fn *cb;
     void *cb_arg;
 
     memset(&event, 0x0, sizeof event);
+    memset(&event_link_estab, 0x0, sizeof event);
 
     event.type = BLE_GAP_EVENT_CONNECT;
     event.connect.conn_handle = evt->connection_handle;
@@ -2289,13 +2318,23 @@ ble_gap_rx_conn_comp_failed(const struct ble_gap_conn_complete *evt)
     event.connect.sync_handle = evt->sync_handle;
     event.connect.adv_handle = evt->adv_handle;
 
+//TODO Remove duplication of event fields
+    event_link_estab.type = BLE_GAP_EVENT_LINK_ESTAB;
+    event_link_estab.link_estab.conn_handle = evt->connection_handle;
+    event_link_estab.link_estab.status = BLE_ERR_CONN_ESTABLISHMENT;
+
+    event_link_estab.link_estab.sync_handle = evt->sync_handle;
+    event_link_estab.link_estab.adv_handle = evt->adv_handle;
+
     ble_gap_master_reset_state();
     ble_gap_slave_extract_cb(evt->adv_handle, &cb, &cb_arg);
     if (cb != NULL) {
         cb(&event, cb_arg);
+        cb(&event_link_estab, cb_arg);
     }
 
     ble_gap_event_listener_call(&event);
+    ble_gap_event_listener_call(&event_link_estab);
 }
 #endif
 
@@ -2530,6 +2569,19 @@ ble_gap_event_connect_call(uint16_t conn_handle, int status)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     event.connect.sync_handle = pawr_sync_handle;
     event.connect.adv_handle  = pawr_adv_handle;
+#endif
+
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, handle);
+
+//TODO : Remove duplication of event
+    event.type = BLE_GAP_EVENT_LINK_ESTAB;
+    event.link_estab.status = status;
+    event.link_estab.conn_handle = handle;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    event.link_estab.sync_handle = pawr_sync_handle;
+    event.link_estab.adv_handle  = pawr_adv_handle;
 #endif
 
     ble_gap_event_listener_call(&event);
