@@ -598,11 +598,11 @@ exit:
     }
 
 #else
-    if (uECC_valid_public_key(pk, &curve_secp256r1) < 0) {
+    if (uECC_valid_public_key(pk, uECC_secp256r1()) < 0) {
         return BLE_HS_EUNKNOWN;
     }
 
-    rc = uECC_shared_secret(pk, priv, dh, &curve_secp256r1);
+    rc = uECC_shared_secret(pk, priv, dh, uECC_secp256r1());
     if (rc == TC_CRYPTO_FAIL) {
         return BLE_HS_EUNKNOWN;
     }
@@ -711,7 +711,7 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
             return BLE_HS_EUNKNOWN;
         }
 #else
-        if (uECC_make_key(pk, priv, &curve_secp256r1) != TC_CRYPTO_SUCCESS) {
+        if (uECC_make_key(pk, priv, uECC_secp256r1()) != TC_CRYPTO_SUCCESS) {
             return BLE_HS_EUNKNOWN;
         }
 #endif
