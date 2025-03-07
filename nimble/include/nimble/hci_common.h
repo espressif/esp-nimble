@@ -1199,6 +1199,11 @@ struct ble_hci_vs_duplicate_exception_list_cp {
 
 #define BLE_HCI_OCF_VS_LEGACY_ADV_CLEAR                 (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x010C))
 
+#define BLE_HCI_OCF_VS_SET_EVT_MASK                     (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x0116))
+struct ble_hci_vs_set_event_mask_cp {
+    uint32_t event_mask;
+} __attribute__((packed));
+
 /* Command Specific Definitions */
 /* --- Set controller to host flow control (OGF 0x03, OCF 0x0031) --- */
 #define BLE_HCI_CTLR_TO_HOST_FC_OFF         (0)
@@ -1603,6 +1608,8 @@ struct ble_hci_ev_vendor_debug {
     uint8_t id;
     uint8_t data[0];
 } __attribute__((packed));
+
+#define BLE_HCI_VS_SUBEV_LE_SLEEP_WAKE_UP       (0xC3)
 
 /* LE sub-event codes */
 #define BLE_HCI_LE_SUBEV_CONN_COMPLETE          (0x01)
