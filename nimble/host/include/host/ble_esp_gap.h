@@ -30,6 +30,13 @@ typedef enum gap_status gap_status_t;
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_PROV_SRV_ADV    3
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_PROXY_SRV_ADV   4
 
+#define ESP_BLE_VENDOR_LEGACY_SCAN_REQ_EVT_MASK       BIT(0)
+#define ESP_BLE_VENDOR_CHAN_MAP_UPDATE_CMPL_EVT_MASK  BIT(1)
+#define ESP_BLE_VENDOR_TL_RUNNING_STATUS_EVT_MASK     BIT(2)
+#define ESP_BLE_VENDOR_SLEEP_WAKEUP_EVT_MASK         BIT(3)
+#define ESP_BLE_VENDOR_CONNECT_IND_REQ_EVT_MASK      BIT(4)
+#define ESP_BLE_VENDOR_AUX_CONNECT_RSP_EVT_MASK      BIT(5)
+
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 #ifdef CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
 #define MAX_REATTEMPT_ALLOWED CONFIG_BT_NIMBLE_MAX_CONN_REATTEMPT
@@ -273,6 +280,20 @@ int ble_gap_set_chan_select(uint8_t select);
  */
 int
 ble_gap_dev_authorization(uint16_t conn_handle, bool authorized);
+
+/**
+ * Sets the vendor-specific event mask for BLE host.
+ *
+ * This function configures the vendor-specific event mask, enabling or disabling
+ * specific vendor-defined events from being reported by the controller.
+ *
+ * @param event_mask            Bitmask representing the events to enable.
+ *
+ * @return                      0 on success;
+ *                              A nonzero value indicating an error if the command fails.
+ */
+int
+ble_hs_send_vs_event_mask(uint32_t event_mask);
 
 void ble_gap_rx_test_evt(const void *buf, uint8_t len);
 void ble_gap_tx_test_evt(const void *buf, uint8_t len);
