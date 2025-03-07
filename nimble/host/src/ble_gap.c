@@ -8663,6 +8663,19 @@ ble_gap_vs_hci_event(const void *buf, uint8_t len)
 
     ble_gap_event_listener_call(&event);
 }
+
+int
+ble_hs_send_vs_event_mask(uint32_t event_mask)
+{
+    struct ble_hci_vs_set_event_mask_cp cmd;
+
+    /* Populate command */
+    cmd.event_mask = htole32(event_mask);
+
+    /* Send command via HCI */
+    return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_EVT_MASK,
+                           &cmd, sizeof(cmd), NULL, 0);
+}
 #endif
 
 int
