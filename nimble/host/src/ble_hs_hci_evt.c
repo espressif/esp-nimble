@@ -185,6 +185,7 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SUBEV_DATA_REQ] = ble_hs_hci_evt_le_periodic_adv_subev_data_req,
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RESP_REPORT] = ble_hs_hci_evt_le_periodic_adv_subev_resp_rep,
     [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2] = ble_hs_hci_evt_le_enh_conn_complete,
+#endif
 #if MYNEWT_VAL(BLE_AOA_AOD)
     [BLE_HCI_LE_SUBEV_CONNLESS_IQ_RPT] = ble_hs_hci_evt_le_connless_iq_report,
     [BLE_HCI_LE_SUBEV_CONN_IQ_RPT] = ble_hs_hci_evt_le_conn_iq_report,

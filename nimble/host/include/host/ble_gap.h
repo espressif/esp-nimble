@@ -1424,54 +1424,158 @@ struct ble_gap_event {
 	    uint16_t max_rx_time;
 	} data_len_chg;
 #if MYNEWT_VAL(BLE_AOA_AOD)
-        /**
-         * Represents a AOA/AOD connectionless iq report event
-         * Valid for the following event types:
-         *     o BLE_GAP_EVENT_CONNLESS_IQ_RPT
+    /**
+     * Represents a AOA/AOD connectionless iq report event
+     * Valid for the following event types:
+     *     o BLE_GAP_EVENT_CONNLESS_IQ_RPT
+     */
+    struct {
+        /** Sync_Handle identifying the periodic advertising train.
+         *  Range: 0x0000 to 0x0EFF
+         *  0x0FFF indicates Receiver Test mode.
          */
-        struct {
-            uint16_t sync_handle;
-            uint8_t  channel_index;
-            int16_t  rssi;
-            uint8_t  rssi_antenna_id;
-            uint8_t  cte_type;
-            uint8_t  slot_durations;
-            uint8_t  packet_status;
-            uint16_t periodic_event_counter;
-            uint8_t  sample_count;
-            int8_t   *i_samples;
-            int8_t   *q_samples;
-        }connless_iq_report;
+        uint16_t sync_handle;
 
-        /**
-         * Represents a connection iq report.
-         * Valid for the following event types:
-         *     o BLE_GAP_EVENT_CONN_IQ_RPT
+        /** The index of the channel on which the packet was received.
+         *  Range: 0x00 to 0x27
+         *  Note: 0x25 to 0x27 can be used only for packets generated during test modes.
          */
-        struct {
-            uint16_t conn_handle;
-            uint8_t  rx_phy;
-            uint8_t  data_channel_index;
-            int16_t  rssi;
-            uint8_t  rssi_antenna_id;
-            uint8_t  cte_type;
-            uint8_t  slot_durations;
-            uint8_t  packet_status;
-            uint16_t conn_event_counter;
-            uint8_t  sample_count;
-            int8_t   *i_samples;
-            int8_t   *q_samples;
-        }conn_iq_report;
+        uint8_t channel_index;
 
-        /**
-         * Represents a cte req failed event
-         * Valid for the following event types:
-         *     o BLE_GAP_EVENT_CTE_REQ_FAILED
+        /** RSSI of the packet.
+         *  Range: -1270 to +200 (Units: 0.1 dBm).
          */
-        struct {
-            uint8_t status;
-            uint16_t conn_handle;
-        } cte_req_fail;
+        int16_t rssi;
+
+        /** Antenna ID used for receiving the packet. */
+        uint8_t rssi_antenna_id;
+
+        /** Type of Constant Tone Extension (CTE).
+         *  0x00: AoA Constant Tone Extension
+         *  0x01: AoD Constant Tone Extension with 1 μs slots
+         *  0x02: AoD Constant Tone Extension with 2 μs slots
+         */
+        uint8_t cte_type;
+
+        /** Switching and sampling slot durations.
+         *  0x01: Switching and sampling slots are 1 μs each
+         *  0x02: Switching and sampling slots are 2 μs each
+         */
+        uint8_t slot_durations;
+
+        /** Status of the packet.
+         *  0x00: CRC was correct
+         *  0x01: CRC was incorrect, but Length and CTETime fields were used to determine sampling points
+         *  0x02: CRC was incorrect, but the Controller determined the position and length of the CTE in another way
+         *  0xFF: Insufficient resources to sample (Channel_Index, CTE_Type, and Slot_Durations invalid)
+         */
+        uint8_t packet_status;
+
+        /** Value of paEventCounter for the reported AUX_SYNC_IND PDU. */
+        uint16_t periodic_event_counter;
+
+        /** Total number of sample pairs (I and Q samples).
+         *  0x00: No samples provided (only permitted if Packet_Status is 0xFF)
+         *  0x09 to 0x52: Total number of sample pairs
+         */
+        uint8_t sample_count;
+
+        /** Array of I samples for the reported packet (signed integers).
+         *  Each value represents an I sample at a specific sampling point.
+         *  0x80 indicates no valid sample available.
+         */
+        int8_t *i_samples;
+
+        /** Array of Q samples for the reported packet (signed integers).
+         *  Each value represents a Q sample at a specific sampling point.
+         *  0x80 indicates no valid sample available.
+         */
+        int8_t *q_samples;
+    } connless_iq_report;
+
+    /**
+     * Represents a connection iq report.
+     * Valid for the following event types:
+     *     o BLE_GAP_EVENT_CONN_IQ_RPT
+     */
+    struct {
+        /** Connection handle identifying the connection. */
+        uint16_t conn_handle;
+
+        /** PHY used for receiving the packet.
+         *  0x01: LE 1M PHY
+         *  0x02: LE 2M PHY
+         */
+        uint8_t rx_phy;
+
+        /** The index of the data channel on which the packet was received. */
+        uint8_t data_channel_index;
+
+        /** RSSI of the packet.
+         *  Range: -1270 to +200 (Units: 0.1 dBm).
+         */
+        int16_t rssi;
+
+        /** Antenna ID used for receiving the packet. */
+        uint8_t rssi_antenna_id;
+
+        /** Type of Constant Tone Extension (CTE).
+         *  0x00: AoA Constant Tone Extension
+         *  0x01: AoD Constant Tone Extension with 1 μs slots
+         *  0x02: AoD Constant Tone Extension with 2 μs slots
+         */
+        uint8_t cte_type;
+
+        /** Switching and sampling slot durations.
+         *  0x01: Switching and sampling slots are 1 μs each
+         *  0x02: Switching and sampling slots are 2 μs each
+         */
+        uint8_t slot_durations;
+
+        /** Status of the packet.
+         *  0x00: CRC was correct
+         *  0x01: CRC was incorrect, but Length and CTETime fields were used to determine sampling points
+         *  0x02: CRC was incorrect, but the Controller determined the position and length of the CTE in another way
+         *  0xFF: Insufficient resources to sample (Channel_Index, CTE_Type, and Slot_Durations invalid)
+         */
+        uint8_t packet_status;
+
+        /** Value of the connection event counter for the reported packet. */
+        uint16_t conn_event_counter;
+
+        /** Total number of sample pairs (I and Q samples).
+         *  0x00: No samples provided (only permitted if Packet_Status is 0xFF)
+         *  0x09 to 0x52: Total number of sample pairs
+         */
+        uint8_t sample_count;
+
+        /** Array of I samples for the reported packet (signed integers).
+         *  Each value represents an I sample at a specific sampling point.
+         *  0x80 indicates no valid sample available.
+         */
+        int8_t *i_samples;
+
+        /** Array of Q samples for the reported packet (signed integers).
+         *  Each value represents a Q sample at a specific sampling point.
+         *  0x80 indicates no valid sample available.
+         */
+        int8_t *q_samples;
+    } conn_iq_report;
+
+    /**
+     * Represents a cte req failed event
+     * Valid for the following event types:
+     *     o BLE_GAP_EVENT_CTE_REQ_FAILED
+     */
+    struct {
+        /** Status indicating the reason for failure.
+         *  Refer to HCI error codes for detailed status values.
+         */
+        uint8_t status;
+
+        /** Connection handle identifying the connection. */
+        uint16_t conn_handle;
+    } cte_req_fail;
 
 #endif
     };
@@ -2012,6 +2116,17 @@ struct ble_gap_periodic_sync_params {
     unsigned int filter_duplicates:1;
 #endif
 #if MYNEWT_VAL(BLE_AOA_AOD)
+    /** 
+     * Specifies the type of Constant Tone Extension (CTE) to which the receiver should not synchronize.
+     * This parameter determines which types of packets with specific CTE configurations are ignored during synchronization.
+     * 
+     * Possible values:
+     *   0: Do not sync to packets with an AoA Constant Tone Extension.
+     *   1: Do not sync to packets with an AoD Constant Tone Extension with 1 μs slots.
+     *   2: Do not sync to packets with an AoD Constant Tone Extension with 2 μs slots.
+     *   3: Do not sync to packets with a type 3 Constant Tone Extension (currently reserved for future use).
+     *   4: Do not sync to packets without a Constant Tone Extension.
+     */
     uint8_t sync_cte_type;
 #endif
 };
@@ -2347,28 +2462,103 @@ int ble_gap_read_periodic_adv_list_size(uint8_t *per_adv_list_size);
 
 
 #if MYNEWT_VAL(BLE_AOA_AOD)
-int ble_gap_set_connless_cte_transmit_params(uint8_t instance, const struct ble_gap_periodic_adv_cte_params *params);
 
+/**
+ * Set connectionless Constant Tone Extension (CTE) transmission parameters.
+ *
+ * @param instance           Periodic advertising instance ID.
+ * @param params             Pointer to the CTE transmission parameters.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
+int ble_gap_set_connless_cte_transmit_params(uint8_t instance, 
+                                             const struct ble_gap_periodic_adv_cte_params *params);
+
+/**
+ * Enable or disable connectionless CTE transmission.
+ *
+ * @param instance           Periodic advertising instance ID.
+ * @param cte_enable         0x00 to disable, 0x01 to enable CTE transmission.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
 int ble_gap_set_connless_cte_transmit_enable(uint8_t instance, uint8_t cte_enable);
 
+/**
+ * Enable or disable connectionless IQ sampling for periodic advertising.
+ *
+ * @param sync_handle        Sync handle identifying the periodic advertiser.
+ * @param sampling_enable    0x00 to disable, 0x01 to enable IQ sampling.
+ * @param max_sampled_ctes   Maximum number of sampled CTEs.
+ * @param cte_sampling_params Pointer to the CTE sampling parameters.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
+int ble_gap_set_connless_iq_sampling_enable(uint16_t sync_handle, uint8_t sampling_enable, 
+                                            uint8_t max_sampled_ctes,
+                                            const struct ble_gap_cte_sampling_params *cte_sampling_params);
 
-int ble_gap_set_connless_iq_sampling_enable(uint16_t sync_handle, uint8_t sampling_enable, uint8_t max_sampled_ctes,
-                                        const struct ble_gap_cte_sampling_params *cte_sampleing_params);
+/**
+ * Set connection CTE receive parameters.
+ *
+ * @param conn_handle        Connection handle.
+ * @param sampling_enable    0x00 to disable, 0x01 to enable CTE sampling.
+ * @param cte_sampling_params Pointer to the CTE sampling parameters.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
+int ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, 
+                                    const struct ble_gap_cte_sampling_params *cte_sampling_params);
 
+/**
+ * Set connection CTE transmission parameters.
+ *
+ * @param conn_handle        Connection handle.
+ * @param cte_types          Bitfield specifying supported CTE types.
+ * @param switching_pattern_len Length of the antenna switching pattern.
+ * @param antenna_ids        Pointer to the array of antenna IDs.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
+int ble_gap_set_conn_cte_transmit_param(uint16_t conn_handle, uint8_t cte_types, 
+                                        uint8_t switching_pattern_len, const uint8_t *antenna_ids);
 
-int ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, const struct ble_gap_cte_sampling_params *cte_sampleing_params);
-
-
-int ble_gap_set_conn_cte_transmit_param(uint16_t conn_handle, uint8_t cte_types, uint8_t switching_pattern_len, const uint8_t *antenna_ids);
-
-
+/**
+ * Enable or disable connection CTE request.
+ *
+ * @param conn_handle        Connection handle.
+ * @param enable             0x00 to disable, 0x01 to enable CTE request.
+ * @param cte_request_interval Interval between CTE requests in connection interval.
+ * @param requested_cte_length Requested CTE length in 8 µs units.
+ * @param requested_cte_type  Requested CTE type.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
 int ble_gap_conn_cte_req_enable(uint16_t conn_handle, uint8_t enable, uint16_t cte_request_interval,
                                        uint8_t requested_cte_length, uint8_t requested_cte_type);
 
-
+/**
+ * Enable or disable connection CTE response.
+ *
+ * @param conn_handle        Connection handle.
+ * @param enable             0x00 to disable, 0x01 to enable CTE response.
+ *
+ * @return                   0 on success; nonzero on failure.
+ */
 int ble_gap_conn_cte_rsp_enable(uint16_t conn_handle, uint8_t enable);
 
-int ble_gap_read_antenna_information(uint8_t *switch_sampling_rates, uint8_t *num_antennae, uint8_t *max_switch_pattern_len, uint8_t *max_cte_len);
+/**
+ * Read antenna information.
+ *
+ * @param switch_sampling_rates On success, stores the supported switching and sampling rates.
+ * @param num_antennae         On success, stores the number of antennae.
+ * @param max_switch_pattern_len On success, stores the maximum switching pattern length.
+ * @param max_cte_len          On success, stores the maximum CTE length.
+ *
+ * @return                     0 on success; nonzero on failure.
+ */
+int ble_gap_read_antenna_information(uint8_t *switch_sampling_rates, uint8_t *num_antennae, 
+                                     uint8_t *max_switch_pattern_len, uint8_t *max_cte_len);
 
 #endif // MYNEWT_VAL(BLE_AOA_AOD)
 

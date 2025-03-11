@@ -5654,11 +5654,11 @@ ble_gap_set_connless_cte_transmit_enable(uint8_t instance, uint8_t cte_enable)
 
 int 
 ble_gap_set_connless_iq_sampling_enable(uint16_t sync_handle, uint8_t sampling_enable, uint8_t max_sampled_ctes,
-                                        const struct ble_gap_cte_sampling_params *cte_sampleing_params)
+                                        const struct ble_gap_cte_sampling_params *cte_sampling_params)
 {
     uint8_t buf[sizeof(struct ble_hci_le_set_connless_iq_sampling_enable_cp) +
-            cte_sampleing_params->switching_pattern_length];
-    struct ble_hci_le_set_connless_iq_sampling_enable_cp *cmd = buf;
+            cte_sampling_params->switching_pattern_length];
+    struct ble_hci_le_set_connless_iq_sampling_enable_cp *cmd = (struct ble_hci_le_set_connless_iq_sampling_enable_cp*)buf;
     struct ble_hci_le_set_connless_iq_sampling_enable_rp rsp;
     uint8_t len = sizeof(buf);
     uint16_t opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_CONNLESS_IQ_SAMPLING_ENABLE);
@@ -5670,17 +5670,17 @@ ble_gap_set_connless_iq_sampling_enable(uint16_t sync_handle, uint8_t sampling_e
     cmd->sync_handle = htole16(sync_handle);
     cmd->sampling_enable = sampling_enable;
     cmd->max_sampled_ctes = max_sampled_ctes;
-    cmd->slot_durations = cte_sampleing_params->slot_durations;
-    cmd->switching_pattern_len = cte_sampleing_params->switching_pattern_length;
-    memcpy(cmd->antenna_ids, cte_sampleing_params->antenna_ids, cte_sampleing_params->switching_pattern_length);
+    cmd->slot_durations = cte_sampling_params->slot_durations;
+    cmd->switching_pattern_len = cte_sampling_params->switching_pattern_length;
+    memcpy(cmd->antenna_ids, cte_sampling_params->antenna_ids, cte_sampling_params->switching_pattern_length);
 
     return ble_hs_hci_cmd_tx(opcode, cmd, len, &rsp, sizeof(rsp));
 }
 
 int 
-ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, const struct ble_gap_cte_sampling_params *cte_sampleing_params)
+ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, const struct ble_gap_cte_sampling_params *cte_sampling_params)
 {
-    uint8_t buf[sizeof(struct ble_hci_le_set_conn_cte_rx_params_cp) + cte_sampleing_params->switching_pattern_length];
+    uint8_t buf[sizeof(struct ble_hci_le_set_conn_cte_rx_params_cp) + cte_sampling_params->switching_pattern_length];
     struct ble_hci_le_set_conn_cte_rx_params_cp *cmd = (void *)buf;
     struct ble_hci_le_set_conn_cte_rx_params_rp rsp;
     uint8_t len = sizeof(buf);
@@ -5694,9 +5694,9 @@ ble_gap_set_conn_cte_recv_param(uint16_t conn_handle, uint8_t sampling_enable, c
 
     cmd->conn_handle = conn_handle;
     cmd->sampling_enable = sampling_enable;
-    cmd->slot_durations = cte_sampleing_params->slot_durations;
-    cmd->switching_pattern_len = cte_sampleing_params->switching_pattern_length;
-    memcpy(cmd->antenna_ids, cte_sampleing_params->antenna_ids, cte_sampleing_params->switching_pattern_length);
+    cmd->slot_durations = cte_sampling_params->slot_durations;
+    cmd->switching_pattern_len = cte_sampling_params->switching_pattern_length;
+    memcpy(cmd->antenna_ids, cte_sampling_params->antenna_ids, cte_sampling_params->switching_pattern_length);
 
     return ble_hs_hci_cmd_tx(opcode, cmd, len, &rsp, sizeof(rsp));
 }
