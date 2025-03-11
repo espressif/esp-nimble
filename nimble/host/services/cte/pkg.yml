@@ -18,7 +18,7 @@
 #
 
 pkg.name: nimble/host/services/cte
-pkg.description: Tx Power Service adopted specification.
+pkg.description: Constant Tone Extension Service
 pkg.author: "GengYuchao <gengyuchao@espressif.com>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
