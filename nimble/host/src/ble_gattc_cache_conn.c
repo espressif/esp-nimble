@@ -1450,6 +1450,9 @@ static void ble_gattc_cache_search_all_svcs_cb(struct ble_npl_event *ev)
     if (conn == NULL) {
         return;
     }
+
+    ble_npl_event_deinit(&conn->disc_ev);
+
     op = &conn->pending_op;
     dcb = op->cb;
     SLIST_FOREACH(svc, &conn->svcs, next) {
@@ -1460,7 +1463,6 @@ static void ble_gattc_cache_search_all_svcs_cb(struct ble_npl_event *ev)
     status = BLE_HS_EDONE;
     dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
 
-    ble_npl_event_deinit(&conn->disc_ev);
     return;
 }
 
@@ -1525,6 +1527,9 @@ ble_gattc_cache_conn_search_svc_by_uuid_cb(struct ble_npl_event *ev)
     if (conn == NULL) {
         return;
     }
+
+    ble_npl_event_deinit(&conn->disc_ev);
+
     op = &conn->pending_op;
     dcb = op->cb;
     SLIST_FOREACH(svc, &conn->svcs, next) {
@@ -1534,7 +1539,7 @@ ble_gattc_cache_conn_search_svc_by_uuid_cb(struct ble_npl_event *ev)
     }
     status = BLE_HS_EDONE;
     dcb(conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
-    ble_npl_event_deinit(&conn->disc_ev);
+
     return;
 }
 
@@ -1583,6 +1588,9 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
     if (conn == NULL) {
         return;
     }
+
+    ble_npl_event_deinit(&conn->disc_ev);
+
     op = &conn->pending_op;
     dcb = op->cb;
     SLIST_FOREACH(svc, &conn->svcs, next) {
@@ -1593,7 +1601,7 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
     }
     status = BLE_HS_EDONE;
     dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
-    ble_npl_event_deinit(&conn->disc_ev);
+
     return;
 }
 int
@@ -1643,6 +1651,9 @@ ble_gattc_cache_conn_search_all_chrs_cb(struct ble_npl_event *ev)
     if (conn == NULL) {
         return;
     }
+
+    ble_npl_event_deinit(&conn->disc_ev);
+
     op = &conn->pending_op;
     dcb = op->cb;
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
@@ -1653,7 +1664,6 @@ ble_gattc_cache_conn_search_all_chrs_cb(struct ble_npl_event *ev)
     status = BLE_HS_EDONE;
     dcb(conn_handle, ble_gattc_cache_error(status, 0), &chr->chr, op->cb_arg);
 
-    ble_npl_event_deinit(&conn->disc_ev);
     return;
 }
 
@@ -1704,6 +1714,9 @@ ble_gattc_cache_conn_search_chrs_by_uuid_cb(struct ble_npl_event *ev)
     if (conn == NULL) {
         return;
     }
+
+    ble_npl_event_deinit(&conn->disc_ev);
+
     op = &conn->pending_op;
     dcb = op->cb;
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
@@ -1716,7 +1729,6 @@ ble_gattc_cache_conn_search_chrs_by_uuid_cb(struct ble_npl_event *ev)
     status = BLE_HS_EDONE;
     dcb(conn_handle, ble_gattc_cache_error(status, 0), &chr->chr, op->cb_arg);
 
-    ble_npl_event_deinit(&conn->disc_ev);
     return;
 }
 
@@ -1767,6 +1779,9 @@ ble_gattc_cache_conn_search_all_dscs_cb(struct ble_npl_event *ev)
     if (conn == NULL) {
         return;
     }
+
+    ble_npl_event_deinit(&conn->disc_ev);
+
     op = &conn->pending_op;
     dcb = op->cb;
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
@@ -1776,7 +1791,7 @@ ble_gattc_cache_conn_search_all_dscs_cb(struct ble_npl_event *ev)
     }
     status = BLE_HS_EDONE;
     dcb(conn_handle, ble_gattc_cache_error(status, 0), chr->chr.val_handle, &dsc->dsc, op->cb_arg);
-    ble_npl_event_deinit(&conn->disc_ev);
+
     return;
 }
 
