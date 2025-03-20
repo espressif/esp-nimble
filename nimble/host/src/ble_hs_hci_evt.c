@@ -518,7 +518,7 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE) {
         evt.adv_handle = 0xFF;
-        evt.sync_handle = 0xFF;
+        evt.sync_handle = 0xFFFF;
     } else {
         evt.adv_handle = ev->adv_handle;
         evt.sync_handle = ev->sync_handle;
