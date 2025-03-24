@@ -391,8 +391,12 @@ ble_svc_ans_new_alert_notify(uint8_t cat_id, const char * info_str)
             memcpy(&ble_svc_ans_new_alert_val[2], info_str, info_str_len);
         }
     }
+#if NIMBLE_BLE_CONNECT
     return ble_gatts_notify(ble_svc_ans_conn_handle,
                             ble_svc_ans_new_alert_val_handle);
+#else
+    return 0;
+#endif
 }
 
 /**
@@ -408,8 +412,12 @@ ble_svc_ans_unr_alert_notify(uint8_t cat_id)
 {
     ble_svc_ans_unr_alert_stat[0] = cat_id;
     ble_svc_ans_unr_alert_stat[1] = ble_svc_ans_unr_alert_cnt[cat_id];
+#if NIMBLE_BLE_CONNECT
     return ble_gatts_notify(ble_svc_ans_conn_handle,
                             ble_svc_ans_unr_alert_val_handle);
+#else
+    return 0;
+#endif
 }
 
 /**
