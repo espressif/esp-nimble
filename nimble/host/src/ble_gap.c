@@ -1970,6 +1970,7 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
                                                           &ble_conn_reattempt.periodic_params,
                                                           ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
                 if (rc != 0) {
+                    ble_hs_unlock();
                     return;
                 }
             }
