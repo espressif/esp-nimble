@@ -2826,6 +2826,9 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
     } else {
         if ((conn != NULL) && (ev->status == 0)) {
             conn->supported_feat = get_le32(ev->features);
+        }
+
+	if (conn != NULL) {
             ble_gap_event_connect_call(ev->conn_handle, ev->status);
             slave_conn[ev->conn_handle] = 1;
         }
