@@ -3029,13 +3029,12 @@ ble_sm_enc_initiate(uint16_t conn_handle, uint8_t key_size,
 }
 
 static int
-ble_sm_rx(struct ble_l2cap_chan *chan)
+ble_sm_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 {
     struct ble_sm_result res;
     ble_sm_rx_fn *rx_cb;
     uint8_t op;
     uint16_t conn_handle;
-    struct os_mbuf **om;
     int rc;
 
     STATS_INC(ble_l2cap_stats, sm_rx);
@@ -3044,9 +3043,6 @@ ble_sm_rx(struct ble_l2cap_chan *chan)
     if (conn_handle == BLE_HS_CONN_HANDLE_NONE) {
         return BLE_HS_ENOTCONN;
     }
-
-    om = &chan->rx_buf;
-    BLE_HS_DBG_ASSERT(*om != NULL);
 
     rc = os_mbuf_copydata(*om, 0, 1, &op);
     if (rc != 0) {
@@ -3335,7 +3331,7 @@ ble_sm_deinit(void)
  * simple
  */
 static int
-ble_sm_rx(struct ble_l2cap_chan *chan)
+ble_sm_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 {
     struct ble_sm_pair_fail *cmd;
     struct os_mbuf *txom;
