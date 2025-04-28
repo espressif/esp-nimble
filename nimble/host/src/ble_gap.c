@@ -8303,14 +8303,23 @@ int
 ble_gap_repeat_pairing_event(const struct ble_gap_repeat_pairing *rp)
 {
 #if NIMBLE_BLE_SM && NIMBLE_BLE_CONNECT
-    struct ble_gap_event event;
-    int rc;
+   int rc;
 
+#if MYNEWT_VAL(BLE_HANDLE_REPEAT_PAIRING_DELETION)
+    /* Delete pairing internally instead of expecting host to do so */
+    struct ble_gap_conn_desc desc;
+    rc = ble_gap_conn_find(rp->conn_handle, &desc);
+    assert(rc == 0);
+    ble_store_util_delete_peer(&desc.peer_id_addr);
+    return BLE_GAP_REPEAT_PAIRING_RETRY;
+#else
+    struct ble_gap_event event;
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_REPEAT_PAIRING;
     event.repeat_pairing = *rp;
     rc = ble_gap_call_conn_event_cb(&event, rp->conn_handle);
     return rc;
+#endif
 #else
     return 0;
 #endif
