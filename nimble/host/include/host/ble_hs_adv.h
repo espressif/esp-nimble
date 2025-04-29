@@ -233,6 +233,9 @@ int ble_hs_adv_parse_fields(struct ble_hs_adv_fields *adv_fields,
 int ble_hs_adv_parse(const uint8_t *data, uint8_t length,
                      ble_hs_adv_parse_func_t func, void *user_data);
 
+int ble_hs_adv_find_field(uint8_t type, const uint8_t *data, uint8_t length,
+                          const struct ble_hs_adv_field **out);
+
 #ifdef __cplusplus
 }
 #endif
