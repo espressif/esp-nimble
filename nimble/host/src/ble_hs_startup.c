@@ -238,7 +238,6 @@ ble_hs_startup_read_bd_addr(void)
     }
 
     ble_hs_id_set_pub(rsp.addr);
-
     return 0;
 }
 
@@ -385,7 +384,6 @@ ble_hs_startup_le_set_evmask_tx(void)
     }
 #endif
 
-<<<<<<< HEAD
 #if MYNEWT_VAL(BLE_ISO)
     if (version >= BLE_HCI_VER_BCS_5_2) {
         /**

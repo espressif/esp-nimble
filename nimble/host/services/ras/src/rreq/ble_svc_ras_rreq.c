@@ -31,5 +31,3 @@ enum ble_ras_rreq_cp_state {
 
 /** @brief UUID of the Ranging Data Overwritten Characteristic. **/
 #define BLE_UUID_RAS_RD_OVERWRITTEN_VAL (0x2C19)
-
-
