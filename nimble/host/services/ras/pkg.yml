@@ -17,8 +17,8 @@
 # under the License.
 #
 
-pkg.name: nimble/host/services/bas
-pkg.description: Battery Service
+pkg.name: nimble/host/services/ras
+pkg.description: Ranging Service
 pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
 pkg.homepage: "http://mynewt.apache.org/"
 pkg.keywords:
@@ -31,4 +31,4 @@ pkg.deps:
     - nimble/host
 
 pkg.init:
-    ble_svc_hid_init: 'MYNEWT_VAL(BLE_SVC_HID_SYSINIT_STAGE)'
+    ble_svc_ras_init: 'MYNEWT_VAL(BLE_SVC_RAS_SYSINIT_STAGE)'

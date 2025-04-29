@@ -3046,7 +3046,7 @@ ble_att_svr_rx_notify_multi(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
             BLE_HS_LOG_ERROR("attr length (%d) > max (%d)",
                              attr_len, BLE_ATT_ATTR_MAX_LEN);
             rc = BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-            goto done;
+	    goto done;
         }
 
         tmp = os_msys_get_pkthdr(attr_len, 0);

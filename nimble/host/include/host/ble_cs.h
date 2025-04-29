@@ -22,18 +22,14 @@
 #ifndef H_BLE_CS_
 #define H_BLE_CS_
 #include "syscfg/syscfg.h"
+#include "host/ble_hs.h"
+#include "nimble/hci_common.h"
 
 #define BLE_CS_EVENT_CS_PROCEDURE_COMPLETE (0)
 #define BLE_CS_EVENT_CS_PROCEDURE_ENABLE_COMPLETE (1)
 #define BLE_CS_EVENT_SUBEVET_RESULT (2)
 #define BLE_CS_EVENT_SUBEVET_RESULT_CONTINUE (3)
 
-struct cs_step_data {
-    uint8_t mode;
-    uint8_t channel;
-    uint8_t data_len;
-    uint8_t data[];
-} __attribute__((packed));
 struct ble_cs_event {
     uint8_t type;
     union
@@ -56,7 +52,7 @@ struct ble_cs_event {
             uint8_t abort_reason;
             uint8_t num_antenna_paths;
             uint8_t num_steps_reported;
-            struct cs_step_data steps[];
+            const struct cs_steps_data *steps;
         }subev_result;
         struct
         {
@@ -67,7 +63,7 @@ struct ble_cs_event {
             uint8_t abort_reason;
             uint8_t num_antenna_paths;
             uint8_t num_steps_reported;
-            struct cs_step_data steps[];
+            const struct cs_steps_data *steps;
         }subev_result_continue;
 
     };

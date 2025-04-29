@@ -172,7 +172,6 @@ ble_hs_startup_read_bd_addr(void)
     }
 
     ble_hs_id_set_pub(rsp.addr);
-
     return 0;
 }
 

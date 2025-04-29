@@ -1153,7 +1153,7 @@ struct ble_hci_le_iso_test_end_cp {
 #define BLE_HCI_OCF_LE_SET_HOST_FEAT                     (0x0074)
 struct ble_hci_le_set_host_feat_cp {
     uint8_t bit_num;
-    uint8_t val;
+    uint8_t bit_val;
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_ENH_READ_TRANSMIT_POWER_LEVEL     (0x0076)
@@ -1376,7 +1376,7 @@ struct ble_hci_le_cs_create_config_cp {
     uint8_t channel_selection_type;
     uint8_t ch3c_shape;
     uint8_t ch3c_jump;
-    uint8_t companion_signal_enable;
+//    uint8_t companion_signal_enable;
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_CS_REMOVE_CONFIG                  (0x0091)
@@ -2484,6 +2484,7 @@ struct ble_hci_ev_le_subev_cs_proc_enable_complete {
     uint16_t event_interval;
     uint16_t procedure_interval;
     uint16_t procedure_count;
+    uint16_t max_procedure_len;
 } __attribute__((packed));
 
 #define BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT            (0x31)
