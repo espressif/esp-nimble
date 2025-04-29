@@ -4386,7 +4386,7 @@ ble_gattc_signed_write(uint16_t conn_handle, uint16_t attr_handle,
         goto err;
     }
     if (desc.sec_state.encrypted == 1) {
-        rc = BLE_HS_EENCRYPT;
+	rc = BLE_HS_EENCRYPT;
         goto err;
     }
 
