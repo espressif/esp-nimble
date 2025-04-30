@@ -27,6 +27,7 @@
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
 
+#if MYNEWT_VAL(BLE_GATTS)
 static uint8_t perm_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE ;
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
@@ -3337,3 +3338,5 @@ ble_gatts_init(void)
 
     return 0;
 }
+
+#endif 

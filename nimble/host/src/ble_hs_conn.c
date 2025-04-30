@@ -45,9 +45,15 @@ ble_hs_conn_can_alloc(void)
     return 0;
 #endif
 
-    return ble_hs_conn_pool.mp_num_free >= 1 &&
-           ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS &&
-           ble_gatts_conn_can_alloc();
+#if MYNEWT_VAL(BLE_GATTS) 
+   return ble_hs_conn_pool.mp_num_free >= 1 &&
+          ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS &&
+          ble_gatts_conn_can_alloc();
+#else
+   return ble_hs_conn_pool.mp_num_free >= 1 &&
+          ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS;
+#endif
+	   
 }
 
 struct ble_l2cap_chan *
@@ -187,11 +193,12 @@ ble_hs_conn_alloc(uint16_t conn_handle)
     if (rc != 0) {
         goto err;
     }
-
+#if MYNEWT_VAL(BLE_GATTS)
     rc = ble_gatts_conn_init(&conn->bhc_gatt_svr);
     if (rc != 0) {
         goto err;
     }
+#endif
 
     STAILQ_INIT(&conn->bhc_tx_q);
     STAILQ_INIT(&conn->att_tx_q);
@@ -245,7 +252,9 @@ ble_hs_conn_free(struct ble_hs_conn *conn)
         return;
     }
 
+#if MYNEWT_VAL(BLE_GATTS)
     ble_att_svr_prep_clear(&conn->bhc_att_svr.basc_prep_list);
+#endif
 
     while ((chan = SLIST_FIRST(&conn->bhc_channels)) != NULL) {
         ble_hs_conn_delete_chan(conn, chan);
@@ -543,7 +552,7 @@ ble_hs_conn_timer(void)
             }
 #endif
 
-#if BLE_HS_ATT_SVR_QUEUED_WRITE_TMO
+#if BLE_HS_ATT_SVR_QUEUED_WRITE_TMO && MYNEWT_VAL(BLE_GATTS)
             /* Check each connection's rx queued write timer.  If too much
              * time passes after a prep write is received, the queue is
              * cleared.

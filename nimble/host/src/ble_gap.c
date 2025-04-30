@@ -1199,8 +1199,12 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
 
         ble_l2cap_sig_conn_broken(conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
         ble_sm_connection_broken(conn_handle);
-        ble_gatts_connection_broken(conn_handle);
-        ble_gattc_connection_broken(conn_handle);
+#if MYNEWT_VAL(BLE_GATTS)
+	ble_gatts_connection_broken(conn_handle);
+#endif
+#if MYNEWT_VAL(BLE_GATTC)
+	ble_gattc_connection_broken(conn_handle);
+#endif
         ble_hs_flow_connection_broken(conn_handle);;
 
         rc = ble_hs_atomic_conn_delete(conn_handle);
@@ -1583,8 +1587,14 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
      */
     ble_l2cap_sig_conn_broken(conn_handle, reason);
     ble_sm_connection_broken(conn_handle);
+#if MYNEWT_VAL(BLE_GATTS)
     ble_gatts_connection_broken(conn_handle);
+#endif
+
+#if MYNEWT_VAL(BLE_GATTC)
     ble_gattc_connection_broken(conn_handle);
+#endif
+
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     ble_gattc_cache_conn_broken(conn_handle);
 #endif
@@ -8484,6 +8494,7 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
     /* If encryption succeeded and encryption has been restored for bonded device,
      * notify gatt server so it has chance to send notification/indication if needed.
      */
+#if MYNEWT_VAL(BLE_GATTS)
     if (security_restored) {
         ble_gatts_bonding_restored(conn_handle);
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -8491,17 +8502,22 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
 #endif
         return;
     }
+#endif
 
     /* If this is fresh pairing and bonding has been established,
      * notify gatt server about that so previous subscriptions (before bonding)
      * can be stored.
      */
+#if MYNEWT_VAL(BLE_GATTS)
     if (bonded) {
         ble_gatts_bonding_established(conn_handle);
 #if MYNEWT_VAL(BLE_GATT_CACHING)
         ble_gattc_cache_conn_bonding_established(conn_handle);
 #endif
     }
+
+#endif
+
 #endif
 }
 
