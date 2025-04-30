@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "services/ias/ble_svc_ias.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_IAS_SERVICE
 /* Callback function */
 static ble_svc_ias_event_fn *ble_svc_ias_cb_fn;
 
@@ -147,3 +148,4 @@ ble_svc_ias_init(void)
     rc = ble_gatts_add_svcs(ble_svc_ias_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

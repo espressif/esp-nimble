@@ -25,6 +25,8 @@
 #include "services/gap/ble_svc_gap.h"
 #include "os/endian.h"
 
+#if MYNEWT_VAL(BLE_GATTS)
+
 #define PPCP_ENABLED \
     MYNEWT_VAL(BLE_ROLE_PERIPHERAL) && \
     (MYNEWT_VAL(BLE_SVC_GAP_PPCP_MIN_CONN_INTERVAL) || \
@@ -399,3 +401,4 @@ ble_svc_gap_deinit(void)
 {
     ble_gatts_free_svcs();
 }
+#endif

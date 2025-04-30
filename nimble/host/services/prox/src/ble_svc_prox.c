@@ -13,6 +13,7 @@
 #include "host/ble_gap.h"
 #include "services/prox/ble_svc_prox.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_PROX_SERVICE
 /* Characteristic values */
 static uint8_t ble_svc_prox_link_loss_alert;
 static int8_t ble_svc_prox_alert;
@@ -261,3 +262,4 @@ ble_svc_prox_init(void)
         ble_svc_prox_alert_conn[i] = false;
     }
 }
+#endif

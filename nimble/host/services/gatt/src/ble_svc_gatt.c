@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "services/gatt/ble_svc_gatt.h"
 
+#if MYNEWT_VAL(BLE_GATTS)
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 static uint16_t ble_svc_gatt_db_hash_handle;
 static uint16_t ble_svc_gatt_client_supp_feature_handle;
@@ -255,3 +256,4 @@ ble_svc_gatt_deinit(void)
 {
     ble_gatts_free_svcs();
 }
+#endif
