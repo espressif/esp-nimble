@@ -26,6 +26,7 @@
 #include "host/ble_gap.h"
 #include "services/bas/ble_svc_bas.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_BAS_SERVICE
 /* Characteristic value handles */
 #if MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_NOTIFY_ENABLE) > 0
 static uint16_t ble_svc_bas_battery_handle;
@@ -125,3 +126,4 @@ ble_svc_bas_init(void)
     rc = ble_gatts_add_svcs(ble_svc_bas_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

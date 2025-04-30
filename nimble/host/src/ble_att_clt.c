@@ -32,6 +32,7 @@
 #endif
 
 #if NIMBLE_BLE_CONNECT
+#if MYNEWT_VAL(BLE_GATTC)
 /*****************************************************************************
  * $error response                                                           *
  *****************************************************************************/
@@ -1001,6 +1002,8 @@ ble_att_clt_rx_exec_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **r
     return 0;
 }
 
+#endif
+
 /*****************************************************************************
  * $handle value notification                                                *
  *****************************************************************************/
@@ -1079,6 +1082,7 @@ err:
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 int
 ble_att_clt_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
@@ -1123,4 +1127,5 @@ err:
     return rc;
 }
 
+#endif
 #endif

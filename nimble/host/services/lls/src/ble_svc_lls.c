@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "services/lls/ble_svc_lls.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_LLS_SERVICE
 /* Callback function */
 static ble_svc_lls_event_fn *ble_svc_lls_cb_fn;
 
@@ -192,3 +193,4 @@ ble_svc_lls_init(void)
     rc = ble_gatts_add_svcs(ble_svc_lls_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

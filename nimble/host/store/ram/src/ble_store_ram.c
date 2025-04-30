@@ -27,7 +27,6 @@
  * use the store/config package. For a RAM-only BLE store,
  * use store/config and set BLE_STORE_CONFIG_PERSIST to 0.
  */
-
 #include <inttypes.h>
 #include <string.h>
 
@@ -36,6 +35,7 @@
 #include "host/ble_hs.h"
 #include "store/ram/ble_store_ram.h"
 
+#if !MYNEWT_VAL(BLE_USED_IN_IDF)
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 static struct ble_store_value_sec
     ble_store_ram_our_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
@@ -807,3 +807,4 @@ ble_store_ram_init(void)
     ble_store_ram_num_eads = 0;
 #endif
 }
+#endif //Not used in IDF

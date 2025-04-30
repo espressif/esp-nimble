@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "services/dis/ble_svc_dis.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_DIS_SERVICE
 /* Device information */
 struct ble_svc_dis_data ble_svc_dis_data = {
     .model_number      = MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_DEFAULT),
@@ -412,3 +413,4 @@ ble_svc_dis_init(void)
     rc = ble_gatts_add_svcs(ble_svc_dis_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

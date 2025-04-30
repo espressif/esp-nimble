@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "services/sps/ble_svc_sps.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_SPS_SERVICE
 static uint16_t ble_scan_itvl;
 static uint16_t ble_scan_window;
 static uint8_t ble_scan_refresh;
@@ -147,3 +148,4 @@ ble_svc_sps_init(uint16_t scan_itvl, uint16_t scan_window)
     rc = ble_gatts_add_svcs(ble_svc_sps_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

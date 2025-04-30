@@ -66,6 +66,7 @@
 #endif
 #if NIMBLE_BLE_CONNECT
 
+#if MYNEWT_VAL(BLE_GATTC)
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
@@ -74,6 +75,7 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
+#endif
 /*****************************************************************************
  * $definitions / declarations                                               *
  *****************************************************************************/
@@ -85,6 +87,7 @@
 #define BLE_GATTC_UNRESPONSIVE_TIMEOUT_MS       30000 /* ms */
 
 #define BLE_GATT_OP_NONE                        UINT8_MAX
+
 #define BLE_GATT_OP_MTU                         0
 #define BLE_GATT_OP_DISC_ALL_SVCS               1
 #define BLE_GATT_OP_DISC_SVC_UUID               2
@@ -231,6 +234,7 @@ struct ble_gattc_proc {
     };
 };
 
+
 #if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
 static struct ble_gattc_proc_list temp_proc_list;
 #endif
@@ -242,6 +246,8 @@ STAILQ_HEAD(ble_gattc_proc_list, ble_gattc_proc);
  */
 typedef void ble_gattc_err_fn(struct ble_gattc_proc *proc, int status,
                               uint16_t att_handle);
+
+#if MYNEWT_VAL(BLE_GATTC)
 static ble_gattc_err_fn ble_gattc_mtu_err;
 static ble_gattc_err_fn ble_gattc_disc_all_svcs_err;
 static ble_gattc_err_fn ble_gattc_disc_svc_uuid_err;
@@ -257,9 +263,14 @@ static ble_gattc_err_fn ble_gattc_read_mult_var_err;
 static ble_gattc_err_fn ble_gattc_write_err;
 static ble_gattc_err_fn ble_gattc_write_long_err;
 static ble_gattc_err_fn ble_gattc_write_reliable_err;
+#endif
+
+#if MYNEWT_VAL(BLE_GATTS)
 static ble_gattc_err_fn ble_gatts_indicate_err;
+#endif
 
 static ble_gattc_err_fn * const ble_gattc_err_dispatch[BLE_GATT_OP_CNT] = {
+#if MYNEWT_VAL(BLE_GATTC)
     [BLE_GATT_OP_MTU]               = ble_gattc_mtu_err,
     [BLE_GATT_OP_DISC_ALL_SVCS]     = ble_gattc_disc_all_svcs_err,
     [BLE_GATT_OP_DISC_SVC_UUID]     = ble_gattc_disc_svc_uuid_err,
@@ -275,9 +286,13 @@ static ble_gattc_err_fn * const ble_gattc_err_dispatch[BLE_GATT_OP_CNT] = {
     [BLE_GATT_OP_WRITE]             = ble_gattc_write_err,
     [BLE_GATT_OP_WRITE_LONG]        = ble_gattc_write_long_err,
     [BLE_GATT_OP_WRITE_RELIABLE]    = ble_gattc_write_reliable_err,
+#endif
+#if MYNEWT_VAL(BLE_GATTS)
     [BLE_GATT_OP_INDICATE]          = ble_gatts_indicate_err,
+#endif
 };
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Resume functions - these handle periodic retries of procedures that have
  * stalled due to memory exhaustion.
@@ -435,6 +450,7 @@ static const struct ble_gattc_rx_exec_entry {
     { BLE_GATT_OP_WRITE_RELIABLE,   ble_gattc_write_reliable_rx_exec },
 };
 
+#endif
 static os_membuf_t ble_gattc_proc_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_GATT_MAX_PROCS),
                     sizeof (struct ble_gattc_proc))
@@ -445,6 +461,7 @@ static struct os_mempool ble_gattc_proc_pool;
 /* The list of active GATT client procedures. */
 static struct ble_gattc_proc_list ble_gattc_procs;
 
+#if MYNEWT_VAL(BLE_GATTC)
 /* The time when we should attempt to resume stalled procedures, in OS ticks.
  * A value of 0 indicates no stalled procedures.
  */
@@ -497,6 +514,7 @@ STATS_NAME_END(ble_gattc_stats)
 /*****************************************************************************
  * $debug                                                                    *
  *****************************************************************************/
+#endif
 
 static void
 ble_gattc_dbg_assert_proc_not_inserted(struct ble_gattc_proc *proc)
@@ -514,6 +532,7 @@ ble_gattc_dbg_assert_proc_not_inserted(struct ble_gattc_proc *proc)
 #endif
 }
 
+
 /*****************************************************************************
  * $log                                                                      *
  *****************************************************************************/
@@ -524,6 +543,7 @@ ble_gattc_log_proc_init(const char *name)
     BLE_HS_LOG(INFO, "GATT procedure initiated: %s", name);
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_log_uuid(const ble_uuid_t *uuid)
 {
@@ -662,6 +682,7 @@ ble_gattc_log_write_reliable(struct ble_gattc_proc *proc)
     }
     BLE_HS_LOG(INFO, "\n");
 }
+#endif
 
 static void
 ble_gattc_log_notify(uint16_t att_handle)
@@ -670,6 +691,8 @@ ble_gattc_log_notify(uint16_t att_handle)
     BLE_HS_LOG(INFO, "att_handle=%d\n", att_handle);
 }
 
+
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_log_multi_notify(struct ble_gatt_notif * tuples, uint16_t num)
 {
@@ -679,6 +702,7 @@ ble_gattc_log_multi_notify(struct ble_gatt_notif * tuples, uint16_t num)
     }
 }
 
+#endif
 static void
 ble_gattc_log_indicate(uint16_t att_handle)
 {
@@ -686,6 +710,7 @@ ble_gattc_log_indicate(uint16_t att_handle)
     BLE_HS_LOG(INFO, "att_handle=%d\n", att_handle);
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /*****************************************************************************
  * $rx entry                                                                 *
  *****************************************************************************/
@@ -714,7 +739,7 @@ ble_gattc_rx_entry_find(uint8_t op, const void *rx_entries, int num_entries)
 /*****************************************************************************
  * $proc                                                                    *
  *****************************************************************************/
-
+#endif
 /**
  * Allocates a proc entry.
  *
@@ -732,6 +757,7 @@ ble_gattc_proc_alloc(void)
 
     return proc;
 }
+
 
 static void
 ble_gattc_proc_prepare(struct ble_gattc_proc *proc, uint16_t conn_handle, uint8_t op)
@@ -803,6 +829,7 @@ ble_gattc_proc_set_exp_timer(struct ble_gattc_proc *proc)
                          ble_npl_time_ms_to_ticks32(BLE_GATTC_UNRESPONSIVE_TIMEOUT_MS);
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_proc_set_resume_timer(struct ble_gattc_proc *proc)
 {
@@ -821,6 +848,8 @@ ble_gattc_proc_set_resume_timer(struct ble_gattc_proc *proc)
         }
     }
 }
+
+#endif
 
 static void
 ble_gattc_process_status(struct ble_gattc_proc *proc, int status)
@@ -841,6 +870,7 @@ ble_gattc_process_status(struct ble_gattc_proc *proc, int status)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Processes the return code that results from an attempt to resume a
  * procedure.  If the resume attempt failed due to memory exhaustion at a lower
@@ -866,6 +896,7 @@ ble_gattc_process_resume_status(struct ble_gattc_proc *proc, int status)
 /*****************************************************************************
  * $util                                                                     *
  *****************************************************************************/
+#endif
 
 /**
  * Retrieves the error dispatch entry with the specified op code.
@@ -877,6 +908,7 @@ ble_gattc_err_dispatch_get(uint8_t op)
     return ble_gattc_err_dispatch[op];
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Retrieves the error dispatch entry with the specified op code.
  */
@@ -894,6 +926,7 @@ ble_gattc_tmo_dispatch_get(uint8_t op)
     return ble_gattc_tmo_dispatch[op];
 }
 
+#endif
 typedef int ble_gattc_match_fn(struct ble_gattc_proc *proc, void *arg);
 
 struct ble_gattc_criteria_conn_op {
@@ -930,6 +963,7 @@ ble_gattc_proc_matches_conn_op(struct ble_gattc_proc *proc, void *arg)
     return 1;
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static int
 ble_gattc_proc_matches_conn_cid_op(struct ble_gattc_proc *proc, void *arg)
 {
@@ -1008,6 +1042,8 @@ ble_gattc_proc_matches_conn_rx_entry(struct ble_gattc_proc *proc, void *arg)
     return (criteria->matching_rx_entry != NULL);
 }
 
+#endif
+
 static void
 ble_gattc_extract(ble_gattc_match_fn *cb, void *arg, int max_procs,
                   struct ble_gattc_proc_list *dst_list)
@@ -1080,6 +1116,7 @@ ble_gattc_extract(ble_gattc_match_fn *cb, void *arg, int max_procs,
     ble_hs_unlock();
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static struct ble_gattc_proc *
 ble_gattc_extract_one(ble_gattc_match_fn *cb, void *arg)
 {
@@ -1088,6 +1125,8 @@ ble_gattc_extract_one(ble_gattc_match_fn *cb, void *arg)
     ble_gattc_extract(cb, arg, 1, &dst_list);
     return STAILQ_FIRST(&dst_list);
 }
+
+#endif
 
 static void
 ble_gattc_extract_by_conn_op(uint16_t conn_handle, uint8_t op, int max_procs,
@@ -1101,6 +1140,8 @@ ble_gattc_extract_by_conn_op(uint16_t conn_handle, uint8_t op, int max_procs,
     ble_gattc_extract(ble_gattc_proc_matches_conn_op, &criteria, max_procs, dst_list);
 }
 
+
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_extract_by_conn_cid_op(uint16_t conn_handle, uint16_t psm, uint8_t op,
                                  int max_procs,
@@ -1195,7 +1236,7 @@ ble_gattc_extract_with_rx_entry(uint16_t conn_handle, uint16_t cid,
         (conn_handle), (cid), (rx_entries),                                   \
         sizeof (rx_entries) / sizeof (rx_entries)[0],                         \
         (const void **)(out_rx_entry))
-
+#endif
 
 /**
  * Causes all GATT procedures matching the specified criteria to fail with the
@@ -1225,6 +1266,7 @@ ble_gattc_fail_procs(uint16_t conn_handle, uint8_t op, int status)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_resume_procs(void)
 {
@@ -5008,6 +5050,8 @@ static int ble_gatts_check_conn_aware(uint16_t conn_handle, bool *aware) {
 }
 #endif
 
+#endif
+
 int
 ble_gatts_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
                         struct os_mbuf *txom)
@@ -5074,6 +5118,7 @@ done:
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 int
 ble_gatts_notify_multiple_custom(uint16_t conn_handle,
                                  size_t chr_count,
@@ -5195,6 +5240,7 @@ ble_gattc_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 {
     return ble_gatts_notify_custom(conn_handle, chr_val_handle, txom);
 }
+#endif
 
 int
 ble_gatts_notify(uint16_t conn_handle, uint16_t chr_val_handle)
@@ -5210,6 +5256,7 @@ ble_gatts_notify(uint16_t conn_handle, uint16_t chr_val_handle)
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Deprecated. Should not be used. Use ble_gatts_notify instead.
  */
@@ -5219,10 +5266,12 @@ ble_gattc_notify(uint16_t conn_handle, uint16_t chr_val_handle)
     return ble_gatts_notify(conn_handle, chr_val_handle);
 }
 
+#endif
+
 /*****************************************************************************
  * $indicate                                                                 *
  *****************************************************************************/
-
+#if MYNEWT_VAL(BLE_GATTS)
 /**
  * Handles an incoming ATT error response for the specified indication proc.
  * A device should never send an error in response to an indication.  If this
@@ -5252,7 +5301,9 @@ ble_gatts_indicate_err(struct ble_gattc_proc *proc, int status,
     /* Send the next indication if one is pending. */
     ble_gatts_send_next_indicate(proc->conn_handle);
 }
+#endif
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gatts_indicate_tmo(struct ble_gattc_proc *proc)
 {
@@ -5270,23 +5321,27 @@ ble_gatts_indicate_tmo(struct ble_gattc_proc *proc)
 static void
 ble_gatts_indicate_rx_rsp(struct ble_gattc_proc *proc)
 {
-    int rc;
-
     ble_gattc_dbg_assert_proc_not_inserted(proc);
+#if MYNEWT_VAL(BLE_GATTS)
+    int rc;
 
     rc = ble_gatts_rx_indicate_ack(proc->conn_handle,
                                    proc->indicate.chr_val_handle);
     if (rc != 0) {
         return;
     }
+#endif
 
     /* Tell the application about the received acknowledgment. */
     ble_gap_notify_tx_event(BLE_HS_EDONE, proc->conn_handle,
                             proc->indicate.chr_val_handle, 1);
-
+#if MYNEWT_VAL(BLE_GATTS)
     /* Send the next indication if one is pending. */
     ble_gatts_send_next_indicate(proc->conn_handle);
+#endif
 }
+
+#endif
 
 /**
  * Causes the indication in progress for the specified connection (if any) to
@@ -5388,6 +5443,7 @@ done:
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Deprecated. Should not be used. Use ble_gatts_indicate_custom instead.
  */
@@ -5397,6 +5453,8 @@ ble_gattc_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 {
     return ble_gatts_indicate_custom(conn_handle, chr_val_handle, txom);
 }
+#endif
+
 
 int
 ble_gatts_indicate(uint16_t conn_handle, uint16_t chr_val_handle)
@@ -5404,6 +5462,8 @@ ble_gatts_indicate(uint16_t conn_handle, uint16_t chr_val_handle)
     return ble_gatts_indicate_custom(conn_handle, chr_val_handle, NULL);
 }
 
+
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Deprecated. Should not be used. Use ble_gatts_indicate instead.
  */
@@ -5780,6 +5840,7 @@ ble_gattc_rx_exec_write_rsp(uint16_t conn_handle, uint16_t cid, int status)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Dispatches an incoming ATT handle-value-confirmation to the appropriate
  * active GATT procedure.
@@ -5800,6 +5861,7 @@ ble_gatts_rx_indicate_rsp(uint16_t conn_handle, uint16_t cid)
         ble_gattc_process_status(proc, BLE_HS_EDONE);
     }
 }
+#endif
 
 /*****************************************************************************
  * $misc                                                                     *
@@ -5839,6 +5901,8 @@ ble_gattc_any_jobs(void)
 {
     return !STAILQ_EMPTY(&ble_gattc_procs);
 }
+
+#endif
 
 int
 ble_gattc_init(void)

@@ -28,7 +28,7 @@
 #include "time.h"
 #include <sys/time.h>
 
-
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_CTS_SERVICE
 struct ble_svc_cts_cfg cts_cfg = {0};
 
 /* characteristic values */
@@ -277,3 +277,4 @@ ble_svc_cts_init(struct ble_svc_cts_cfg cfg)
     rc = ble_gatts_add_svcs(ble_svc_cts_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

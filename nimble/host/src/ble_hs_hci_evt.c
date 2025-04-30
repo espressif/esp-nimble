@@ -285,8 +285,12 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 
 	    ble_l2cap_sig_conn_broken(ev->conn_handle, BLE_ERR_CONN_ESTABLISHMENT);
             ble_sm_connection_broken(ev->conn_handle);
-            ble_gatts_connection_broken(ev->conn_handle);
-            ble_gattc_connection_broken(ev->conn_handle);
+#if MYNEWT_VAL(BLE_GATTS)
+	    ble_gatts_connection_broken(ev->conn_handle);
+#endif
+#if MYNEWT_VAL(BLE_GATTC)
+	    ble_gattc_connection_broken(ev->conn_handle);
+#endif
             ble_hs_flow_connection_broken(ev->conn_handle);;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
             ble_gattc_cache_conn_broken(ev->conn_handle);

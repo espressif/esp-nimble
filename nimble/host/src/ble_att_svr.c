@@ -28,6 +28,8 @@
 #include "esp_nimble_mem.h"
 
 #if NIMBLE_BLE_CONNECT
+#if MYNEWT_VAL(BLE_GATTS)
+
 /**
  * ATT server - Attribute Protocol
  *
@@ -3517,5 +3519,6 @@ ble_att_svr_security_mode_1_level()
 
     return highest_security_level;
 }
+#endif
 #endif
 #endif

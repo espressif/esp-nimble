@@ -26,6 +26,7 @@
 #include "host/ble_gap.h"
 #include "services/ans/ble_svc_ans.h"
 
+#if MYNEWT_VAL(BLE_GATTS)
 /* Max length of new alert info string */
 #define BLE_SVC_ANS_INFO_STR_MAX_LEN        18
 /* Max length of a new alert notification, max string length + 2 bytes
@@ -461,3 +462,4 @@ ble_svc_ans_init(void)
     ble_svc_ans_new_alert_cat = MYNEWT_VAL(BLE_SVC_ANS_NEW_ALERT_CAT);
     ble_svc_ans_unr_alert_cat = MYNEWT_VAL(BLE_SVC_ANS_UNR_ALERT_CAT);
 }
+#endif
