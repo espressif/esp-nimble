@@ -2853,6 +2853,11 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
 
     ble_hs_unlock();
 
+    if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
+        /* Failed for 0x3E. Reconnection will automatically happen */
+        return;
+    }
+
     if ((conn != NULL) &&  (conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
         conn->supported_feat = get_le32(ev->features);
         ble_gap_rd_rem_ver_tx(ev->conn_handle);
@@ -2880,6 +2885,11 @@ ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp 
     conn = ble_hs_conn_find(le16toh(ev->conn_handle));
 
     ble_hs_unlock();
+
+    if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
+       /* Failed for 0x3E. Reconnection will automatically happen */
+       return;
+    }
 
     conn->bhc_rd_rem_ver_params.version = ev->version;
     conn->bhc_rd_rem_ver_params.manufacturer = ev->manufacturer;
