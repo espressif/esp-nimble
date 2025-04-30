@@ -30,6 +30,7 @@
  */
 #include "../src/ble_hs_hci_priv.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_TPS_SERVICE
 int8_t ble_svc_tps_tx_power_level;
 
 /* Access function */
@@ -105,3 +106,4 @@ ble_svc_tps_init(void)
     rc = ble_gatts_add_svcs(ble_svc_tps_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

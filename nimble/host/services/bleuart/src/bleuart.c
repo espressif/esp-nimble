@@ -30,6 +30,7 @@
 #include "console/console.h"
 #include "esp_nimble_mem.h"
 
+#if MYNEWT_VAL(BLE_GATTS)
 /* ble uart attr read handle */
 uint16_t g_bleuart_attr_read_handle;
 
@@ -202,3 +203,4 @@ bleuart_init(void)
     console_buf = nimble_platform_mem_malloc(MYNEWT_VAL(BLEUART_MAX_INPUT));
     SYSINIT_PANIC_ASSERT(console_buf != NULL);
 }
+#endif

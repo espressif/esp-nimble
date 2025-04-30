@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "services/ipss/ble_svc_ipss.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_IPSS_SERVICE
 static const struct ble_gatt_svc_def ble_svc_ipss_defs[] = {
     {
         /*** Service: GATT */
@@ -49,3 +50,4 @@ ble_svc_ipss_init(void)
     rc = ble_gatts_add_svcs(ble_svc_ipss_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif

@@ -3349,3 +3349,5 @@ ble_gatts_init(void)
 
     return 0;
 }
+
+#endif 

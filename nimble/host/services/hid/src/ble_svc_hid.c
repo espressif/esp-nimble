@@ -23,7 +23,9 @@
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
 
+
 #if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
+#if MYNEWT_VAL(BLE_GATTS)
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "services/hid/ble_svc_hid.h"
@@ -711,4 +713,5 @@ ble_svc_hid_init(void)
     rc = ble_gatts_add_svcs(ble_svc_hid_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
+#endif
 #endif // CONFIG_BT_NIMBLE_HID_SERVICE

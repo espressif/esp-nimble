@@ -43,37 +43,41 @@ struct ble_att_rx_dispatch_entry {
 
 /** Dispatch table for incoming ATT commands.  Must be ordered by op code. */
 static const struct ble_att_rx_dispatch_entry ble_att_rx_dispatch[] = {
+#if MYNEWT_VAL(BLE_GATTC)
     { BLE_ATT_OP_ERROR_RSP,            ble_att_clt_rx_error },
-    { BLE_ATT_OP_MTU_REQ,              ble_att_svr_rx_mtu },
     { BLE_ATT_OP_MTU_RSP,              ble_att_clt_rx_mtu },
-    { BLE_ATT_OP_FIND_INFO_REQ,        ble_att_svr_rx_find_info },
     { BLE_ATT_OP_FIND_INFO_RSP,        ble_att_clt_rx_find_info },
-    { BLE_ATT_OP_FIND_TYPE_VALUE_REQ,  ble_att_svr_rx_find_type_value },
     { BLE_ATT_OP_FIND_TYPE_VALUE_RSP,  ble_att_clt_rx_find_type_value },
-    { BLE_ATT_OP_READ_TYPE_REQ,        ble_att_svr_rx_read_type },
     { BLE_ATT_OP_READ_TYPE_RSP,        ble_att_clt_rx_read_type },
-    { BLE_ATT_OP_READ_REQ,             ble_att_svr_rx_read },
     { BLE_ATT_OP_READ_RSP,             ble_att_clt_rx_read },
-    { BLE_ATT_OP_READ_BLOB_REQ,        ble_att_svr_rx_read_blob },
     { BLE_ATT_OP_READ_BLOB_RSP,        ble_att_clt_rx_read_blob },
-    { BLE_ATT_OP_READ_MULT_REQ,        ble_att_svr_rx_read_mult },
     { BLE_ATT_OP_READ_MULT_RSP,        ble_att_clt_rx_read_mult },
-    { BLE_ATT_OP_READ_GROUP_TYPE_REQ,  ble_att_svr_rx_read_group_type },
     { BLE_ATT_OP_READ_GROUP_TYPE_RSP,  ble_att_clt_rx_read_group_type },
-    { BLE_ATT_OP_WRITE_REQ,            ble_att_svr_rx_write },
     { BLE_ATT_OP_WRITE_RSP,            ble_att_clt_rx_write },
-    { BLE_ATT_OP_PREP_WRITE_REQ,       ble_att_svr_rx_prep_write },
     { BLE_ATT_OP_PREP_WRITE_RSP,       ble_att_clt_rx_prep_write },
-    { BLE_ATT_OP_EXEC_WRITE_REQ,       ble_att_svr_rx_exec_write },
     { BLE_ATT_OP_EXEC_WRITE_RSP,       ble_att_clt_rx_exec_write },
+    { BLE_ATT_OP_INDICATE_RSP,         ble_att_clt_rx_indicate },
+    { BLE_ATT_OP_READ_MULT_VAR_RSP,    ble_att_clt_rx_read_mult_var },
+#endif
+#if MYNEWT_VAL(BLE_GATTS)
+    { BLE_ATT_OP_MTU_REQ,              ble_att_svr_rx_mtu },
+    { BLE_ATT_OP_FIND_INFO_REQ,        ble_att_svr_rx_find_info },
+    { BLE_ATT_OP_FIND_TYPE_VALUE_REQ,  ble_att_svr_rx_find_type_value },
+    { BLE_ATT_OP_READ_TYPE_REQ,        ble_att_svr_rx_read_type },
+    { BLE_ATT_OP_READ_REQ,             ble_att_svr_rx_read },
+    { BLE_ATT_OP_READ_BLOB_REQ,        ble_att_svr_rx_read_blob },
+    { BLE_ATT_OP_READ_MULT_REQ,        ble_att_svr_rx_read_mult },
+    { BLE_ATT_OP_READ_GROUP_TYPE_REQ,  ble_att_svr_rx_read_group_type },
+    { BLE_ATT_OP_WRITE_REQ,            ble_att_svr_rx_write },
+    { BLE_ATT_OP_PREP_WRITE_REQ,       ble_att_svr_rx_prep_write },
+    { BLE_ATT_OP_EXEC_WRITE_REQ,       ble_att_svr_rx_exec_write },
     { BLE_ATT_OP_NOTIFY_REQ,           ble_att_svr_rx_notify },
     { BLE_ATT_OP_INDICATE_REQ,         ble_att_svr_rx_indicate },
-    { BLE_ATT_OP_INDICATE_RSP,         ble_att_clt_rx_indicate },
     { BLE_ATT_OP_READ_MULT_VAR_REQ,    ble_att_svr_rx_read_mult_var },
-    { BLE_ATT_OP_READ_MULT_VAR_RSP,    ble_att_clt_rx_read_mult_var },
     { BLE_ATT_OP_NOTIFY_MULTI_REQ,     ble_att_svr_rx_notify_multi },
     { BLE_ATT_OP_WRITE_CMD,            ble_att_svr_rx_write_no_rsp },
     { BLE_ATT_OP_SIGNED_WRITE_CMD,     ble_att_svr_rx_signed_write },
+#endif
 };
 
 #define BLE_ATT_RX_DISPATCH_SZ \
@@ -149,10 +153,6 @@ ble_att_rx_dispatch_entry_find(uint8_t op)
         entry = ble_att_rx_dispatch + i;
         if (entry->bde_op == op) {
             return entry;
-        }
-
-        if (entry->bde_op > op) {
-            break;
         }
     }
 
@@ -508,10 +508,11 @@ ble_att_rx_handle_unknown_request(uint8_t op, uint16_t conn_handle,
     if (op & 0x40) {
         return;
     }
-
+#if MYNEWT_VAL(BLE_GATTS)
     os_mbuf_adj(*om, OS_MBUF_PKTLEN(*om));
     ble_att_svr_tx_error_rsp(conn_handle, cid, *om, op, 0,
                              BLE_ATT_ERR_REQ_NOT_SUPPORTED);
+#endif
 
     *om = NULL;
 }

@@ -13,6 +13,7 @@
 #include "host/ble_gap.h"
 #include "services/htp/ble_svc_htp.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_HTP_SERVICE
 /* Characteristic values */
 static uint16_t ble_svc_htp_temp_type;
 static uint16_t ble_svc_htp_temp_msr_itvl;
@@ -289,3 +290,4 @@ ble_svc_htp_init(void)
 
     memset(&conn_chr_subs, 0, sizeof(conn_chr_subs));
 }
+#endif

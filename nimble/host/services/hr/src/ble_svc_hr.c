@@ -13,6 +13,7 @@
 #include "host/ble_gap.h"
 #include "services/hr/ble_svc_hr.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_HR_SERVICE
 /* Characteristic values */
 static uint8_t ble_svc_hr_measurement;
 static uint16_t ble_svc_hr_body_sensor_loc;
@@ -231,3 +232,4 @@ ble_svc_hr_init(void)
         ble_svc_hr_conn_handle[i] = -1;
     }
 }
+#endif

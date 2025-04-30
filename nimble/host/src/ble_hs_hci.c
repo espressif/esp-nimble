@@ -33,6 +33,7 @@
 
 #define BLE_HCI_CMD_TIMEOUT_MS  2000
 
+#if MYNEWT_VAL(BLE_ERR_CHECK)
 /* HCI ERROR */
 #define BLE_ERR_UNKNOWN_HCI_CMD      0x01
 #define BLE_ERR_UNK_CONN_ID          0x02
@@ -256,6 +257,7 @@ static void esp_hci_err_to_name(int error_code, uint16_t *opcode)
     return;
 }
 
+#endif
 static struct ble_npl_mutex ble_hs_hci_mutex;
 static struct ble_npl_sem ble_hs_hci_sem;
 
@@ -581,7 +583,9 @@ done:
     }
 
     ble_hs_hci_unlock();
+#if MYNEWT_VAL(BLE_ERR_CHECK)
     esp_hci_err_to_name(rc, &opcode);
+#endif
     return rc;
 }
 
