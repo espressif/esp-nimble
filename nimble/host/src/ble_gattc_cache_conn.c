@@ -89,6 +89,11 @@
 static void *ble_gattc_cache_conn_svc_mem;
 static struct os_mempool ble_gattc_cache_conn_svc_pool;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+static void *ble_gattc_cache_conn_incl_svc_mem;
+static struct os_mempool ble_gattc_cache_conn_incl_svc_pool;
+#endif
+
 static void *ble_gattc_cache_conn_chr_mem;
 static struct os_mempool ble_gattc_cache_conn_chr_pool;
 
@@ -340,6 +345,13 @@ ble_gattc_cache_conn_chr_find(const struct ble_gattc_cache_conn_svc *svc, uint16
     return chr;
 }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+static void
+ble_gattc_cache_conn_incl_svc_delete(struct ble_gattc_cache_conn_incl_svc *incl_svc)
+{
+    os_memblock_put(&ble_gattc_cache_conn_incl_svc_pool, incl_svc);
+}
+#endif
 static void
 ble_gattc_cache_conn_chr_delete(struct ble_gattc_cache_conn_chr *chr)
 {
@@ -549,12 +561,67 @@ ble_gattc_cache_conn_dsc_find_uuid(const struct ble_gattc_cache_conn *ble_gattc_
     return NULL;
 }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+static struct ble_gattc_cache_conn_incl_svc *
+ble_gattc_cache_conn_incl_svc_find_prev(const struct ble_gattc_cache_conn_svc *svc, uint16_t incl_svc_handle)
+{
+    struct ble_gattc_cache_conn_incl_svc *prev;
+    struct ble_gattc_cache_conn_incl_svc *incl_svc;
+
+    prev = NULL;
+    SLIST_FOREACH(incl_svc, &svc->incl_svc, next) {
+        if (incl_svc->svc.handle >= incl_svc_handle) {
+            break;
+        }
+
+        prev = incl_svc;
+    }
+
+    return prev;
+}
+
+static struct ble_gattc_cache_conn_incl_svc *
+ble_gattc_cache_conn_incl_svc_find(const struct ble_gattc_cache_conn_svc *svc, uint16_t incl_svc_handle,
+                              struct ble_gattc_cache_conn_incl_svc **out_prev)
+{
+    struct ble_gattc_cache_conn_incl_svc *prev;
+    struct ble_gattc_cache_conn_incl_svc *incl_svc;
+
+    prev = ble_gattc_cache_conn_incl_svc_find_prev(svc, incl_svc_handle);
+    if (prev == NULL) {
+        incl_svc = SLIST_FIRST(&svc->incl_svc);
+    } else {
+        incl_svc = SLIST_NEXT(prev, next);
+    }
+
+    if (incl_svc != NULL && incl_svc->svc.handle != incl_svc_handle) {
+        incl_svc = NULL;
+    }
+
+    if (out_prev != NULL) {
+        *out_prev = prev;
+    }
+    return incl_svc;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+int
+ble_gattc_cache_conn_inc_add(ble_addr_t peer_addr, const struct ble_gatt_incl_svc *gatt_svc)
+#else
 int
 ble_gattc_cache_conn_inc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *gatt_svc)
+#endif
 {
-    struct ble_gattc_cache_conn_svc *prev;
     struct ble_gattc_cache_conn_svc *svc;
+    struct ble_gattc_cache_conn_svc *prev;
     struct ble_gattc_cache_conn *peer;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *incl_svc;
+    struct ble_gattc_cache_conn_incl_svc *incl_svc_prev;
+    struct ble_gattc_cache_conn_svc *cur_svc;
+#endif
 
     peer = ble_gattc_cache_conn_find_by_addr(peer_addr);
     if (peer == NULL) {
@@ -563,36 +630,79 @@ ble_gattc_cache_conn_inc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *ga
     }
 
     svc = ble_gattc_cache_conn_svc_find(peer, gatt_svc->start_handle, &prev);
-    if (svc != NULL) {
-        /* Inc already discovered. */
+
+    if (!svc) {
+        /* Secondary Service */
+        svc = os_memblock_get(&ble_gattc_cache_conn_svc_pool);
+        if (svc == NULL) {
+            /* Out of memory. */
+            return BLE_HS_ENOMEM;
+        }
+
+        memset(svc, 0, sizeof * svc);
+
+        svc->type = BLE_GATT_SVC_TYPE_SECONDARY;
+        svc->svc.start_handle = gatt_svc->start_handle;
+        svc->svc.end_handle = gatt_svc->end_handle;
+        memcpy(&svc->svc.uuid, &gatt_svc->uuid, sizeof(ble_uuid_any_t));
+
+        SLIST_INIT(&svc->chrs);
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        SLIST_INIT(&svc->incl_svc);
+#endif
+        if (prev == NULL) {
+            SLIST_INSERT_HEAD(&peer->svcs, svc, next);
+        } else {
+            SLIST_INSERT_AFTER(prev, svc, next);
+        }
+
+        BLE_HS_LOG(DEBUG, "Secondary Svc added with start_handle = %d , end_handle = %d",
+                   gatt_svc->start_handle, gatt_svc->end_handle);
+    }
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    /* Including the services into including list of current service*/
+    cur_svc = ble_gattc_cache_conn_svc_find_range(peer, gatt_svc->handle);
+
+    if (cur_svc == NULL) {
+      /* Can't find service for discovered included service; this shouldn't
+       * happen.
+       */
+        BLE_HS_LOG(WARN, "Current Service is NULL.\n");
+        assert(0);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    incl_svc = ble_gattc_cache_conn_incl_svc_find(cur_svc, gatt_svc->handle, &incl_svc_prev);
+    if (incl_svc != NULL) {
+        /* Already discovered */
         return 0;
     }
 
-    svc = os_memblock_get(&ble_gattc_cache_conn_svc_pool);
-    if (svc == NULL) {
-        /* Out of memory. */
+    incl_svc = os_memblock_get(&ble_gattc_cache_conn_incl_svc_pool);
+    if (incl_svc == NULL) {
         return BLE_HS_ENOMEM;
     }
-    memset(svc, 0, sizeof * svc);
 
-    svc->type = BLE_GATT_SVC_TYPE_SECONDARY;
-    svc->svc = *gatt_svc;
-    SLIST_INIT(&svc->chrs);
+    incl_svc->svc.handle = gatt_svc->handle;
+    incl_svc->svc.start_handle = gatt_svc->start_handle;
+    incl_svc->svc.end_handle = gatt_svc->end_handle;
+    memcpy(&incl_svc->svc.uuid, &gatt_svc->uuid, sizeof(ble_uuid_any_t));
 
-    if (prev == NULL) {
-        SLIST_INSERT_HEAD(&peer->svcs, svc, next);
+    if (incl_svc_prev == NULL) {
+        SLIST_INSERT_HEAD(&cur_svc->incl_svc, incl_svc, next);
     } else {
-        SLIST_INSERT_AFTER(prev, svc, next);
+        SLIST_INSERT_AFTER(incl_svc_prev, incl_svc, next);
     }
 
-    BLE_HS_LOG(DEBUG, "Inc added with start_handle = %d and end_handle = %d",
-               gatt_svc->start_handle, gatt_svc->end_handle);
-
+    BLE_HS_LOG(DEBUG, "Inc added with handle = %d",
+               gatt_svc->handle);
+#endif
     return 0;
 }
 
 int
-ble_gattc_cache_conn_svc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *gatt_svc)
+ble_gattc_cache_conn_svc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *gatt_svc, bool is_primary)
 {
     struct ble_gattc_cache_conn_svc *prev;
     struct ble_gattc_cache_conn_svc *svc;
@@ -617,8 +727,16 @@ ble_gattc_cache_conn_svc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *ga
     }
     memset(svc, 0, sizeof * svc);
 
-    svc->type = BLE_GATT_SVC_TYPE_PRIMARY;
+    if (is_primary) {
+        svc->type = BLE_GATT_SVC_TYPE_PRIMARY;
+    } else {
+        svc->type = BLE_GATT_SVC_TYPE_SECONDARY;
+    }
+
     svc->svc = *gatt_svc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    SLIST_INIT(&svc->incl_svc);
+#endif
     SLIST_INIT(&svc->chrs);
 
     if (prev == NULL) {
@@ -638,6 +756,14 @@ ble_gattc_cache_conn_svc_delete(struct ble_gattc_cache_conn_svc *svc)
 {
     struct ble_gattc_cache_conn_chr *chr;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *incl_svc;
+    // Free included services
+    while ((incl_svc = SLIST_FIRST(&svc->incl_svc)) != NULL) {
+        SLIST_REMOVE_HEAD(&svc->incl_svc, next);
+        ble_gattc_cache_conn_incl_svc_delete(incl_svc);
+    }
+#endif
     while ((chr = SLIST_FIRST(&svc->chrs)) != NULL) {
         SLIST_REMOVE_HEAD(&svc->chrs, next);
         ble_gattc_cache_conn_chr_delete(chr);
@@ -655,11 +781,19 @@ ble_gattc_cache_conn_get_db_size(struct ble_gattc_cache_conn *peer)
 
     size_t db_size = 0;
     struct ble_gattc_cache_conn_svc *svc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *included_svc;
+#endif
     struct ble_gattc_cache_conn_chr *chr;
     struct ble_gattc_cache_conn_dsc *dsc;
 
     SLIST_FOREACH(svc, &peer->svcs, next) {
         db_size++;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
+            db_size++;
+        }
+#endif
         SLIST_FOREACH(chr, &svc->chrs, next) {
             db_size++;
             SLIST_FOREACH(dsc, &chr->dscs, next) {
@@ -669,6 +803,553 @@ ble_gattc_cache_conn_get_db_size(struct ble_gattc_cache_conn *peer)
     }
 
     return db_size;
+}
+
+size_t
+ble_gattc_get_db_size_with_handle(struct ble_gattc_cache_conn *peer, uint16_t start_handle, uint16_t end_handle)
+{
+    if (peer == NULL || SLIST_EMPTY(&peer->svcs)) {
+        return 0;
+    }
+
+    struct ble_gattc_cache_conn_svc *svc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *included_svc;
+#endif
+    struct ble_gattc_cache_conn_chr *chr;
+    struct ble_gattc_cache_conn_dsc *dsc;
+    size_t db_size = 0;
+
+    SLIST_FOREACH(svc, &peer->svcs, next) {
+        if (svc->svc.end_handle < start_handle) {
+            continue;
+        }
+        if (svc->svc.start_handle > end_handle) {
+            break;
+        }
+
+        db_size++;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
+            if (included_svc->svc.handle < start_handle) {
+                continue;
+            }
+            if (included_svc->svc.handle > end_handle) {
+                return db_size;
+            }
+
+            db_size++;
+        }
+#endif
+        SLIST_FOREACH(chr, &svc->chrs, next) {
+            if (chr->chr.val_handle < start_handle) {
+                continue;
+            }
+            if (chr->chr.val_handle > end_handle) {
+                return db_size;
+            }
+            db_size++;
+
+            SLIST_FOREACH(dsc, &chr->dscs, next) {
+                if (dsc->dsc.handle < start_handle) {
+                    continue;
+                }
+
+                if (dsc->dsc.handle > end_handle) {
+                    return db_size;
+                }
+                db_size++;
+            }
+        }
+    }
+
+    return db_size;
+}
+
+size_t
+ble_gattc_get_db_size_with_type(struct ble_gattc_cache_conn *peer, uint8_t type,
+                                uint16_t start_handle, uint16_t end_handle, uint16_t char_handle)
+{
+    if (peer == NULL || SLIST_EMPTY(&peer->svcs)) {
+        return 0;
+    }
+    struct ble_gattc_cache_conn_svc *svc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *included_svc;
+#endif
+    struct ble_gattc_cache_conn_chr *chr;
+    struct ble_gattc_cache_conn_dsc *dsc;
+    size_t db_size = 0;
+    // Iterate through the services in the cache connection.
+    SLIST_FOREACH(svc, &peer->svcs, next) {
+        // Skip services that are out of the requested handle range.
+        if (svc->svc.end_handle < start_handle || svc->svc.start_handle > end_handle) {
+            continue;
+        }
+
+        // Handle the different types of GATT database entries.
+        switch (type) {
+            case BLE_GATT_DB_PRIMARY_SERVICE:
+                if (svc->type == BLE_GATT_SVC_TYPE_PRIMARY &&
+                    svc->svc.start_handle >= start_handle &&
+                    svc->svc.end_handle <= end_handle) {
+                    db_size++;
+                }
+                break;
+
+            case BLE_GATT_DB_SECONDARY_SERVICE:
+                if (svc->type == BLE_GATT_SVC_TYPE_SECONDARY &&
+                    svc->svc.start_handle >= start_handle &&
+                    svc->svc.end_handle <= end_handle) {
+                    db_size++;
+                }
+                break;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+            case BLE_GATT_DB_INCLUDED_SERVICE:
+                // Iterate through included service.
+                SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
+                    if (included_svc->svc.handle >= start_handle && included_svc->svc.handle <= end_handle) {
+                          db_size++;
+                    }
+                }
+                break;
+#endif
+            case BLE_GATT_DB_CHARACTERISTIC:
+                // Iterate through characteristics.
+                SLIST_FOREACH(chr, &svc->chrs, next) {
+                      if (chr->chr.val_handle >= start_handle && chr->chr.val_handle <= end_handle) {
+                          db_size++;
+                      }
+                }
+                break;
+
+            case BLE_GATT_DB_DESCRIPTOR:
+                // Iterate through characteristics and their descriptors.
+                SLIST_FOREACH(chr, &svc->chrs, next) {
+                    if (chr->chr.val_handle >= start_handle && chr->chr.val_handle <= end_handle) {
+                        if (chr->chr.val_handle == char_handle) {
+                            SLIST_FOREACH(dsc, &chr->dscs, next) {
+                                if (dsc->dsc.handle >= start_handle &&
+                                    dsc->dsc.handle <= end_handle &&
+                                    chr->chr.val_handle == char_handle) {
+                                    db_size++;
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+          }
+    }
+
+    return db_size;
+}
+
+// fill a element into database
+void ble_gattc_fill_gatt_db_el(ble_gattc_db_elem_t *attr,
+                               ble_gattc_db_attr_type type,
+                               uint16_t handle,
+                               uint16_t s_handle,
+                               uint16_t e_handle,
+                               uint8_t prop,
+                               ble_uuid_any_t uuid)
+{
+        attr->type             = type;
+        attr->handle           = handle;
+        attr->start_handle     = s_handle;
+        attr->end_handle       = e_handle;
+        attr->properties       = prop;
+        attr->uuid             = uuid;
+}
+
+void ble_gattc_get_service_with_uuid(uint16_t conn_handle,
+                                     ble_uuid_t *svc_uuid,
+                                     ble_gattc_db_elem_t **svc_db,
+                                     uint16_t *count)
+{
+
+    struct ble_gattc_cache_conn *cache_conn;
+    struct ble_gattc_cache_conn_svc *svc;
+
+    // Find the connection in the cache
+    cache_conn = ble_gattc_cache_conn_find(conn_handle);
+    if (cache_conn == NULL || SLIST_EMPTY(&cache_conn->svcs)) {
+        BLE_HS_LOG(WARN, "%s(), no service.", __func__);
+        *count = 0;
+        *svc_db = NULL;
+        return;
+    }
+
+    size_t db_size = 0;
+    SLIST_FOREACH(svc, &cache_conn->svcs, next) {
+        if (svc_uuid == NULL || ble_uuid_cmp(&svc->svc.uuid.u, svc_uuid) == 0) {
+            db_size++;
+        }
+    }
+
+    if (!db_size) {
+        BLE_HS_LOG(DEBUG, "the db size is 0.");
+        *count = 0;
+        *svc_db = NULL;
+        return;
+    }
+
+    // Allocate memory for the GATT database
+    void *buffer = malloc(db_size * sizeof(ble_gattc_db_elem_t));
+    if (!buffer) {
+        BLE_HS_LOG(WARN, "%s(), no resource.", __func__);
+        *count = 0;
+        *svc_db = NULL;
+        return;
+    }
+    ble_gattc_db_elem_t *curr_db_attr = buffer;
+    db_size = 0;
+
+    // Iterate through services in the cache
+    SLIST_FOREACH(svc, &cache_conn->svcs, next) {
+          if (svc_uuid == NULL || ble_uuid_cmp(&svc->svc.uuid.u, svc_uuid) == 0) {
+                ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                          svc->type == BLE_GATT_SVC_TYPE_PRIMARY ?  /* attr type */
+                                          BLE_GATT_DB_PRIMARY_SERVICE:BLE_GATT_DB_SECONDARY_SERVICE,
+                                          0,                                        /* handle   */
+                                          svc->svc.start_handle,                    /* s_handle */
+                                          svc->svc.end_handle,                      /* e_handle */
+                                          0,                                        /* property */
+                                          svc->svc.uuid);                           /* uuid     */
+                curr_db_attr++;
+                db_size++;
+            }
+    }
+
+    *svc_db = buffer;
+    *count = db_size;
+}
+
+void ble_gattc_get_db_with_operation(uint16_t conn_handle,
+                                     ble_gatt_get_db_op_t op,
+                                     uint16_t char_handle,
+                                     ble_uuid_t *char_uuid,
+                                     ble_uuid_t *descr_uuid,
+                                     ble_uuid_t *incl_uuid,
+                                     uint16_t start_handle, uint16_t end_handle,
+                                     ble_gattc_db_elem_t **char_db,
+                                     uint16_t *count)
+{
+
+    struct ble_gattc_cache_conn *cache_conn;
+    struct ble_gattc_cache_conn_svc *svc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *included_svc;
+#endif
+    struct ble_gattc_cache_conn_chr *chr;
+    struct ble_gattc_cache_conn_dsc *dsc;
+
+    // Find the connection in the cache
+    cache_conn = ble_gattc_cache_conn_find(conn_handle);
+    if (cache_conn == NULL || SLIST_EMPTY(&cache_conn->svcs)) {
+        BLE_HS_LOG(WARN, "the service cache is empty.");
+        *count = 0;
+        *char_db = NULL;
+        return;
+    }
+    size_t db_size = ble_gattc_get_db_size_with_handle(cache_conn, start_handle, end_handle);
+
+    if (!db_size) {
+        BLE_HS_LOG(DEBUG, "the db size is 0.");
+        *count = 0;
+        *char_db = NULL;
+        return;
+    }
+
+    // Allocate memory for the GATT database
+    void *buffer = malloc(db_size * sizeof(ble_gattc_db_elem_t));
+    if (!buffer) {
+        BLE_HS_LOG(WARN, "%s(), no resource.", __func__);
+        *count = 0;
+        *char_db = NULL;
+        return;
+    }
+    ble_gattc_db_elem_t *curr_db_attr = buffer;
+    db_size = 0;
+
+    // Iterate through services in the cache
+    SLIST_FOREACH(svc, &cache_conn->svcs, next) {
+        if (svc->svc.end_handle < start_handle || svc->svc.start_handle > end_handle) {
+            continue;
+        }
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        // Check for included services
+        if (op == BLE_GATT_OP_GET_INCLUDE_SVC) {
+            if (SLIST_EMPTY(&svc->incl_svc)) {
+                continue;
+            }
+            SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
+                if (included_svc->svc.handle < start_handle || included_svc->svc.handle > end_handle) {
+                      continue;
+                }
+
+                if (incl_uuid == NULL || ble_uuid_cmp(&included_svc->svc.uuid.u, incl_uuid) == 0) {
+                    ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                              BLE_GATT_DB_INCLUDED_SERVICE,    /* attr type*/
+                                              included_svc->svc.handle,        /* handle */
+                                              included_svc->svc.start_handle,  /* s_handle */
+                                              included_svc->svc.end_handle,    /* e_handle */
+                                              0,                               /* property */
+                                              included_svc->svc.uuid);         /* uuid     */
+                    curr_db_attr++;
+                    db_size++;
+                }
+            }
+            continue;
+        }
+#endif
+        // Check for characteristics
+        SLIST_FOREACH(chr, &svc->chrs, next) {
+            if (chr->chr.val_handle < start_handle || chr->chr.val_handle > end_handle) {
+                continue;
+            }
+            if ((op == BLE_GATT_OP_GET_ALL_CHAR || op == BLE_GATT_OP_GET_CHAR_BY_UUID) &&
+                (char_uuid == NULL || ble_uuid_cmp(&chr->chr.uuid.u, char_uuid) == 0)) {
+                    ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                              BLE_GATT_DB_CHARACTERISTIC,   /* attr type*/
+                                              chr->chr.val_handle,          /* handle   */
+                                              0,                            /* s_handle */
+                                              0,                            /* e_handle */
+                                              chr->chr.properties,          /* property */
+                                              chr->chr.uuid);               /* uuid     */
+                    curr_db_attr++;
+                    db_size++;
+                    continue;
+            }
+
+            if ((op == BLE_GATT_OP_GET_DESC_BY_HANDLE || op == BLE_GATT_OP_GET_ALL_DESC) &&
+                (chr->chr.val_handle != char_handle)) {
+                 continue;
+            }
+
+            if ((op == BLE_GATT_OP_GET_DESC_BY_UUID && ble_uuid_cmp(&chr->chr.uuid.u, char_uuid) != 0)) {
+                continue;
+            }
+
+            // Check for descriptors
+            if (!SLIST_EMPTY(&chr->dscs)) {
+                SLIST_FOREACH(dsc, &chr->dscs, next) {
+                    if (dsc->dsc.handle < start_handle || dsc->dsc.handle > end_handle) {
+                        continue;
+                    }
+                    if (((op == BLE_GATT_OP_GET_ALL_DESC || op == BLE_GATT_OP_GET_DESC_BY_UUID) &&
+                        (descr_uuid == NULL || ble_uuid_cmp(&dsc->dsc.uuid.u, descr_uuid) == 0)) ||
+                        (op == BLE_GATT_OP_GET_DESC_BY_HANDLE && ble_uuid_cmp(&dsc->dsc.uuid.u, descr_uuid) == 0)) {
+                            ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                                      BLE_GATT_DB_DESCRIPTOR, /* attr type*/
+                                                      dsc->dsc.handle,        /* handle   */
+                                                      0,                      /* s_handle */
+                                                      0,                      /* e_handle */
+                                                      0,                      /* property */
+                                                      dsc->dsc.uuid);         /* uuid     */
+                            curr_db_attr++;
+                            db_size++;
+                    }
+                }
+            }
+
+        }
+    }
+
+    *char_db = buffer;
+    *count = db_size;
+    return;
+}
+
+void ble_gattc_get_db_size_with_type_handle(uint16_t conn_handle,
+                                            ble_gattc_db_attr_type type,
+                                            uint16_t start_handle,
+                                            uint16_t end_handle,
+                                            uint16_t char_handle, uint16_t *count)
+{
+    struct ble_gattc_cache_conn *cache_conn;
+
+    cache_conn = ble_gattc_cache_conn_find(conn_handle);
+    if (cache_conn == NULL) {
+        *count = 0;
+        return ;
+    }
+
+    *count =  ble_gattc_get_db_size_with_type(cache_conn, type, start_handle, end_handle, char_handle);
+}
+
+void ble_gattc_get_db_size_handle(uint16_t conn_handle,
+                                  uint16_t start_handle,
+                                  uint16_t end_handle,
+                                  uint16_t *count)
+{
+    struct ble_gattc_cache_conn *cache_conn;
+
+    cache_conn = ble_gattc_cache_conn_find(conn_handle);
+    if (cache_conn == NULL) {
+        *count = 0;
+        return;
+    }
+    *count = ble_gattc_get_db_size_with_handle(cache_conn, start_handle, end_handle);
+}
+
+// Copy the server GATT database into db parameter.
+
+static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
+                                       uint16_t start_handle,
+                                       uint16_t end_handle,
+                                       ble_gattc_db_elem_t **db,
+                                       uint16_t *count, uint16_t *db_num)
+{
+    if (!peer || SLIST_EMPTY(&peer->svcs)) {
+        *count = 0;
+        *db = NULL;
+        return;
+    }
+
+    size_t db_size = ble_gattc_get_db_size_with_handle(peer, start_handle, end_handle);
+    if (!db_size) {
+        BLE_HS_LOG(DEBUG, "the db size is 0.");
+        *count = 0;
+        *db = NULL;
+        return;
+    }
+    db_size = (*db_num > db_size) ? db_size : (*db_num);
+    // Allocate memory for the GATT database
+    void *buffer = malloc(db_size * sizeof(ble_gattc_db_elem_t));
+    if (!buffer) {
+        BLE_HS_LOG(WARN, "%s(), no resource.", __func__);
+        *count = 0;
+        *db = NULL;
+        return;
+    }
+
+    ble_gattc_db_elem_t *curr_db_attr = buffer;
+    struct ble_gattc_cache_conn_svc *svc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *included_svc;
+#endif
+    struct ble_gattc_cache_conn_chr *chr;
+    struct ble_gattc_cache_conn_dsc *dsc;
+
+
+    SLIST_FOREACH(svc, &peer->svcs, next) {
+        if (svc->svc.end_handle < start_handle) {
+            continue;
+        }
+
+        if (svc->svc.start_handle > end_handle) {
+            break;
+        }
+        ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                  svc->type == BLE_GATT_SVC_TYPE_PRIMARY ? /* attr type */
+                                  BLE_GATT_DB_PRIMARY_SERVICE:
+                                  BLE_GATT_DB_SECONDARY_SERVICE,
+                                  0,                                      /* attr handle */
+                                  svc->svc.start_handle,                  /* start handle*/
+                                  svc->svc.end_handle,                    /* end handle  */
+                                  0,                                      /* property    */
+                                  svc->svc.uuid);                         /* uuid        */
+        curr_db_attr++;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        // Iterate over included services
+        SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
+            if (included_svc->svc.handle < start_handle) {
+                continue;
+            }
+
+            if (included_svc->svc.handle > end_handle) {
+                *db = buffer;
+                *count = db_size;
+                return;
+            }
+
+            ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                      BLE_GATT_DB_INCLUDED_SERVICE,    /* attr type   */
+                                      included_svc->svc.handle,        /* attr handle */
+                                      included_svc->svc.start_handle,  /* s_handle    */
+                                      included_svc->svc.end_handle,    /* e_handle    */
+                                      0,                               /* property    */
+                                      included_svc->svc.uuid);         /* uuid        */
+            curr_db_attr++;
+        }
+#endif
+        // Iterate over characterstic
+        SLIST_FOREACH(chr, &svc->chrs, next) {
+            if (chr->chr.val_handle < start_handle) {
+                 continue;
+            }
+
+            if (chr->chr.val_handle > end_handle) {
+                *db = buffer;
+                *count = db_size;
+                return;
+            }
+            ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                      BLE_GATT_DB_CHARACTERISTIC,     /* attr type   */
+                                      chr->chr.val_handle,            /* attr handle */
+                                      0,                              /* s_handle    */
+                                      0,                              /* e_handle    */
+                                      chr->chr.properties,            /* property    */
+                                      chr->chr.uuid);                 /* uuid        */
+              curr_db_attr++;
+               // Iterate over descriptors
+               SLIST_FOREACH(dsc, &chr->dscs, next) {
+                    if (dsc->dsc.handle < start_handle) {
+                        continue;
+                    }
+
+                    if (dsc->dsc.handle > end_handle) {
+                        *db = buffer;
+                        *count = db_size;
+                        return;
+                    }
+                    ble_gattc_fill_gatt_db_el(curr_db_attr,
+                                              BLE_GATT_DB_DESCRIPTOR,   /* attr type   */
+                                              dsc->dsc.handle,          /* attr handle */
+                                              0,                        /* s_handle    */
+                                              0,                        /* e_handle    */
+                                              0,                        /* property    */
+                                              dsc->dsc.uuid);           /* uuid        */
+                    curr_db_attr++;
+              }
+        }
+    }
+
+    *db = buffer;
+    *count = db_size;
+
+    return;
+}
+
+// Copy the server GATT database into db parameter
+void ble_gattc_get_gatt_db(uint16_t conn_handle,
+                           uint16_t start_handle,
+                           uint16_t end_handle,
+                           ble_gattc_db_elem_t **db,
+                           uint16_t *count, uint16_t *db_num)
+{
+    struct ble_gattc_cache_conn *cache_conn;
+
+    cache_conn = ble_gattc_cache_conn_find(conn_handle);
+
+    if (cache_conn == NULL) {
+          BLE_HS_LOG(ERROR, "Unknown conn ID: %d", conn_handle);
+          return;
+    }
+
+    if (cache_conn->cache_state != CACHE_VERIFIED){
+        BLE_HS_LOG(ERROR, "server cache not available, server state = %d",cache_conn->cache_state);
+        return;
+    }
+
+    if (SLIST_EMPTY(&cache_conn->svcs)) {
+          BLE_HS_LOG(ERROR, "the service cache is empty.");
+          return;
+    }
+    ble_gattc_get_gatt_db_impl(cache_conn, start_handle, end_handle, db, count, db_num);
+
 }
 
 static void
@@ -884,9 +1565,15 @@ ble_gattc_cache_conn_undisc_all(ble_addr_t peer_addr)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+static int
+ble_gattc_cache_conn_inc_disced(uint16_t conn_handle, const struct ble_gatt_error *error,
+                                const struct ble_gatt_incl_svc *service, void *arg)
+#else
 static int
 ble_gattc_cache_conn_inc_disced(uint16_t conn_handle, const struct ble_gatt_error *error,
                                 const struct ble_gatt_svc *service, void *arg)
+#endif
 {
     struct ble_gattc_cache_conn *peer;
     int rc;
@@ -901,7 +1588,7 @@ ble_gattc_cache_conn_inc_disced(uint16_t conn_handle, const struct ble_gatt_erro
 
     case BLE_HS_EDONE:
         /* All services discovered; start discovering incs. */
-        ble_gattc_cache_conn_disc_chrs(peer);
+        ble_gattc_cache_conn_disc_incs(peer);
         rc = 0;
         break;
 
@@ -929,7 +1616,7 @@ ble_gattc_cache_conn_svc_disced(uint16_t conn_handle, const struct ble_gatt_erro
 
     switch (error->status) {
     case 0:
-        rc = ble_gattc_cache_conn_svc_add(peer->ble_gattc_cache_conn_addr, service);
+        rc = ble_gattc_cache_conn_svc_add(peer->ble_gattc_cache_conn_addr, service, true);
         break;
 
     case BLE_HS_EDONE:
@@ -1211,6 +1898,7 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *peer)
         if (peer->cur_svc == NULL) {
             if (peer->disc_prev_chr_val > 0) {
                 ble_gattc_cache_conn_disc_chrs(peer);
+                return;
             }
         }
     }
@@ -1221,7 +1909,7 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *peer)
                                  svc->svc.end_handle,
                                  ble_gattc_cache_conn_inc_disced, peer);
     if (rc != 0) {
-        ble_gattc_cache_conn_disc_complete(peer, rc);
+        ble_gattc_cache_conn_disc_chrs(peer);
     }
     return;
 }
@@ -1285,6 +1973,10 @@ ble_gattc_cache_conn_free_mem(void)
     free(ble_gattc_cache_conn_svc_mem);
     ble_gattc_cache_conn_svc_mem = NULL;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    free(ble_gattc_cache_conn_incl_svc_mem);
+    ble_gattc_cache_conn_incl_svc_mem = NULL;
+#endif
     free(ble_gattc_cache_conn_chr_mem);
     ble_gattc_cache_conn_chr_mem = NULL;
 
@@ -1298,16 +1990,23 @@ ble_gattc_cache_conn_init()
     int rc;
     int max_ble_gattc_cache_conns;
     int max_svcs;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    int max_incl_svcs;
+#endif
     int max_chrs;
     int max_dscs;
     void *storage_cb;
 
-    max_ble_gattc_cache_conns  = MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS);
-    max_svcs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
+    max_ble_gattc_cache_conns  = MYNEWT_VAL(BLE_MAX_CONNECTIONS);
+    max_svcs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_SVCS));
-    max_chrs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    max_incl_svcs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+                    (MYNEWT_VAL(BLE_GATT_CACHING_MAX_INCL_SVCS));
+#endif
+    max_chrs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CHRS));
-    max_dscs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
+    max_dscs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_DSCS));
     /* Free memory first in case this function gets called more than once. */
     ble_gattc_cache_conn_free_mem();
@@ -1342,6 +2041,22 @@ ble_gattc_cache_conn_init()
         goto err;
     }
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+   ble_gattc_cache_conn_incl_svc_mem = malloc(
+                                    OS_MEMPOOL_BYTES(max_incl_svcs, sizeof(struct ble_gattc_cache_conn_incl_svc)));
+    if (ble_gattc_cache_conn_incl_svc_mem == NULL) {
+        rc = BLE_HS_ENOMEM;
+        goto err;
+    }
+
+    rc = os_mempool_init(&ble_gattc_cache_conn_incl_svc_pool, max_incl_svcs,
+                         sizeof(struct ble_gattc_cache_conn_incl_svc), ble_gattc_cache_conn_incl_svc_mem,
+                         "ble_gattc_cache_conn_incl_svc_pool");
+    if (rc != 0) {
+        rc = BLE_HS_EOS;
+        goto err;
+    }
+#endif
     ble_gattc_cache_conn_chr_mem = malloc(
                                        OS_MEMPOOL_BYTES(max_chrs, sizeof(struct ble_gattc_cache_conn_chr)));
     if (ble_gattc_cache_conn_chr_mem == NULL) {
@@ -1585,7 +2300,13 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
     struct ble_gattc_cache_conn_op *op;
     int status = 0;
     uint16_t conn_handle;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_incl_svc *incl_svc;
+    ble_gatt_disc_incl_svc_fn *dcb;
+#else
     ble_gatt_disc_svc_fn *dcb;
+#endif
 
     conn_handle = *(uint16_t*)ble_npl_event_get_arg(ev);
     conn = ble_gattc_cache_conn_find(conn_handle);
@@ -1597,6 +2318,17 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
 
     op = &conn->pending_op;
     dcb = op->cb;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
+
+    SLIST_FOREACH(incl_svc, &svc->incl_svc, next) {
+        dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &incl_svc->svc, op->cb_arg);
+
+    }
+    status = BLE_HS_EDONE;
+    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &incl_svc->svc, op->cb_arg);
+#else
     SLIST_FOREACH(svc, &conn->svcs, next) {
         if (svc->type == BLE_GATT_SVC_TYPE_SECONDARY &&
                 (svc->svc.start_handle >= op->start_handle && svc->svc.end_handle <= op->end_handle)) {
@@ -1605,13 +2337,21 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
     }
     status = BLE_HS_EDONE;
     dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
-
+#endif
     return;
 }
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+int
+ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
+                                     uint16_t end_handle,
+                                     ble_gatt_disc_incl_svc_fn *cb, void *cb_arg)
+#else
 int
 ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
                                      uint16_t end_handle,
                                      ble_gatt_disc_svc_fn *cb, void *cb_arg)
+#endif
 {
     struct ble_gattc_cache_conn *conn;
     struct ble_gattc_cache_conn_op *op;
@@ -1631,8 +2371,8 @@ ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle
         return rc;
     }
 
-    CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_CHRS,
-                           start_handle, end_handle, &uuid);
+    CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_FIND_INC_SVCS,
+                           start_handle, end_handle, uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_inc_svcs_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);

@@ -1958,7 +1958,20 @@ ble_att_svr_service_uuid(struct ble_att_svr_entry *entry,
         return rc;
     }
 
-    rc = ble_uuid_init_from_buf(uuid, val, attr_len);
+    /**
+     * - For Primary/Secondary Services: attr_len is typically 2 (16-bit), 4 (32-bit), or 16 (128-bit)
+     * - For Included Services:
+     *     - When UUID is 16-bit, value length = 2 (start) + 2 (end) + 2 (uuid) = 6
+     *     - So, attr_len == 6 implies 16-bit UUID, and the UUID is at offset 4
+     */
+    if (attr_len == 6) {
+        // Adjust attr_len to pass only UUID (last 2 bytes) to uuid init
+        attr_len = 2;
+        rc = ble_uuid_init_from_buf(uuid, val + 4, attr_len);
+    } else {
+         // For normal services (not included), UUID starts at offset 0
+        rc = ble_uuid_init_from_buf(uuid, val, attr_len);
+    }
 
     return rc;
 }

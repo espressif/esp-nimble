@@ -84,7 +84,7 @@ struct ble_hs_cfg;
 #define BLE_GATT_SVC_TYPE_PRIMARY                       1
 #define BLE_GATT_SVC_TYPE_SECONDARY                     2
 
-/** 
+/**
  * Client Presentation Format
  * GATT Format Types
  * Ref: Assigned Numbers Specification
@@ -304,6 +304,24 @@ struct ble_gatt_svc {
     ble_uuid_any_t uuid;
 };
 
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+/** Represents a GATT Service. */
+struct ble_gatt_incl_svc {
+    /** The handle of the GATT include service. */
+    uint16_t handle;
+
+    /** The start handle of the GATT include service. */
+    uint16_t start_handle;
+
+    /** The end handle of the GATT include service. */
+    uint16_t end_handle;
+
+    /** The UUID of the GATT service. */
+    ble_uuid_any_t uuid;
+};
+#endif
+
+/** Represents a GATT attribute. */
 struct ble_gatt_attr {
     uint16_t handle;
     uint16_t offset;
@@ -330,6 +348,12 @@ typedef int ble_gatt_disc_svc_fn(uint16_t conn_handle,
                                  const struct ble_gatt_svc *service,
                                  void *arg);
 
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+typedef int ble_gatt_disc_incl_svc_fn(uint16_t conn_handle,
+                                      const struct ble_gatt_error *error,
+                                      const struct ble_gatt_incl_svc *incl_svc,
+                                      void *arg);
+#endif
 /**
  * The host will free the attribute mbuf automatically after the callback is
  * executed.  The application can take ownership of the mbuf and prevent it
@@ -431,10 +455,15 @@ int ble_gattc_disc_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *uuid,
  *
  * @return                      0 on success; nonzero on failure.
  */
+#if MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+int ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
+                            uint16_t end_handle,
+                            ble_gatt_disc_incl_svc_fn *cb, void *cb_arg);
+#else
 int ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
                             uint16_t end_handle,
                             ble_gatt_disc_svc_fn *cb, void *cb_arg);
-
+#endif
 /**
  * Initiates GATT procedure: Discover All Characteristics of a Service.
  *
