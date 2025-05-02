@@ -61,7 +61,9 @@
 #include "host/ble_gap.h"
 #include "ble_hs_priv.h"
 #include "ble_gattc_cache_priv.h"
-
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+#include "host/ble_esp_gattc_cache.h"
+#endif
 #if NIMBLE_BLE_CONNECT
 
 #ifndef min
@@ -140,7 +142,11 @@ struct ble_gattc_proc {
             uint16_t cur_start;
             uint16_t cur_end;
 
+#if MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+            ble_gatt_disc_incl_svc_fn *cb;
+#else
             ble_gatt_disc_svc_fn *cb;
+#endif
             void *cb_arg;
         } find_inc_svcs;
 
@@ -1926,15 +1932,22 @@ done:
  * @return                      The return code of the callback (or 0 if there
  *                                  is no callback).
  */
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
 static int
 ble_gattc_find_inc_svcs_cb(struct ble_gattc_proc *proc, int status,
                            uint16_t att_handle,
-                           struct ble_gatt_svc *service)
+                           struct ble_gatt_incl_svc *incl_svc)
+#else
+static int
+ble_gattc_find_inc_svcs_cb(struct ble_gattc_proc *proc, int status,
+                           uint16_t att_handle,
+                           struct ble_gatt_svc *incl_svc)
+#endif
 {
     int rc;
 
     BLE_HS_DBG_ASSERT(!ble_hs_locked_by_cur_task());
-    BLE_HS_DBG_ASSERT(service != NULL || status != 0);
+    BLE_HS_DBG_ASSERT(incl_svc != NULL || status != 0);
     ble_gattc_dbg_assert_proc_not_inserted(proc);
 
     if (status != 0 && status != BLE_HS_EDONE) {
@@ -1946,7 +1959,7 @@ ble_gattc_find_inc_svcs_cb(struct ble_gattc_proc *proc, int status,
     } else {
         rc = proc->find_inc_svcs.cb(proc->conn_handle,
                                     ble_gattc_error(status, att_handle),
-                                    service, proc->find_inc_svcs.cb_arg);
+                                    incl_svc, proc->find_inc_svcs.cb_arg);
     }
 
     return rc;
@@ -2036,7 +2049,11 @@ static int
 ble_gattc_find_inc_svcs_rx_read_rsp(struct ble_gattc_proc *proc, int status,
                                     struct os_mbuf **om)
 {
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+    struct ble_gatt_incl_svc service;
+#else
     struct ble_gatt_svc service;
+#endif
     int rc;
 
     ble_gattc_dbg_assert_proc_not_inserted(proc);
@@ -2065,6 +2082,7 @@ ble_gattc_find_inc_svcs_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     /* Report discovered service to application. */
     service.start_handle = proc->find_inc_svcs.cur_start;
     service.end_handle = proc->find_inc_svcs.cur_end;
+
     rc = ble_gattc_find_inc_svcs_cb(proc, 0, 0, &service);
     if (rc != 0) {
         /* Application has indicated that the procedure should be aborted. */
@@ -2094,7 +2112,11 @@ static int
 ble_gattc_find_inc_svcs_rx_adata(struct ble_gattc_proc *proc,
                                  struct ble_att_read_type_adata *adata)
 {
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+    struct ble_gatt_incl_svc service = {0};
+#else
     struct ble_gatt_svc service = {0};
+#endif
     int call_cb;
     int cbrc;
     int rc;
@@ -2128,6 +2150,9 @@ ble_gattc_find_inc_svcs_rx_adata(struct ble_gattc_proc *proc,
         break;
 
     case BLE_GATTS_INC_SVC_LEN_UUID:
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+        service.handle = adata->att_handle;
+#endif
         service.start_handle = get_le16(adata->value + 0);
         service.end_handle = get_le16(adata->value + 2);
         rc = ble_uuid_init_from_att_buf(&service.uuid, adata->value + 4, 2);
@@ -2188,10 +2213,17 @@ ble_gattc_find_inc_svcs_rx_complete(struct ble_gattc_proc *proc, int status)
     return 0;
 }
 
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+int
+ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
+                        uint16_t end_handle,
+                        ble_gatt_disc_incl_svc_fn *cb, void *cb_arg)
+#else
 int
 ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
                         uint16_t end_handle,
                         ble_gatt_disc_svc_fn *cb, void *cb_arg)
+#endif
 {
 #if !MYNEWT_VAL(BLE_GATT_FIND_INC_SVCS)
     return BLE_HS_ENOTSUP;
@@ -2200,6 +2232,12 @@ ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
     struct ble_gattc_proc *proc;
     int rc;
 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    rc = ble_gattc_cache_conn_search_inc_svcs(conn_handle, start_handle, end_handle, cb, cb_arg);
+    if (rc == 0) {
+        return rc;
+    }
+#endif
     STATS_INC(ble_gattc_stats, find_inc_svcs);
 
     proc = ble_gattc_proc_alloc();
@@ -2946,6 +2984,410 @@ done:
     ble_gattc_process_status(proc, rc);
     return rc;
 }
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+int ble_gattc_check_valid_param(uint16_t num, uint16_t offset)
+{
+    if (num == 0) {
+        return BLE_ATT_ERR_ATTR_NOT_FOUND;
+    } else if (offset >= num) {
+        return BLE_ATT_ERR_INVALID_OFFSET;
+    }
+
+    return 0; // Success
+}
+
+static void ble_gattc_fill_gatt_db_conversion(uint16_t *count, uint16_t num, esp_ble_gatt_db_attr_type_t type,
+                                              uint16_t offset, void *result, ble_gattc_db_elem_t *db)
+{
+    uint16_t db_size = ((*count + offset) > num) ? (num - offset) : *count;
+    switch (type) {
+        case ESP_BLE_GATT_DB_PRIMARY_SERVICE:
+        case ESP_BLE_GATT_DB_SECONDARY_SERVICE: {
+            ble_gattc_service_elem_t *svc_result = (ble_gattc_service_elem_t *)result;
+            for (int i = 0; i < db_size; i++) {
+                svc_result->is_primary = (db[offset + i].type == (int)BLE_GATT_DB_PRIMARY_SERVICE);
+                svc_result->start_handle = db[offset + i].start_handle;
+                svc_result->end_handle = db[offset + i].end_handle;
+                svc_result->uuid = db[offset + i].uuid;
+                svc_result++;
+            }
+            break;
+        }
+        case ESP_BLE_GATT_DB_CHARACTERISTIC: {
+            ble_gattc_char_elem_t *char_result = (ble_gattc_char_elem_t *)result;
+            for (int i = 0; i < db_size; i++) {
+                char_result->char_handle = db[offset + i].handle;
+                char_result->properties = db[offset + i].properties;
+                char_result->uuid = db[offset + i].uuid;
+                char_result++;
+            }
+            break;
+        }
+        case ESP_BLE_GATT_DB_DESCRIPTOR: {
+            ble_gattc_descr_elem_t *descr_result = (ble_gattc_descr_elem_t *)result;
+            for (int i = 0; i < db_size; i++) {
+                descr_result->handle = db[offset + i].handle;
+                descr_result->uuid = db[offset + i].uuid;
+                descr_result++;
+            }
+            break;
+        }
+        case BLE_GATT_DB_INCLUDED_SERVICE: {
+            ble_gattc_included_svc_elem_t *incl_result = (ble_gattc_included_svc_elem_t *)result;
+            for (int i = 0; i < db_size; i++) {
+                incl_result->handle = db[offset + i].handle;
+                incl_result->incl_svc_s_handle = db[offset + i].start_handle;
+                incl_result->incl_svc_e_handle = db[offset + i].end_handle;
+                incl_result->uuid = db[offset + i].uuid;
+                incl_result++;
+              }
+            break;
+        }
+        default:
+            BLE_HS_LOG(DEBUG,"%s(), Not support type(%d)", __func__, type);
+            break;
+    }
+}
+
+void ble_gattc_get_cached_service_by_uuid_db(uint16_t conn_id,
+                                             ble_uuid_t *svc_uuid,
+                                             ble_gattc_db_elem_t **db,
+                                             uint16_t *count)
+{
+    ble_gattc_get_service_with_uuid(conn_id, svc_uuid, db, count);
+}
+
+void ble_gattc_get_cached_all_char_db(uint16_t conn_id, uint16_t start_handle,
+                                      uint16_t end_handle, ble_gattc_db_elem_t **db,
+                                      uint16_t *count)
+{
+    ble_gattc_get_db_with_operation(conn_id, BLE_GATT_OP_GET_ALL_CHAR,
+                                    0, NULL, NULL, NULL,
+                                    start_handle, end_handle, db, count);
+
+}
+
+void ble_gattc_get_cached_all_descriptor_db(uint16_t conn_id, uint16_t char_handle,
+                                            ble_gattc_db_elem_t **db, uint16_t *count)
+{
+    ble_gattc_get_db_with_operation(conn_id, BLE_GATT_OP_GET_ALL_DESC,
+                                    char_handle, NULL, NULL, NULL,
+                                    0, 0xFFFF, db, count);
+
+}
+
+void ble_gattc_get_cached_char_by_uuid_db(uint16_t conn_id, uint16_t start_handle,
+                                          uint16_t end_handle, ble_uuid_t *char_uuid,
+                                          ble_gattc_db_elem_t **db, uint16_t *count)
+{
+    ble_gattc_get_db_with_operation(conn_id, BLE_GATT_OP_GET_CHAR_BY_UUID,
+                                    0, char_uuid, NULL, NULL,
+                                    start_handle, end_handle, db, count);
+
+}
+
+void ble_gatt_get_cached_descr_by_uuid_db(uint16_t conn_id, uint16_t start_handle, uint16_t end_handle,
+                                          ble_uuid_t *char_uuid, ble_uuid_t *descr_uuid,
+                                          ble_gattc_db_elem_t **db, uint16_t *count)
+{
+    ble_gattc_get_db_with_operation(conn_id, BLE_GATT_OP_GET_DESC_BY_UUID,
+                                    0, char_uuid, descr_uuid, NULL,
+                                    start_handle, end_handle, db, count);
+}
+
+void ble_gattc_get_cached_descr_by_char_handle_db(uint16_t conn_id, uint16_t char_handle,
+                                                  ble_uuid_t *descr_uuid,
+                                                  ble_gattc_db_elem_t **db, uint16_t *count)
+{
+    ble_gattc_get_db_with_operation(conn_id, BLE_GATT_OP_GET_DESC_BY_HANDLE,
+                                    char_handle, NULL, descr_uuid, NULL,
+                                    0, 0xFFFF, db, count);
+}
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+void ble_gattc_get_cached_include_service_db(uint16_t conn_id, uint16_t start_handle, uint16_t end_handle,
+                                             ble_uuid_t *incl_uuid,
+                                             ble_gattc_db_elem_t **db, uint16_t *count)
+{
+    ble_gattc_get_db_with_operation(conn_id, BLE_GATT_OP_GET_INCLUDE_SVC,
+                                    0, NULL, NULL, incl_uuid,
+                                    start_handle, end_handle, db, count);
+}
+#endif
+
+void ble_gattc_get_db_size(uint16_t conn_handle, uint16_t start_handle,
+                           uint16_t end_handle, uint16_t *count)
+{
+    ble_gattc_get_db_size_handle(conn_handle, start_handle, end_handle, count);
+}
+
+void ble_gattc_get_db_size_by_type(uint16_t conn_handle, ble_gattc_db_attr_type type,
+                                   uint16_t start_handle, uint16_t end_handle,
+                                   uint16_t char_handle, uint16_t *count)
+{
+    ble_gattc_get_db_size_with_type_handle(conn_handle, type, start_handle, end_handle, char_handle, count);
+}
+
+void ble_gattc_get_cached_gatt_db(uint16_t conn_handle,
+                                  uint16_t start_handle,
+                                  uint16_t end_handle,
+                                  ble_gattc_db_elem_t **db,
+                                  uint16_t *count, uint16_t *db_num)
+{
+    ble_gattc_get_gatt_db(conn_handle, start_handle, end_handle, db,count, db_num);
+}
+
+int ble_gattc_get_service(uint16_t conn_handle,
+                          ble_uuid_t *svc_uuid,
+                          ble_gattc_service_elem_t *result,
+                          uint16_t *count, uint16_t offset)
+{
+      int rc;
+      ble_gattc_db_elem_t *db = NULL;
+      uint16_t svc_num = 0;
+
+      ble_gattc_get_cached_service_by_uuid_db(conn_handle, svc_uuid, &db, &svc_num);
+      rc = ble_gattc_check_valid_param(svc_num, offset);
+      if (rc != 0) {
+          if (db) {
+              free(db);
+          }
+          *count = 0;
+          return rc;
+      } else {
+          ble_gattc_fill_gatt_db_conversion(count, svc_num, ESP_BLE_GATT_DB_PRIMARY_SERVICE, offset, (void *)result, db);
+      }
+
+      *count = svc_num;
+      //free the db buffer after used.
+      if (db) {
+          free(db);
+      }
+      return 0;
+}
+
+int ble_gattc_get_all_char(uint16_t conn_handle,
+                           uint16_t start_handle,
+                           uint16_t end_handle,
+                           ble_gattc_char_elem_t *result,
+                           uint16_t *count, uint16_t offset)
+{
+      int rc;
+      ble_gattc_db_elem_t *db = NULL;
+      uint16_t char_num = 0;
+
+      ble_gattc_get_cached_all_char_db(conn_handle, start_handle, end_handle, &db, &char_num);
+      rc = ble_gattc_check_valid_param(char_num, offset);
+      if (rc != 0) {
+          if (db) {
+              free(db);
+          }
+          *count = 0;
+          return rc;
+      } else {
+          ble_gattc_fill_gatt_db_conversion(count, char_num, ESP_BLE_GATT_DB_CHARACTERISTIC, offset, (void *)result, db);
+      }
+
+      *count = char_num;
+      //free the db buffer after used.
+      if (db) {
+          free(db);
+      }
+      return 0;
+}
+
+int ble_gattc_get_all_descr(uint16_t conn_handle,
+                            uint16_t char_handle,
+                            ble_gattc_descr_elem_t *result,
+                            uint16_t *count, uint16_t offset)
+{
+      int rc;
+      ble_gattc_db_elem_t *db = NULL;
+      uint16_t descr_num = 0;
+
+      ble_gattc_get_cached_all_descriptor_db(conn_handle, char_handle, &db, &descr_num);
+      rc = ble_gattc_check_valid_param(descr_num, offset);
+      if (rc != 0) {
+          if (db) {
+              free(db);
+          }
+          *count = 0;
+          return rc;
+      } else {
+          ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, offset, (void *)result, db);
+      }
+
+      *count = descr_num;
+      // free the db buffer after used.
+      if (db) {
+          free(db);
+      }
+      return 0;
+}
+
+int ble_gattc_get_char_by_uuid(uint16_t conn_handle,
+                               uint16_t start_handle,
+                               uint16_t end_handle,
+                               ble_uuid_t *char_uuid,
+                               ble_gattc_char_elem_t *result, uint16_t *count)
+{
+      int rc;
+      ble_gattc_db_elem_t *db = NULL;
+      uint16_t char_num = 0;
+
+      ble_gattc_get_cached_char_by_uuid_db(conn_handle, start_handle, end_handle, char_uuid, &db, &char_num);
+
+      rc = ble_gattc_check_valid_param(char_num, 0);
+      if (rc != 0) {
+          if (db) {
+            free(db);
+          }
+          *count = 0;
+          return rc;
+      } else {
+          ble_gattc_fill_gatt_db_conversion(count, char_num, ESP_BLE_GATT_DB_CHARACTERISTIC, 0, (void *)result, db);
+      }
+
+      *count = char_num;
+      // free the db buffer after used.
+      if (db) {
+          free(db);
+      }
+      return 0;
+
+}
+
+int ble_gattc_get_descr_by_uuid(uint16_t conn_handle,
+                                uint16_t start_handle,
+                                uint16_t end_handle,
+                                ble_uuid_t *char_uuid,
+                                ble_uuid_t *descr_uuid,
+                                ble_gattc_descr_elem_t *result, uint16_t *count)
+{
+      int rc;
+      ble_gattc_db_elem_t *db = NULL;
+      uint16_t descr_num = 0;
+
+      ble_gatt_get_cached_descr_by_uuid_db(conn_handle, start_handle, end_handle, char_uuid, descr_uuid, &db, &descr_num);
+
+      rc = ble_gattc_check_valid_param(descr_num, 0);
+      if (rc != 0) {
+          if (db) {
+              free(db);
+          }
+          *count = 0;
+          return rc;
+      } else {
+             ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, 0, (void *)result, db);
+      }
+
+      *count = descr_num;
+      // free the db buffer after used.
+      if (db) {
+          free(db);
+      }
+      return 0;
+}
+
+int ble_gattc_get_descr_by_char_handle(uint16_t conn_handle,
+                                       uint16_t char_handle,
+                                       ble_uuid_t *descr_uuid,
+                                       ble_gattc_descr_elem_t *result, uint16_t *count)
+{
+      int rc;
+      ble_gattc_db_elem_t *db = NULL;
+      uint16_t descr_num = 0;
+
+      ble_gattc_get_cached_descr_by_char_handle_db(conn_handle, char_handle, descr_uuid, &db, &descr_num);
+
+      rc = ble_gattc_check_valid_param(descr_num, 0);
+      if (rc != 0) {
+          if (db) {
+              free(db);
+          }
+          *count = 0;
+          return rc;
+      } else {
+          ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, 0, (void *)result, db);
+      }
+
+      *count = descr_num;
+      // free the db buffer after used.
+      if (db) {
+          free(db);
+      }
+      return 0;
+
+}
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+int ble_gattc_get_include_service(uint16_t conn_handle,
+                                  uint16_t start_handle,
+                                  uint16_t end_handle,
+                                  ble_uuid_t *incl_uuid,
+                                  ble_gattc_included_svc_elem_t *result, uint16_t *count)
+{
+    int rc;
+    ble_gattc_db_elem_t *db = NULL;
+    uint16_t incl_num = 0;
+
+    ble_gattc_get_cached_include_service_db(conn_handle, start_handle, end_handle, incl_uuid, &db, &incl_num);
+
+    rc = ble_gattc_check_valid_param(incl_num,0);
+    if (rc != 0) {
+        if (db) {
+            free(db);
+        }
+        *count = 0;
+        return rc;
+    } else {
+        ble_gattc_fill_gatt_db_conversion(count, incl_num, ESP_BLE_GATT_DB_INCLUDED_SERVICE, 0, (void *)result, db);
+    }
+
+    *count = incl_num;
+    //free the db buffer after used.
+    if (db) {
+        free(db);
+    }
+    return 0;
+
+}
+#endif
+
+int ble_gattc_get_attr_count(uint16_t conn_handle, esp_ble_gatt_db_attr_type_t type,
+                             uint16_t start_handle, uint16_t end_handle,
+                             uint16_t char_handle, uint16_t *count)
+{
+    if (type == ESP_BLE_GATT_DB_ALL) {
+        ble_gattc_get_db_size(conn_handle, start_handle, end_handle, count);
+    } else {
+        ble_gattc_get_db_size_by_type(conn_handle, type, start_handle, end_handle, char_handle, count);
+    }
+    return 0;
+}
+
+int ble_gattc_get_db(uint16_t conn_handle,
+                     uint16_t start_handle, uint16_t end_handle,
+                     ble_gattc_db_elem_t *result, uint16_t *count)
+{
+    uint16_t num = 0;
+    ble_gattc_db_elem_t *db = NULL;
+
+    ble_gattc_get_cached_gatt_db(conn_handle, start_handle, end_handle, &db, &num, count);
+
+    if (num == 0) {
+        return BLE_ATT_ERR_ATTR_NOT_FOUND;
+    }
+    if (db) {
+        memcpy(result, db, num * sizeof(ble_gattc_db_elem_t));  // Copy data
+        free(db);  // Free allocated memory
+    }
+
+    return 0;
+}
+
+#endif
 
 /*****************************************************************************
  * $read                                                                     *
