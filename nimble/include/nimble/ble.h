@@ -358,6 +358,7 @@ enum ble_error_codes
  * (Corresponds to Resolved Private Address).
  */
 #define BLE_ADDR_RANDOM_ID   (0x03)
+#define BLE_ADDR_ANONYMOUS   (0xFF)
 
 /**
  * Bluetooth Device Address Type: Anonymous
