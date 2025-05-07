@@ -3126,7 +3126,8 @@ ble_gap_wl_tx_add(const ble_addr_t *addr)
 {
     struct ble_hci_le_add_whte_list_cp cmd;
 
-    if (addr->type > BLE_ADDR_RANDOM) {
+    if (addr->type > BLE_ADDR_RANDOM &&
+        addr->type != BLE_ADDR_ANONYMOUS) {
         return BLE_HS_EINVAL;
     }
 
@@ -3206,7 +3207,8 @@ ble_gap_wl_set(const ble_addr_t *addrs, uint8_t white_list_count)
 
     for (i = 0; i < white_list_count; i++) {
         if (addrs[i].type != BLE_ADDR_PUBLIC &&
-            addrs[i].type != BLE_ADDR_RANDOM) {
+            addrs[i].type != BLE_ADDR_RANDOM &&
+            addrs[i].type != BLE_ADDR_ANONYMOUS) {
 
             rc = BLE_HS_EINVAL;
             goto done;
