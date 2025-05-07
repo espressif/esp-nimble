@@ -282,6 +282,7 @@ enum ble_error_codes
 #define BLE_ADDR_RANDOM      (0x01)
 #define BLE_ADDR_PUBLIC_ID   (0x02)
 #define BLE_ADDR_RANDOM_ID   (0x03)
+#define BLE_ADDR_ANONYMOUS   (0xFF)
 
 #define BLE_ADDR_ANY (&(ble_addr_t) { 0, {0, 0, 0, 0, 0, 0} })
 
