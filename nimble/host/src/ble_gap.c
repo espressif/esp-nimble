@@ -3850,6 +3850,7 @@ ble_gap_ext_adv_params_tx_v1(uint8_t instance,
 
 }
 
+#if MYNEWT_VAL(BLE_EXT_ADV_V2)
 static int
 ble_gap_ext_adv_params_tx_v2(uint8_t instance,
                              const struct ble_gap_ext_adv_params *params,
@@ -3885,15 +3886,17 @@ ble_gap_ext_adv_params_tx_v2(uint8_t instance,
 
     return 0;
 }
+#endif
 
 static int
 ble_gap_ext_adv_params_tx(uint8_t instance,
                           const struct ble_gap_ext_adv_params *params,
                           int8_t *selected_tx_power)
 {
-    struct ble_hs_hci_sup_cmd sup_cmd;
     int rc = 0;
 
+#if MYNEWT_VAL(BLE_EXT_ADV_V2)
+    struct ble_hs_hci_sup_cmd sup_cmd;
     sup_cmd = ble_hs_hci_get_hci_supported_cmd();
 
     /* Return Error if phy is non-zero and controller doesn't support V2 */
@@ -3906,6 +3909,7 @@ ble_gap_ext_adv_params_tx(uint8_t instance,
         rc = ble_gap_ext_adv_params_tx_v2(instance, params, selected_tx_power);
         return rc;
     }
+#endif
 
     rc = ble_gap_ext_adv_params_tx_v1(instance, params, selected_tx_power);
 
