@@ -1877,6 +1877,11 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
 
     STATS_INC(ble_gap_stats, rx_adv_report);
 
+#if !MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
+    /* In case to allow scan with connect, return directly */
+    return 0;
+#endif
+
     if (ble_gap_master.op != BLE_GAP_OP_M_DISC) {
         return -1;
     }
@@ -6072,10 +6077,12 @@ ble_gap_disc_cancel_no_lock(void)
 
     STATS_INC(ble_gap_stats, discover_cancel);
 
+#if !MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
     if (!ble_gap_disc_active()) {
         rc = BLE_HS_EALREADY;
         goto done;
     }
+#endif
 
     rc = ble_gap_disc_disable_tx();
     if (rc != 0) {
