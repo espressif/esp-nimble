@@ -1997,16 +1997,16 @@ ble_gattc_cache_conn_init()
     int max_dscs;
     void *storage_cb;
 
-    max_ble_gattc_cache_conns  = MYNEWT_VAL(BLE_MAX_CONNECTIONS);
-    max_svcs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_ble_gattc_cache_conns  = MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS);
+    max_svcs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_SVCS));
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
-    max_incl_svcs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_incl_svcs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                     (MYNEWT_VAL(BLE_GATT_CACHING_MAX_INCL_SVCS));
 #endif
-    max_chrs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_chrs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CHRS));
-    max_dscs = (MYNEWT_VAL(BLE_MAX_CONNECTIONS)) *
+    max_dscs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_DSCS));
     /* Free memory first in case this function gets called more than once. */
     ble_gattc_cache_conn_free_mem();
@@ -2372,7 +2372,7 @@ ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_FIND_INC_SVCS,
-                           start_handle, end_handle, uuid);
+                           start_handle, end_handle, &uuid);
     /* put the event in the queue to mimic the gattc behaviour */
     ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_inc_svcs_cb, &conn->conn_handle);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
