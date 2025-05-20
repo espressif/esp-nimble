@@ -1212,16 +1212,6 @@ int npl_freertos_mempool_init(void)
     }
 _error:
 
-#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
-    if(ble_freertos_ev_buf) {
-        free(ble_freertos_ev_buf);
-	ble_freertos_ev_buf = NULL;
-    }
-#else
-   BLE_LL_ASSERT(rc == 0);
-   return rc;
-#endif
-
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(ble_freertos_evq_buf) {
         free(ble_freertos_evq_buf);
@@ -1239,12 +1229,18 @@ _error:
         free(ble_freertos_mutex_buf);
 	ble_freertos_mutex_buf = NULL;
     }
+#endif
+
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
+    if(ble_freertos_ev_buf) {
+        free(ble_freertos_ev_buf);
+	ble_freertos_ev_buf = NULL;
+    }
     return -1;
-#else
+#endif
 
    BLE_LL_ASSERT(rc == 0);
    return rc;
-#endif
 }
 
 void npl_freertos_mempool_deinit(void)

@@ -1813,7 +1813,7 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
 
     STATS_INC(ble_gap_stats, rx_adv_report);
 
-#if !MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
+#if MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
     /* In case to allow scan with connect, return directly */
     return 0;
 #endif
