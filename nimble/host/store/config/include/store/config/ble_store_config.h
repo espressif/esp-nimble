@@ -32,6 +32,8 @@ int ble_store_config_read(int obj_type, const union ble_store_key *key,
 int ble_store_config_write(int obj_type, const union ble_store_value *val);
 int ble_store_config_delete(int obj_type, const union ble_store_key *key);
 
+int ble_store_nvs_set_namespace(const char *namespace_str);
+
 #ifdef __cplusplus
 }
 #endif
