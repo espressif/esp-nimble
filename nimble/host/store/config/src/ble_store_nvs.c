@@ -41,7 +41,7 @@
 #define NIMBLE_NVS_CCCD_SEC_KEY                  "cccd_sec"
 #define NIMBLE_NVS_CSFC_SEC_KEY                  "csfc_sec"
 #define NIMBLE_NVS_PEER_RECORDS_KEY              "p_dev_rec"
-#define NIMBLE_NVS_NAMESPACE                     "nimble_bond"
+#define NIMBLE_NVS_NAMESPACE_DEFAULT             "nimble_bond"
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #define NIMBLE_NVS_EAD_SEC_KEY                   "ead_sec"
@@ -51,6 +51,24 @@
 #define NIMBLE_NVS_RPA_RECORDS_KEY               "rpa_rec"
 
 static const char *TAG = "NIMBLE_NVS";
+
+static char nimble_nvs_namespace[NIMBLE_NVS_STR_NAME_MAX_LEN] = NIMBLE_NVS_NAMESPACE_DEFAULT;
+
+int ble_store_nvs_set_namespace(const char *namespace_str) {
+    if (!namespace_str) {
+        ESP_LOGD(TAG, "Setting default NVS namespace '%s'", NIMBLE_NVS_NAMESPACE_DEFAULT);
+        strcpy(nimble_nvs_namespace, NIMBLE_NVS_NAMESPACE_DEFAULT);
+        return 0;
+    }
+    const size_t len = strlen(namespace_str);
+    if (len == 0 || len >= NIMBLE_NVS_STR_NAME_MAX_LEN) {
+        ESP_LOGE(TAG, "NVS namespace set failed, string length %d isn't suitable", len);
+        return -1;
+    }
+    ESP_LOGD(TAG, "Setting NVS namespace '%s'", namespace_str);
+    strcpy(nimble_nvs_namespace, namespace_str);
+    return 0;
+}
 
 /*****************************************************************************
  * $ MISC                                                                    *
@@ -136,7 +154,7 @@ get_nvs_peer_record(char *key_string, struct ble_hs_dev_records *p_dev_rec)
     size_t required_size = 0;
     nvs_handle_t nimble_handle;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(nimble_nvs_namespace, NVS_READWRITE, &nimble_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open operation failed");
         return BLE_HS_ESTORE_FAIL;
@@ -165,7 +183,7 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
     size_t required_size = 0;
     nvs_handle_t nimble_handle;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(nimble_nvs_namespace, NVS_READWRITE, &nimble_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open operation failed");
         return BLE_HS_ESTORE_FAIL;
@@ -318,7 +336,7 @@ ble_nvs_delete_value(int obj_type, int8_t index)
         return BLE_HS_EUNKNOWN;
     }
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(nimble_nvs_namespace, NVS_READWRITE, &nimble_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open operation failed !!");
         return BLE_HS_ESTORE_FAIL;
@@ -349,7 +367,7 @@ ble_nvs_write_key_value(char *key, const void *value, size_t required_size)
     nvs_handle_t nimble_handle;
     esp_err_t err;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(nimble_nvs_namespace, NVS_READWRITE, &nimble_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open operation failed !!");
         return BLE_HS_ESTORE_FAIL;
