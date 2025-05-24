@@ -56,7 +56,8 @@ static char nimble_nvs_namespace[NIMBLE_NVS_STR_NAME_MAX_LEN] = NIMBLE_NVS_NAMES
 
 int ble_store_nvs_set_namespace(const char *namespace_str) {
     if (!namespace_str) {
-        return -1;
+        strcpy(nimble_nvs_namespace, NIMBLE_NVS_NAMESPACE_DEFAULT);
+        return 0;
     }
     size_t len = strlen(namespace_str);
     if (len == 0 || len >= NIMBLE_NVS_STR_NAME_MAX_LEN) {
