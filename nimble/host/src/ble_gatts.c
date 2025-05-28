@@ -2868,7 +2868,7 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
     ble_gatts_free_svc_defs();
      /* Fill the cache. */
     cfg = ble_gatts_get_last_cfg(&ble_gatts_clt_cfgs);
-    ha = ble_att_svr_find_by_handle(cfg->chr_val_handle - 1);
+    ha = cfg == NULL ? NULL : ble_att_svr_find_by_handle(cfg->chr_val_handle - 1);
     while ((ha = ble_att_svr_find_by_uuid(ha, &uuid.u, 0xffff)) != NULL) {
         chr = ha->ha_cb_arg;
         allowed_flags = ble_gatts_chr_clt_cfg_allowed(chr);
