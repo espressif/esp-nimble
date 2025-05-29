@@ -699,6 +699,7 @@ ble_store_config_write_ead(const struct ble_store_value_ead *value_ead)
 static int
 ble_store_config_find_local_irk(const struct ble_store_key_local_irk *key)
 {
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     struct ble_store_value_local_irk *local_irk;
     int skipped;
     int i;
@@ -720,7 +721,7 @@ ble_store_config_find_local_irk(const struct ble_store_key_local_irk *key)
 
         return i;
     }
-
+#endif
     return -1;
 }
 
@@ -769,6 +770,7 @@ ble_store_config_read_local_irk(const struct ble_store_key_local_irk *key_irk,
 static int
 ble_store_config_write_local_irk(const struct ble_store_value_local_irk *value_irk)
 {
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     struct ble_store_key_local_irk key_irk;
     int idx;
     int rc;
@@ -795,6 +797,9 @@ ble_store_config_write_local_irk(const struct ble_store_value_local_irk *value_i
     }
 
     return 0;
+#else
+    return BLE_HS_ENOTSUP;
+#endif
 }
 
 
@@ -910,6 +915,7 @@ ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
  * $csfc                                                                     *
  *****************************************************************************/
 
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 static int
 ble_store_config_find_csfc(const struct ble_store_key_csfc *key,
                            const struct ble_store_value_csfc *value_csfc,
@@ -934,10 +940,12 @@ ble_store_config_find_csfc(const struct ble_store_key_csfc *key,
 
     return -1;
 }
+#endif
 
 static int
 ble_store_config_delete_csfc(const struct ble_store_key_csfc *key_csfc)
 {
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
     int idx;
     int rc;
 
@@ -961,12 +969,16 @@ ble_store_config_delete_csfc(const struct ble_store_key_csfc *key_csfc)
     }
 
     return 0;
+#else
+    return BLE_HS_ENOENT;
+#endif
 }
 
 static int
 ble_store_config_read_csfc(const struct ble_store_key_csfc *key_csfc,
                            struct ble_store_value_csfc *value_csfc)
 {
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
     int idx;
 
     idx = ble_store_config_find_csfc(key_csfc, ble_store_config_csfcs,
@@ -977,11 +989,15 @@ ble_store_config_read_csfc(const struct ble_store_key_csfc *key_csfc,
 
     *value_csfc = ble_store_config_csfcs[idx];
     return 0;
+#else
+    return BLE_HS_ENOENT;
+#endif
 }
 
 static int
 ble_store_config_write_csfc(const struct ble_store_value_csfc *value_csfc)
 {
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
     struct ble_store_key_csfc key_csfc;
     int idx;
     int rc;
@@ -1008,6 +1024,9 @@ ble_store_config_write_csfc(const struct ble_store_value_csfc *value_csfc)
     }
 
     return 0;
+#else
+    return BLE_HS_ENOENT;
+#endif
 }
 
 /*****************************************************************************
