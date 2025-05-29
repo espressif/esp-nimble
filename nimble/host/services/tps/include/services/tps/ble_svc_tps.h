@@ -20,6 +20,10 @@
 #ifndef H_BLE_SVC_TPS_
 #define H_BLE_SVC_TPS_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ble_hs_cfg;
 
 #define BLE_SVC_TPS_UUID16                                      0x1804
@@ -27,5 +31,8 @@ struct ble_hs_cfg;
 
 void ble_svc_tps_init(void);
 
+#ifdef __cplusplus
+}
 #endif
 
+#endif

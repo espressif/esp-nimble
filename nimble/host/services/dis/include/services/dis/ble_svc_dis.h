@@ -20,6 +20,10 @@
 #ifndef H_BLE_SVC_DIS_
 #define H_BLE_SVC_DIS_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Example:
  *
@@ -144,5 +148,9 @@ const char *ble_svc_dis_system_id(void);
 int ble_svc_dis_system_id_set(const char *value);
 int ble_svc_dis_pnp_id_set(const char *value);
 const char *ble_svc_dis_pnp_id(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

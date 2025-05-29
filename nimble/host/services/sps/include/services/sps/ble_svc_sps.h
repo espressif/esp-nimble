@@ -22,6 +22,9 @@
 #ifndef H_BLE_SVC_SPS_
 #define H_BLE_SVC_SPS_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define BLE_SVC_SPS_UUID16                              0x1813
 #define BLE_SVC_SPS_CHR_UUID16_SCAN_ITVL_WINDOW	        0x2A4F
@@ -32,4 +35,9 @@ typedef int ble_svc_sps_event_fn(uint16_t scan_interval, uint16_t scan_window);
 void ble_svc_sps_scan_refresh(void);
 void ble_svc_sps_init(uint16_t scan_itvl, uint16_t scan_window);
 void ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif

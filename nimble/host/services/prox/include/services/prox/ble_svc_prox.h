@@ -7,6 +7,10 @@
 #ifndef H_BLE_SVC_PROX_
 #define H_BLE_SVC_PROX_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ble_hs_cfg;
 
 /* 16 Bit Proximity Sensor Service UUID */
@@ -28,5 +32,9 @@ struct ble_hs_cfg;
  * @brief  Initializes proximity service.
  */
 void ble_svc_prox_init(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

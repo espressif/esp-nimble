@@ -20,6 +20,10 @@
 #ifndef H_BLE_SVC_ANS_
 #define H_BLE_SVC_ANS_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ble_hs_cfg;
 
 /* 16 Bit Alert Notification Service UUID */
@@ -81,5 +85,8 @@ int ble_svc_ans_unr_alert_add(uint8_t cat_id);
 
 void ble_svc_ans_init(void);
 
+#ifdef __cplusplus
+}
 #endif
 
+#endif
