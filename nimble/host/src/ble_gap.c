@@ -8196,7 +8196,7 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
 int
 ble_gap_unpair_oldest_peer(void)
 {
-#if NIMBLE_BLE_SM
+#if NIMBLE_BLE_SM && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     ble_addr_t oldest_peer_id_addr[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int num_peers;
     int rc;
@@ -9217,8 +9217,10 @@ ble_gap_host_check_status(void)
     uint16_t sync_handle = 0;
 #endif
     struct ble_hs_conn *conn;
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     ble_addr_t oldest_peer_id_addr[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int num_peers = 0;
+#endif
 
     /* Stop Advertising */
 #if MYNEWT_VAL(BLE_EXT_ADV)
@@ -9261,6 +9263,7 @@ ble_gap_host_check_status(void)
 	}
     }
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     /* Check for paired devices*/
     ble_store_util_bonded_peers(&oldest_peer_id_addr[0],
 		    &num_peers, MYNEWT_VAL(BLE_STORE_MAX_BONDS));
@@ -9269,6 +9272,7 @@ ble_gap_host_check_status(void)
         BLE_HS_LOG(ERROR, "Unpaired device exists\n");
 	status |= BIT(BLE_GAP_STATUS_PAIRED);
     }
+#endif
 
     /* gatts reset */
     if (ble_gatts_get_cfgable_chrs()) {
