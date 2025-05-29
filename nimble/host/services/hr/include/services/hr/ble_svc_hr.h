@@ -7,6 +7,10 @@
 #ifndef H_BLE_SVC_HR_
 #define H_BLE_SVC_HR_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ble_hs_cfg;
 
 /* 16 Bit Heart Rate Service UUID */
@@ -25,5 +29,9 @@ void ble_svc_hr_on_gap_connect(uint16_t conn_handle);
 void ble_svc_hr_on_gap_disconnect(uint16_t conn_handle);
 
 void ble_svc_hr_init(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

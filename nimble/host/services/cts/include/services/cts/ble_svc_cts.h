@@ -20,6 +20,10 @@
 #ifndef H_BLE_SVC_CTS_
 #define H_BLE_SVC_CTS_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define BLE_SVC_CTS_ERR_DATA_FIELD_IGNORED      0x80
 /* 16 Bit Current Time Service UUID */
 #define BLE_SVC_CTS_UUID16                      0x1805
@@ -156,5 +160,9 @@ void
 ble_svc_cts_init(struct ble_svc_cts_cfg cfg);
 void
 ble_svc_cts_time_updated(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
