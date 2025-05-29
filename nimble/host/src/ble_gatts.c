@@ -2025,6 +2025,7 @@ ble_gatts_conn_can_alloc(void)
 #endif
 
     return ble_gatts_num_cfgable_chrs == 0 ||
+           ble_gatts_clt_cfg_pool.mp_num_blocks == 0 ||
            ble_gatts_clt_cfg_pool.mp_num_free > 0;
 }
 
