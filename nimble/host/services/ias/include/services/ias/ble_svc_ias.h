@@ -20,6 +20,10 @@
 #ifndef H_BLE_IAS_TPS_
 #define H_BLE_IAS_TPS_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define BLE_SVC_IAS_UUID16                                      0x1802
 #define BLE_SVC_IAS_CHR_UUID16_ALERT_LEVEL                      0x2a06
 
@@ -33,6 +37,9 @@ typedef int ble_svc_ias_event_fn(uint8_t alert_level);
 void ble_svc_ias_set_cb(ble_svc_ias_event_fn *cb);
 void ble_svc_ias_init(void);
 
+#ifdef __cplusplus
+}
 #endif
 
+#endif
 

@@ -7,6 +7,10 @@
 #ifndef H_BLE_SVC_HTP_
 #define H_BLE_SVC_HTP_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ble_hs_cfg;
 
 /* 16 Bit Health Thermometer Service UUID */
@@ -46,5 +50,9 @@ int ble_svc_htp_indicate(uint16_t conn_handle, float temp, bool temp_unit);
 int ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit);
 
 void ble_svc_htp_init(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
