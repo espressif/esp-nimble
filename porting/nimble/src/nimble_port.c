@@ -158,6 +158,10 @@ esp_err_t esp_nimble_deinit(void)
     npl_freertos_funcs_deinit();
 #endif
 
+#if !SOC_ESP_NIMBLE_CONTROLLER
+    npl_freertos_mempool_deinit();
+#endif
+
     ble_transport_ll_deinit();
     return ESP_OK;
 }
