@@ -161,6 +161,9 @@ int32_t ble_gattc_timer(void);
 
 int ble_gattc_any_jobs(void);
 int ble_gattc_init(void);
+#if MYNEWT_VAL(BLE_GATTC) && MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+void ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status);
+#endif
 
 /*** @server. */
 #define BLE_GATTS_CLT_CFG_F_NOTIFY              0x0001

@@ -252,6 +252,26 @@ ble_gatts_chr_clt_cfg_allowed(const struct ble_gatt_chr_def *chr)
 }
 
 static uint8_t
+ble_gatts_chr_clt_cfg_flags_from_chr_flags(ble_gatt_chr_flags chr_flags)
+{
+    uint8_t cccd_flags;
+
+    cccd_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE;
+
+    if (chr_flags & BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC) {
+        cccd_flags |= BLE_ATT_F_WRITE_ENC;
+    }
+    if (chr_flags & BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN) {
+        cccd_flags |= BLE_ATT_F_WRITE_AUTHEN;
+    }
+    if (chr_flags & BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHOR) {
+        cccd_flags |= BLE_ATT_F_WRITE_AUTHOR;
+    }
+
+    return cccd_flags;
+}
+
+static uint8_t
 ble_gatts_att_flags_from_chr_flags(ble_gatt_chr_flags chr_flags)
 {
     uint8_t att_flags;
@@ -1014,10 +1034,13 @@ ble_gatts_register_clt_cfg_dsc(const struct ble_gatt_chr_def *chr, uint16_t *att
      * level as the characteristic itself. Authorization is not inherited:
      * the stack cannot enforce it on the internal CCCD access callback,
      * and its flag alone would wrongly activate the key-size check.
+     * Requirements requested explicitly through the
+     * BLE_GATT_CHR_F_NOTIFY_INDICATE_* flags are applied on top of the
+     * inherited ones.
      */
     chr_att_flags = ble_gatts_att_flags_from_chr_flags(chr->flags);
 
-    att_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE;
+    att_flags = ble_gatts_chr_clt_cfg_flags_from_chr_flags(chr->flags);
     if (chr_att_flags & (BLE_ATT_F_READ_ENC | BLE_ATT_F_WRITE_ENC)) {
         att_flags |= BLE_ATT_F_WRITE_ENC;
     }
