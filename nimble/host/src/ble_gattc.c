@@ -113,6 +113,9 @@
 struct ble_gattc_proc {
     STAILQ_ENTRY(ble_gattc_proc) next;
 
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    struct ble_gatt_error error;
+#endif
     uint32_t exp_os_ticks;
     uint16_t conn_handle;
     uint16_t cid;
@@ -210,6 +213,9 @@ struct ble_gattc_proc {
             uint16_t att_handle;
             ble_gatt_attr_fn *cb;
             void *cb_arg;
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+            struct os_mbuf * om;
+#endif
         } write;
 
         struct {
@@ -460,6 +466,11 @@ static struct os_mempool ble_gattc_proc_pool;
 
 /* The list of active GATT client procedures. */
 static struct ble_gattc_proc_list ble_gattc_procs;
+
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+/** Retry procedure after encryption response. */
+static struct ble_gattc_proc_list ble_gattc_cached_procs;
+#endif
 
 #if MYNEWT_VAL(BLE_GATTC)
 /* The time when we should attempt to resume stalled procedures, in OS ticks.
@@ -780,6 +791,13 @@ ble_gattc_proc_free(struct ble_gattc_proc *proc)
         ble_gattc_dbg_assert_proc_not_inserted(proc);
 
         switch (proc->op) {
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+        case BLE_GATT_OP_WRITE:
+            if (MYNEWT_VAL(BLE_GATT_WRITE)) {
+                os_mbuf_free_chain(proc->write.om);
+            }
+            break;
+#endif
         case BLE_GATT_OP_WRITE_LONG:
             if (MYNEWT_VAL(BLE_GATT_WRITE_LONG)) {
                 os_mbuf_free_chain(proc->write_long.attr.om);
@@ -1388,6 +1406,94 @@ ble_gattc_error(int status, uint16_t att_handle)
     error.att_handle = att_handle;
     return &error;
 }
+
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+void
+ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status)
+{
+    struct ble_gattc_proc * prev;
+    struct ble_gattc_proc * proc;
+    struct ble_gattc_proc * next;
+    struct os_mbuf * om;
+    struct ble_gatt_attr attrs[MYNEWT_VAL(BLE_GATT_WRITE_MAX_ATTRS)];
+    ble_gattc_err_fn *err_cb;
+
+    prev = NULL;
+    proc = STAILQ_FIRST(&ble_gattc_cached_procs);
+    while (proc != NULL) {
+        next = STAILQ_NEXT(proc, next);
+
+        if (proc->conn_handle == conn_handle) {
+            if (enc_status == 0) {
+                switch (proc->op) {
+                case BLE_GATT_OP_READ:
+                    ble_gattc_read(conn_handle, proc->read.handle,
+                                  proc->read.cb, proc->read.cb_arg);
+                    break;
+                case BLE_GATT_OP_READ_UUID:
+                    ble_gattc_read_by_uuid(conn_handle, proc->read_uuid.start_handle,
+                                        proc->read_uuid.end_handle, &proc->read_uuid.chr_uuid.u,
+                                        proc->read_uuid.cb, proc->read_uuid.cb_arg);
+                    break;
+                case BLE_GATT_OP_READ_LONG:
+                    ble_gattc_read_long(conn_handle, proc->read_long.handle,
+                                        proc->read_long.offset, proc->read_long.cb,
+                                        proc->read_long.cb_arg);
+                    break;
+                case BLE_GATT_OP_READ_MULT:
+                    ble_gattc_read_mult(conn_handle, proc->read_mult.handles,
+                                        proc->read_mult.num_handles, proc->read_mult.cb,
+                                        proc->read_mult.cb_arg);
+                    break;
+                case BLE_GATT_OP_READ_MULT_VAR:
+                    ble_gattc_read_mult_var(conn_handle, proc->read_mult.handles,
+                                            proc->read_mult.num_handles, proc->read_mult.cb_mult,
+                                            proc->read_mult.cb_arg);
+                    break;
+                case BLE_GATT_OP_WRITE:
+                    /* Mbuf will be consumed by the API. */
+                    om = os_mbuf_dup(proc->write.om);
+                    ble_gattc_write(conn_handle, proc->write.att_handle,
+                                    om, proc->write.cb, proc->write.cb_arg);
+                    break;
+                case BLE_GATT_OP_WRITE_LONG:
+                    /* Mbuf will be consumed by the API. */
+                    om = os_mbuf_dup(proc->write_long.attr.om);
+                    ble_gattc_write_long(conn_handle, proc->write_long.attr.handle,
+                                         proc->write_long.attr.offset, om,
+                                         proc->write_long.cb, proc->write_long.cb_arg);
+                case BLE_GATT_OP_WRITE_RELIABLE:
+                    for (int i = 0; i < proc->write_reliable.num_attrs; i++) {
+                        attrs[i].handle = proc->write_reliable.attrs[i].handle;
+                        attrs[i].offset = 0;
+                        attrs[i].om = os_mbuf_dup(proc->write_reliable.attrs[i].om);
+                    }
+                    ble_gattc_write_reliable(conn_handle, attrs,
+                                             proc->write_reliable.num_attrs,
+                                             proc->write_reliable.cb, proc->write_reliable.cb_arg);
+                }
+            } else {
+                err_cb = ble_gattc_err_dispatch_get(proc->op);
+                if (err_cb != NULL) {
+                    err_cb(proc, BLE_HS_ERR_ATT_BASE + proc->error.status, proc->error.att_handle);
+                }
+            }
+
+            if (!prev) {
+                STAILQ_REMOVE_HEAD(&ble_gattc_cached_procs, next);
+            } else {
+                STAILQ_REMOVE_AFTER(&ble_gattc_cached_procs, prev, next);
+            }
+
+            ble_gattc_proc_free(proc);
+            proc = prev;
+        }
+
+        prev = proc;
+        proc = next;
+    }
+}
+#endif /* MYNEWT_VAL(BLE_GATTC_AUTO_PAIR) */
 
 /*****************************************************************************
  * $mtu                                                                      *
@@ -4391,6 +4497,9 @@ ble_gattc_write(uint16_t conn_handle, uint16_t attr_handle,
     proc->write.att_handle = attr_handle;
     proc->write.cb = cb;
     proc->write.cb_arg = cb_arg;
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    proc->write.om = os_mbuf_dup(txom);
+#endif
 
     ble_gattc_log_write(attr_handle, OS_MBUF_PKTLEN(txom), 1);
 
@@ -5486,9 +5595,30 @@ ble_gattc_rx_err(uint16_t conn_handle, uint16_t cid, uint16_t handle, uint16_t s
 {
     struct ble_gattc_proc *proc;
     ble_gattc_err_fn *err_cb;
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    struct ble_gap_conn_desc desc;
+    int rc;
+#endif
 
     proc = ble_gattc_extract_first_by_conn_cid_op(conn_handle, cid, BLE_GATT_OP_NONE);
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    ble_gap_conn_find(conn_handle, &desc);
+    proc->error.att_handle = handle;
+    proc->error.status = status;
+#endif
+
     if (proc != NULL) {
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+        if (desc.sec_state.encrypted == 0 &&
+            (status == BLE_ATT_ERR_INSUFFICIENT_ENC ||
+             status == BLE_ATT_ERR_INSUFFICIENT_AUTHEN)) {
+            rc = ble_gap_security_initiate(conn_handle);
+            if (rc == 0) {
+                STAILQ_INSERT_TAIL(&ble_gattc_cached_procs, proc, next);
+                return;
+            }
+        }
+#endif
         err_cb = ble_gattc_err_dispatch_get(proc->op);
         if (err_cb != NULL) {
             err_cb(proc, BLE_HS_ERR_ATT_BASE + status, handle);
@@ -5913,6 +6043,9 @@ ble_gattc_init(void)
     STAILQ_INIT(&temp_proc_list);
 #endif
     STAILQ_INIT(&ble_gattc_procs);
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    STAILQ_INIT(&ble_gattc_cached_procs);
+#endif
 
     if (MYNEWT_VAL(BLE_GATT_MAX_PROCS) > 0) {
         rc = os_mempool_init(&ble_gattc_proc_pool,
