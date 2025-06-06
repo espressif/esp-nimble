@@ -8513,6 +8513,10 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
 
+#if MYNEWT_VAL(BLE_GATTC) && MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    ble_gattc_recover_gatt_proc(conn_handle, status);
+#endif
+
     if (status != 0) {
         return;
     }

@@ -127,50 +127,58 @@ struct ble_hs_cfg;
  */
 
 /** GATT Characteristic Flag: Broadcast. */
-#define BLE_GATT_CHR_F_BROADCAST                        0x0001
+#define BLE_GATT_CHR_F_BROADCAST                        0x00000001
 
 /** GATT Characteristic Flag: Read. */
-#define BLE_GATT_CHR_F_READ                             0x0002
+#define BLE_GATT_CHR_F_READ                             0x00000002
 
 /** GATT Characteristic Flag: Write without Response. */
-#define BLE_GATT_CHR_F_WRITE_NO_RSP                     0x0004
+#define BLE_GATT_CHR_F_WRITE_NO_RSP                     0x00000004
 
 /** GATT Characteristic Flag: Write. */
-#define BLE_GATT_CHR_F_WRITE                            0x0008
+#define BLE_GATT_CHR_F_WRITE                            0x00000008
 
 /** GATT Characteristic Flag: Notify. */
-#define BLE_GATT_CHR_F_NOTIFY                           0x0010
+#define BLE_GATT_CHR_F_NOTIFY                           0x00000010
 
 /** GATT Characteristic Flag: Indicate. */
-#define BLE_GATT_CHR_F_INDICATE                         0x0020
+#define BLE_GATT_CHR_F_INDICATE                         0x00000020
 
 /** GATT Characteristic Flag: Authenticated Signed Writes. */
-#define BLE_GATT_CHR_F_AUTH_SIGN_WRITE                  0x0040
+#define BLE_GATT_CHR_F_AUTH_SIGN_WRITE                  0x00000040
 
 /** GATT Characteristic Flag: Reliable Writes. */
-#define BLE_GATT_CHR_F_RELIABLE_WRITE                   0x0080
+#define BLE_GATT_CHR_F_RELIABLE_WRITE                   0x00000080
 
 /** GATT Characteristic Flag: Auxiliary Writes. */
-#define BLE_GATT_CHR_F_AUX_WRITE                        0x0100
+#define BLE_GATT_CHR_F_AUX_WRITE                        0x00000100
 
 /** GATT Characteristic Flag: Read Encrypted. */
-#define BLE_GATT_CHR_F_READ_ENC                         0x0200
+#define BLE_GATT_CHR_F_READ_ENC                         0x00000200
 
 /** GATT Characteristic Flag: Read Authenticated. */
-#define BLE_GATT_CHR_F_READ_AUTHEN                      0x0400
+#define BLE_GATT_CHR_F_READ_AUTHEN                      0x00000400
 
 /** GATT Characteristic Flag: Read Authorized. */
-#define BLE_GATT_CHR_F_READ_AUTHOR                      0x0800
+#define BLE_GATT_CHR_F_READ_AUTHOR                      0x00000800
 
 /** GATT Characteristic Flag: Write Encrypted. */
-#define BLE_GATT_CHR_F_WRITE_ENC                        0x1000
+#define BLE_GATT_CHR_F_WRITE_ENC                        0x00001000
 
 /** GATT Characteristic Flag: Write Authenticated. */
-#define BLE_GATT_CHR_F_WRITE_AUTHEN                     0x2000
+#define BLE_GATT_CHR_F_WRITE_AUTHEN                     0x00002000
 
 /** GATT Characteristic Flag: Write Authorized. */
-#define BLE_GATT_CHR_F_WRITE_AUTHOR                     0x4000
+#define BLE_GATT_CHR_F_WRITE_AUTHOR                     0x00004000
 
+/** GATT Characteristic Flag: CCCD Write Encrypted */
+#define BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC              0x00008000
+
+/** GATT Characteristic Flag: CCCD Write Authenticated */
+#define BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN           0x00010000
+
+/** GATT Characteristic Flag: CCCD Write Authorized */
+#define BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHOR           0x00020000
 
 /** @} */
 
@@ -996,7 +1004,7 @@ typedef int ble_gatt_access_fn(uint16_t conn_handle, uint16_t attr_handle,
                                struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 /** Type definition for GATT characteristic flags. */
-typedef uint16_t ble_gatt_chr_flags;
+typedef uint32_t ble_gatt_chr_flags;
 
 /** Represents the definition of a GATT characteristic. */
 struct ble_gatt_chr_def {
@@ -1031,6 +1039,8 @@ struct ble_gatt_chr_def {
     /**
      * At registration time, this is filled in with the characteristic's value
      * attribute handle.
+     *
+     * The attribute handle for CCCD is `val_handle + 1`
      */
     uint16_t *val_handle;
 

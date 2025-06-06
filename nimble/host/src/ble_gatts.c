@@ -28,7 +28,6 @@
 #include "esp_nimble_mem.h"
 
 #if MYNEWT_VAL(BLE_GATTS)
-static uint8_t perm_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE ;
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 #include "services/gatt/ble_svc_gatt.h"
@@ -179,11 +178,6 @@ ble_gatts_clt_cfg_free(struct ble_gatts_clt_cfg *cfg)
 }
 #endif
 
-void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags)
-{ 
-   perm_flags = flags ;
-}
-
 static int
 ble_gatts_svc_access(uint16_t conn_handle, uint16_t attr_handle,
                      uint8_t op, uint16_t offset, struct os_mbuf **om,
@@ -257,6 +251,26 @@ ble_gatts_chr_clt_cfg_allowed(const struct ble_gatt_chr_def *chr)
     }
 
     return flags;
+}
+
+static uint8_t
+ble_gatts_chr_clt_cfg_flags_from_chr_flags(ble_gatt_chr_flags chr_flags)
+{
+    uint8_t cccd_flags;
+
+    cccd_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE;
+
+    if (chr_flags & BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC) {
+        cccd_flags |= BLE_ATT_F_WRITE_ENC;
+    }
+    if (chr_flags & BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN) {
+        cccd_flags |= BLE_ATT_F_WRITE_AUTHEN;
+    }
+    if (chr_flags & BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHOR) {
+        cccd_flags |= BLE_ATT_F_WRITE_AUTHOR;
+    }
+
+    return cccd_flags;
 }
 
 static uint8_t
@@ -1011,10 +1025,10 @@ ble_gatts_clt_cfg_access(uint16_t conn_handle, uint16_t attr_handle,
 }
 
 static int
-ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle)
+ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle, uint8_t cccd_flags)
 {
     int rc;
-    rc = ble_att_svr_register(uuid_ccc, perm_flags, 0,
+    rc = ble_att_svr_register(uuid_ccc, cccd_flags, 0,
                               att_handle, ble_gatts_clt_cfg_access, NULL);
     if (rc != 0) {
         return rc;
@@ -1190,7 +1204,8 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     }
 
     if (ble_gatts_chr_clt_cfg_allowed(chr) != 0) {
-        rc = ble_gatts_register_clt_cfg_dsc(&dsc_handle);
+        att_flags = ble_gatts_chr_clt_cfg_flags_from_chr_flags(chr->flags);
+        rc = ble_gatts_register_clt_cfg_dsc(&dsc_handle, att_flags);
         if (rc != 0) {
             return rc;
         }
