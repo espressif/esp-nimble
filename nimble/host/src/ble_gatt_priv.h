@@ -161,6 +161,9 @@ int32_t ble_gattc_timer(void);
 
 int ble_gattc_any_jobs(void);
 int ble_gattc_init(void);
+#if MYNEWT_VAL(BLE_GATTC) && MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+void ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status);
+#endif
 
 /*** @server. */
 #define BLE_GATTS_CLT_CFG_F_NOTIFY              0x0001
@@ -224,7 +227,6 @@ int ble_gatts_register_svcs(const struct ble_gatt_svc_def *svcs,
 int ble_gatts_clt_cfg_access(uint16_t conn_handle, uint16_t attr_handle,
                              uint8_t op, uint16_t offset, struct os_mbuf **om,
                              void *arg);
-void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 struct ble_gatts_aware_state {
