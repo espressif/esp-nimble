@@ -1902,14 +1902,18 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *peer)
             }
         }
     }
-    peer->cache_state = INC_DISC_IN_PROGRESS;
     svc = peer->cur_svc;
-    rc = ble_gattc_find_inc_svcs(peer->conn_handle,
-                                 svc->svc.start_handle,
-                                 svc->svc.end_handle,
-                                 ble_gattc_cache_conn_inc_disced, peer);
-    if (rc != 0) {
-        ble_gattc_cache_conn_disc_chrs(peer);
+    if (svc !=NULL && !ble_gattc_cache_conn_svc_is_empty(svc)) {
+        peer->cache_state = INC_DISC_IN_PROGRESS;
+        rc = ble_gattc_find_inc_svcs(peer->conn_handle,
+                                     svc->svc.start_handle,
+                                     svc->svc.end_handle,
+                                     ble_gattc_cache_conn_inc_disced, peer);
+        if (rc != 0) {
+            ble_gattc_cache_conn_disc_chrs(peer);
+        }
+    } else {
+         ble_gattc_cache_conn_disc_chrs(peer);
     }
     return;
 }
