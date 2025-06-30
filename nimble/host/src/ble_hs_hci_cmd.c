@@ -70,6 +70,9 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
         return BLE_HS_ENOMEM_EVT;
     }
     BLE_HS_DBG_ASSERT(cmd != NULL);
+    if (cmd == NULL) {
+        return BLE_HS_ENOMEM;
+    }
 
     buf = (uint8_t *)cmd;
 #if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
