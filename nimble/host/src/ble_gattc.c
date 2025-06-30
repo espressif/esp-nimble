@@ -269,6 +269,7 @@ static ble_gattc_err_fn ble_gattc_read_mult_var_err;
 static ble_gattc_err_fn ble_gattc_write_err;
 static ble_gattc_err_fn ble_gattc_write_long_err;
 static ble_gattc_err_fn ble_gattc_write_reliable_err;
+static bool gatt_proc_active = false;
 #endif
 
 #if MYNEWT_VAL(BLE_GATTS)
@@ -5343,6 +5344,159 @@ ble_gattc_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
                         struct os_mbuf *txom)
 {
     return ble_gatts_notify_custom(conn_handle, chr_val_handle, txom);
+}
+
+static int
+ble_gattc_cccd_write_complete_cb(uint16_t conn_handle,
+                                 const struct ble_gatt_error *error,
+                                 struct ble_gatt_attr *attr,
+                                 void *arg)
+{
+    BLE_HS_LOG(INFO,
+               "CCCD write : "
+               "status=%d conn_handle=%d attr_handle=%d",
+               error->status, conn_handle, attr->handle);
+
+    return 0;
+}
+
+static int ble_gattc_cccd_register_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
+                                      uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc,
+                                      void *arg)
+{
+    int rc = error->status;
+    bool *cccd_reg_flag = (bool *)arg;
+
+    if (error->status == BLE_HS_EDONE) {
+        /* GATT procedure completed reset active flag */
+        gatt_proc_active = false;
+        if (cccd_reg_flag) {
+            free(cccd_reg_flag);
+        }
+    } else if (error->status == 0) {
+        if (cccd_reg_flag && *cccd_reg_flag &&
+            (ble_uuid_cmp(&dsc->uuid.u, BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16)) == 0)) {
+            /* Prevent duplicate CCCD writes */
+            *cccd_reg_flag = false;
+            /* Enable notification */
+            uint8_t cccd_val[2] = {0x01, 0x00};
+
+            /* write to CCCD to enable notifications */
+            rc = ble_gattc_write_flat(conn_handle,
+                                      dsc->handle,
+                                      cccd_val, sizeof(cccd_val),
+                                      ble_gattc_cccd_write_complete_cb, NULL);
+            if (rc != 0) {
+                BLE_HS_LOG(WARN, "Failed to Register for Notification, status = %d", rc);
+            }
+        }
+     } else {
+        BLE_HS_LOG(WARN, "GATT descriptor discovery failed with status = %d", error->status);
+        gatt_proc_active = false;
+        if (cccd_reg_flag) {
+            free(cccd_reg_flag);
+        }
+     }
+
+    return rc;
+}
+
+int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_handle)
+{
+    /* Check if a GATT procedure is already active */
+    if (gatt_proc_active) {
+        BLE_HS_LOG(WARN, "Gatt procedure active; cannot start new process.");
+        return BLE_HS_EBUSY;
+    }
+
+    bool *cccd_reg_flag = (bool *)malloc(sizeof(bool));
+    if (!cccd_reg_flag) {
+        BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag.");
+        return BLE_HS_ENOMEM;
+    }
+
+    *cccd_reg_flag = true;
+    /* Mark that a GATT procedure is now active */
+    gatt_proc_active = true;
+
+    int rc = ble_gattc_disc_all_dscs(conn_handle, char_val_handle, 0xffff,
+                                     ble_gattc_cccd_register_cb, cccd_reg_flag);
+    if (rc != 0) {
+        gatt_proc_active = false;
+        free(cccd_reg_flag);
+    }
+
+    return rc;
+}
+
+static int ble_gattc_cccd_unregister_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
+                                        uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc,
+                                        void *arg)
+{
+    int rc = error->status;
+    bool *cccd_unreg_flag = (bool *)arg;
+
+    if (error->status == BLE_HS_EDONE) {
+        /* GATT procedure completed reset active flag */
+        gatt_proc_active = false;
+        if (cccd_unreg_flag) {
+            free(cccd_unreg_flag);
+        }
+    } else if (error->status == 0) {
+        if (cccd_unreg_flag && *cccd_unreg_flag &&
+            (ble_uuid_cmp(&dsc->uuid.u, BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16)) == 0)) {
+            /* Prevent duplicate CCCD writes */
+            *cccd_unreg_flag = false;
+            /* Disable notification or indication */
+            uint8_t cccd_val[2] = {0x00, 0x00};
+
+            /* write to CCCD to disable notifications or indication */
+            rc = ble_gattc_write_flat(conn_handle,
+                                      dsc->handle,
+                                      cccd_val, sizeof(cccd_val),
+                                      ble_gattc_cccd_write_complete_cb, NULL);
+            if (rc != 0) {
+                BLE_HS_LOG(WARN, "Failed to Unregister for Notification, status = %d", rc);
+            }
+        }
+    } else {
+        BLE_HS_LOG(WARN, "GATT descriptor discovery failed with status = %d", error->status);
+        gatt_proc_active = false;
+        if (cccd_unreg_flag) {
+            free(cccd_unreg_flag);
+        }
+    }
+
+    return rc;
+}
+
+
+int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_val_handle)
+{
+    if (gatt_proc_active) {
+        BLE_HS_LOG(WARN, "Gatt procedure active; cannot start new process");
+        return BLE_HS_EBUSY;
+    }
+
+    int rc;
+    bool *cccd_unreg_flag = (bool *)malloc(sizeof(bool));
+
+    if (!cccd_unreg_flag) {
+        BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag");
+        return BLE_HS_ENOMEM;
+    }
+
+    *cccd_unreg_flag = true;
+    gatt_proc_active = true;
+
+    rc = ble_gattc_disc_all_dscs(conn_handle, char_val_handle, 0xFFFF,
+                                 ble_gattc_cccd_unregister_cb, cccd_unreg_flag);
+    if (rc != 0) {
+      gatt_proc_active = false;
+      free(cccd_unreg_flag);
+    }
+
+    return rc;
 }
 #endif
 

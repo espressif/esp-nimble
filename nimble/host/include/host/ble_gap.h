@@ -170,6 +170,7 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_CONNLESS_IQ_REPORT    38
 #define BLE_GAP_EVENT_CONN_IQ_REPORT        39
 #define BLE_GAP_EVENT_CTE_REQ_FAILED        40
+#define BLE_GAP_EVENT_CACHE_ASSOC           41
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -864,6 +865,41 @@ struct ble_gap_event {
             /** The handle of the relevant connection. */
             uint16_t conn_handle;
         } passkey;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+        /**
+         * Represents an attempt to associate the cached attribute data of a peer
+         * device with the data already stored on the host. This is typically done
+         * after a connection is established to avoid full service discovery if
+         * valid cached data is available.
+         *
+         * If the association is successful, `cache_state` will be set to
+         * CACHE_LOADED, indicating that the cached attributes can be used.
+         * If the association fails, `cache_state` will be set to CACHE_INVALID,
+         * meaning the cache is unusable and full discovery may be required.
+         *
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_CACHE_ASSOC
+         */
+        struct {
+            /**
+             * Indicates the result of the cache association attempt;
+             *     o 0: association successful;
+             *     o BLE host error code: association failed for the specified reason.
+             */
+             int status;
+
+             /** The handle of the relevant connection. */
+             uint16_t conn_handle;
+
+            /**
+             * Represents the state of the cache:
+             *     o CACHE_LOADED  : Cache successfully loaded
+             *     o CACHE_INVALID : Cache invalid or unavailable
+             */
+             uint8_t cache_state;
+        } cache_assoc;
+#endif
 
         /**
          * Represents a received ATT notification or indication.

@@ -8391,6 +8391,27 @@ ble_gap_repeat_pairing_event(const struct ble_gap_repeat_pairing *rp)
 }
 
 /*****************************************************************************
+ * $cache                                                                     *
+ *****************************************************************************/
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+void
+ble_gap_assoc_event(uint16_t conn_handle, int status, uint8_t cache_state)
+{
+#if NIMBLE_BLE_CONNECT
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof event);
+    event.type = BLE_GAP_EVENT_CACHE_ASSOC;
+    event.cache_assoc.conn_handle = conn_handle;
+    event.cache_assoc.status = status;
+    event.cache_assoc.cache_state = cache_state;
+
+    ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
+}
+#endif
+
+/*****************************************************************************
  * $rssi                                                                     *
  *****************************************************************************/
 
