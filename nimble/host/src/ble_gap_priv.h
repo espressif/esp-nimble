@@ -159,6 +159,9 @@ void ble_gap_enc_event(uint16_t conn_handle, int status,
                        int security_restored, int bonded);
 void ble_gap_passkey_event(uint16_t conn_handle,
                            struct ble_gap_passkey_params *passkey_params);
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+void ble_gap_assoc_event(uint16_t conn_handle, int status, uint8_t cache_state);
+#endif
 void ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
                              struct os_mbuf *om, int is_indication);
 void ble_gap_notify_tx_event(int status, uint16_t conn_handle,
