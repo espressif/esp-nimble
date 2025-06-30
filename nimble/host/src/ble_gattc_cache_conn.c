@@ -1723,6 +1723,9 @@ ble_gattc_cache_conn_create(uint16_t conn_handle, ble_addr_t ble_gattc_cache_con
     /* set the conn as dirty initially as the cache is not built */
     cache_conn->cache_state = CACHE_INVALID;
     cache_conn->conn_handle = conn_handle;
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+    cache_conn->assoc_success = 0;
+#endif
     memcpy(&cache_conn->ble_gattc_cache_conn_addr, &ble_gattc_cache_conn_addr, sizeof(ble_addr_t));
     SLIST_INSERT_HEAD(&ble_gattc_cache_conns, cache_conn, next);
 
@@ -1731,6 +1734,7 @@ ble_gattc_cache_conn_create(uint16_t conn_handle, ble_addr_t ble_gattc_cache_con
     if (rc == 0) {
         cache_conn->cache_state = CACHE_LOADED;
     }
+
     return 0;
 }
 
@@ -1962,6 +1966,136 @@ ble_gattc_cache_conn_update(uint16_t conn_handle, uint16_t start_handle, uint16_
 }
 #endif
 
+int ble_gattc_cache_refresh(ble_addr_t peer_addr)
+{
+    struct ble_hs_conn *hs_conn;
+    struct ble_gattc_cache_conn *conn;
+    int rc;
+
+    hs_conn = ble_hs_conn_find_by_addr(&peer_addr);
+
+    if (hs_conn == NULL) {
+         BLE_HS_LOG(ERROR, "GATT cache refresh: connection not found for peer: %02x:%02x:%02x:%02x:%02x:%02x\n",
+                    peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
+                    peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
+
+        return BLE_HS_ENOTCONN;
+    }
+
+
+    /* Lookup cache connection entry */
+    conn = ble_gattc_cache_conn_find_by_addr(peer_addr);
+    if (conn == NULL) {
+        BLE_HS_LOG(WARN, "GATT cache refresh: no cache entry found for peer.");
+        return BLE_HS_EUNKNOWN;
+    }
+
+    ble_gattc_cacheReset(&peer_addr);
+    /* Invalidate and restart discovery*/
+    rc = ble_gattc_cache_conn_disc(conn);
+
+    return rc;
+}
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+static int
+ble_gattc_cache_conn_assoc_on_read(uint16_t conn_handle,
+                                   const struct ble_gatt_error *error,
+                                   struct ble_gatt_attr *attr,
+                                   void *arg)
+{
+    uint16_t res;
+    uint8_t database_hash[16];
+    int rc;
+
+    if (error->status == BLE_HS_EDONE) {
+        /* Ignore Read by UUID follow-up callback */
+        return 0;
+    }
+    if (error->status != 0) {
+        res = error->status;
+        return res;
+    }
+    rc = os_mbuf_copydata(attr->om, 0, sizeof(database_hash), database_hash);
+    if (rc != 0) {
+        BLE_HS_LOG(WARN, "Failed to copy database hash from attr->om (rc=%d)", rc);
+        return rc;
+    }
+    rc =  ble_gattc_cache_find_source((struct ble_gattc_cache_conn *)arg, database_hash);
+
+    return rc;
+}
+
+int ble_gattc_cache_assoc(ble_addr_t peer_addr)
+{
+    int rc;
+    struct ble_gattc_cache_conn *cache_conn;
+
+    cache_conn = ble_gattc_cache_conn_find_by_addr(peer_addr);
+    if (cache_conn == NULL) {
+        BLE_HS_LOG(WARN, "No cache entry found for peer.");
+        return BLE_HS_EUNKNOWN;
+    }
+
+    if (cache_conn->cache_state == CACHE_LOADED) {
+
+        BLE_HS_LOG(INFO, "Cache already loaded for conn_handle=%d; "
+                         "cache state=%d. Skipping association.",
+                          cache_conn->conn_handle, cache_conn->cache_state);
+        ble_gap_assoc_event(cache_conn->conn_handle, 0, cache_conn->cache_state);
+    }
+
+    if (cache_conn->cache_state == CACHE_INVALID) {
+        rc = ble_gattc_read_by_uuid(cache_conn->conn_handle, 0x0001, 0xFFFF,
+                                    BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16),
+                                    ble_gattc_cache_conn_assoc_on_read, cache_conn);
+
+        if (rc != 0) {
+            cache_conn->cache_state = CACHE_INVALID;
+            return rc;
+        }
+    }
+    return 0;
+
+}
+#endif
+
+int ble_gattc_cache_clean(ble_addr_t peer_addr)
+{
+    struct ble_hs_conn *hs_conn;
+    struct ble_gattc_cache_conn *conn;
+
+    // Check if the device is connected
+    hs_conn = ble_hs_conn_find_by_addr(&peer_addr);
+    if (hs_conn == NULL) {
+        BLE_HS_LOG(WARN, "GATT cache clean: No active connection found for peer:"
+                  " %02x:%02x:%02x:%02x:%02x:%02x, Attempting cache clean anyway.",
+                   peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
+                   peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
+
+        ble_gattc_cacheReset(&peer_addr);
+        return 0;
+    }
+
+    // Find cached GATT services for this peer
+    conn = ble_gattc_cache_conn_find_by_addr(peer_addr);
+    if (conn == NULL) {
+        BLE_HS_LOG(WARN, "GATT cache clean: no cache entry found for peer.");
+        return BLE_HS_EUNKNOWN;
+    }
+
+    // Reset any existing discovery flags/cache markers
+    ble_gattc_cacheReset(&peer_addr);
+
+    conn->cache_state = CACHE_INVALID;
+
+    BLE_HS_LOG(INFO, "GATT cache cleaned for peer: %02x:%02x:%02x:%02x:%02x:%02x",
+               peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
+               peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
+
+    return 0;
+}
+
 uint16_t
 ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
 {
@@ -2143,6 +2277,14 @@ static int ble_gattc_cache_conn_verify(struct ble_gattc_cache_conn *conn)
 {
     struct ble_hs_conn *gap_conn;
     int rc;
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+    if (conn->assoc_success && conn->cache_state == CACHE_LOADED) {
+        conn->cache_state = CACHE_VERIFIED;
+        BLE_HS_LOG(INFO, "Associate complete, skipping Discovery");
+        ble_gattc_cache_conn_disc_complete(conn, 0);
+        return 0;
+    }
+#endif
 
     if (conn->cache_state == CACHE_VERIFIED) {
         return 0;

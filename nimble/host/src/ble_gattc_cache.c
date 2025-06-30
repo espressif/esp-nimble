@@ -261,6 +261,30 @@ ble_gattc_cache_find_addr(ble_addr_t addr)
     return INVALID_ADDR_NUM;
 }
 
+void ble_gattc_cache_get_addr_list(ble_addr_t *addr_list, uint8_t *out_num)
+{
+    uint8_t num = cache_env->num_addr;
+
+    if (addr_list == NULL || out_num == NULL) {
+        BLE_HS_LOG(WARN, "Invalid input to ble_gattc_cache_get_addr_list.");
+        return;
+    }
+
+    for (uint8_t i = 0; i < num; i++) {
+        memcpy(&addr_list[i], &cache_env->cache_addr[i].addr, sizeof(ble_addr_t));
+    }
+
+    *out_num = num;
+
+    BLE_HS_LOG(DEBUG, "Total %d addresses in cache (each %u bytes):", num, (unsigned int)sizeof(ble_addr_t));
+    for (uint8_t i = 0; i < num; i++) {
+        ble_addr_t *addr = &addr_list[i];
+        BLE_HS_LOG(DEBUG, "[%d] Addr: %02x:%02x:%02x:%02x:%02x:%02x, type: %d\n", i,
+                   addr->val[5], addr->val[4], addr->val[3],
+                   addr->val[2], addr->val[1], addr->val[0], addr->type);
+    }
+}
+
 static uint8_t
 ble_gattc_cache_find_hash(uint8_t * hash_key)
 {
@@ -330,7 +354,7 @@ static void
 ble_gattc_fill_nv_attr(struct ble_gattc_cache_conn *peer, size_t num_attr, struct ble_gatt_nv_attr *nv_attr)
 {
     struct ble_gattc_cache_conn_svc *svc;
-#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES) 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
     struct ble_gattc_cache_conn_incl_svc *included_svc;
 #endif
     struct ble_gattc_cache_conn_chr *chr;
@@ -626,6 +650,89 @@ ble_gattc_add_dsc_from_cache(ble_addr_t peer_addr, struct ble_gatt_nv_attr nv_at
     nimble_platform_mem_free(gatt_dsc);
     return rc;
 }
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+int
+ble_gattc_cache_assoc_load(ble_addr_t src_addr, uint8_t src_index, ble_addr_t assoc_addr)
+{
+    int rc = 0;
+    int num_attr = 50;
+    struct ble_gatt_nv_attr *nv_attr;
+
+    if (!cacheOpen(src_addr, true, &src_index)) {
+        BLE_HS_LOG(INFO, "gattc cache open fail for src addr");
+        return BLE_HS_EINVAL;
+    }
+
+    /* Load the GATT attributes stored at src_index */
+    nv_attr = ble_gattc_cache_load_nv_attr(src_index, &num_attr);
+    if (nv_attr == NULL) {
+        BLE_HS_LOG(ERROR, "Failed to load nv_attr from source index %d", src_index);
+        return BLE_HS_EINVAL;
+    }
+
+    /* Load each attribute from the source into the associated address */
+    for (int i = 0; i < num_attr; i++) {
+        switch (nv_attr[i].attr_type) {
+        case BLE_GATT_ATTR_TYPE_SRVC:
+            rc = ble_gattc_add_svc_from_cache(assoc_addr, nv_attr[i]);
+            break;
+
+        case BLE_GATT_ATTR_TYPE_CHAR:
+            rc = ble_gattc_add_chr_from_cache(assoc_addr, nv_attr[i]);
+            break;
+
+        case BLE_GATT_ATTR_TYPE_CHAR_DESCR:
+            rc = ble_gattc_add_dsc_from_cache(assoc_addr, nv_attr[i]);
+            break;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        case BLE_GATT_ATTR_TYPE_INCL_SRVC:
+            rc = ble_gattc_add_inc_from_cache(assoc_addr, nv_attr[i]);
+            break;
+#endif
+
+        default:
+            break;
+        }
+    }
+
+    nimble_platform_mem_free(nv_attr);
+
+    /* Copy the database hash from src_addr entry and associate it with assoc_addr */
+    ble_gattc_cache_conn_load_hash(assoc_addr,
+                                   cache_env->cache_addr[src_index].hash_key);
+
+    BLE_HS_LOG(DEBUG, "Successfully associated cache from src_addr to assoc_addr.");
+    return 0;
+}
+
+int
+ble_gattc_cache_find_source(struct ble_gattc_cache_conn *cache_conn, uint8_t *database_hash)
+{
+    uint8_t addr_index = 0;
+    uint8_t num = cache_env->num_addr;
+    cache_addr_info_t *addr_info = &cache_env->cache_addr[0];
+    int rc = ESP_FAIL;
+
+    /* Iterate through all cached addresses to find a matching database hash */
+    for (addr_index = 0; addr_index < num; addr_index++, addr_info++) {
+        /* Compare stored hash with the provided database_hash */
+        if (!memcmp(&addr_info->hash_key, database_hash, sizeof(uint8_t) * 16)) {
+            rc = ble_gattc_cache_assoc_load(addr_info->addr, addr_index, cache_conn->ble_gattc_cache_conn_addr);
+            if (rc == 0) {
+                  cache_conn->cache_state = CACHE_LOADED;
+                  cache_conn->assoc_success = 1;
+                  BLE_HS_LOG(INFO, "Cache successfully loaded from src");
+                  break;
+            }
+        }
+    }
+
+    ble_gap_assoc_event(cache_conn->conn_handle, rc, cache_conn->cache_state);
+    return rc;
+}
+#endif
+
 
 int
 ble_gattc_cache_load(ble_addr_t peer_addr)
@@ -660,7 +767,7 @@ ble_gattc_cache_load(ble_addr_t peer_addr)
             rc = ble_gattc_add_dsc_from_cache(peer_addr, nv_attr[i]);
             break;
 
-#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES) 
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
         case BLE_GATT_ATTR_TYPE_INCL_SRVC:
             rc = ble_gattc_add_inc_from_cache(peer_addr, nv_attr[i]);
             break;

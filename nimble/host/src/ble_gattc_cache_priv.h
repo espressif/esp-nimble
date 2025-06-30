@@ -134,6 +134,11 @@ struct ble_gattc_cache_conn {
     /* event to be posted to inform
     the application about the discovery results */
     struct ble_npl_event disc_ev;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+    /** Indicates whether association was successful (0 = fail, 1 = success) */
+    uint8_t assoc_success;
+#endif
 };
 
 /** Enumerates types of GATT database attributes */
@@ -287,6 +292,14 @@ void ble_gattc_cache_conn_broken(uint16_t conn_handle);
 void ble_gattc_cache_conn_bonding_established(uint16_t conn_handle);
 void ble_gattc_cache_conn_bonding_restored(uint16_t conn_handle);
 
+void ble_gattc_cache_get_addr_list(ble_addr_t *addr_list, uint8_t *out_num);
+int ble_gattc_cache_refresh(ble_addr_t peer_addr);
+int ble_gattc_cache_clean(ble_addr_t peer_addr);
+#if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
+int ble_gattc_cache_assoc(ble_addr_t peer_addr);
+int ble_gattc_cache_find_source(struct ble_gattc_cache_conn *cache_conn, uint8_t *database_hash);
+int ble_gattc_cache_assoc_load(ble_addr_t src_addr, uint8_t src_index, ble_addr_t assoc_addr);
+#endif
 /* cache search */
 int ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,
                                          ble_gatt_disc_svc_fn *cb, void *cb_arg);

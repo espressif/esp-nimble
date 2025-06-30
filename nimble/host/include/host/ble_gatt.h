@@ -950,6 +950,36 @@ int ble_gatts_notify(uint16_t conn_handle, uint16_t chr_val_handle);
 int ble_gattc_notify(uint16_t conn_handle, uint16_t chr_val_handle);
 
 /**
+ * Unregisters for notifications on a specified characteristic by writing to its
+ * Client Characteristic Configuration Descriptor (CCCD).
+ *
+ * This function initiates discovery of all descriptors associated with the given
+ * characteristic value handle (`char_val_handle`). If a CCCD is found, it writes
+ * a value to disable notifications.
+ *
+ * @param conn_handle      The handle of the connection with the peer device.
+ * @param char_val_handle  The value handle of the characteristic to unregister from notification.
+ *
+ * @return                 0 on success, non-zero error code on failure.
+ */
+int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_val_handle);
+
+/**
+ * Registers for notifications on a specified characteristic by writing to its
+ * Client Characteristic Configuration Descriptor (CCCD).
+ *
+ * This function initiates discovery of all descriptors associated with the given
+ * characteristic value handle (`char_val_handle`). If a CCCD is found, it writes
+ * the appropriate value to enable notifications.
+ *
+ * @param conn_handle      The handle of the connection with the peer device.
+ * @param char_val_handle  The value handle of the characteristic to register for notification.
+ *
+ * @return                 0 on success, non-zero error code on failure.
+ */
+int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_handle);
+
+/**
  * Sends a "free-form" characteristic indication.  The provided mbuf contains
  * the indication payload.  This function consumes the supplied mbuf regardless
  * of the outcome.
