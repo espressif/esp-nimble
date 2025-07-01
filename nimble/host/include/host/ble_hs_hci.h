@@ -120,6 +120,16 @@ int ble_hs_hci_send_vs_cmd(uint16_t ocf, const void *cmdbuf, uint8_t cmdlen,
                            void *rspbuf, uint8_t rsplen);
 #endif
 
+/**
+ * Instructs the controller to set or clear a bit controlled by the Host in the
+ * Link Layer FeatureSet stored in the Controller.
+ *
+ * @param bit_num   Bit position in the FeatureSet.
+ * @param bit_val   0: The Host feature is disabled; 1: The Host feature is enabled.
+ * @return          0 on success, error code on failure
+ */
+int ble_hs_hci_set_host_feature(uint8_t bit_num, uint8_t bit_val);
+
 #ifdef __cplusplus
 }
 #endif

@@ -172,6 +172,16 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_PER_SUBEV_RESP        41
 #define BLE_GAP_EVENT_PERIODIC_TRANSFER_V2  42
 
+/* ISO events */
+#define BLE_GAP_EVENT_CIS_ESTAB             43
+#define BLE_GAP_EVENT_CIS_REQUEST           44
+#define BLE_GAP_EVENT_CREATE_BIG_COMP       45
+#define BLE_GAP_EVENT_TERM_BIG_COMP         46
+#define BLE_GAP_EVENT_BIG_SYNC_ESTAB        47
+#define BLE_GAP_EVENT_BIG_SYNC_LOST         48
+#define BLE_GAP_EVENT_BIGINFO_ADV_RPT       49
+#define BLE_GAP_EVENT_CIS_ESTAB_V2          50
+
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
 #define BLE_GAP_DTM_RX_START_EVT            1
@@ -1207,7 +1217,7 @@ struct ble_gap_event {
         } periodic_transfer;
 #endif
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
         /**
          * Represents a periodic advertising sync transfer received. Valid for
          * the following event types:
@@ -1653,6 +1663,293 @@ struct ble_gap_event {
     } cte_req_fail;
 
 #endif
+
+#if MYNEWT_VAL(BLE_ISO)
+    struct {
+        /** BLE_ERR_SUCCESS on success or error code on failure */
+        uint8_t status;
+
+        /** Connection handle of the CIS */
+        uint16_t cis_handle;
+
+        /** The maximum time, in microseconds, for transmission of PDUs
+         *  of all CISes in a CIG event.
+         */
+        uint32_t cig_sync_delay;
+
+        /** The maximum time, in microseconds, for transmission of PDUs
+         *  of the specified CIS in a CIG event.
+         */
+        uint32_t cis_sync_delay;
+
+        /** The actual transport latency, in microseconds, from Central to Peripheral */
+        uint32_t transport_latency_c_to_p;
+
+        /** The actual transport latency, in microseconds, from Peripheral to Central */
+        uint32_t transport_latency_p_to_c;
+
+        /** TX PHY (Central to Peripheral) */
+        uint8_t phy_c_to_p;
+
+        /** TX PHY (Peripheral to Central) */
+        uint8_t phy_p_to_c;
+
+        /** Maximum number of subevents in each CIS event */
+        uint8_t nse;
+
+        /** The burst number for Central to Peripheral transmission */
+        uint8_t bn_c_to_p;
+
+        /** The burst number for Peripheral to Central transmission */
+        uint8_t bn_p_to_c;
+
+        /** The flush timeout, in multiple of the ISO_Interval for the CIS,
+         *  for each payload sent from Central to Peripheral.
+         */
+        uint8_t ft_c_to_p;
+
+        /** The flush timeout, in multiple of the ISO_Interval for the CIS,
+         *  for each payload sent from Peripheral to Central.
+         */
+        uint8_t ft_p_to_c;
+
+        /** Maximum size, in octets, of the payload from Central to Peripheral */
+        uint16_t max_pdu_c_to_p;
+
+        /** Maximum size, in octets, of the payload from Peripheral to Central */
+        uint16_t max_pdu_p_to_c;
+
+        /** The time between two consecutive CIS anchor points (unit 1.25ms) */
+        uint16_t iso_interval;
+    } cis_estab;
+
+    struct {
+        /** Connection handle of the ACL */
+        uint16_t conn_handle;
+
+        /** Connection handle of the CIS */
+        uint16_t cis_handle;
+
+        /** Identifier of the CIG */
+        uint8_t cig_id;
+
+        /** Identifier of the CIS */
+        uint8_t cis_id;
+    } cis_request;
+
+    struct {
+        /** BLE_ERR_SUCCESS on success or error code on failure */
+        uint8_t status;
+
+        /** Identifier of the BIG */
+        uint8_t big_handle;
+
+        /** The maximum time, in microseconds, for transmission of PDUs
+         *  of all BISes in a BIG event.
+         */
+        uint32_t big_sync_delay;
+
+        /** The actual transport latency, in microseconds */
+        uint32_t transport_latency;
+
+        /** PHY used to create the BIG */
+        uint8_t phy;
+
+        /** The number of subevents in each BIS event in the BIG */
+        uint8_t nse;
+
+        /** The number of new payloads in each BIS event */
+        uint8_t bn;
+
+        /** Offset used for pre-transmissions */
+        uint8_t pto;
+
+        /** The number of times a payload is transmitted in a BIS event */
+        uint8_t irc;
+
+        /** Maximum size, in octets, of the payload */
+        uint16_t max_pdu;
+
+        /** The time between two consecutive BIG anchor points (unit 1.25ms) */
+        uint16_t iso_interval;
+
+        /** Total number of BISes in the BIG */
+        uint8_t bis_cnt;
+
+        /** Connection handles of the BISes */
+        uint16_t bis_handle[MYNEWT_VAL(BLE_ISO_BIS_PER_BIG)];
+    } create_big_comp;
+
+    struct {
+        /** Identifier of the BIG */
+        uint8_t big_handle;
+
+        /** Reason for termination */
+        uint8_t reason;
+    } term_big_comp;
+
+    struct {
+        /** BLE_ERR_SUCCESS on success or error code on failure */
+        uint8_t status;
+
+        /** Identifier of the BIG */
+        uint8_t big_handle;
+
+        /** The actual transport latency, in microseconds */
+        uint32_t transport_latency;
+
+        /** The number of subevents in each BIS event in the BIG */
+        uint8_t nse;
+
+        /** The number of new payloads in each BIS event */
+        uint8_t bn;
+
+        /** Offset used for pre-transmissions */
+        uint8_t pto;
+
+        /** The number of times a payload is transmitted in a BIS event */
+        uint8_t irc;
+
+        /** Maximum size, in octets, of the payload */
+        uint16_t max_pdu;
+
+        /** The time between two consecutive BIG anchor points (unit 1.25ms) */
+        uint16_t iso_interval;
+
+        /** Total number of BISes in the BIG */
+        uint8_t bis_cnt;
+
+        /** Connection handles of the BISes */
+        uint16_t bis_handle[MYNEWT_VAL(BLE_ISO_BIS_PER_BIG)];
+    } big_sync_estab;
+
+    struct {
+        /** Identifier of the BIG */
+        uint8_t big_handle;
+
+        /** Reason for termination */
+        uint8_t reason;
+    } big_sync_lost;
+
+    struct {
+        /** Sync_Handle identifying the periodic advertising train */
+        uint16_t sync_handle;
+
+        /** Total number of BISes in the BIG */
+        uint8_t bis_cnt;
+
+        /** The number of subevents in each BIS event in the BIG */
+        uint8_t nse;
+
+        /** The time between two consecutive BIG anchor points (unit 1.25ms) */
+        uint16_t iso_interval;
+
+        /** The number of new payloads in each BIS event */
+        uint8_t bn;
+
+        /** Offset used for pre-transmissions */
+        uint8_t pto;
+
+        /** The number of times a payload is transmitted in a BIS event */
+        uint8_t irc;
+
+        /** Maximum size, in octets, of the payload */
+        uint16_t max_pdu;
+
+        /** Time, in microseconds, between the start of consecutive SDUs */
+        uint32_t sdu_interval;
+
+        /** Maximum size of an SDU, in octets */
+        uint16_t max_sdu;
+
+        /** PHY used by the BIG */
+        uint8_t phy;
+
+        /** Unframed or framed PDUs */
+        uint8_t framing;
+
+        /** BIG encryption */
+        uint8_t encryption;
+    } biginfo_report;
+
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+    struct {
+        /** BLE_ERR_SUCCESS on success or error code on failure */
+        uint8_t status;
+
+        /** Connection handle of the CIS */
+        uint16_t cis_handle;
+
+        /** The maximum time, in microseconds, for transmission of PDUs
+         *  of all CISes in a CIG event.
+         */
+        uint32_t cig_sync_delay;
+
+        /** The maximum time, in microseconds, for transmission of PDUs
+         *  of the specified CIS in a CIG event.
+         */
+        uint32_t cis_sync_delay;
+
+        /** The actual transport latency, in microseconds, from Central to Peripheral */
+        uint32_t transport_latency_c_to_p;
+
+        /** The actual transport latency, in microseconds, from Peripheral to Central */
+        uint32_t transport_latency_p_to_c;
+
+        /** TX PHY (Central to Peripheral) */
+        uint8_t phy_c_to_p;
+
+        /** TX PHY (Peripheral to Central) */
+        uint8_t phy_p_to_c;
+
+        /** Maximum number of subevents in each CIS event */
+        uint8_t nse;
+
+        /** The burst number for Central to Peripheral transmission */
+        uint8_t bn_c_to_p;
+
+        /** The burst number for Peripheral to Central transmission */
+        uint8_t bn_p_to_c;
+
+        /** The flush timeout, in multiple of the ISO_Interval for the CIS,
+         *  for each payload sent from Central to Peripheral.
+         */
+        uint8_t ft_c_to_p;
+
+        /** The flush timeout, in multiple of the ISO_Interval for the CIS,
+         *  for each payload sent from Peripheral to Central.
+         */
+        uint8_t ft_p_to_c;
+
+        /** Maximum size, in octets, of the payload from Central to Peripheral */
+        uint16_t max_pdu_c_to_p;
+
+        /** Maximum size, in octets, of the payload from Peripheral to Central */
+        uint16_t max_pdu_p_to_c;
+
+        /** The time between two consecutive CIS anchor points (unit 1.25ms) */
+        uint16_t iso_interval;
+
+        /** Time, in microseconds, between the start of consecutive subevents in a CIS event */
+        uint32_t sub_interval;
+
+        /** Maximum size, in octets, of the payload from Central's Host */
+        uint16_t max_sdu_c_to_p;
+
+        /** Maximum size, in octets, of the payload from Peripheral's Host */
+        uint16_t max_sdu_p_to_c;
+
+        /** Time, in microseconds, between the start of consecutive SDUs sent by Central */
+        uint32_t sdu_interval_c_to_p;
+
+        /** Time, in microseconds, between the start of consecutive SDUs sent by Peripheral */
+        uint32_t sdu_interval_p_to_c;
+
+        /** Unframed or framed PDUs */
+        uint8_t framing;
+    } cis_estab_v2;
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+#endif /* MYNEWT_VAL(BLE_ISO) */
     };
 };
 
@@ -3372,6 +3669,164 @@ ble_gap_subrate_req(uint16_t conn_handle, uint16_t subrate_min, uint16_t subrate
                     uint16_t max_latency, uint16_t cont_num,
                     uint16_t supervision_timeout);
 #endif
+
+#if MYNEWT_VAL(BLE_ISO)
+/**
+ * Create CIS by Central.
+ *
+ * @param cis_cnt       The number of CISes to create.
+ * @param params        The parameters used to create CISes.
+ * @param cb            The callback to associate with the CIS creation procedure.
+ *                      When the CIS creation procedure completes, the result is
+ *                      reported through this callback.
+ * @param cb_arg        The optional argument to pass to the callback function.
+ *
+ * @return              0 on success, error code on failure.
+ */
+int ble_gap_create_cis(uint8_t cis_cnt, const struct ble_hci_le_create_cis_params *params,
+                       ble_gap_event_fn *cb, void *cb_arg);
+
+/**
+ * Accept CIS request by Peripheral.
+ *
+ * @param cis_handle    Connection handle of the CIS.
+ * @param cb            The callback to associate with the CIS creation procedure.
+ *                      When the CIS creation procedure completes, the result is
+ *                      reported through this callback.
+ * @param cb_arg        The optional argument to pass to the callback function.
+ *
+ * @return              0 on success, error code on failure.
+ */
+int ble_gap_accept_cis_request(uint16_t cis_handle, ble_gap_event_fn *cb, void *cb_arg);
+
+/**
+ * Reject CIS request by Peripheral.
+ *
+ * @param cis_handle    Connection handle of the CIS.
+ * @param reason        Reason the CIS request was rejected.
+ *
+ * @return              0 on success, error code on failure.
+ */
+int ble_gap_reject_cis_request(uint16_t cis_handle, uint8_t reason);
+
+/**
+ * Disconnect CIS.
+ *
+ * @param cis_handle    Connection handle of the CIS.
+ * @param reason        Reason the CIS was disconnected.
+ *
+ * @return              0 on success, error code on failure.
+ */
+int ble_gap_iso_disconnect(uint16_t cis_handle, uint8_t reason);
+
+/**
+ * Create BIG Broadcaster.
+ *
+ * @param big_handle                Identifier of the BIG.
+ * @param adv_handle                Associated periodic advertising train.
+ * @param num_bis                   Total number of BISes in the BIG.
+ * @param sdu_interval              The interval, in microseconds, of SDUs.
+ * @param max_sdu                   Maximum size, in octets, of an SDU.
+ * @param max_transport_latency     Maximum transport latency, in milliseconds.
+ * @param rtn                       The number of times that every BIS PDU should be retransmitted.
+ * @param phy                       Transmitter PHY.
+ * @param packing                   Sequential or Interleaved.
+ * @param framing                   Unframed or framed.
+ * @param encryption                Unencrypted or encrypted.
+ * @param broadcast_code            The code used to derive the BIG session key.
+ * @param cb                        The callback to associate with the BIG creation procedure.
+ *                                  When the BIG creation procedure completes, the result is
+ *                                  reported through this callback.
+ * @param cb_arg                    The optional argument to pass to the callback function.
+ *
+ * @return                          0 on success, error code on failure.
+ */
+int ble_gap_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
+                       uint32_t sdu_interval, uint16_t max_sdu,
+                       uint16_t max_transport_latency, uint8_t rtn,
+                       uint8_t phy, uint8_t packing, uint8_t framing,
+                       uint8_t encryption, uint8_t broadcast_code[16],
+                       ble_gap_event_fn *cb, void *cb_arg);
+
+#if MYNEWT_VAL(BLE_ISO_TEST)
+/**
+ * Create BIG Broadcaster with test command.
+ *
+ * @param big_handle        Identifier of the BIG.
+ * @param adv_handle        Associated periodic advertising train.
+ * @param num_bis           Total number of BISes in the BIG.
+ * @param sdu_interval      The interval, in microseconds, of ISO SDUs.
+ * @param iso_interval      The time between consecutive BIG anchor points (unit 1.25ms).
+ * @param nse               The total number of subevents in each interval of each BIS in the BIG.
+ * @param max_sdu           Maximum size, in octets, of an SDU.
+ * @param max_pdu           Maximum size, in octets, of payload.
+ * @param phy               Transmitter PHY.
+ * @param packing           Sequential or Interleaved.
+ * @param framing           Unframed or framed.
+ * @param bn                The number of new payloads in each interval for each BIS.
+ * @param irc               The number of times the payloads are transmitted in a given event.
+ * @param pto               Offset used for pre-transmissions.
+ * @param encryption        Unencrypted or encrypted.
+ * @param broadcast_code    The code used to derive the BIG session key.
+ * @param cb                The callback to associate with the BIG creation procedure.
+ *                          When the BIG creation procedure completes, the result is
+ *                          reported through this callback.
+ * @param cb_arg            The optional argument to pass to the callback function.
+ *
+ * @return                  0 on success, error code on failure.
+ */
+int ble_gap_create_big_test(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
+                            uint32_t sdu_interval, uint16_t iso_interval, uint8_t nse,
+                            uint16_t max_sdu, uint16_t max_pdu, uint8_t phy,
+                            uint8_t packing, uint8_t framing, uint8_t bn, uint8_t irc,
+                            uint8_t pto, uint8_t encryption, uint8_t broadcast_code[16],
+                            ble_gap_event_fn *cb, void *cb_arg);
+#endif /* MYNEWT_VAL(BLE_ISO_TEST) */
+
+/**
+ * Terminate BIG Broadcaster.
+ *
+ * @param big_handle    Identifier of the BIG.
+ * @param reason        Reason the BIG is terminated.
+ *
+ * @return              0 on success, error code on failure.
+ */
+int ble_gap_terminate_big(uint8_t big_handle, uint8_t reason);
+
+/**
+ * Create BIG Synchronized Receiver.
+ *
+ * @param big_handle        Identifier of the BIG.
+ * @param sync_handle       Associated periodic advertising train.
+ * @param encryption        Unencrypted or encrypted.
+ * @param broadcast_code    The code used to derive the BIG session key.
+ * @param mse               Maximum number of subevents that should be used to receive in each BIS event.
+ * @param sync_timeout      Synchronization timeout for the BIG (unit 10ms).
+ * @param num_bis           Total number of BISes in the BIG.
+ * @param bis_index         Indexes of the BISes.
+ * @param cb                The callback to associate with the BIG creation procedure.
+ *                          When the BIG creation procedure completes, the result is
+ *                          reported through this callback.
+ * @param cb_arg            The optional argument to pass to the callback function.
+ *
+ * @return                  0 on success, error code on failure.
+ */
+int ble_gap_big_create_sync(uint8_t big_handle, uint16_t sync_handle,
+                            uint8_t encryption, uint8_t broadcast_code[16],
+                            uint8_t mse, uint16_t sync_timeout,
+                            uint8_t num_bis, uint8_t *bis_index,
+                            ble_gap_event_fn *cb, void *cb_arg);
+
+/**
+ * Terminate BIG Synchronized Receiver.
+ *
+ * @param big_handle    Identifier of the BIG.
+ *
+ * @return              0 on success, error code on failure.
+ */
+int ble_gap_big_terminate_sync(uint8_t big_handle);
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
 /**
  * Event listener structure
  *

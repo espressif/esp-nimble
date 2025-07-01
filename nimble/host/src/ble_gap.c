@@ -34,6 +34,10 @@
 #include "host/ble_hs_pvcy.h"
 #include "host/util/util.h"
 
+#if MYNEWT_VAL(BLE_ISO)
+#include "host/ble_hs_iso_hci.h"
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
@@ -255,6 +259,29 @@ struct ble_gap_slave_state {
 };
 
 static bssnz_t struct ble_gap_slave_state ble_gap_slave[BLE_ADV_INSTANCES];
+
+#if MYNEWT_VAL(BLE_ISO)
+struct ble_gap_cis_state {
+    ble_gap_event_fn *cb;
+    void *cb_arg;
+};
+
+static bssnz_t struct ble_gap_cis_state ble_gap_cis;
+
+struct ble_gap_big_brd_state {
+    ble_gap_event_fn *cb;
+    void *cb_arg;
+};
+
+static bssnz_t struct ble_gap_big_brd_state ble_gap_big_brd;
+
+struct ble_gap_big_snc_state {
+    ble_gap_event_fn *cb;
+    void *cb_arg;
+};
+
+static bssnz_t struct ble_gap_big_snc_state ble_gap_big_snc;
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 struct ble_gap_update_entry {
     SLIST_ENTRY(ble_gap_update_entry) next;
@@ -1934,6 +1961,248 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
 }
 #endif
 
+#if MYNEWT_VAL(BLE_ISO)
+void
+ble_gap_rx_cis_disconn(const struct ble_hci_ev_disconn_cmp *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_DISCONNECT;
+    event.disconnect.reason = ev->reason;
+    event.disconnect.conn.conn_handle = ev->conn_handle;
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_cis.cb) {
+        ble_gap_cis.cb(&event, ble_gap_cis.cb_arg);
+    }
+}
+
+void
+ble_gap_rx_cis_estab(const struct ble_hci_ev_le_subev_cis_established *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_CIS_ESTAB;
+
+    event.cis_estab.status = ev->status;
+    event.cis_estab.cis_handle = ev->conn_handle;
+    event.cis_estab.cig_sync_delay = get_le24(ev->cig_sync_delay);
+    event.cis_estab.cis_sync_delay = get_le24(ev->cis_sync_delay);
+    event.cis_estab.transport_latency_c_to_p = get_le24(ev->transport_latency_c_to_p);
+    event.cis_estab.transport_latency_p_to_c = get_le24(ev->transport_latency_p_to_c);
+    event.cis_estab.phy_c_to_p = ev->phy_c_to_p;
+    event.cis_estab.phy_p_to_c = ev->phy_p_to_c;
+    event.cis_estab.nse = ev->nse;
+    event.cis_estab.bn_c_to_p = ev->bn_c_to_p;
+    event.cis_estab.bn_p_to_c = ev->bn_p_to_c;
+    event.cis_estab.ft_c_to_p = ev->ft_c_to_p;
+    event.cis_estab.ft_p_to_c = ev->ft_p_to_c;
+    event.cis_estab.max_pdu_c_to_p = ev->max_pdu_c_to_p;
+    event.cis_estab.max_pdu_p_to_c = ev->max_pdu_p_to_c;
+    event.cis_estab.iso_interval = ev->iso_interval;
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_cis.cb) {
+        ble_gap_cis.cb(&event, ble_gap_cis.cb_arg);
+    }
+}
+
+void
+ble_gap_rx_cis_request(const struct ble_hci_ev_le_subev_cis_request *ev)
+{
+    struct ble_gap_event event;
+    ble_gap_event_fn *cb;
+    void *cb_arg;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_CIS_REQUEST;
+
+    event.cis_request.conn_handle = ev->acl_conn_handle;
+    event.cis_request.cis_handle = ev->cis_conn_handle;
+    event.cis_request.cig_id = ev->cig_id;
+    event.cis_request.cis_id = ev->cis_id;
+
+    ble_gap_event_listener_call(&event);
+
+    ble_gap_slave_extract_cb(0, &cb, &cb_arg);
+    if (cb) {
+        cb(&event, cb_arg);
+    }
+}
+
+void
+ble_gap_rx_create_big_comp(const struct ble_hci_ev_le_subev_create_big_complete *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_CREATE_BIG_COMP;
+
+    event.create_big_comp.status = ev->status;
+    event.create_big_comp.big_handle = ev->big_handle;
+    event.create_big_comp.big_sync_delay = get_le24(ev->big_sync_delay);
+    event.create_big_comp.transport_latency = get_le24(ev->transport_latency_big);
+    event.create_big_comp.phy = ev->phy;
+    event.create_big_comp.nse = ev->nse;
+    event.create_big_comp.bn = ev->bn;
+    event.create_big_comp.pto = ev->pto;
+    event.create_big_comp.irc = ev->irc;
+    event.create_big_comp.max_pdu = ev->max_pdu;
+    event.create_big_comp.iso_interval = ev->iso_interval;
+    event.create_big_comp.bis_cnt = ev->num_bis;
+    memcpy(event.create_big_comp.bis_handle, ev->conn_handle, ev->num_bis * 2);
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_big_brd.cb) {
+        ble_gap_big_brd.cb(&event, ble_gap_big_brd.cb_arg);
+    }
+}
+
+void
+ble_gap_rx_term_big_comp(const struct ble_hci_ev_le_subev_terminate_big_complete *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_TERM_BIG_COMP;
+
+    event.term_big_comp.big_handle = ev->big_handle;
+    event.term_big_comp.reason = ev->reason;
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_big_brd.cb) {
+        ble_gap_big_brd.cb(&event, ble_gap_big_brd.cb_arg);
+    }
+}
+
+void
+ble_gap_rx_big_sync_estab(const struct ble_hci_ev_le_subev_big_sync_established *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_BIG_SYNC_ESTAB;
+
+    event.big_sync_estab.status = ev->status;
+    event.big_sync_estab.big_handle = ev->big_handle;
+    event.big_sync_estab.transport_latency = get_le24(ev->transport_latency_big);
+    event.big_sync_estab.nse = ev->nse;
+    event.big_sync_estab.bn = ev->bn;
+    event.big_sync_estab.pto = ev->pto;
+    event.big_sync_estab.irc = ev->irc;
+    event.big_sync_estab.max_pdu = ev->max_pdu;
+    event.big_sync_estab.iso_interval = ev->iso_interval;
+    event.big_sync_estab.bis_cnt = ev->num_bis;
+    for(size_t i = 0; i < ev->num_bis; i++){
+        event.big_sync_estab.bis_handle[i] = ev->conn_handle[i];
+    }
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_big_snc.cb) {
+        ble_gap_big_snc.cb(&event, ble_gap_big_snc.cb_arg);
+    }
+}
+
+void
+ble_gap_rx_big_sync_lost(const struct ble_hci_ev_le_subev_big_sync_lost *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_BIG_SYNC_LOST;
+
+    event.big_sync_lost.big_handle = ev->big_handle;
+    event.big_sync_lost.reason = ev->reason;
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_big_snc.cb) {
+        ble_gap_big_snc.cb(&event, ble_gap_big_snc.cb_arg);
+    }
+}
+
+void
+ble_gap_rx_biginfo_adv_rpt(const struct ble_hci_ev_le_subev_biginfo_adv_report *ev)
+{
+    struct ble_gap_master_state state;
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_BIGINFO_ADV_RPT;
+
+    event.biginfo_report.sync_handle = ev->sync_handle;
+    event.biginfo_report.bis_cnt = ev->bis_cnt;
+    event.biginfo_report.nse = ev->nse;
+    event.biginfo_report.iso_interval = ev->iso_interval;
+    event.biginfo_report.bn = ev->bn;
+    event.biginfo_report.pto = ev->pto;
+    event.biginfo_report.irc = ev->irc;
+    event.biginfo_report.max_pdu = ev->max_pdu;
+    event.biginfo_report.sdu_interval = get_le24(ev->sdu_interval);
+    event.biginfo_report.max_sdu = ev->max_sdu;
+    event.biginfo_report.phy = ev->phy;
+    event.biginfo_report.framing = ev->framing;
+    event.biginfo_report.encryption = ev->encryption;
+
+    ble_gap_master_extract_state(&state, 0);
+
+    if (ble_gap_has_client(&state)) {
+        state.cb(&event, state.cb_arg);
+    }
+
+    ble_gap_event_listener_call(&event);
+}
+
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+void
+ble_gap_rx_cis_estab_v2(const struct ble_hci_ev_le_subev_cis_established_v2 *ev)
+{
+    struct ble_gap_event event;
+
+    memset(&event, 0, sizeof(event));
+
+    event.type = BLE_GAP_EVENT_CIS_ESTAB_V2;
+
+    event.cis_estab_v2.status = ev->status;
+    event.cis_estab_v2.cis_handle = ev->conn_handle;
+    event.cis_estab_v2.cig_sync_delay = get_le24(ev->cig_sync_delay);
+    event.cis_estab_v2.cis_sync_delay = get_le24(ev->cis_sync_delay);
+    event.cis_estab_v2.transport_latency_c_to_p = get_le24(ev->transport_latency_c_to_p);
+    event.cis_estab_v2.transport_latency_p_to_c = get_le24(ev->transport_latency_p_to_c);
+    event.cis_estab_v2.phy_c_to_p = ev->phy_c_to_p;
+    event.cis_estab_v2.phy_p_to_c = ev->phy_p_to_c;
+    event.cis_estab_v2.nse = ev->nse;
+    event.cis_estab_v2.bn_c_to_p = ev->bn_c_to_p;
+    event.cis_estab_v2.bn_p_to_c = ev->bn_p_to_c;
+    event.cis_estab_v2.ft_c_to_p = ev->ft_c_to_p;
+    event.cis_estab_v2.ft_p_to_c = ev->ft_p_to_c;
+    event.cis_estab_v2.max_pdu_c_to_p = ev->max_pdu_c_to_p;
+    event.cis_estab_v2.max_pdu_p_to_c = ev->max_pdu_p_to_c;
+    event.cis_estab_v2.iso_interval = ev->iso_interval;
+    event.cis_estab_v2.sub_interval = get_le24(ev->sub_interval);
+    event.cis_estab_v2.max_sdu_c_to_p = ev->max_sdu_c_to_p;
+    event.cis_estab_v2.max_sdu_p_to_c = ev->max_sdu_p_to_c;
+    event.cis_estab_v2.sdu_interval_c_to_p = get_le24(ev->sdu_interval_c_to_p);
+    event.cis_estab_v2.sdu_interval_p_to_c = get_le24(ev->sdu_interval_p_to_c);
+    event.cis_estab_v2.framing = ev->framing;
+
+    ble_gap_event_listener_call(&event);
+    if (ble_gap_cis.cb) {
+        ble_gap_cis.cb(&event, ble_gap_cis.cb_arg);
+    }
+}
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
 void
 ble_gap_rx_adv_report(struct ble_gap_disc_desc *desc)
 {
@@ -2433,7 +2702,7 @@ ble_gap_rx_periodic_adv_sync_transfer(const struct ble_hci_ev_le_subev_periodic_
 }
 #endif
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
 void
 ble_gap_rx_biginfo_adv_rpt(const struct ble_hci_ev_le_subev_biginfo_adv_report *ev)
 {
@@ -9083,6 +9352,187 @@ ble_gap_event_listener_call(struct ble_gap_event *event)
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_ISO)
+int
+ble_gap_create_cis(uint8_t cis_cnt, const struct ble_hci_le_create_cis_params *params,
+                   ble_gap_event_fn *cb, void *cb_arg)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_create_cis(cis_cnt, params);
+    if (!rc) {
+        ble_gap_cis.cb = cb;
+        ble_gap_cis.cb_arg = cb_arg;
+    }
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_gap_accept_cis_request(uint16_t cis_handle, ble_gap_event_fn *cb, void *cb_arg)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_accept_cis_request(cis_handle);
+    if (!rc) {
+        ble_gap_cis.cb = cb;
+        ble_gap_cis.cb_arg = cb_arg;
+    }
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_gap_reject_cis_request(uint16_t cis_handle, uint8_t reason)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_reject_cis_request(cis_handle, reason);
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_gap_iso_disconnect(uint16_t cis_handle, uint8_t reason)
+{
+    struct ble_hci_lc_disconnect_cp cmd;
+    int rc;
+
+    ble_hs_lock();
+
+    cmd.conn_handle = cis_handle;
+    cmd.reason = reason;
+
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LINK_CTRL,
+                                      BLE_HCI_OCF_DISCONNECT_CMD),
+                                      &cmd, sizeof(cmd), NULL, 0);
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_gap_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
+                   uint32_t sdu_interval, uint16_t max_sdu, uint16_t max_transport_latency,
+                   uint8_t rtn, uint8_t phy, uint8_t packing, uint8_t framing,
+                   uint8_t encryption, uint8_t broadcast_code[16],
+                   ble_gap_event_fn *cb, void *cb_arg)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_create_big(big_handle, adv_handle, num_bis, sdu_interval,
+                               max_sdu, max_transport_latency, rtn, phy,
+                               packing, framing, encryption, broadcast_code);
+    if (!rc) {
+        ble_gap_big_brd.cb = cb;
+        ble_gap_big_brd.cb_arg = cb_arg;
+    }
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+#if MYNEWT_VAL(BLE_ISO_TEST)
+int
+ble_gap_create_big_test(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
+                        uint32_t sdu_interval, uint16_t iso_interval, uint8_t nse,
+                        uint16_t max_sdu, uint16_t max_pdu, uint8_t phy,
+                        uint8_t packing, uint8_t framing, uint8_t bn, uint8_t irc,
+                        uint8_t pto, uint8_t encryption, uint8_t broadcast_code[16],
+                        ble_gap_event_fn *cb, void *cb_arg)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_create_big_test(big_handle, adv_handle, num_bis, sdu_interval,
+                                    iso_interval, nse, max_sdu, max_pdu, phy,
+                                    packing, framing, bn, irc, pto, encryption,
+                                    broadcast_code);
+    if (!rc) {
+        ble_gap_big_brd.cb = cb;
+        ble_gap_big_brd.cb_arg = cb_arg;
+    }
+
+    ble_hs_unlock();
+
+    return rc;
+}
+#endif /* MYNEWT_VAL(BLE_ISO_TEST) */
+
+int
+ble_gap_terminate_big(uint8_t big_handle, uint8_t reason)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_terminate_big(big_handle, reason);
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_gap_big_create_sync(uint8_t big_handle, uint16_t sync_handle,
+                        uint8_t encryption, uint8_t broadcast_code[16],
+                        uint8_t mse, uint16_t sync_timeout,
+                        uint8_t num_bis, uint8_t *bis_index,
+                        ble_gap_event_fn *cb, void *cb_arg)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_big_create_sync(big_handle, sync_handle, encryption,
+                                    broadcast_code, mse, sync_timeout,
+                                    num_bis, bis_index);
+    if (!rc) {
+        ble_gap_big_snc.cb = cb;
+        ble_gap_big_snc.cb_arg = cb_arg;
+    }
+
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_gap_big_terminate_sync(uint8_t big_handle)
+{
+    int rc;
+
+    ble_hs_lock();
+
+    rc = ble_hs_hci_big_terminate_sync(big_handle);
+    if (!rc) {
+        ble_gap_big_snc.cb = NULL;
+        ble_gap_big_snc.cb_arg = NULL;
+    }
+
+    ble_hs_unlock();
+
+    return rc;
+}
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
 /*****************************************************************************
  * $init                                                                     *
  *****************************************************************************/
@@ -9102,6 +9552,12 @@ ble_gap_init(void)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
     memset(&ble_gap_sync, 0, sizeof(ble_gap_sync));
 #endif
+
+#if MYNEWT_VAL(BLE_ISO)
+    memset(&ble_gap_cis, 0, sizeof(ble_gap_cis));
+    memset(&ble_gap_big_brd, 0, sizeof(ble_gap_big_brd));
+    memset(&ble_gap_big_snc, 0, sizeof(ble_gap_big_snc));
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
     rc = ble_npl_mutex_init(&preempt_done_mutex);
 

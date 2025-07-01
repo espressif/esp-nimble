@@ -154,6 +154,14 @@ struct ble_hci_cb_wr_auth_pyld_tmo_rp {
     uint16_t conn_handle;
 } __attribute__((packed));
 
+#define BLE_HCI_OCF_CB_CFG_DATA_PATH        (0x0083)
+struct ble_hci_cb_cfg_data_path_cp {
+    uint8_t data_path_dir;
+    uint8_t data_path_id;
+    uint8_t vs_cfg_len;
+    uint8_t vs_cfg[0];
+} __attribute__((packed));
+
 /* List of OCF for Info Param commands (OGF=0x04) */
 #define BLE_HCI_OCF_IP_RD_LOCAL_VER         (0x0001)
 struct ble_hci_ip_rd_local_ver_rp {
@@ -185,6 +193,60 @@ struct ble_hci_ip_rd_buf_size_rp {
 #define BLE_HCI_OCF_IP_RD_BD_ADDR           (0x0009)
 struct ble_hci_ip_rd_bd_addr_rp {
     uint8_t addr[6];
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_IP_RD_LOCAL_SUPP_CODEC  (0x000D)
+struct ble_hci_ip_rd_local_supp_std_codec {
+    uint8_t coding_fmt;
+    uint8_t transport;
+} __attribute__((packed));
+
+struct ble_hci_ip_rd_local_supp_vs_codec {
+    uint16_t company_id;
+    uint16_t vs_codec_id;
+    uint8_t transport;
+} __attribute__((packed));
+
+struct ble_hci_ip_rd_local_supp_codec_rp {
+    uint8_t num_std_codec;
+    struct ble_hci_ip_rd_local_supp_std_codec std;
+    uint8_t num_vs_codec;
+    struct ble_hci_ip_rd_local_supp_vs_codec vs;
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_IP_RD_LOCAL_SUPP_CODEC_CAPS (0x000E)
+struct ble_hci_ip_rd_local_supp_codec_caps_cp {
+    uint8_t coding_fmt;
+    uint16_t company_id;
+    uint16_t vs_codec_id;
+    uint8_t logical_tpt_type;
+    uint8_t direction;
+} __attribute__((packed));
+
+struct ble_hci_ip_rd_local_supp_codec_caps {
+    uint8_t codec_cap_len;
+    uint8_t codec_cap[0];
+} __attribute__((packed));
+
+struct ble_hci_ip_rd_local_supp_codec_caps_rp {
+    uint8_t num_codec_caps;
+    struct ble_hci_ip_rd_local_supp_codec_caps codec_caps;
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_IP_RD_LOCAL_SUPP_CONTROLLER_DELAY   (0x000F)
+struct ble_hci_ip_rd_local_supp_controller_delay_cp {
+    uint8_t coding_fmt;
+    uint16_t company_id;
+    uint16_t vs_codec_id;
+    uint8_t logical_tpt_type;
+    uint8_t direction;
+    uint8_t codec_cfg_len;
+    uint8_t codec_cfg[0];
+} __attribute__((packed));
+
+struct ble_hci_ip_rd_local_supp_controller_delay_rp {
+    uint8_t min_controller_delay[3];
+    uint8_t max_controller_delay[3];
 } __attribute__((packed));
 
 /* List of OCF for Status parameters commands (OGF = 0x05) */
@@ -947,8 +1009,8 @@ struct ble_hci_le_cis_params {
     uint16_t max_sdu_p_to_c;
     uint8_t phy_c_to_p;
     uint8_t phy_p_to_c;
-    uint8_t rnt_c_to_p;
-    uint8_t rnt_p_to_c;
+    uint8_t rtn_c_to_p;
+    uint8_t rtn_p_to_c;
 } __attribute__((packed));
 struct ble_hci_le_set_cig_params_cp {
     uint8_t cig_id;
@@ -2282,6 +2344,33 @@ struct ble_hci_ev_le_subev_periodic_adv_resp_rep {
     uint8_t tx_status;
     uint8_t num_responses;
     struct periodic_adv_response responses[0];
+} __attribute__((packed));
+
+#define BLE_HCI_LE_SUBEV_CIS_ESTABLISHED_V2        (0x2A)
+struct ble_hci_ev_le_subev_cis_established_v2 {
+    uint8_t subev_code;
+    uint8_t status;
+    uint16_t conn_handle;
+    uint8_t cig_sync_delay[3];
+    uint8_t cis_sync_delay[3];
+    uint8_t transport_latency_c_to_p[3];
+    uint8_t transport_latency_p_to_c[3];
+    uint8_t phy_c_to_p;
+    uint8_t phy_p_to_c;
+    uint8_t nse;
+    uint8_t bn_c_to_p;
+    uint8_t bn_p_to_c;
+    uint8_t ft_c_to_p;
+    uint8_t ft_p_to_c;
+    uint16_t max_pdu_c_to_p;
+    uint16_t max_pdu_p_to_c;
+    uint16_t iso_interval;
+    uint8_t sub_interval[3];
+    uint16_t max_sdu_c_to_p;
+    uint16_t max_sdu_p_to_c;
+    uint8_t sdu_interval_c_to_p[3];
+    uint8_t sdu_interval_p_to_c[3];
+    uint8_t framing;
 } __attribute__((packed));
 
 #if (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)

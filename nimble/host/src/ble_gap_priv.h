@@ -88,7 +88,7 @@ void ble_gap_rx_periodic_adv_rpt(const struct ble_hci_ev_le_subev_periodic_adv_r
 void ble_gap_rx_periodic_adv_sync_lost(const struct ble_hci_ev_le_subev_periodic_adv_sync_lost *ev);
 void ble_gap_rx_periodic_adv_sync_transfer(const struct ble_hci_ev_le_subev_periodic_adv_sync_transfer *ev);
 #endif
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
 void ble_gap_rx_biginfo_adv_rpt(const struct ble_hci_ev_le_subev_biginfo_adv_report *ev);
 #endif
 void ble_gap_rx_scan_req_rcvd(const struct ble_hci_ev_le_subev_scan_req_rcvd *ev);
@@ -109,6 +109,20 @@ void ble_gap_rx_connless_iq_report(const struct ble_hci_ev_le_subev_connless_iq_
 void ble_gap_rx_conn_iq_report(const struct ble_hci_ev_le_subev_conn_iq_rpt *ev);
 void ble_gap_rx_cte_req_failed(const struct ble_hci_ev_le_subev_cte_req_failed *ev);
 #endif
+
+#if MYNEWT_VAL(BLE_ISO)
+void ble_gap_rx_cis_disconn(const struct ble_hci_ev_disconn_cmp *ev);
+void ble_gap_rx_cis_estab(const struct ble_hci_ev_le_subev_cis_established *ev);
+void ble_gap_rx_cis_request(const struct ble_hci_ev_le_subev_cis_request *ev);
+void ble_gap_rx_create_big_comp(const struct ble_hci_ev_le_subev_create_big_complete *ev);
+void ble_gap_rx_term_big_comp(const struct ble_hci_ev_le_subev_terminate_big_complete *ev);
+void ble_gap_rx_big_sync_estab(const struct ble_hci_ev_le_subev_big_sync_established *ev);
+void ble_gap_rx_big_sync_lost(const struct ble_hci_ev_le_subev_big_sync_lost *ev);
+void ble_gap_rx_biginfo_adv_rpt(const struct ble_hci_ev_le_subev_biginfo_adv_report *ev);
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+void ble_gap_rx_cis_estab_v2(const struct ble_hci_ev_le_subev_cis_established_v2 *ev);
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 struct ble_gap_conn_complete
 {
