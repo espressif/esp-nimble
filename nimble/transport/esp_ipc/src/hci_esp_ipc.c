@@ -28,7 +28,13 @@ ble_transport_host_recv_cb(hci_trans_pkt_ind_t type, uint8_t *data, uint16_t len
 
     if (type == HCI_ACL_IND) {
         rc = ble_transport_to_hs_acl((struct os_mbuf *)data);
-    } else {
+    }
+#if MYNEWT_VAL(BLE_ISO) 
+    else if (type == HCI_ISO_IND) {
+        rc = ble_transport_to_hs_iso_v2(data, len);
+    }
+#endif /* MYNEWT_VAL(BLE_ISO)  */
+    else {
         rc = ble_transport_to_hs_evt(data);
     }
     return rc;

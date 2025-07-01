@@ -36,6 +36,10 @@
 #include "hci_log/bt_hci_log.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
+#if MYNEWT_VAL(BLE_ISO)
+#include "host/ble_hs_iso.h"
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
 #define BLE_HS_HCI_EVT_COUNT    (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT) + \
                                  MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))
 
@@ -900,6 +904,14 @@ ble_transport_to_hs_iso_impl(struct os_mbuf *om)
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_ISO)
+int
+ble_transport_to_hs_iso_impl_v2(const uint8_t *data, uint16_t len)
+{
+    return ble_hs_rx_iso_data(data, len, NULL);
+}
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 void
 ble_transport_hs_init(void)

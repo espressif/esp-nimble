@@ -82,6 +82,14 @@ ble_transport_to_hs_iso(struct os_mbuf *om)
 {
     return ble_transport_to_hs_iso_impl(om);
 }
+
+#if MYNEWT_VAL(BLE_ISO)
+static inline int
+ble_transport_to_hs_iso_v2(const uint8_t *data, uint16_t len)
+{
+    return ble_transport_to_hs_iso_impl_v2(data, len);
+}
+#endif /* MYNEWT_VAL(BLE_ISO) */
 #endif /* BLE_MONITOR */
 
 #ifdef __cplusplus
