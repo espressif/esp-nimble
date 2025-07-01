@@ -360,3 +360,20 @@ ble_hs_hci_dtm_enh_rx_start(const uint8_t rx_chan, const uint8_t index,
 
     return ble_hs_hci_cmd_tx_no_rsp(opcode, &cmd, sizeof(cmd));
 }
+
+int
+ble_hs_hci_set_host_feature(uint8_t bit_num, uint8_t bit_val)
+{
+    struct ble_hci_le_set_host_feature_cp cmd;
+
+    if (bit_val > 0x01) {
+        return BLE_HS_EINVAL;
+    }
+
+    cmd.bit_num = bit_num;
+    cmd.bit_val = bit_val;
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_SET_HOST_FEATURE),
+                             &cmd, sizeof(cmd), NULL, 0);
+}

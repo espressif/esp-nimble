@@ -22,6 +22,9 @@
 #include "host/ble_hs.h"
 #include "host/ble_hs_hci.h"
 #include "ble_hs_priv.h"
+#if MYNEWT_VAL(BLE_ISO)
+#include "host/ble_hs_iso.h"
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 #if !MYNEWT_VAL(BLE_CONTROLLER)
 static int
@@ -107,6 +110,33 @@ ble_hs_startup_le_read_sup_f_tx(void)
 }
 
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_PERIPHERAL)
+#if MYNEWT_VAL(BLE_ISO)
+static int
+ble_hs_startup_le_read_buf_sz_v2_tx(uint16_t *out_acl_pktlen, uint8_t *out_max_acl_pkts,
+                                    uint16_t *out_iso_pktlen, uint8_t *out_max_iso_pkts)
+{
+    struct ble_hci_le_rd_buf_size_v2_rp rsp;
+    int rc;
+
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_RD_BUF_SIZE_V2), NULL, 0,
+                           &rsp, sizeof(rsp));
+    if (rc != 0) {
+        return rc;
+    }
+
+    *out_acl_pktlen = le16toh(rsp.data_len);
+    *out_max_acl_pkts = rsp.data_packets;
+    *out_iso_pktlen = le16toh(rsp.iso_data_len);
+    *out_max_iso_pkts = rsp.iso_data_packets;
+
+    BLE_HS_LOG(INFO, "LE Read Buffer Size v2: %u %u %u %u",
+               *out_acl_pktlen, *out_max_acl_pkts,
+               *out_iso_pktlen, *out_max_iso_pkts);
+
+    return 0;
+}
+#else /* MYNEWT_VAL(BLE_ISO) */
 static int
 ble_hs_startup_le_read_buf_sz_tx(uint16_t *out_pktlen, uint8_t *out_max_pkts)
 {
@@ -125,6 +155,7 @@ ble_hs_startup_le_read_buf_sz_tx(uint16_t *out_pktlen, uint8_t *out_max_pkts)
 
     return 0;
 }
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 static int
 ble_hs_startup_read_buf_sz_tx(uint16_t *out_pktlen, uint16_t *out_max_pkts)
@@ -152,9 +183,17 @@ ble_hs_startup_read_buf_sz(void)
     uint16_t max_pkts = 0;
     uint16_t pktlen = 0;
     uint8_t le_max_pkts = 0;
+#if MYNEWT_VAL(BLE_ISO)
+    uint16_t iso_pktlen = 0;
+    uint8_t iso_max_pkts = 0;
+#endif /* MYNEWT_VAL(BLE_ISO) */
     int rc;
 
+#if MYNEWT_VAL(BLE_ISO)
+    rc = ble_hs_startup_le_read_buf_sz_v2_tx(&le_pktlen, &le_max_pkts, &iso_pktlen, &iso_max_pkts);
+#else /* MYNEWT_VAL(BLE_ISO) */
     rc = ble_hs_startup_le_read_buf_sz_tx(&le_pktlen, &le_max_pkts);
+#endif /* MYNEWT_VAL(BLE_ISO) */
     if (rc != 0) {
         return rc;
     }
@@ -173,6 +212,13 @@ ble_hs_startup_read_buf_sz(void)
     if (rc != 0) {
         return rc;
     }
+
+#if MYNEWT_VAL(BLE_ISO)
+    rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
+    if (rc != 0) {
+        return rc;
+    }
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
     return 0;
 }
@@ -292,7 +338,7 @@ ble_hs_startup_le_set_evmask_tx(void)
     }
 #endif
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
     if (version >= BLE_HCI_VER_BCS_5_2) {
         /**
          * Enable the following LE events:
@@ -337,6 +383,26 @@ ble_hs_startup_le_set_evmask_tx(void)
         mask |= 0x0000002000000000;
     }
 #endif
+
+#if MYNEWT_VAL(BLE_ISO)
+    if (version >= BLE_HCI_VER_BCS_5_2) {
+        /**
+         * Enable the following LE events:
+         * 0x0000000001000000 LE CIS Established event [v1]
+         * 0x0000000002000000 LE CIS Request event
+         * 0x0000000004000000 LE Create BIG Complete event
+         * 0x0000000008000000 LE Terminate BIG Complete event
+         * 0x0000000010000000 LE BIG Sync Established event
+         * 0x0000000020000000 LE BIG Sync Lost event
+         * 0x0000000200000000 LE BIGInfo Advertising Report event
+         * 0x0000020000000000 LE CIS Established event [v2]
+         */
+        mask |= 0x000000023f000000;
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+        mask |= 0x0000020000000000;
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+    }
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
     cmd.event_mask = htole64(mask);
 

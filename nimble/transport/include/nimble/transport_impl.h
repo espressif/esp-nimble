@@ -40,6 +40,9 @@ extern int ble_transport_to_ll_iso_impl(struct os_mbuf *om);
 extern int ble_transport_to_hs_evt_impl(void *buf);
 extern int ble_transport_to_hs_acl_impl(struct os_mbuf *om);
 extern int ble_transport_to_hs_iso_impl(struct os_mbuf *om);
+#if MYNEWT_VAL(BLE_ISO)
+extern int ble_transport_to_hs_iso_impl_v2(const uint8_t *data, uint16_t len);
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 #ifdef __cplusplus
 }

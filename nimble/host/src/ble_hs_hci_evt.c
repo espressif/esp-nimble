@@ -26,6 +26,9 @@
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
 #include "esp_nimble_mem.h"
+#if MYNEWT_VAL(BLE_ISO)
+#include "host/ble_hs_iso.h"
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 struct ble_gap_reattempt_ctxt {
@@ -89,7 +92,7 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_rpt;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_sync_lost;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_scan_req_rcvd;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_sync_transfer;
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_biginfo_adv_report;
 #endif
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
@@ -108,6 +111,19 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cte_req_failed;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_subev_data_req;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_subev_resp_rep;
 #endif
+
+#if MYNEWT_VAL(BLE_ISO)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cis_estab;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cis_request;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_create_big_comp;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_term_big_comp;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_big_sync_estab;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_big_sync_lost;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_biginfo_adv_rpt;
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cis_estab_v2;
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 /* Statistics */
 struct host_hci_stats {
@@ -173,7 +189,7 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_ADV_SET_TERMINATED] = ble_hs_hci_evt_le_adv_set_terminated,
     [BLE_HCI_LE_SUBEV_SCAN_REQ_RCVD] = ble_hs_hci_evt_le_scan_req_rcvd,
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_TRANSFER] = ble_hs_hci_evt_le_periodic_adv_sync_transfer,
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
     [BLE_HCI_LE_SUBEV_BIGINFO_ADV_REPORT] = ble_hs_hci_evt_le_biginfo_adv_report,
 #endif
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
@@ -196,6 +212,18 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RESP_REPORT] = ble_hs_hci_evt_le_periodic_adv_subev_resp_rep,
     [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2] = ble_hs_hci_evt_le_enh_conn_complete,
 #endif
+#if MYNEWT_VAL(BLE_ISO)
+    [BLE_HCI_LE_SUBEV_CIS_ESTABLISHED] = ble_hs_hci_evt_le_cis_estab,
+    [BLE_HCI_LE_SUBEV_CIS_REQUEST] = ble_hs_hci_evt_le_cis_request,
+    [BLE_HCI_LE_SUBEV_CREATE_BIG_COMPLETE] = ble_hs_hci_evt_le_create_big_comp,
+    [BLE_HCI_LE_SUBEV_TERMINATE_BIG_COMPLETE] = ble_hs_hci_evt_le_term_big_comp,
+    [BLE_HCI_LE_SUBEV_BIG_SYNC_ESTABLISHED] = ble_hs_hci_evt_le_big_sync_estab,
+    [BLE_HCI_LE_SUBEV_BIG_SYNC_LOST] = ble_hs_hci_evt_le_big_sync_lost,
+    [BLE_HCI_LE_SUBEV_BIGINFO_ADV_REPORT] = ble_hs_hci_evt_le_biginfo_adv_rpt,
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+    [BLE_HCI_LE_SUBEV_CIS_ESTABLISHED_V2] = ble_hs_hci_evt_le_cis_estab_v2,
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+#endif /* MYNEWT_VAL(BLE_ISO) */
 };
 
 #define BLE_HS_HCI_EVT_LE_DISPATCH_SZ \
@@ -227,6 +255,10 @@ ble_hs_hci_evt_le_dispatch_find(uint8_t event_code)
     }
     return ble_hs_hci_evt_le_dispatch[event_code];
 }
+
+#if MYNEWT_VAL(BLE_ISO)
+static int ble_hs_hci_evt_le_cis_disconn(const struct ble_hci_ev_disconn_cmp *ev);
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 #if NIMBLE_BLE_CONNECT
 static int
@@ -317,7 +349,15 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     }
 #endif
 
+#if MYNEWT_VAL(BLE_ISO)
+    if (conn) {
+        ble_gap_rx_disconn_complete(ev);
+    } else {
+        ble_hs_hci_evt_le_cis_disconn(ev);
+    }
+#else /* MYNEWT_VAL(BLE_ISO) */
     ble_gap_rx_disconn_complete(ev);
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
     /* The connection termination may have freed up some capacity in the
      * controller for additional ACL data packets.  Wake up any stalled
@@ -405,6 +445,10 @@ ble_hs_hci_evt_num_completed_pkts(uint8_t event_code, const void *data,
                 }
 
                 ble_hs_hci_add_avail_pkts(num_pkts);
+#if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
+            } else {
+                ble_hs_hci_add_iso_avail_pkts(le16toh(ev->completed[i].handle), num_pkts);
+#endif /* MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) */
             }
             ble_hs_unlock();
         }
@@ -791,6 +835,189 @@ ble_hs_hci_decode_legacy_type(uint16_t evt_type)
     }
 }
 
+#if MYNEWT_VAL(BLE_ISO)
+typedef void (*ble_hs_hci_evt_iso_fn)(uint8_t event, const void *data,
+                                      unsigned int len, bool le_meta);
+
+static ble_hs_hci_evt_iso_fn iso_evt_cb;
+
+int
+ble_hs_iso_evt_rx_cb_set(void *cb)
+{
+    if (cb == NULL) {
+        return -BLE_HS_EINVAL;
+    }
+
+    if (iso_evt_cb) {
+        return -BLE_HS_EALREADY;
+    }
+
+    iso_evt_cb = cb;
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_cis_disconn(const struct ble_hci_ev_disconn_cmp *ev)
+{
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_EVCODE_DISCONN_CMP, (const void *)ev, sizeof(*ev), false);
+    } else {
+        ble_gap_rx_cis_disconn(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_cis_estab(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_cis_established *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_CIS_ESTABLISHED, data, len, true);
+    } else {
+        ble_gap_rx_cis_estab(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_cis_request(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_cis_request *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_CIS_REQUEST, data, len, true);
+    } else {
+        ble_gap_rx_cis_request(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_create_big_comp(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_create_big_complete *ev = data;
+
+    if ((len != sizeof(*ev) + ev->num_bis * 2) ||
+        (ev->num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG))) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_CREATE_BIG_COMPLETE, data, len, true);
+    } else {
+        ble_gap_rx_create_big_comp(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_term_big_comp(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_terminate_big_complete *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_TERMINATE_BIG_COMPLETE, data, len, true);
+    } else {
+        ble_gap_rx_term_big_comp(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_big_sync_estab(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_big_sync_established *ev = data;
+
+    if ((len != sizeof(*ev) + ev->num_bis * 2) ||
+        (ev->num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG))) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_BIG_SYNC_ESTABLISHED, data, len, true);
+    } else {
+        ble_gap_rx_big_sync_estab(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_big_sync_lost(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_big_sync_lost *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_BIG_SYNC_LOST, data, len, true);
+    } else {
+        ble_gap_rx_big_sync_lost(ev);
+    }
+
+    return 0;
+}
+
+static int
+ble_hs_hci_evt_le_biginfo_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_biginfo_adv_report *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_BIGINFO_ADV_REPORT, data, len, true);
+    } else {
+        ble_gap_rx_biginfo_adv_rpt(ev);
+    }
+
+    return 0;
+}
+
+#if MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2)
+static int
+ble_hs_hci_evt_le_cis_estab_v2(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_cis_established_v2 *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (iso_evt_cb) {
+        iso_evt_cb(BLE_HCI_LE_SUBEV_CIS_ESTABLISHED_V2, data, len, true);
+    } else {
+        ble_gap_rx_cis_estab_v2(ev);
+    }
+
+    return 0;
+}
+#endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
 static int
 ble_hs_hci_evt_le_ext_adv_rpt_first_pass(const void *data, unsigned int len)
 {
@@ -998,7 +1225,7 @@ ble_hs_hci_evt_le_periodic_adv_sync_transfer(uint8_t subevent, const void *data,
     return 0;
 }
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
 static int
 ble_hs_hci_evt_le_biginfo_adv_report(uint8_t subevent, const void *data,
                                      unsigned int len)
