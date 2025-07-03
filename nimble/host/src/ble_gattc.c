@@ -5155,6 +5155,7 @@ done:
     ble_gattc_process_status(proc, rc);
     return rc;
 }
+#endif
 
 /*****************************************************************************
  * $notify                                                                   *
@@ -5170,8 +5171,6 @@ static int ble_gatts_check_conn_aware(uint16_t conn_handle, bool *aware) {
     *aware = conn->bhc_gatt_svr.aware_state;
     return 0;
 }
-#endif
-
 #endif
 
 int
