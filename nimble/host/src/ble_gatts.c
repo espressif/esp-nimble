@@ -45,13 +45,14 @@ enum {
     CONN_CLT_CFG_REMOVE = 2,
 };
 #endif
+#endif
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 /* store the aware state only for the bonded peers */
 struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
-/* index of latest bonded peer */
-static int last_conn_aware_state_index;
 #endif
+
+#if MYNEWT_VAL(BLE_GATTS)
 static const ble_uuid_t *uuid_pri =
     BLE_UUID16_DECLARE(BLE_ATT_UUID_PRIMARY_SERVICE);
 static const ble_uuid_t *uuid_sec =
@@ -69,6 +70,11 @@ static const ble_uuid_t *uuid_caf =
 
 static const struct ble_gatt_svc_def **ble_gatts_svc_defs;
 static int ble_gatts_num_svc_defs;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+/* index of latest bonded peer */
+static int last_conn_aware_state_index;
+#endif
 
 struct ble_gatts_svc_entry {
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)

@@ -124,6 +124,7 @@ static struct ble_gattc_cache_conn_chr *
 ble_gattc_cache_conn_chr_find(const struct ble_gattc_cache_conn_svc *svc, uint16_t chr_def_handle,
                               struct ble_gattc_cache_conn_chr **out_prev);
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_cache_conn_disc_chrs(struct ble_gattc_cache_conn *ble_gattc_cache_conn);
 
@@ -132,6 +133,7 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *ble_gattc_cache_conn
 
 static void
 ble_gattc_cache_conn_disc_dscs(struct ble_gattc_cache_conn *peer);
+#endif
 
 struct ble_gattc_cache_conn *
 ble_gattc_cache_conn_find(uint16_t conn_handle)
@@ -365,6 +367,7 @@ ble_gattc_cache_conn_chr_delete(struct ble_gattc_cache_conn_chr *chr)
     os_memblock_put(&ble_gattc_cache_conn_chr_pool, chr);
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static int
 ble_gattc_cache_conn_db_hash_read(uint16_t conn_handle,
                                   const struct ble_gatt_error *error,
@@ -382,6 +385,7 @@ ble_gattc_cache_conn_db_hash_read(uint16_t conn_handle,
     res = ble_hs_mbuf_to_flat(attr->om, peer->database_hash, sizeof(uint8_t) * 16, NULL);
     return res;
 }
+#endif
 
 const struct ble_gattc_cache_conn_svc *
 ble_gattc_cache_conn_svc_find_uuid(const struct ble_gattc_cache_conn *ble_gattc_cache_conn, const ble_uuid_t *uuid)
@@ -1352,6 +1356,7 @@ void ble_gattc_get_gatt_db(uint16_t conn_handle,
 
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_cache_conn_cache_peer(struct ble_gattc_cache_conn *peer)
 {
@@ -1359,6 +1364,7 @@ ble_gattc_cache_conn_cache_peer(struct ble_gattc_cache_conn *peer)
     size_t db_size = ble_gattc_cache_conn_get_db_size(peer);
     ble_gattc_cache_save(peer, db_size);
 }
+#endif
 
 void
 ble_gattc_cache_conn_broken(uint16_t conn_handle)
@@ -1449,6 +1455,7 @@ ble_gattc_cache_conn_bonding_restored(uint16_t conn_handle)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static void service_sanity_check(struct ble_gattc_cache_conn_svc_list *svcs)
 {
     struct ble_gattc_cache_conn_svc *svc;
@@ -1545,6 +1552,7 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
         }
     }
 }
+#endif
 
 void
 ble_gattc_cache_conn_undisc_all(ble_addr_t peer_addr)
@@ -1564,6 +1572,8 @@ ble_gattc_cache_conn_undisc_all(ble_addr_t peer_addr)
         ble_gattc_cache_conn_svc_delete(svc);
     }
 }
+
+#if MYNEWT_VAL(BLE_GATTC)
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
 static int
@@ -1604,6 +1614,9 @@ ble_gattc_cache_conn_inc_disced(uint16_t conn_handle, const struct ble_gatt_erro
 
     return rc;
 }
+
+
+
 static int
 ble_gattc_cache_conn_svc_disced(uint16_t conn_handle, const struct ble_gatt_error *error,
                                 const struct ble_gatt_svc *service, void *arg)
@@ -1683,6 +1696,7 @@ ble_gattc_cache_conn_on_read(uint16_t conn_handle,
         return res;
     }
 }
+#endif
 
 int
 ble_gattc_cache_conn_create(uint16_t conn_handle, ble_addr_t ble_gattc_cache_conn_addr)
@@ -1734,6 +1748,7 @@ ble_gattc_cache_conn_load_hash(ble_addr_t peer_addr, uint8_t *hash_key)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 static int
 ble_gattc_cache_conn_dsc_disced(uint16_t conn_handle, const struct ble_gatt_error *error,
                                 uint16_t chr_val_handle, const struct ble_gatt_dsc *dsc,
@@ -1917,6 +1932,7 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *peer)
     }
     return;
 }
+
 /* As esp_nimble only supports adding/deleting whole services
  * It is safe to assume that the start_handle and end_handle
  * spans 1 or more services
@@ -1944,6 +1960,7 @@ ble_gattc_cache_conn_update(uint16_t conn_handle, uint16_t start_handle, uint16_
         peer->cache_state = CACHE_INVALID;
     }
 }
+#endif
 
 uint16_t
 ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
@@ -2100,6 +2117,7 @@ err:
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
 /**
  * Returns a pointer to a GATT error object with the specified fields.  The
  * returned object is statically allocated, so this function is not reentrant.
@@ -2121,7 +2139,6 @@ ble_gattc_cache_error(int status, uint16_t att_handle)
 }
 
 /* gattc discovery apis */
-
 static int ble_gattc_cache_conn_verify(struct ble_gattc_cache_conn *conn)
 {
     struct ble_hs_conn *gap_conn;
@@ -2573,4 +2590,5 @@ ble_gattc_cache_conn_search_all_dscs(uint16_t conn_handle, uint16_t start_handle
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
+#endif
 #endif
