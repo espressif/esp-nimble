@@ -8418,7 +8418,7 @@ ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
 #if (MYNEWT_VAL(BLE_GATT_NOTIFY) || MYNEWT_VAL(BLE_GATT_INDICATE)) && NIMBLE_BLE_CONNECT
 
     struct ble_gap_event event;
-#if MYNEWT_VAL(BLE_GATT_CACHING)
+#if MYNEWT_VAL(BLE_GATT_CACHING) && MYNEWT_VAL(BLE_GATTC)
     uint16_t start_handle;
     uint16_t end_handle;
 
