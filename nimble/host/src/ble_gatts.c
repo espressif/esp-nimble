@@ -1634,6 +1634,7 @@ ble_gatts_free_mem(void)
 #else
     nimble_platform_mem_free(ble_gatts_svc_entries);
     ble_gatts_svc_entries = NULL;
+    ble_gatts_num_svc_entries = 0;
 #endif
 }
 
