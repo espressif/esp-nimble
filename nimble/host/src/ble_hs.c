@@ -923,7 +923,7 @@ ble_hs_deinit(void)
 
     ble_npl_event_deinit(&ble_hs_ev_reset);
 
-#if NIMBLE_BLE_CONNECT
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_GATTS)
     ble_npl_event_deinit(&ble_hs_ev_tx_notifications);
 
     ble_gatts_stop();
