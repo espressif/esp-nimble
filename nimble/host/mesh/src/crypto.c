@@ -15,13 +15,7 @@
 #include "syscfg/syscfg.h"
 
 #if (MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS))
-#include "mbedtls/aes.h"
-#include "mbedtls/cipher.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/cmac.h"
-#include "mbedtls/ecdh.h"
-#include "mbedtls/ecp.h"
+#include "psa/crypto.h"
 
 #else
 #include <tinycrypt/constants.h>
@@ -41,36 +35,56 @@ int bt_mesh_aes_cmac(const uint8_t key[16], struct bt_mesh_sg *sg,
 		     size_t sg_len, uint8_t mac[16])
 {
     int rc = BLE_HS_EUNKNOWN;
-    mbedtls_cipher_context_t ctx = {0};
-    const mbedtls_cipher_info_t *cipher_info;
+    psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+    psa_key_id_t key_id = 0;
+    psa_algorithm_t alg = PSA_ALG_CMAC;
+    psa_set_key_algorithm(&attributes, alg);
+    psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+    psa_set_key_bits(&attributes, 128);
+    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_SIGN_MESSAGE);
 
-    mbedtls_cipher_init(&ctx);
+    psa_mac_operation_t operation = PSA_MAC_OPERATION_INIT;
 
-    cipher_info = mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
-    if (cipher_info == NULL) {
+    psa_status_t status = psa_import_key(&attributes, key, 16, &key_id);
+    if (status != PSA_SUCCESS) {
+        BT_ERR("Failed to import key: %d", status);
         goto exit;
     }
+    psa_reset_key_attributes(&attributes);
 
-    if (mbedtls_cipher_setup(&ctx, cipher_info) != 0) {
-        goto exit;
-    }
-
-    rc = mbedtls_cipher_cmac_starts(&ctx, key, 128);
-    if (rc != 0) {
+    status = psa_mac_sign_setup(&operation, key_id, alg);
+    if (status != PSA_SUCCESS) {
+        BT_ERR("Failed to setup MAC sign operation: %d", status);
         goto exit;
     }
 
     for (; sg_len; sg_len--, sg++) {
         if (sg->len != 0 && sg->data != NULL) {
-            if ((rc = mbedtls_cipher_cmac_update(&ctx, sg->data, sg->len)) != 0) {
-                goto exit;
-            }
+			status = psa_mac_update(&operation, sg->data, sg->len);
+			if (status != PSA_SUCCESS) {
+				BT_ERR("Failed to update MAC operation: %d", status);
+				psa_mac_abort(&operation);
+				goto exit;
+			}
         }
     }
-    rc = mbedtls_cipher_cmac_finish(&ctx, mac);
+    status = psa_mac_sign_finish(&operation, mac, 16, &sg_len);
+	if (status != PSA_SUCCESS) {
+		BT_ERR("Failed to finish MAC sign operation: %d", status);
+		psa_mac_abort(&operation);
+		goto exit;
+	}
+	if (sg_len != 16) {
+		BT_ERR("psa_mac_sign_finish returned unexpected length %zu", sg_len);
+		status = PSA_ERROR_INVALID_ARGUMENT;
+		goto exit;
+	}
+	rc = 0;
 
 exit:
-    mbedtls_cipher_free(&ctx);
+    if (key_id != 0) {
+        psa_destroy_key(key_id);
+    }
     if (rc != 0) {
         return -EIO;
     }
