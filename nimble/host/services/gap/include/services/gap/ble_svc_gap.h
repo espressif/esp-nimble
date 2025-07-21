@@ -64,7 +64,7 @@ int ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv);
 #endif
 
 #else
-#include "ble_svc_gap_stub.h"
+// #include "ble_svc_gap_stub.h"
 
 #endif
 

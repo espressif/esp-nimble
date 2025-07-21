@@ -9,6 +9,12 @@
 #include "host/ble_aes_ccm.h"
 #include "../src/ble_hs_conn_priv.h"
 
+#if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+#include "psa/crypto.h"
+#else
+#include "tinycrypt/constants.h"
+#endif
+
 #if MYNEWT_VAL(ENC_ADV_DATA)
 
 #ifdef __cplusplus
@@ -54,20 +60,34 @@ ble_aes_ccm_hex(const void *buf, size_t len)
 int
 ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
-    mbedtls_aes_context s = {0};
-    mbedtls_aes_init(&s);
+    psa_status_t status;
+    psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+    psa_key_id_t key_id = 0;
+    psa_algorithm_t alg = PSA_ALG_ECB_NO_PADDING;
+    psa_set_key_algorithm(&attributes, alg);
+    psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+    psa_set_key_bits(&attributes, 128);
+    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_ENCRYPT);
 
-    if (mbedtls_aes_setkey_enc(&s, key, 128) != 0) {
-        mbedtls_aes_free(&s);
-        return BLE_HS_EUNKNOWN;
+    ESP_LOGI("ble_aes_ccm_encrypt_be", "encrypting data");
+
+    status = psa_import_key(&attributes, key, 16, &key_id);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE("ble_aes_ccm_encrypt_be", "psa_import_key failed with status %d", status);
+        return -BLE_HS_EINVAL;
     }
 
-    if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, plaintext, enc_data) != 0) {
-        mbedtls_aes_free(&s);
-        return BLE_HS_EUNKNOWN;
+    // For ECB_NO_PADDING with exactly one block, use psa_cipher_encrypt() directly
+    // This is simpler and avoids the psa_cipher_finish() buffer issue
+    size_t output_len = 0;
+    status = psa_cipher_encrypt(key_id, alg, plaintext, 16, enc_data, 16, &output_len);
+    if (status != PSA_SUCCESS || output_len != 16) {
+        ESP_LOGE("ble_aes_ccm_encrypt_be", "psa_cipher_encrypt failed with status %d", status);
+        psa_destroy_key(key_id);
+        return -BLE_HS_EINVAL;
     }
 
-    mbedtls_aes_free(&s);
+    psa_destroy_key(key_id);
     return 0;
 }
 
