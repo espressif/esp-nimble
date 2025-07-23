@@ -3528,6 +3528,7 @@ int ble_gattc_get_db(uint16_t conn_handle,
         return BLE_ATT_ERR_ATTR_NOT_FOUND;
     }
     if (db) {
+        *count = num;
         memcpy(result, db, num * sizeof(ble_gattc_db_elem_t));  // Copy data
         free(db);  // Free allocated memory
     }
