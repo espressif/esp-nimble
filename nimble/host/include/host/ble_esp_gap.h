@@ -262,6 +262,23 @@ int ble_gap_clear_legacy_adv(void);
  */
 int ble_gap_set_chan_select(uint8_t select);
 
+/**
+ * This API is used to Set scan channel bitmap for scan/init.
+ *
+ * Currently supported only for ESP32C2 chipset.
+ *
+ * @param state         0:Scanning
+ *                      1:Initiating
+ *
+ * @param bitmap[5]     Represents 5 byte channel bitmap. Bit 37,38 and 39 set to
+ *                      represent primary channels, enabled by default.
+ *
+ *                      Bit 39 refers to MSb of MSB of 5-byte bitmap
+ *
+ * @return              status, 0 on success; nonzero on failure.
+ */
+int ble_gap_set_scan_chan(uint8_t state, uint8_t *bitmap);
+
 #endif
 
 /**
