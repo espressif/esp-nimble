@@ -9403,6 +9403,18 @@ int ble_gap_set_chan_select(uint8_t select)
      return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_CHAN_SELECT,
                             &select, 1, NULL, 0);
 }
+
+int ble_gap_set_scan_chan(uint8_t state, uint8_t *bitmap)
+{
+    uint8_t vs_cmd[6];
+    memset(vs_cmd, 0x0, sizeof(vs_cmd));
+
+    vs_cmd[0] = state;
+    memcpy(&vs_cmd[1], bitmap, 5);
+
+    return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_SCAN_CHAN,
+		           &vs_cmd, sizeof(vs_cmd), NULL, 0);
+}
 #endif
 
 int
