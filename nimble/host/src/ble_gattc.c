@@ -3149,6 +3149,8 @@ static void ble_gattc_fill_gatt_db_conversion(uint16_t *count, uint16_t num, esp
                                               uint16_t offset, void *result, ble_gattc_db_elem_t *db)
 {
     uint16_t db_size = ((*count + offset) > num) ? (num - offset) : *count;
+    *count = db_size;
+
     switch (type) {
         case ESP_BLE_GATT_DB_PRIMARY_SERVICE:
         case ESP_BLE_GATT_DB_SECONDARY_SERVICE: {
@@ -3307,7 +3309,6 @@ int ble_gattc_get_service(uint16_t conn_handle,
           ble_gattc_fill_gatt_db_conversion(count, svc_num, ESP_BLE_GATT_DB_PRIMARY_SERVICE, offset, (void *)result, db);
       }
 
-      *count = svc_num;
       //free the db buffer after used.
       if (db) {
           free(db);
@@ -3337,7 +3338,6 @@ int ble_gattc_get_all_char(uint16_t conn_handle,
           ble_gattc_fill_gatt_db_conversion(count, char_num, ESP_BLE_GATT_DB_CHARACTERISTIC, offset, (void *)result, db);
       }
 
-      *count = char_num;
       //free the db buffer after used.
       if (db) {
           free(db);
@@ -3366,7 +3366,6 @@ int ble_gattc_get_all_descr(uint16_t conn_handle,
           ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, offset, (void *)result, db);
       }
 
-      *count = descr_num;
       // free the db buffer after used.
       if (db) {
           free(db);
@@ -3397,7 +3396,6 @@ int ble_gattc_get_char_by_uuid(uint16_t conn_handle,
           ble_gattc_fill_gatt_db_conversion(count, char_num, ESP_BLE_GATT_DB_CHARACTERISTIC, 0, (void *)result, db);
       }
 
-      *count = char_num;
       // free the db buffer after used.
       if (db) {
           free(db);
@@ -3430,7 +3428,6 @@ int ble_gattc_get_descr_by_uuid(uint16_t conn_handle,
              ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, 0, (void *)result, db);
       }
 
-      *count = descr_num;
       // free the db buffer after used.
       if (db) {
           free(db);
@@ -3460,7 +3457,6 @@ int ble_gattc_get_descr_by_char_handle(uint16_t conn_handle,
           ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, 0, (void *)result, db);
       }
 
-      *count = descr_num;
       // free the db buffer after used.
       if (db) {
           free(db);
@@ -3493,7 +3489,6 @@ int ble_gattc_get_include_service(uint16_t conn_handle,
         ble_gattc_fill_gatt_db_conversion(count, incl_num, ESP_BLE_GATT_DB_INCLUDED_SERVICE, 0, (void *)result, db);
     }
 
-    *count = incl_num;
     //free the db buffer after used.
     if (db) {
         free(db);
