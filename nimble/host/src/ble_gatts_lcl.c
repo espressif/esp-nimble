@@ -29,6 +29,12 @@
 static const ble_uuid_t *uuid_ccc =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16);
 
+static const ble_uuid_t *uuid_cpfd =
+        BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_PRE_FMT16);
+
+static const ble_uuid_t *uuid_cafd =
+        BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_AGG_FMT16);
+
 static const char * const ble_gatt_chr_f_names[] = {
     "BROADCAST",
     "READ",
@@ -101,6 +107,8 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
 {
     const struct ble_gatt_chr_def *chr;
     const struct ble_gatt_dsc_def *dsc;
+    const struct ble_gatt_cpfd *cpfd;
+    int cpfd_count;
 
     for (chr = svc->characteristics; chr && chr->uuid; ++chr) {
         console_printf("characteristic\n");
@@ -136,6 +144,40 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
             handle++;
         }
 
+        cpfd_count = 0;
+        for (cpfd = chr->cpfd; cpfd && cpfd->format; ++cpfd) {
+            console_printf("cpf descriptor\n");
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%s\n", " ", "uuid",
+                           ble_uuid_to_str(uuid_cpfd, uuid_buf));
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%d\n", " ", "handle", handle);
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%d\n", " ", "min_key_size", 0);
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%s\n", " ", "flags",
+                           ble_gatts_flags_to_str(BLE_ATT_F_READ,
+                                                  flags_buf, ble_gatt_dsc_f_names));
+            handle++;
+            cpfd_count += 1;
+        }
+
+        if (cpfd_count > 1) {
+            console_printf("caf descriptor\n");
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%s\n", " ", "uuid",
+                           ble_uuid_to_str(uuid_cafd, uuid_buf));
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%d\n", " ", "handle", handle);
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%d\n", " ", "min_key_size", 0);
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%s\n", " ", "flags",
+                           ble_gatts_flags_to_str(BLE_ATT_F_READ,
+                                                  flags_buf, ble_gatt_dsc_f_names));
+            handle++;
+        }
+
         for (dsc = chr->descriptors; dsc && dsc->uuid; ++dsc) {
             console_printf("descriptor\n");
             console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
@@ -167,7 +209,7 @@ ble_gatt_show_local_inc_svc(const struct ble_gatt_svc_def *svc,
                        "%s\n", " ", "uuid",
                        ble_uuid_to_str((*includes)->uuid, uuid_buf));
         console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
-                       "%d\n", " ", "attr handle", handle);
+                       "%d\n", " ", "attr handle", handle + num);
         ++num;
     }
 
