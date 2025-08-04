@@ -63,7 +63,8 @@ typedef struct {
  * @param conn_handle     Connection handle of the peer device.
  * @param svc_uuid        UUID of the service to search for (can be NULL to fetch all services).
  * @param result          Output buffer to store the retrieved service(s).
- * @param count           Number of entries in the cache
+ * @param count           The number of services to retrieve. It will be updated with the actual
+ *                        number of services found, starting at the given offset (if specified).
  * @param offset          Index offset for paginated access (used when more services exist).
  *
  * @return                0 on success, error code otherwise.
@@ -84,7 +85,8 @@ int ble_gattc_get_service(uint16_t conn_handle,
  * @param start_handle    Start handle of the attribute range (usually the service's start handle).
  * @param end_handle      End handle of the attribute range (usually the service's end handle).
  * @param result          Output buffer to store the retrieved characteristics.
- * @param count           The number of characteristics to retrieve. It will be updated with the actual number of characteristics found.
+ * @param count           The number of characteristics to retrieve. It will be updated with the actual
+ *                        number of characteristics found, starting at the given offset (if specified).
  * @param offset          The position offset to retrieve
  *
  * @return                0 on success, error code otherwise.
@@ -105,7 +107,8 @@ int ble_gattc_get_all_char(uint16_t conn_handle,
  * @param conn_handle     Connection handle of the peer device.
  * @param char_handle     Handle of the characteristic whose descriptors are to be fetched.
  * @param result          Output buffer to store the retrieved descriptors.
- * @param count           The number of descriptors to retrieve. It will be updated with the actual number of descriptors found.
+ * @param count           The number of descriptors to retrieve. It will be updated with the actual
+ *                        number of descriptors found, starting at the given offset (if specified).
  * @param offset          The position offset to retrieve
  *
  * @return                0 on success, error code otherwise.
@@ -129,7 +132,8 @@ int ble_gattc_get_all_descr(uint16_t conn_handle,
  * @param end_handle      End handle of the attribute range.
  * @param char_uuid       UUID of the characteristic to search for.
  * @param result          Output buffer to store the retrieved characteristics.
- * @param count           The number of characteristics to retrieve. It will be updated with the actual number of characteristics found.
+ * @param count           The number of characteristics to retrieve. It will be updated with the actual
+ *                        number of characteristics found, starting at the given offset (if specified).
  *
  * @return                0 on success, error code otherwise.
  */
@@ -153,7 +157,8 @@ int ble_gattc_get_char_by_uuid(uint16_t conn_handle,
  * @param char_uuid       UUID of the characteristic to which the descriptor belongs.
  * @param descr_uuid      UUID of the descriptor to search for.
  * @param result          Output buffer to store the retrieved descriptors.
- * @param count           The number of descriptors to retrieve. It will be updated with the actual number of descriptors found.
+ * @param count           The number of descriptors to retrieve. It will be updated with the actual
+ *                        number of descriptors found, starting at the given offset (if specified).
  *
  * @return                0 on success, error code otherwise.
  */
@@ -174,7 +179,8 @@ int ble_gattc_get_descr_by_uuid(uint16_t conn_handle,
  * @param char_handle     Handle of the characteristic whose descriptors are to be searched.
  * @param descr_uuid      UUID of the descriptor to search for.
  * @param result          Output buffer to store the retrieved descriptors.
- * @param count           The number of descriptors to retrieve. It will be updated with the actual number of descriptors found.
+ * @param count           The number of descriptors to retrieve. It will be updated with the actual
+ *                        number of descriptors found, starting at the given offset (if specified).
  *
  * @return                0 on success, error code otherwise.
  */
@@ -195,7 +201,8 @@ int ble_gattc_get_descr_by_char_handle(uint16_t conn_handle,
  * @param end_handle      End handle of the attribute range.
  * @param incl_uuid       UUID of the included service to search for (can be NULL to fetch all).
  * @param result          Output buffer to store the retrieved included services.
- * @param count           The number of included services to retrieve. It will be updated with the actual number of included services found.
+ * @param count           The number of included services to retrieve. It will be updated with the actual
+ *                        number of included services found, starting at the given offset (if specified).
  *
  * @return                0 on success, error code otherwise.
  */
