@@ -1641,6 +1641,15 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
 	}
     }
 
+    /* If we never posted a connect event for a slave (send == 0), treat this as
+     * a connection failure and post a connect-failed event instead of a
+     * disconnect. This allows applications to restart advertising.
+     */
+    if (!send && !(conn->bhc_flags & BLE_HS_CONN_F_MASTER))
+    {
+        ble_gap_event_connect_call(conn_handle, BLE_HS_EAGAIN);
+    }
+
     ble_hs_atomic_conn_delete(conn_handle);
 
     g_max_tx_time[conn_handle] = 0;
@@ -3106,8 +3115,10 @@ ble_gap_event_connect_call(uint16_t conn_handle, int status)
     ble_gap_call_conn_event_cb(&event, handle);
 #endif
 
-    ble_hs_hci_util_set_data_len(le16toh(conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
-            BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
+    if (status == 0 ) {
+        ble_hs_hci_util_set_data_len(le16toh(conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
+                BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
+    }
 }
 
 void
@@ -3156,8 +3167,8 @@ ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp 
     ble_hs_unlock();
 
     if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
-       /* Failed for 0x3E. Reconnection will automatically happen */
-       return;
+        /* Failed for 0x3E. Reconnection will automatically happen */
+        return;
     }
 
     conn->bhc_rd_rem_ver_params.version = ev->version;
