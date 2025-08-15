@@ -123,9 +123,10 @@ esp_err_t esp_nimble_init(void)
 
 #endif
 
-    ble_transport_ll_init();
     /* Initialize the host */
     ble_transport_hs_init();
+    
+    ble_transport_ll_init();
 
     return ESP_OK;
 }
@@ -137,6 +138,8 @@ esp_err_t esp_nimble_init(void)
  */
 esp_err_t esp_nimble_deinit(void)
 {
+    ble_transport_ll_deinit();
+
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_deinit() != ESP_OK) {
@@ -162,7 +165,6 @@ esp_err_t esp_nimble_deinit(void)
     npl_freertos_mempool_deinit();
 #endif
 
-    ble_transport_ll_deinit();
     return ESP_OK;
 }
 
