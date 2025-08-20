@@ -258,7 +258,7 @@ void ble_hs_pvcy_set_default_irk(void)
     memset(&key_local_irk, 0, sizeof key_local_irk);
     memset(&value_local_irk, 0x0, sizeof value_local_irk);
 
-    ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+    rc = ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
 
     /* Create key / value */
     /* Some controllers give all 0s as address. Handle such case */
