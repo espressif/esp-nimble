@@ -43,6 +43,7 @@ int ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode);
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 bool ble_hs_pvcy_enabled(void);
 #endif
+bool ble_hs_pvcy_resolve_with_irk(const uint8_t rpa[6], const uint8_t irk[16]);
 
 void ble_hs_pvcy_irk_deinit(void);
 #ifdef __cplusplus
