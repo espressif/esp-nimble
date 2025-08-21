@@ -316,6 +316,20 @@ void ble_gap_rx_test_evt(const void *buf, uint8_t len);
 void ble_gap_tx_test_evt(const void *buf, uint8_t len);
 void ble_gap_end_test_evt(const void *buf, uint8_t len);
 
+/**
+ * Try to resolve an RPA using all stored peer IRKs and local IRKs.
+ *
+ * - rpa: input Resolvable Private Address
+ * - ida: output Identity Address
+ * - addr_type: output Address type
+ *        * If resolved with peer IRK -> peer identity address is copied
+ *        * If resolved with local IRK -> set to all zeros
+ *        * If not resolved -> unchanged
+ *
+ * Returns: ESP_OK if resolve, ESP_FAIL otherwise.
+ */
+bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type);
+
 #ifdef __cplusplus
 }
 #endif

@@ -10505,3 +10505,58 @@ int ble_gap_set_host_feat(uint8_t bit_num, uint8_t bit_val)
                              BLE_HCI_OCF_LE_SET_HOST_FEATURE),&cmd, sizeof(cmd), NULL, 0);
 }
 #endif
+
+/* Check if input is an RPA (Resolvable Private Address) */
+static inline bool is_rpa(const uint8_t *addr)
+{
+    /* prand = 3 MSB bytes of address */
+    return ((addr[5] & 0xC0) == 0x40);
+}
+
+bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type)
+{
+    if (!is_rpa(rpa)) {
+        return ESP_FAIL; /* reject public / static random / non-RPA */
+    }
+
+    /* ---- Step 1: Try peer IRKs ---- */
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 0
+    int rc;
+    int count = 0;
+    ble_addr_t peer_id_addrs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+
+    rc = ble_store_util_bonded_peers(&peer_id_addrs[0], &count, MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+
+    if (rc == 0 && count > 0) {
+        for (int i = 0; i < count; i++) {
+            struct ble_store_value_sec sec = {0};
+            struct ble_store_key_sec key = {0};
+
+            key.peer_addr = peer_id_addrs[i];
+            rc = ble_store_read_peer_sec(&key, &sec);
+            if (rc == 0 && sec.irk_present) {
+                if (ble_hs_pvcy_resolve_with_irk(rpa, sec.irk)) {
+                    /* Found a match -> copy peer identity address */
+                    memcpy(ida, sec.peer_addr.val, 6);
+                    *addr_type = sec.peer_addr.type; /* set type */
+                    return ESP_OK;
+                }
+            }
+        }
+    }
+#endif
+
+    /* ---- Step 2: Try our (local) IRKs ---- */
+    struct ble_store_value_local_irk value = {0};
+    struct ble_store_key_local_irk key = {0};
+
+    (void)ble_store_read_local_irk(&key, &value);
+    if (ble_hs_pvcy_resolve_with_irk(rpa, value.irk)) {
+        /* Match with local IRK -> return ida = 00:00:00:00:00:00 */
+        memset(ida, 0, 6);
+	*addr_type = BLE_ADDR_PUBLIC; /* default type */
+        return ESP_OK;
+    }
+
+    return ESP_FAIL; /* No match */
+}
