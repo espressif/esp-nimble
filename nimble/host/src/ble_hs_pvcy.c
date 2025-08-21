@@ -453,4 +453,42 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
     return rc;
 }
 #endif
+
+int
+ble_hs_pvcy_rpa_ah(const uint8_t irk[16], const uint8_t prand[3], uint8_t out[3])
+{
+    uint8_t plaintext[16] = {0};
+    uint8_t ciphertext[16] = {0};
+    int rc;
+
+    /* prand goes in MSB of plaintext */
+    memcpy(plaintext, prand, 3);
+
+    rc = ble_sm_alg_encrypt(irk, plaintext, ciphertext);
+    if (rc != 0) {
+        return rc;
+    }
+
+    memcpy(out, ciphertext, 3);
+    return 0;
+}
+
+bool
+ble_hs_pvcy_resolve_with_irk(const uint8_t rpa[6], const uint8_t irk[16])
+{
+    uint8_t hash[3];
+    uint8_t out[3];
+
+    /* hash = most significant 3 bytes of RPA */
+    memcpy(hash, rpa, 3);
+
+    /* prand = least significant 3 bytes of RPA */
+    const uint8_t *prand = rpa + 3;
+
+    if (ble_hs_pvcy_rpa_ah(irk, prand, out) != 0) {
+        return false;
+    }
+
+    return (memcmp(hash, out, 3) == 0);
+}
 #endif
