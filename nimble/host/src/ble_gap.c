@@ -3635,6 +3635,7 @@ ble_gap_adv_set_fields(const struct ble_hs_adv_fields *adv_fields)
 
     return 0;
 #else
+    printf("advertise is not enabled and ext disabled \n");
     return BLE_HS_ENOTSUP;
 #endif
 }
