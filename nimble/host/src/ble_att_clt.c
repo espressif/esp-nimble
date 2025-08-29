@@ -1082,7 +1082,7 @@ err:
     return rc;
 }
 
-#if MYNEWT_VAL(BLE_GATTC)
+#if MYNEWT_VAL(BLE_GATTS)
 int
 ble_att_clt_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {

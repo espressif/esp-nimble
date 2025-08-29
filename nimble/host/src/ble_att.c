@@ -56,8 +56,10 @@ static const struct ble_att_rx_dispatch_entry ble_att_rx_dispatch[] = {
     { BLE_ATT_OP_WRITE_RSP,            ble_att_clt_rx_write },
     { BLE_ATT_OP_PREP_WRITE_RSP,       ble_att_clt_rx_prep_write },
     { BLE_ATT_OP_EXEC_WRITE_RSP,       ble_att_clt_rx_exec_write },
-    { BLE_ATT_OP_INDICATE_RSP,         ble_att_clt_rx_indicate },
+    { BLE_ATT_OP_INDICATE_REQ,         ble_att_svr_rx_indicate },
     { BLE_ATT_OP_READ_MULT_VAR_RSP,    ble_att_clt_rx_read_mult_var },
+    { BLE_ATT_OP_NOTIFY_MULTI_REQ,     ble_att_svr_rx_notify_multi },
+    { BLE_ATT_OP_NOTIFY_REQ,           ble_att_svr_rx_notify },
 #endif
 #if MYNEWT_VAL(BLE_GATTS)
     { BLE_ATT_OP_MTU_REQ,              ble_att_svr_rx_mtu },
@@ -71,10 +73,8 @@ static const struct ble_att_rx_dispatch_entry ble_att_rx_dispatch[] = {
     { BLE_ATT_OP_WRITE_REQ,            ble_att_svr_rx_write },
     { BLE_ATT_OP_PREP_WRITE_REQ,       ble_att_svr_rx_prep_write },
     { BLE_ATT_OP_EXEC_WRITE_REQ,       ble_att_svr_rx_exec_write },
-    { BLE_ATT_OP_NOTIFY_REQ,           ble_att_svr_rx_notify },
-    { BLE_ATT_OP_INDICATE_REQ,         ble_att_svr_rx_indicate },
+    { BLE_ATT_OP_INDICATE_RSP,         ble_att_clt_rx_indicate },
     { BLE_ATT_OP_READ_MULT_VAR_REQ,    ble_att_svr_rx_read_mult_var },
-    { BLE_ATT_OP_NOTIFY_MULTI_REQ,     ble_att_svr_rx_notify_multi },
     { BLE_ATT_OP_WRITE_CMD,            ble_att_svr_rx_write_no_rsp },
     { BLE_ATT_OP_SIGNED_WRITE_CMD,     ble_att_svr_rx_signed_write },
 #endif
