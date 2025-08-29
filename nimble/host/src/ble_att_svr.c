@@ -247,6 +247,7 @@ ble_att_svr_find_by_uuid(struct ble_att_svr_entry *prev, const ble_uuid_t *uuid,
 
     return NULL;
 }
+#endif
 
 static int
 ble_att_svr_pullup_req_base(struct os_mbuf **om, int base_len,
@@ -283,6 +284,8 @@ ble_att_svr_get_sec_state(uint16_t conn_handle,
     ble_hs_unlock();
 }
 
+
+#if MYNEWT_VAL(BLE_GATTS)
 static int
 ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
                         struct ble_att_svr_entry *entry,
@@ -625,6 +628,7 @@ ble_att_svr_write_handle(uint16_t conn_handle, uint16_t attr_handle,
 
     return 0;
 }
+#endif
 
 int
 ble_att_svr_tx_error_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom,
@@ -715,6 +719,7 @@ ble_att_svr_tx_rsp(uint16_t conn_handle, uint16_t cid, int hs_status, struct os_
     return hs_status;
 }
 
+#if MYNEWT_VAL(BLE_GATTS)
 static int
 ble_att_svr_build_mtu_rsp(uint16_t conn_handle, struct os_mbuf **rxom,
                           struct os_mbuf **out_txom, uint8_t *att_err)
@@ -2967,7 +2972,9 @@ done:
                             att_err, err_handle);
     return rc;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_GATTC)
 int
 ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
@@ -3072,6 +3079,23 @@ done:
     return rc;
 }
 
+static int
+ble_att_clt_pkt(struct os_mbuf **rxom, struct os_mbuf **out_txom,
+                uint8_t *out_att_err)
+{
+    *out_txom = ble_hs_mbuf_l2cap_pkt();
+    if (*out_txom != NULL) {
+        return 0;
+    }
+
+    /* Allocation failure.  Reuse receive buffer for response. */
+    *out_txom = *rxom;
+    *rxom = NULL;
+    *out_att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+    return BLE_HS_ENOMEM;
+}
+
+
 /**
  * @return                      0 on success; nonzero on failure.
  */
@@ -3086,7 +3110,7 @@ ble_att_svr_build_indicate_rsp(struct os_mbuf **rxom,
      * reuses the request buffer.  See the note at the top of this file for
      * details.
      */
-    rc = ble_att_svr_pkt(rxom, &txom, out_att_err);
+    rc = ble_att_clt_pkt(rxom, &txom, out_att_err);
     if (rc != 0) {
         goto done;
     }
@@ -3101,6 +3125,27 @@ ble_att_svr_build_indicate_rsp(struct os_mbuf **rxom,
 
 done:
     *out_txom = txom;
+    return rc;
+}
+
+static int
+ble_att_clt_pullup_req_base(struct os_mbuf **om, int base_len,
+                            uint8_t *out_att_err)
+{
+    uint8_t att_err;
+    int rc;
+
+    rc = ble_hs_mbuf_pullup_base(om, base_len);
+    if (rc == BLE_HS_ENOMEM) {
+        att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+    } else {
+        att_err = 0;
+    }
+
+    if (out_att_err != NULL) {
+        *out_att_err = att_err;
+    }
+
     return rc;
 }
 
@@ -3123,7 +3168,7 @@ ble_att_svr_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxo
     att_err = 0;
     handle = 0;
 
-    rc = ble_att_svr_pullup_req_base(rxom, sizeof(*req), NULL);
+    rc = ble_att_clt_pullup_req_base(rxom, sizeof(*req), NULL);
     if (rc != 0) {
         goto done;
     }
@@ -3145,7 +3190,14 @@ ble_att_svr_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxo
         goto done;
     }
 
-    ble_att_svr_get_sec_state(conn_handle, &sec_state);
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find_assert(conn_handle);
+    sec_state = conn->bhc_sec_state;
+
+    ble_hs_unlock();
 
     /* All indications shall be confirmed, but only these with required
      * security established shall be pass to application
@@ -3167,7 +3219,9 @@ done:
                             att_err, handle);
     return rc;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_GATTS)
 static void
 ble_att_svr_move_entries(struct ble_att_svr_entry_list *src,
                          struct ble_att_svr_entry_list *dst,
