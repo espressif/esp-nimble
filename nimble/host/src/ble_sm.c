@@ -806,6 +806,11 @@ ble_sm_ioact_state(uint8_t action)
     case BLE_SM_IOACT_DISP:
         return BLE_SM_PROC_STATE_CONFIRM;
 
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    case BLE_SM_IOACT_STATIC:
+        return BLE_SM_PROC_STATE_CONFIRM;
+#endif
+
     default:
         BLE_HS_DBG_ASSERT(0);
         return BLE_SM_PROC_STATE_NONE;
@@ -3056,7 +3061,26 @@ ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey)
             }
             break;
 #endif
+#if MYNEWT_VAL(STATIC_PASSKEY)
+        case BLE_SM_IOACT_STATIC:
+            if (pkey->passkey > 999999) {
+                rc = BLE_HS_EINVAL;
+            } else {
+                proc->flags |= BLE_SM_PROC_F_IO_INJECTED;
+                memset(proc->tk, 0, 16);
+                proc->tk[0] = (pkey->passkey >> 0) & 0xff;
+                proc->tk[1] = (pkey->passkey >> 8) & 0xff;
+                proc->tk[2] = (pkey->passkey >> 16) & 0xff;
+                proc->tk[3] = (pkey->passkey >> 24) & 0xff;
+                if ((proc->flags & BLE_SM_PROC_F_INITIATOR) ||
+                    (proc->flags & BLE_SM_PROC_F_ADVANCE_ON_IO))
+                {
 
+                    res.execute = 1;
+                }
+            }
+            break;
+#endif
         default:
             BLE_HS_DBG_ASSERT(0);
             rc = BLE_HS_EINVAL;
@@ -3160,4 +3184,40 @@ ble_sm_create_chan(uint16_t conn_handle)
     return chan;
 }
 
+#if MYNEWT_VAL(STATIC_PASSKEY)
+int
+ble_sm_configure_static_passkey(uint32_t passkey, bool enable)
+{
+    if (enable) {
+        /* Validate passkey is 6 digits */
+        if (passkey > 999999) {
+            return BLE_HS_EINVAL;
+        }
+        /* Passkey authentication requires MITM; ensure it is enabled. */
+        ble_hs_cfg.sm_mitm = 1;
+        ble_hs_cfg.sm_static_passkey = 1;
+        ble_hs_cfg.sm_static_passkey_val = passkey;
+        BLE_HS_LOG(DEBUG, "static passkey enabled\n");
+    } else {
+        ble_hs_cfg.sm_static_passkey = 0;
+        ble_hs_cfg.sm_static_passkey_val = 0;
+        BLE_HS_LOG(INFO, "static passkey disabled\n");
+    }
+
+    return 0;
+}
+
+int
+ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled)
+{
+    if (passkey == NULL || enabled == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    *enabled = ble_hs_cfg.sm_static_passkey;
+    *passkey = ble_hs_cfg.sm_static_passkey_val;
+
+    return 0;
+}
+#endif
 #endif
