@@ -68,6 +68,17 @@ ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
     pair_req = (struct ble_sm_pair_cmd *) &proc->pair_req[1];
     pair_rsp = (struct ble_sm_pair_cmd *) &proc->pair_rsp[1];
 
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    /* Check if static passkey is enabled - if so, use static passkey action */
+    if (ble_hs_cfg.sm_static_passkey)
+    {
+        *action = BLE_SM_IOACT_STATIC;
+        proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
+        proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
+        return 0;
+    }
+#endif
+
     if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES &&
         pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
         *action = BLE_SM_IOACT_OOB;
@@ -99,6 +110,13 @@ ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
         proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
         proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
         break;
+
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    case BLE_SM_IOACT_STATIC:
+        proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
+        proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
+        break;
+#endif
 
     default:
         BLE_HS_DBG_ASSERT(0);

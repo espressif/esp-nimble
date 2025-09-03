@@ -359,6 +359,22 @@ struct ble_hs_cfg {
     /** @brief Weather to use GATT caching or not for discovery operations */
     uint8_t gatt_use_cache;
 
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    /** @brief Security Manager Static Passkey flag
+     *
+     * If set, the device will use a static passkey for pairing instead of
+     * generating dynamic passkeys.
+     */
+    unsigned sm_static_passkey:1;
+
+    /** @brief Security Manager Static Passkey Value
+     *
+     * The static passkey value to use when sm_static_passkey is enabled.
+     * Must be a 6-digit number (0-999999).
+     */
+    uint32_t sm_static_passkey_val;
+#endif
+
     /** @brief Stack reset callback
      *
      * This callback is executed when the host resets itself and the controller
