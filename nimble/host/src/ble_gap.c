@@ -8364,6 +8364,23 @@ ble_gap_passkey_event(uint16_t conn_handle,
 
     BLE_HS_LOG(DEBUG, "send passkey action request %d\n",
                passkey_params->action);
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    /* Check if static passkey is configured and handle automatically */
+    if (ble_hs_cfg.sm_static_passkey) {
+        struct ble_sm_io pk;
+        int rc;
+
+        if (passkey_params->action == BLE_SM_IOACT_STATIC) {
+            pk.action = BLE_SM_IOACT_STATIC;
+            pk.passkey = ble_hs_cfg.sm_static_passkey_val;
+            rc = ble_sm_inject_io(conn_handle, &pk);
+            if (rc == 0) {
+                BLE_HS_LOG(INFO, "static passkey injected");
+                return;
+            }
+        }
+    }
+#endif
 
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_PASSKEY_ACTION;

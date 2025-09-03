@@ -406,6 +406,7 @@ struct ble_gap_passkey_params {
      *  - BLE_SM_IOACT_INPUT
      *  - BLE_SM_IOACT_DISP
      *  - BLE_SM_IOACT_NUMCMP
+     *  - BLE_SM_IOACT_STATIC
      */
     uint8_t action;
 

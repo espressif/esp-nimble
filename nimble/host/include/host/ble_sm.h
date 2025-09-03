@@ -22,6 +22,9 @@
 
 #include <inttypes.h>
 #include "syscfg/syscfg.h"
+#if MYNEWT_VAL(STATIC_PASSKEY)
+#include <stdbool.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,7 +88,8 @@ extern "C" {
 #define BLE_SM_IOACT_DISP                       3
 #define BLE_SM_IOACT_NUMCMP                     4
 #define BLE_SM_IOACT_OOB_SC                     5
-#define BLE_SM_IOACT_MAX_PLUS_ONE               6
+#define BLE_SM_IOACT_STATIC                     6
+#define BLE_SM_IOACT_MAX_PLUS_ONE               7
 
 struct ble_sm_sc_oob_data {
     /** Random Number. */
@@ -112,9 +116,42 @@ int ble_sm_sc_oob_generate_data(struct ble_sm_sc_oob_data *oob_data);
 
 #if NIMBLE_BLE_SM
 int ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey);
+
+#if MYNEWT_VAL(STATIC_PASSKEY)
+/**
+ * @brief Configure static passkey for BLE pairing
+ *
+ * This function enables static passkey mode and sets the passkey value.
+ * When enabled, the device will automatically use the specified passkey
+ * for both display and input actions during pairing, eliminating the
+ * need for dynamic passkey generation.
+ *
+ * @param passkey     The 6-digit static passkey (0-999999)
+ * @param enable      Whether to enable (true) or disable (false) static passkey
+ *
+ * @return 0 on success, error code on failure
+ */
+int ble_sm_configure_static_passkey(uint32_t passkey, bool enable);
+
+/**
+ * @brief Get the current static passkey configuration
+ *
+ * @param passkey     Pointer to store the current static passkey value
+ * @param enabled     Pointer to store whether static passkey is enabled
+ *
+ * @return 0 on success, error code on failure
+ */
+int ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled);
+#endif
 #else
 #define ble_sm_inject_io(conn_handle, pkey) \
     ((void)(conn_handle), BLE_HS_ENOTSUP)
+#if !MYNEWT_VAL(STATIC_PASSKEY)
+#define ble_sm_configure_static_passkey(passkey, enable) \
+    ((void)(passkey), (void)(enable), BLE_HS_ENOTSUP)
+#define ble_sm_get_static_passkey_config(passkey, enabled) \
+    ((void)(passkey), (void)(enabled), BLE_HS_ENOTSUP)
+#endif
 #endif
 
 #ifdef __cplusplus
