@@ -2016,7 +2016,10 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
 
                 ble_hs_unlock();
 
-                rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr, ble_conn_reattempt.adv_sid,
+		/*Make application aware of the try */
+		ble_gap_reattempt_count(ev->sync_handle, ble_conn_reattempt.count);
+
+		rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr, ble_conn_reattempt.adv_sid,
                                                           &ble_conn_reattempt.periodic_params,
                                                           ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
                 if (rc != 0) {
@@ -2024,32 +2027,28 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
                 }
 
                 ble_hs_lock();
-            }
+            } else {
+                memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
+                ble_conn_reattempt.adv_sid = 0;
+                ble_conn_reattempt.count = 0;
+                memset(&ble_conn_reattempt.periodic_params, 0x0, sizeof(struct ble_gap_periodic_sync_params));
+	    }
        }
 #endif
     }
-#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
-    if (!ble_conn_reattempt.sync_reattempt || ble_conn_reattempt.count >= MAX_REATTEMPT_ALLOWED) {
-        memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
-        ble_conn_reattempt.adv_sid = 0;
-        ble_conn_reattempt.count = 0;
-        memset(&ble_conn_reattempt.periodic_params, 0x0, sizeof(struct ble_gap_periodic_sync_params));
-#endif
-        cb = ble_gap_sync.cb;
-        cb_arg = ble_gap_sync.cb_arg;
 
-        ble_gap_sync.op = BLE_GAP_OP_NULL;
-        ble_gap_sync.cb_arg = NULL;
-        ble_gap_sync.cb_arg = NULL;
-        ble_gap_sync.psync = NULL;
+    cb = ble_gap_sync.cb;
+    cb_arg = ble_gap_sync.cb_arg;
 
-        ble_gap_event_listener_call(&event);
-        if (cb) {
-            cb(&event, cb_arg);
-        }
-#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
+    ble_gap_sync.op = BLE_GAP_OP_NULL;
+    ble_gap_sync.cb_arg = NULL;
+    ble_gap_sync.cb_arg = NULL;
+    ble_gap_sync.psync = NULL;
+
+    ble_gap_event_listener_call(&event);
+    if (cb) {
+        cb(&event, cb_arg);
     }
-#endif
     ble_hs_unlock();
 }
 
