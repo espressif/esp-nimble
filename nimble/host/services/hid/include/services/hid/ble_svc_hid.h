@@ -111,6 +111,7 @@ struct ble_svc_hid_params{
 };
 
 void ble_svc_hid_init(void);
+void ble_svc_hid_deinit(void);
 int ble_svc_hid_add(struct ble_svc_hid_params params);
 void ble_svc_hid_reset(void);
 

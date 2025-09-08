@@ -449,6 +449,12 @@ ble_svc_dis_init_dynamic(void)
 }
 #endif
 
+void
+ble_svc_dis_deinit(void)
+{
+    ble_gatts_free_svcs();
+}
+
 /**
  * Initialize the DIS package.
  */
