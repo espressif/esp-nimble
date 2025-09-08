@@ -34,6 +34,7 @@ typedef int ble_svc_sps_event_fn(uint16_t scan_interval, uint16_t scan_window);
 
 void ble_svc_sps_scan_refresh(void);
 void ble_svc_sps_init(uint16_t scan_itvl, uint16_t scan_window);
+void ble_svc_sps_deinit(void);
 void ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb);
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_svc_sps_reset(void);

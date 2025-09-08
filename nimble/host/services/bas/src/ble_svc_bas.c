@@ -115,6 +115,11 @@ ble_svc_bas_battery_level_set(uint8_t level) {
     return 0;
 }
 
+void
+ble_svc_bas_deinit(void)
+{
+    ble_gatts_free_svcs();
+}
 
 /**
  * Initialize the Battery Service.

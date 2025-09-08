@@ -194,6 +194,13 @@ ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb)
     ble_svc_sps_cb_fn = cb;
 }
 
+void ble_svc_sps_deinit(void)
+{
+    ble_gatts_free_svcs();
+    ble_scan_itvl = 0;
+    ble_scan_window = 0;
+}
+
 /**
  * Initialize the SPS package.
  */

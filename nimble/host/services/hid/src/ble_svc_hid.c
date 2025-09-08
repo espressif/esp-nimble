@@ -748,6 +748,12 @@ ble_svc_hid_reset(void)
 #endif
 }
 
+void
+ble_svc_hid_deinit(void)
+{
+    ble_gatts_free_svcs();
+}
+
 /**
  * Initialize the HID Service.
  */
