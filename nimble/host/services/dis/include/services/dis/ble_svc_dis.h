@@ -129,7 +129,7 @@ extern struct ble_svc_dis_data ble_svc_dis_data;
  * Automatically called during package initialisation.
  */
 void ble_svc_dis_init(void);
-
+void ble_svc_dis_deinit(void);
 /**
  * Service initialisation as an included service.
  */
