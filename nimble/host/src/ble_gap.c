@@ -2762,7 +2762,7 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
         }
 
 	if (conn != NULL) {
-            ble_gap_event_connect_call(ev->conn_handle, ev->status);
+            ble_gap_event_connect_call(ev->conn_handle, 0);
             slave_conn[ev->conn_handle] = 1;
         }
     }
@@ -2793,8 +2793,8 @@ ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp 
     if ((conn != NULL) &&  !(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
         ble_gap_rd_rem_sup_feat_tx(ev->conn_handle);
     } else {
-        if ((conn != NULL) && (ev->status == 0)) {
-            ble_gap_event_connect_call(ev->conn_handle, ev->status);
+        if (conn != NULL) {
+            ble_gap_event_connect_call(ev->conn_handle, 0);
         }
     }
 #endif
