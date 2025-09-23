@@ -35,7 +35,6 @@ struct ble_gap_reattempt_ctxt {
 
 extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
 extern int ble_gap_slave_adv_reattempt(void);
-extern int slave_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
 #endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
@@ -293,7 +292,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 	}
 	else if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER) && \
 		((ev->reason == BLE_ERR_CONN_ESTABLISHMENT) || \
-		(!slave_conn[ev->conn_handle] && ev->reason == BLE_ERR_CONN_SPVN_TMO))) { //slave
+		(!conn->slave_conn && ev->reason == BLE_ERR_CONN_SPVN_TMO))) { //slave
 
 	    BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
                              ev->reason, ev->status);
