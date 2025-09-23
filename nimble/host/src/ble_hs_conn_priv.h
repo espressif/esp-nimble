@@ -51,6 +51,7 @@ struct ble_hs_conn {
     SLIST_ENTRY(ble_hs_conn) bhc_next;
     uint16_t bhc_handle;
     uint8_t bhc_our_addr_type;
+    uint8_t slave_conn : 1;
 #if MYNEWT_VAL(BLE_EXT_ADV)
     uint8_t bhc_our_rnd_addr[6];
 #endif
@@ -61,6 +62,10 @@ struct ble_hs_conn {
     uint16_t bhc_itvl;
     uint16_t bhc_latency;
     uint16_t bhc_supervision_timeout;
+    uint16_t bhc_max_tx_octets;
+    uint16_t bhc_max_rx_octets;
+    uint16_t bhc_max_tx_time;
+    uint16_t bhc_max_rx_time;
     uint8_t bhc_master_clock_accuracy;
 
     uint32_t supported_feat;
