@@ -127,6 +127,12 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_biginfo_adv_rpt;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cis_estab_v2;
 #endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
 #endif /* MYNEWT_VAL(BLE_ISO) */
+#if NIMBLE_BLE_CONNECT
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_rd_all_rem_feat;
+#endif
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+static ble_hs_hci_evt_le_fn ble_hci_ev_le_subev_monitor_adv_report;
+#endif
 
 /* Statistics */
 struct host_hci_stats {
@@ -227,7 +233,6 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_CIS_ESTABLISHED_V2] = ble_hs_hci_evt_le_cis_estab_v2,
 #endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
 #endif /* MYNEWT_VAL(BLE_ISO) */
-
 #if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
     [BLE_HCI_LE_SUBEV_CS_RD_REM_SUPP_CAP_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete,
     [BLE_HCI_LE_SUBEV_CS_RD_REM_FAE_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_fae_complete,
@@ -237,6 +242,12 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT] = ble_hs_hci_evt_le_cs_subevent_result,
     [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT_CONTINUE] = ble_hs_hci_evt_le_cs_subevent_result_continue,
     [BLE_HCI_LE_SUBEV_CS_TEST_END_COMPLETE] = ble_hs_hci_evt_le_cs_test_end_complete,
+#endif
+#if NIMBLE_BLE_CONNECT
+    [BLE_HCI_LE_SUBEV_RD_ALL_REM_FEAT] = ble_hs_hci_evt_le_rd_all_rem_feat,
+#endif
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+    [BLE_HCI_LE_SUBEV_MONITOR_ADV_REPORT] = ble_hci_ev_le_subev_monitor_adv_report,
 #endif
 };
 
@@ -1545,6 +1556,39 @@ ble_hs_hci_evt_le_data_len_change(uint8_t subevent, const void *data,
 
     return 0;
 
+}
+
+static int
+ble_hs_hci_evt_le_rd_all_rem_feat(uint8_t subevent, const void *data,
+				  unsigned int len)
+{
+    const struct  ble_hci_ev_le_subev_rd_all_rem_feat *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_rd_all_remote_feat(ev);
+
+    return 0;
+}
+
+#endif
+
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+static int
+ble_hci_ev_le_subev_monitor_adv_report(uint8_t subevent, const void *data,
+				       unsigned int len)
+{
+    const struct  ble_hci_ev_le_subev_monitor_adv_report *ev = data;
+
+    if (len != sizeof(*ev)) {
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_gap_rx_rd_monitor_adv_report(ev);
+
+    return 0;
 }
 #endif
 

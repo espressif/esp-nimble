@@ -1368,6 +1368,19 @@ struct ble_hci_le_set_periodic_adv_params_v2 {
     uint8_t num_response_slots;
 } __attribute__((packed));
 
+#define BLE_HCI_OCF_LE_RD_ALL_LOCAL_SUP_FEAT             (0x0087)
+struct ble_hci_le_rd_all_local_feat_rp {
+    uint8_t status;
+    uint8_t max_page;
+    uint8_t le_features[248];
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_LE_RD_ALL_REMOTE_FEAT                (0x0088)
+struct ble_hci_le_rd_all_remote_feat_cp {
+    uint16_t conn_handle;
+    uint8_t page_requested;
+} __attribute__((packed));
+
 #define BLE_HCI_OCF_LE_CS_RD_LOC_SUPP_CAP                (0x0089)
 struct ble_hci_le_cs_rd_loc_supp_cap_rp {
     uint8_t num_config_supported;
@@ -1541,6 +1554,34 @@ struct ble_hci_le_cs_test_cp {
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_CS_TEST_END                       (0x0096)
+
+#define BLE_HCI_OCF_LE_ADD_MONITOR_ADV_LIST         (0x0098)
+struct ble_hci_le_add_monitor_adv_list_cp {
+    uint8_t addr_type;
+    uint8_t address[6];
+    uint8_t rssi_low_threshold;
+    uint8_t rssi_high_threshold;
+    uint8_t timeout;
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_LE_RMV_MONITOR_ADV_LIST         (0x0099)
+struct ble_hci_le_rmv_monitor_adv_list_cp {
+    uint8_t addr_type;
+    uint8_t address[6];
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_LE_CLEAR_MONITOR_ADV_LIST         (0x009A)
+
+#define BLE_HCI_OCF_LE_READ_MONITOR_ADV_LIST_SIZE     (0x009B)
+struct ble_hci_le_rd_monitor_adv_list_size_rp {
+    uint8_t number;
+} __attribute__((packed));
+
+
+#define BLE_HCI_OCF_LE_ENABLE_MONITOR_ADV             (0x009C)
+struct ble_hci_le_enable_monitor_adv_cp {
+    uint8_t enable;
+} __attribute__((packed));
 
 /* --- Vendor specific commands (OGF 0x003F) */
 /* Read Random Static Address */
@@ -2545,6 +2586,24 @@ struct ble_hci_ev_le_subev_cis_established_v2 {
     uint8_t sdu_interval_c_to_p[3];
     uint8_t sdu_interval_p_to_c[3];
     uint8_t framing;
+} __attribute__((packed));
+
+#define BLE_HCI_LE_SUBEV_RD_ALL_REM_FEAT        (0x2B)
+struct ble_hci_ev_le_subev_rd_all_rem_feat {
+    uint8_t subev_code;
+    uint8_t status;
+    uint16_t conn_handle;
+    uint8_t max_remote_page;
+    uint8_t max_valid_page;
+    uint8_t le_features[248];
+} __attribute__((packed));
+
+#define BLE_HCI_LE_SUBEV_MONITOR_ADV_REPORT     (0x34)
+struct ble_hci_ev_le_subev_monitor_adv_report {
+    uint8_t subev_code;
+    uint8_t addr_type;
+    uint8_t address[6];
+    uint8_t condition;
 } __attribute__((packed));
 
 #if (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)
