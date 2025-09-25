@@ -358,3 +358,114 @@ ble_hs_hci_dtm_enh_rx_start(const uint8_t rx_chan, const uint8_t index,
 
     return ble_hs_hci_cmd_tx_no_rsp(opcode, &cmd, sizeof(cmd));
 }
+
+int
+ble_hs_hci_rd_all_local_supp_features(uint8_t* status, uint8_t* max_page,
+				      uint8_t *le_features)
+{
+    struct ble_hci_le_rd_all_local_feat_rp rsp;
+    int rc;
+
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_RD_ALL_LOCAL_SUP_FEAT), NULL, 0,
+                                      &rsp, sizeof(rsp));
+
+    if (rc != 0) {
+        return rc;
+    }
+
+    *status = rsp.status;
+    *max_page = rsp.max_page;
+
+    memcpy(le_features, rsp.le_features, 248);
+
+    return 0;
+}
+
+int
+ble_hs_hci_rd_all_remote_features(uint16_t conn_handle, uint8_t page_requested)
+{
+    struct ble_hci_le_rd_all_remote_feat_cp cmd;
+
+    if (page_requested > 0x0A) {
+        return BLE_HS_EINVAL;
+    }
+
+    cmd.conn_handle = htole16(conn_handle);
+    cmd.page_requested = page_requested;
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_RD_ALL_REMOTE_FEAT), &cmd, sizeof(cmd),
+                                        NULL, 0);
+}
+
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+int
+ble_hs_hci_add_monitor_adv_list(uint8_t addr_type, uint8_t *addr, uint8_t rssi_low,
+                                uint8_t rssi_high, uint8_t timeout)
+{
+    struct ble_hci_le_add_monitor_adv_list_cp cmd;
+
+    cmd.addr_type = addr_type;
+    memcpy(cmd.address, addr, 6);
+    cmd.rssi_low_threshold = rssi_low;
+    cmd.rssi_high_threshold = rssi_high;
+    cmd.timeout = timeout;
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+			                BLE_HCI_OCF_LE_ADD_MONITOR_ADV_LIST), &cmd, sizeof(cmd),
+		                        NULL, 0);
+}
+
+int
+ble_hs_hci_rmv_monitor_adv_list(uint8_t addr_type, uint8_t *addr)
+{
+    struct ble_hci_le_rmv_monitor_adv_list_cp cmd;
+
+    cmd.addr_type = addr_type;
+    memcpy(cmd.address, addr, 6);
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+			                BLE_HCI_OCF_LE_RMV_MONITOR_ADV_LIST), &cmd, sizeof(cmd),
+		                        NULL, 0);
+}
+
+int
+ble_hs_hci_clear_monitor_adv_list(void)
+{
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+			                BLE_HCI_OCF_LE_CLEAR_MONITOR_ADV_LIST), NULL, 0,
+		                        NULL, 0);
+}
+
+int
+ble_hs_hci_read_monitor_adv_list_size(uint8_t *out_number)
+{
+    int rc;
+    struct ble_hci_le_rd_monitor_adv_list_size_rp rsp;
+
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_READ_MONITOR_ADV_LIST_SIZE), NULL, 0,
+                                      &rsp, sizeof(rsp));
+
+    if (rc != 0) {
+        return rc;
+    }
+
+    *out_number = rsp.number;
+
+    return 0;
+}
+
+int
+ble_hs_hci_enable_monitor_adv(uint8_t enable)
+{
+    struct ble_hci_le_enable_monitor_adv_cp cmd;
+
+    cmd.enable = enable;
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_ENABLE_MONITOR_ADV), &cmd, sizeof(cmd),
+		                        NULL, 0);
+}
+#endif

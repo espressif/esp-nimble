@@ -172,6 +172,9 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_CTE_REQ_FAILED        40
 #define BLE_GAP_EVENT_CACHE_ASSOC           41
 
+#define BLE_GAP_EVENT_RD_ALL_REM_FEAT       51
+#define BLE_GAP_EVENT_MONITOR_ADV_REPORT    52
+
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
 #define BLE_GAP_DTM_RX_START_EVT            1
@@ -1619,6 +1622,52 @@ struct ble_gap_event {
         uint16_t conn_handle;
     } cte_req_fail;
 
+#endif
+        /**
+         * Represents a read all remote features complet event
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_RD_ALL_REM_FEAT
+         */
+        struct {
+            /** Status indicating the reason for failure.
+             *  Refer to HCI error codes for detailed status values.
+             */
+            uint8_t status;
+
+            /** Connection handle identifying the connection. */
+            uint16_t conn_handle;
+
+	    /** Highest numbered page of remote device's supported LE features
+	     * that contains atleast one bit set to 1
+	     */
+            uint8_t max_remote_page;
+
+	    /** Number of highest numbered page of LE features that contains
+	     * valid data
+	     */
+            uint8_t max_valid_page;
+
+	    /** Bit Mask List of LE features */
+            uint8_t le_features[248];
+        } rd_all_rem_feat;
+
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+	/**
+         * Represents a read all remote features complet event
+         * Valid for the following event types:
+         *     o BLE_GAP_EVENT_MONITOR_ADV_REPORT
+         */
+        struct {
+            /** Address Type [Public/Random...] */
+            uint8_t addr_type;
+
+            /** Device Address */
+            uint16_t address[6];
+
+	    /** Represents weather RSSI threshold condition is met */
+            uint8_t condition;
+
+        } monitor_adv_report;
 #endif
     };
 };

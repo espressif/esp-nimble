@@ -182,6 +182,10 @@ void ble_gap_reattempt_count(uint16_t conn_handle, uint8_t count);
 #endif
 
 void ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev);
+void ble_gap_rx_rd_all_remote_feat(const struct ble_hci_ev_le_subev_rd_all_rem_feat *ev);
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+void ble_gap_rx_rd_monitor_adv_report(const struct ble_hci_ev_le_subev_monitor_adv_report *ev);
+#endif
 
 #ifdef __cplusplus
 }

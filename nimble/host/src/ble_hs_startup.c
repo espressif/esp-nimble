@@ -314,6 +314,19 @@ ble_hs_startup_le_set_evmask_tx(void)
     }
 #endif
 
+    if (version >= BLE_HCI_VER_BCS_6_0) {
+        /**
+	 * Enable following LE events:
+	 * 0x0000040000000000 LE Read All Remote Features Complete event
+	 * 0x0008000000000000 LE Monitored Advertisers Report event
+	 */
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+        mask |= 0x0008000000000000;
+#endif
+
+	mask |= 0x0000040000000000;
+    }
+
     cmd.event_mask = htole64(mask);
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,

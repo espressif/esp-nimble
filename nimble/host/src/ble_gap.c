@@ -1861,6 +1861,44 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
 #endif
 
 void
+ble_gap_rx_rd_all_remote_feat(const struct ble_hci_ev_le_subev_rd_all_rem_feat *ev)
+{
+     struct ble_gap_event event;
+
+     memset(&event, 0, sizeof(event));
+
+     event.type = BLE_GAP_EVENT_RD_ALL_REM_FEAT;
+
+     event.rd_all_rem_feat.status = ev->status;
+     event.rd_all_rem_feat.max_remote_page = ev->max_remote_page;
+     event.rd_all_rem_feat.max_valid_page = ev->max_valid_page;
+     memcpy(event.rd_all_rem_feat.le_features, ev->le_features, 248);
+
+     ble_gap_event_listener_call(&event);
+#if NIMBLE_BLE_CONNECT
+     ble_gap_call_conn_event_cb(&event, ev->conn_handle);
+#endif
+}
+
+#if MYNEWT_VAL(BLE_MONITOR_ADV)
+void
+ble_gap_rx_rd_monitor_adv_report(const struct ble_hci_ev_le_subev_monitor_adv_report *ev)
+{
+     struct ble_gap_event event;
+
+     memset(&event, 0, sizeof(event));
+
+     event.type = BLE_GAP_EVENT_MONITOR_ADV_REPORT;
+
+     event.monitor_adv_report.addr_type = ev->addr_type;
+     event.monitor_adv_report.condition = ev->condition;
+     memcpy(event.monitor_adv_report.address, ev->address, 6);
+
+     ble_gap_event_listener_call(&event);
+}
+#endif
+
+void
 ble_gap_rx_adv_report(struct ble_gap_disc_desc *desc)
 {
 #if NIMBLE_BLE_SCAN
@@ -9253,6 +9291,18 @@ int
 ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy)
 {
     return ble_hs_hci_dtm_enh_rx_start(rx_chan, index, phy);
+}
+
+int
+ble_gap_rd_all_local_supp_features(uint8_t *status, uint8_t *max_page, uint8_t *le_features)
+{
+    return ble_hs_hci_rd_all_local_supp_features(status, max_page, le_features);
+}
+
+int
+ble_gap_rd_all_remote_features(uint16_t conn_handle, uint8_t page_requested)
+{
+    return ble_hs_hci_rd_all_remote_features(conn_handle, page_requested);
 }
 
 void
