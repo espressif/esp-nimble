@@ -28,13 +28,13 @@
 #include "host/ble_gatt.h"
 #include "esp_nimble_mem.h"
 
-#define GATT_CACHE_PREFIX "gatt_"
+#define GATT_CACHE_PREFIX "gatt_cache"
 #define INVALID_ADDR_NUM 0xff
 #define MAX_DEVICE_IN_CACHE 50
 #define MAX_ADDR_LIST_CACHE_BUF 4096
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
-static const char *cache_key = "gattc_cache_key";
+static const char *cache_key = "key";
 static const char *cache_addr = "cache_addr_tab";
 static uint8_t ble_gattc_cache_find_addr(ble_addr_t addr);
 static uint8_t ble_gattc_cache_find_hash(uint8_t * hash_key);
@@ -78,13 +78,36 @@ print_addr(ble_addr_t addr)
     }
 }
 
-static void
-getFilename(char *buffer, uint8_t * hash)
+char *getKeyname(const ble_addr_t *addr)
 {
-    sprintf(buffer, "%s%02x%02x%02x%02x", GATT_CACHE_PREFIX,
-            hash[0], hash[1], hash[2], hash[3]);
+    static char buffer[16];
+    sprintf(buffer, "%s%02X%02X%02X%02X%02X%02X",
+            cache_key,
+            addr->val[5], addr->val[4], addr->val[3],
+            addr->val[2], addr->val[1], addr->val[0]);
+
+    return buffer;
 }
 
+static int
+cacheEraseItem(cache_handle_t handle, const char *key)
+{
+    int rc = -1;
+    if(cache_fn.erase_key_item){
+        rc = cache_fn.erase_key_item(handle,key);
+        if (rc != 0) {
+            return rc;
+        }
+
+        if (cache_fn.commit){
+            rc = cache_fn.commit(handle);
+            if (rc != 0) {
+                return rc;
+            }
+        }
+    }
+    return rc;
+}
 static int
 cacheErase(cache_handle_t handle)
 {
@@ -129,18 +152,14 @@ cacheClose(ble_addr_t addr)
 static bool
 cacheOpen(ble_addr_t addr, bool to_save, uint8_t *index)
 {
-    char fname[255] = {0};
     int status = -1;
-    uint8_t hash_key[16] = {0};
 
     if ((*index = ble_gattc_cache_find_addr(addr)) != INVALID_ADDR_NUM) {
         if (cache_env->cache_addr[*index].is_open) {
             return true;
         } else {
-            memcpy(hash_key, cache_env->cache_addr[*index].hash_key, sizeof(uint8_t) * 16);
-            getFilename(fname, hash_key);
             if (cache_fn.open) {
-                if ((status = cache_fn.open(fname, READWRITE, &cache_env->cache_addr[*index].cache_fp)) == 0) {
+                if ((status = cache_fn.open(GATT_CACHE_PREFIX, READWRITE, &cache_env->cache_addr[*index].cache_fp)) == 0) {
                     /* Set the open flag to TRUE when success to open the hash file. */
                     cache_env->cache_addr[*index].is_open = true;
                 }
@@ -161,13 +180,12 @@ ble_gattc_cacheReset(ble_addr_t *addr)
 
     if ((index = ble_gattc_cache_find_addr(*addr)) != INVALID_ADDR_NUM) {
         if (cache_env->cache_addr[index].is_open) {
-            cacheErase(cache_env->cache_addr[index].cache_fp);
-
+            cacheEraseItem(cache_env->cache_addr[index].cache_fp, getKeyname(addr));
             if (cache_fn.close) {
                 cache_fn.close(cache_env->cache_addr[index].cache_fp);
             }
             cache_env->cache_addr[index].is_open = false;
-            BLE_HS_LOG(DEBUG, "%s erased peer entry from NVS");
+            BLE_HS_LOG(DEBUG, "%s erased peer entry from NVS", __func__);
         } else {
             cacheOpen(*addr, false, &index);
             if (index == INVALID_ADDR_NUM) {
@@ -175,12 +193,12 @@ ble_gattc_cacheReset(ble_addr_t *addr)
                 return;
             }
             if (cache_env->cache_addr[index].is_open) {
-                cacheErase(cache_env->cache_addr[index].cache_fp);
+                cacheEraseItem(cache_env->cache_addr[index].cache_fp, getKeyname(addr));
                 if (cache_fn.close) {
                     cache_fn.close(cache_env->cache_addr[index].cache_fp);
                 }
                 cache_env->cache_addr[index].is_open = false;
-                BLE_HS_LOG(DEBUG, "%s erased peer entry from NVS");
+                BLE_HS_LOG(DEBUG, "%s erased peer entry from NVS",__func__);
             } else {
                 BLE_HS_LOG(ERROR, "%s cacheOpen failed", __func__);
                 return;
@@ -535,7 +553,7 @@ ble_gattc_cache_save(struct ble_gattc_cache_conn *peer, size_t num_attr)
     if (cacheOpen(peer->ble_gattc_cache_conn_addr, true, &index)) {
         BLE_HS_LOG(DEBUG, "Cache Opened already \n\tWriting cache_fp and cache_key on index = %d",
                    index);
-        rc = cacheWrite(cache_env->cache_addr[index].cache_fp, cache_key, nv_attr,
+        rc = cacheWrite(cache_env->cache_addr[index].cache_fp, getKeyname(&peer->ble_gattc_cache_conn_addr), nv_attr,
                         num_attr * sizeof(struct ble_gatt_nv_attr));
     } else {
         rc = -1;
@@ -555,7 +573,7 @@ ble_gattc_cache_load_nv_attr(uint8_t index, int *num_attr)
     size_t length = 0;
     struct ble_gatt_nv_attr *nv_attr;
 
-    cacheRead(cache_env->cache_addr[index].cache_fp, cache_key, NULL, &length);
+    cacheRead(cache_env->cache_addr[index].cache_fp, getKeyname(&cache_env->cache_addr[index].addr), NULL, &length);
 
     *num_attr = length / (sizeof(ble_gatt_nv_attr));
 
@@ -564,7 +582,7 @@ ble_gattc_cache_load_nv_attr(uint8_t index, int *num_attr)
         return NULL;
     }
 
-    rc = cacheRead(cache_env->cache_addr[index].cache_fp, cache_key, nv_attr, &length);
+    rc = cacheRead(cache_env->cache_addr[index].cache_fp, getKeyname(&cache_env->cache_addr[index].addr), nv_attr, &length);
 
     BLE_HS_LOG(INFO, "%s, rc = %d, length = %d index = %d", __func__, rc, length, index);
     return nv_attr;
