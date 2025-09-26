@@ -242,7 +242,7 @@ ble_hci_sock_acl_tx(struct os_mbuf *om)
         len += m->om_len;
     }
 
-    buf = (uint8_t *)malloc(len);
+    buf = (uint8_t *)nimble_platform_mem_malloc(len);
 
     buf[0] = BLE_HCI_UART_H4_ACL;
 
@@ -397,7 +397,7 @@ ble_hci_sock_cmdevt_tx(uint8_t *hci_ev, uint8_t h4_type)
     STATS_INC(hci_sock_stats, omsg);
     STATS_INCN(hci_sock_stats, obytes, len + 1);
 
-    buf = (uint8_t *)malloc(len + 1);
+    buf = (uint8_t *)nimble_platform_mem_malloc(len + 1);
 
     buf[0] = h4_type;
     memcpy(&buf[1], hci_ev, len);
@@ -865,7 +865,7 @@ ble_hci_sock_init_task(void)
     {
         os_stack_t *pstack;
 
-        pstack = malloc(sizeof(os_stack_t)*BLE_SOCK_STACK_SIZE);
+        pstack = nimble_platform_mem_malloc(sizeof(os_stack_t)*BLE_SOCK_STACK_SIZE);
         assert(pstack);
         os_task_init(&ble_sock_task, "hci_sock", ble_hci_sock_ack_handler, NULL,
                      MYNEWT_VAL(BLE_SOCK_TASK_PRIO), BLE_NPL_TIME_FOREVER, pstack,
