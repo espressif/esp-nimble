@@ -225,6 +225,60 @@ ble_hci_sock_acl_tx(struct os_mbuf *om)
     }
     return 0;
 }
+#elif MYNEWT_VAL(BLE_SOCK_USE_NUTTX)
+static int
+ble_hci_sock_acl_tx(struct os_mbuf *om)
+{
+    size_t len;
+    uint8_t *buf;
+    int i;
+    struct os_mbuf *m;
+    struct sockaddr_hci addr;
+
+    addr.hci_family = AF_BLUETOOTH;
+    addr.hci_channel = HCI_CHANNEL_RAW;
+    addr.hci_dev = 0;
+
+    memcpy(&addr, &addr, sizeof(struct sockaddr_hci));
+
+    len = 1;
+
+    for (m = om; m; m = SLIST_NEXT(m, om_next)) {
+        len += m->om_len;
+    }
+
+    buf = (uint8_t *)nimble_platform_mem_malloc(len);
+
+    buf[0] = BLE_HCI_UART_H4_ACL;
+
+    i = 1;
+    for (m = om; m; m = SLIST_NEXT(m, om_next)) {
+        memcpy(&buf[i], m->om_data, m->om_len);
+        i += m->om_len;
+    }
+
+    STATS_INC(hci_sock_stats, omsg);
+    STATS_INC(hci_sock_stats, oacl);
+    STATS_INCN(hci_sock_stats, obytes, OS_MBUF_PKTLEN(om) + 1);
+
+    i = sendto(ble_hci_sock_state.sock, buf, len, 0,
+               (struct sockaddr *)&addr, sizeof(struct sockaddr_hci));
+
+    free(buf);
+
+    os_mbuf_free_chain(om);
+    if (i != OS_MBUF_PKTLEN(om) + 1) {
+        if (i < 0) {
+            dprintf(1, "sendto() failed : %d\n", errno);
+        } else {
+            dprintf(1, "sendto() partial write: %d\n", i);
+        }
+        STATS_INC(hci_sock_stats, oerr);
+        return BLE_ERR_MEM_CAPACITY;
+    }
+    return 0;
+}
+#endif
 
 static int
 ble_hci_sock_iso_tx(struct os_mbuf *om)
@@ -400,7 +454,7 @@ ble_hci_sock_cmdevt_tx(uint8_t *hci_ev, uint8_t h4_type)
     STATS_INC(hci_sock_stats, omsg);
     STATS_INCN(hci_sock_stats, obytes, len + 1);
 
-    buf = (uint8_t *)malloc(len + 1);
+    buf = (uint8_t *)nimble_platform_mem_malloc(len + 1);
 
     buf[0] = h4_type;
     memcpy(&buf[1], hci_ev, len);
@@ -879,7 +933,7 @@ ble_hci_sock_init_task(void)
     {
         os_stack_t *pstack;
 
-        pstack = malloc(sizeof(os_stack_t)*BLE_SOCK_STACK_SIZE);
+        pstack = nimble_platform_mem_malloc(sizeof(os_stack_t)*BLE_SOCK_STACK_SIZE);
         assert(pstack);
         os_task_init(&ble_sock_task, "hci_sock", ble_hci_sock_ack_handler, NULL,
                      MYNEWT_VAL(BLE_SOCK_TASK_PRIO), BLE_NPL_TIME_FOREVER, pstack,

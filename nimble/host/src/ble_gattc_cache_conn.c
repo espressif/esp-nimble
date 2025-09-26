@@ -23,6 +23,7 @@
 #include "host/ble_hs.h"
 #include "ble_hs_priv.h"
 #include "ble_gattc_cache_priv.h"
+#include "esp_nimble_mem.h"
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 /* Gatt Procedure macros */
@@ -999,7 +1000,7 @@ void ble_gattc_get_service_with_uuid(uint16_t conn_handle,
     }
 
     // Allocate memory for the GATT database
-    void *buffer = malloc(db_size * sizeof(ble_gattc_db_elem_t));
+    void *buffer = nimble_platform_mem_malloc(db_size * sizeof(ble_gattc_db_elem_t));
     if (!buffer) {
         BLE_HS_LOG(WARN, "%s(), no resource.", __func__);
         *count = 0;
@@ -1066,7 +1067,7 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
     }
 
     // Allocate memory for the GATT database
-    void *buffer = malloc(db_size * sizeof(ble_gattc_db_elem_t));
+    void *buffer = nimble_platform_mem_malloc(db_size * sizeof(ble_gattc_db_elem_t));
     if (!buffer) {
         BLE_HS_LOG(WARN, "%s(), no resource.", __func__);
         *count = 0;
@@ -1221,7 +1222,7 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
     }
     db_size = (*db_num > db_size) ? db_size : (*db_num);
     // Allocate memory for the GATT database
-    void *buffer = malloc(db_size * sizeof(ble_gattc_db_elem_t));
+    void *buffer = nimble_platform_mem_malloc(db_size * sizeof(ble_gattc_db_elem_t));
     if (!buffer) {
         BLE_HS_LOG(WARN, "%s(), no resource.", __func__);
         *count = 0;
@@ -2122,20 +2123,20 @@ ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
 void
 ble_gattc_cache_conn_free_mem(void)
 {
-    free(ble_gattc_cache_conn_mem);
+    nimble_platform_mem_free(ble_gattc_cache_conn_mem);
     ble_gattc_cache_conn_mem = NULL;
 
-    free(ble_gattc_cache_conn_svc_mem);
+    nimble_platform_mem_free(ble_gattc_cache_conn_svc_mem);
     ble_gattc_cache_conn_svc_mem = NULL;
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
-    free(ble_gattc_cache_conn_incl_svc_mem);
+    nimble_platform_mem_free(ble_gattc_cache_conn_incl_svc_mem);
     ble_gattc_cache_conn_incl_svc_mem = NULL;
 #endif
-    free(ble_gattc_cache_conn_chr_mem);
+    nimble_platform_mem_free(ble_gattc_cache_conn_chr_mem);
     ble_gattc_cache_conn_chr_mem = NULL;
 
-    free(ble_gattc_cache_conn_dsc_mem);
+    nimble_platform_mem_free(ble_gattc_cache_conn_dsc_mem);
     ble_gattc_cache_conn_dsc_mem = NULL;
 }
 
@@ -2166,7 +2167,7 @@ ble_gattc_cache_conn_init()
     /* Free memory first in case this function gets called more than once. */
     ble_gattc_cache_conn_free_mem();
 
-    ble_gattc_cache_conn_mem = malloc(
+    ble_gattc_cache_conn_mem = nimble_platform_mem_malloc(
                                    OS_MEMPOOL_BYTES(max_ble_gattc_cache_conns, sizeof(struct ble_gattc_cache_conn)));
     if (ble_gattc_cache_conn_mem == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -2181,7 +2182,7 @@ ble_gattc_cache_conn_init()
         goto err;
     }
 
-    ble_gattc_cache_conn_svc_mem = malloc(
+    ble_gattc_cache_conn_svc_mem = nimble_platform_mem_malloc(
                                        OS_MEMPOOL_BYTES(max_svcs, sizeof(struct ble_gattc_cache_conn_svc)));
     if (ble_gattc_cache_conn_svc_mem == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -2197,7 +2198,7 @@ ble_gattc_cache_conn_init()
     }
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
-   ble_gattc_cache_conn_incl_svc_mem = malloc(
+   ble_gattc_cache_conn_incl_svc_mem = nimble_platform_mem_malloc(
                                     OS_MEMPOOL_BYTES(max_incl_svcs, sizeof(struct ble_gattc_cache_conn_incl_svc)));
     if (ble_gattc_cache_conn_incl_svc_mem == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -2212,7 +2213,7 @@ ble_gattc_cache_conn_init()
         goto err;
     }
 #endif
-    ble_gattc_cache_conn_chr_mem = malloc(
+    ble_gattc_cache_conn_chr_mem = nimble_platform_mem_malloc(
                                        OS_MEMPOOL_BYTES(max_chrs, sizeof(struct ble_gattc_cache_conn_chr)));
     if (ble_gattc_cache_conn_chr_mem == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -2227,7 +2228,7 @@ ble_gattc_cache_conn_init()
         goto err;
     }
 
-    ble_gattc_cache_conn_dsc_mem = malloc(
+    ble_gattc_cache_conn_dsc_mem = nimble_platform_mem_malloc(
                                        OS_MEMPOOL_BYTES(max_dscs, sizeof(struct ble_gattc_cache_conn_dsc)));
     if (ble_gattc_cache_conn_dsc_mem == NULL) {
         rc = BLE_HS_ENOMEM;
