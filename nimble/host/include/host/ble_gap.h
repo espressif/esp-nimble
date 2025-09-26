@@ -4143,6 +4143,16 @@ int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_
                                  uint8_t *out_addr);
 #endif
 
+/**
+ * Read local IRK command
+ *
+ * @param out_irk           Local Identity Resolving Key received from the Host
+ *
+ * @return                  0 on success; BLE_HS_EINVAL if @param out_irk is NULL
+ *
+ */
+int ble_gap_read_local_irk(uint8_t * out_irk);
+
 #if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
 /**
  * Set or clear a bit controlled by the host in the link layer featureSet
