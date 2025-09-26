@@ -181,7 +181,7 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
 
     dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) + BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
 
-    frag = malloc(BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len);
+    frag = nimble_platform_mem_malloc(BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len);
     if (frag == NULL) {
         return BLE_HS_ENOMEM;
     }

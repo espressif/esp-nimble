@@ -40,6 +40,8 @@
 #include "host/ble_hs_iso.h"
 #endif /* MYNEWT_VAL(BLE_ISO) */
 
+#include "esp_nimble_mem.h"
+
 #define BLE_HS_HCI_EVT_COUNT    (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT) + \
                                  MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))
 
@@ -723,12 +725,12 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 
 #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     uint16_t len = OS_MBUF_PKTHDR(om)->omp_len + 1;
-    uint8_t *data = (uint8_t *)malloc(len);
+    uint8_t *data = (uint8_t *)nimble_platform_mem_malloc(len);
     assert(data != NULL);
     data[0] = 0x02;
     os_mbuf_copydata(om, 0, len - 1, &data[1]);
     bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len - 1);
-    free(data);
+    nimble_platform_mem_free(data);
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
     /* If flow control is enabled, mark this packet with its corresponding

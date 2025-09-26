@@ -3065,7 +3065,7 @@ void ble_gatts_free_svcs(void)
     /* Ensure the memory is freed only if it was previously allocated */
     if (ble_gatts_svc_defs != NULL) {
         /* Free the memory for the service definitions */
-        free(ble_gatts_svc_defs);
+        nimble_platform_mem_free(ble_gatts_svc_defs);
         /* Set the pointer to NULL to avoid dangling pointer */
         ble_gatts_svc_defs = NULL;
         /* Reset the number of service definitions to 0 */
