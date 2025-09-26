@@ -12,6 +12,7 @@
 #include "hal/hal_uart.h"
 #include "esp_log.h"
 #include "esp_attr.h"
+#include "esp_nimble_mem.h"
 
 static const char *TAG = "hal_uart";
 
@@ -46,7 +47,7 @@ int hal_uart_init_cbs(int uart_no, hal_uart_tx_char tx_func,
 static void IRAM_ATTR hci_uart_rx_task(void *pvParameters)
 {
     uart_event_t event;
-    uint8_t* dtmp = (uint8_t*) malloc(RD_BUF_SIZE);
+    uint8_t* dtmp = (uint8_t*) nimble_platform_mem_malloc(RD_BUF_SIZE);
     while(hci_uart.uart_opened) {
         //Waiting for UART event.
         if(xQueueReceive(hci_uart.evt_queue, (void * )&event, (TickType_t)portMAX_DELAY)) {
@@ -100,7 +101,7 @@ static void IRAM_ATTR hci_uart_rx_task(void *pvParameters)
             }
         }
     }
-    free(dtmp);
+    nimble_platform_mem_free(dtmp);
     dtmp = NULL;
     hci_uart.rx_task_handler = NULL;
     vTaskDelete(NULL);

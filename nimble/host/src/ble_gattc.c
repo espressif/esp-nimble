@@ -64,6 +64,8 @@
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 #include "host/ble_esp_gattc_cache.h"
 #endif
+#include "esp_nimble_mem.h"
+
 #if NIMBLE_BLE_CONNECT
 
 #if MYNEWT_VAL(BLE_GATTC)
@@ -3313,7 +3315,7 @@ int ble_gattc_get_service(uint16_t conn_handle,
       rc = ble_gattc_check_valid_param(svc_num, offset);
       if (rc != 0) {
           if (db) {
-              free(db);
+              nimble_platform_mem_free(db);
           }
           *count = 0;
           return rc;
@@ -3323,7 +3325,7 @@ int ble_gattc_get_service(uint16_t conn_handle,
 
       //free the db buffer after used.
       if (db) {
-          free(db);
+          nimble_platform_mem_free(db);
       }
       return 0;
 }
@@ -3342,7 +3344,7 @@ int ble_gattc_get_all_char(uint16_t conn_handle,
       rc = ble_gattc_check_valid_param(char_num, offset);
       if (rc != 0) {
           if (db) {
-              free(db);
+              nimble_platform_mem_free(db);
           }
           *count = 0;
           return rc;
@@ -3352,7 +3354,7 @@ int ble_gattc_get_all_char(uint16_t conn_handle,
 
       //free the db buffer after used.
       if (db) {
-          free(db);
+          nimble_platform_mem_free(db);
       }
       return 0;
 }
@@ -3370,7 +3372,7 @@ int ble_gattc_get_all_descr(uint16_t conn_handle,
       rc = ble_gattc_check_valid_param(descr_num, offset);
       if (rc != 0) {
           if (db) {
-              free(db);
+              nimble_platform_mem_free(db);
           }
           *count = 0;
           return rc;
@@ -3380,7 +3382,7 @@ int ble_gattc_get_all_descr(uint16_t conn_handle,
 
       // free the db buffer after used.
       if (db) {
-          free(db);
+          nimble_platform_mem_free(db);
       }
       return 0;
 }
@@ -3400,7 +3402,7 @@ int ble_gattc_get_char_by_uuid(uint16_t conn_handle,
       rc = ble_gattc_check_valid_param(char_num, 0);
       if (rc != 0) {
           if (db) {
-            free(db);
+            nimble_platform_mem_free(db);
           }
           *count = 0;
           return rc;
@@ -3410,7 +3412,7 @@ int ble_gattc_get_char_by_uuid(uint16_t conn_handle,
 
       // free the db buffer after used.
       if (db) {
-          free(db);
+          nimble_platform_mem_free(db);
       }
       return 0;
 
@@ -3432,7 +3434,7 @@ int ble_gattc_get_descr_by_uuid(uint16_t conn_handle,
       rc = ble_gattc_check_valid_param(descr_num, 0);
       if (rc != 0) {
           if (db) {
-              free(db);
+              nimble_platform_mem_free(db);
           }
           *count = 0;
           return rc;
@@ -3442,7 +3444,7 @@ int ble_gattc_get_descr_by_uuid(uint16_t conn_handle,
 
       // free the db buffer after used.
       if (db) {
-          free(db);
+          nimble_platform_mem_free(db);
       }
       return 0;
 }
@@ -3461,7 +3463,7 @@ int ble_gattc_get_descr_by_char_handle(uint16_t conn_handle,
       rc = ble_gattc_check_valid_param(descr_num, 0);
       if (rc != 0) {
           if (db) {
-              free(db);
+              nimble_platform_mem_free(db);
           }
           *count = 0;
           return rc;
@@ -3471,7 +3473,7 @@ int ble_gattc_get_descr_by_char_handle(uint16_t conn_handle,
 
       // free the db buffer after used.
       if (db) {
-          free(db);
+          nimble_platform_mem_free(db);
       }
       return 0;
 
@@ -3493,7 +3495,7 @@ int ble_gattc_get_include_service(uint16_t conn_handle,
     rc = ble_gattc_check_valid_param(incl_num,0);
     if (rc != 0) {
         if (db) {
-            free(db);
+            nimble_platform_mem_free(db);
         }
         *count = 0;
         return rc;
@@ -3503,7 +3505,7 @@ int ble_gattc_get_include_service(uint16_t conn_handle,
 
     //free the db buffer after used.
     if (db) {
-        free(db);
+        nimble_platform_mem_free(db);
     }
     return 0;
 
@@ -3537,7 +3539,7 @@ int ble_gattc_get_db(uint16_t conn_handle,
     if (db) {
         *count = num;
         memcpy(result, db, num * sizeof(ble_gattc_db_elem_t));  // Copy data
-        free(db);  // Free allocated memory
+        nimble_platform_mem_free(db);  // Free allocated memory
     }
 
     return 0;
@@ -5387,7 +5389,7 @@ static int ble_gattc_cccd_register_cb(uint16_t conn_handle, const struct ble_gat
         /* GATT procedure completed reset active flag */
         gatt_proc_active = false;
         if (cccd_reg_flag) {
-            free(cccd_reg_flag);
+            nimble_platform_mem_free(cccd_reg_flag);
         }
     } else if (error->status == 0) {
         if (cccd_reg_flag && *cccd_reg_flag &&
@@ -5410,7 +5412,7 @@ static int ble_gattc_cccd_register_cb(uint16_t conn_handle, const struct ble_gat
         BLE_HS_LOG(WARN, "GATT descriptor discovery failed with status = %d", error->status);
         gatt_proc_active = false;
         if (cccd_reg_flag) {
-            free(cccd_reg_flag);
+            nimble_platform_mem_free(cccd_reg_flag);
         }
      }
 
@@ -5425,7 +5427,7 @@ int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_
         return BLE_HS_EBUSY;
     }
 
-    bool *cccd_reg_flag = (bool *)malloc(sizeof(bool));
+    bool *cccd_reg_flag = (bool *)nimble_platform_mem_malloc(sizeof(bool));
     if (!cccd_reg_flag) {
         BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag.");
         return BLE_HS_ENOMEM;
@@ -5439,7 +5441,7 @@ int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_
                                      ble_gattc_cccd_register_cb, cccd_reg_flag);
     if (rc != 0) {
         gatt_proc_active = false;
-        free(cccd_reg_flag);
+        nimble_platform_mem_free(cccd_reg_flag);
     }
 
     return rc;
@@ -5456,7 +5458,7 @@ static int ble_gattc_cccd_unregister_cb(uint16_t conn_handle, const struct ble_g
         /* GATT procedure completed reset active flag */
         gatt_proc_active = false;
         if (cccd_unreg_flag) {
-            free(cccd_unreg_flag);
+            nimble_platform_mem_free(cccd_unreg_flag);
         }
     } else if (error->status == 0) {
         if (cccd_unreg_flag && *cccd_unreg_flag &&
@@ -5479,7 +5481,7 @@ static int ble_gattc_cccd_unregister_cb(uint16_t conn_handle, const struct ble_g
         BLE_HS_LOG(WARN, "GATT descriptor discovery failed with status = %d", error->status);
         gatt_proc_active = false;
         if (cccd_unreg_flag) {
-            free(cccd_unreg_flag);
+            nimble_platform_mem_free(cccd_unreg_flag);
         }
     }
 
@@ -5495,7 +5497,7 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
     }
 
     int rc;
-    bool *cccd_unreg_flag = (bool *)malloc(sizeof(bool));
+    bool *cccd_unreg_flag = (bool *)nimble_platform_mem_malloc(sizeof(bool));
 
     if (!cccd_unreg_flag) {
         BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag");
@@ -5509,7 +5511,7 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
                                  ble_gattc_cccd_unregister_cb, cccd_unreg_flag);
     if (rc != 0) {
       gatt_proc_active = false;
-      free(cccd_unreg_flag);
+      nimble_platform_mem_free(cccd_unreg_flag);
     }
 
     return rc;

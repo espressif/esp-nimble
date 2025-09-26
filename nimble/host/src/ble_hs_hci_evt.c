@@ -1442,7 +1442,7 @@ void ble_adv_list_deinit(void)
 
     SLIST_FOREACH_SAFE(device, &ble_adv_list, next, temp) {
         SLIST_REMOVE(&ble_adv_list, device, ble_addr_list_entry, next);
-        free(device);
+        nimble_platform_mem_free(device);
     }
 
     ble_npl_mutex_release(&adv_list_lock);
@@ -1494,7 +1494,7 @@ void ble_adv_list_refresh(void)
 
     SLIST_FOREACH_SAFE(device, &ble_adv_list, next, temp) {
         SLIST_REMOVE(&ble_adv_list, device, ble_addr_list_entry, next);
-        free(device);
+        nimble_platform_mem_free(device);
     }
 
     ble_npl_mutex_release(&adv_list_lock);
