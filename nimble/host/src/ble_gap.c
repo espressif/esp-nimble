@@ -9482,6 +9482,22 @@ ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_addr
 
     return 0;
 }
+#endif
+
+int
+ble_gap_read_local_irk(uint8_t * out_irk)
+{
+    const uint8_t * local_irk;
+
+    if (out_irk == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    ble_hs_pvcy_our_irk(&local_irk);
+    memcpy(out_irk, local_irk, 16);
+
+    return 0;
+}
 
 #endif
 
