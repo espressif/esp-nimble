@@ -2002,6 +2002,11 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
 
     BLE_HS_DBG_ASSERT(ble_gap_sync.psync);
 
+    if (!ble_gap_sync.psync) {
+        ble_hs_unlock();
+        return;
+    }
+
     if (!ev->status) {
         sync_handle = le16toh(ev->sync_handle);
 
