@@ -640,20 +640,43 @@ ble_hs_adv_parse_uuids16(struct ble_hs_adv_fields *adv_fields,
                          const uint8_t *data, uint8_t data_len)
 {
     ble_uuid_any_t uuid;
-    int i;
+    int uuid_cnt;
+    int free_slots;
 
     if (data_len % 2 != 0) {
         return BLE_HS_EBADDATA;
     }
 
+    uuid_cnt = data_len / 2;
+#if MYNEWT_VAL(BLE_ADV_UUID_CONCAT)
+    /*
+     * Append UUIDs instead of overwriting existing entries.
+     * This is required when multiple AD structures of the same UUID
+     * type are present in advertising data.
+     */
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint16_t)) - adv_fields->num_uuids16;
+
+    if (uuid_cnt > free_slots) {
+        /* not enough space to append */
+        return BLE_HS_EMSGSIZE;
+    }
+
+    for (int i = 0; i < uuid_cnt; i++) {
+        ble_uuid_init_from_buf(&uuid, data + i * 2, 2);
+        ble_hs_adv_uuids16[adv_fields->num_uuids16 + i] = uuid.u16;
+    }
+
+    adv_fields->uuids16 = ble_hs_adv_uuids16;
+    adv_fields->num_uuids16 += uuid_cnt;
+#else
     adv_fields->uuids16 = ble_hs_adv_uuids16;
     adv_fields->num_uuids16 = data_len / 2;
 
-    for (i = 0; i < adv_fields->num_uuids16; i++) {
+    for (int i = 0; i < adv_fields->num_uuids16; i++) {
         ble_uuid_init_from_buf(&uuid, data + i * 2, 2);
         ble_hs_adv_uuids16[i] = uuid.u16;
     }
-
+#endif
     return 0;
 }
 
@@ -662,20 +685,44 @@ ble_hs_adv_parse_uuids32(struct ble_hs_adv_fields *adv_fields,
                          const uint8_t *data, uint8_t data_len)
 {
     ble_uuid_any_t uuid;
-    int i;
+    int uuid_cnt;
+    int free_slots;
 
     if (data_len % 4 != 0) {
         return BLE_HS_EBADDATA;
     }
 
-    adv_fields->uuids32 = ble_hs_adv_uuids32;
-    adv_fields->num_uuids32 = data_len / 4;
+    uuid_cnt = data_len / 4;
+#if MYNEWT_VAL(BLE_ADV_UUID_CONCAT)
+    /*
+     * Append UUIDs instead of overwriting existing entries.
+     * This is required when multiple AD structures of the same UUID
+     * type are present in advertising data.
+     */
 
-    for (i = 0; i < adv_fields->num_uuids32; i++) {
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint32_t)) - adv_fields->num_uuids32;
+
+    if (uuid_cnt > free_slots) {
+        /* not enough space to append */
+        return BLE_HS_EMSGSIZE;
+    }
+    /* Append new UUIDs to existing list */
+    for (int i = 0; i < uuid_cnt; i++) {
+        ble_uuid_init_from_buf(&uuid, data + i * 4, 4);
+        ble_hs_adv_uuids32[adv_fields->num_uuids32 + i] = uuid.u32;
+    }
+
+    adv_fields->uuids32 = ble_hs_adv_uuids32;
+    adv_fields->num_uuids32 += uuid_cnt;
+#else
+    adv_fields->uuids32 = ble_hs_adv_uuids32;
+    adv_fields->num_uuids32 = uuid_cnt;
+
+    for (int i = 0; i < adv_fields->num_uuids32; i++) {
         ble_uuid_init_from_buf(&uuid, data + i * 4, 4);
         ble_hs_adv_uuids32[i] = uuid.u32;
     }
-
+#endif
     return 0;
 }
 
@@ -684,20 +731,44 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
                           const uint8_t *data, uint8_t data_len)
 {
     ble_uuid_any_t uuid;
-    int i;
+    int uuid_cnt;
+    int free_slots;
 
     if (data_len % 16 != 0) {
         return BLE_HS_EBADDATA;
     }
 
-    adv_fields->uuids128 = ble_hs_adv_uuids128;
-    adv_fields->num_uuids128 = data_len / 16;
+    uuid_cnt = data_len / 16;
+#if MYNEWT_VAL(BLE_ADV_UUID_CONCAT)
+    /*
+     * Append UUIDs instead of overwriting existing entries.
+     * This is required when multiple AD structures of the same UUID
+     * type are present in advertising data.
+     */
 
-    for (i = 0; i < adv_fields->num_uuids128; i++) {
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint32_t)) - adv_fields->num_uuids128;
+
+    if (uuid_cnt > free_slots) {
+        /* not enough space to append */
+        return BLE_HS_EMSGSIZE;
+    }
+    /* Append new UUIDs to existing list */
+    for (int i = 0; i < uuid_cnt; i++) {
+        ble_uuid_init_from_buf(&uuid, data + i * 16, 16);
+        ble_hs_adv_uuids128[adv_fields->num_uuids128 + i] = uuid.u128;
+    }
+
+    adv_fields->uuids128 = ble_hs_adv_uuids128;
+    adv_fields->num_uuids128 += uuid_cnt;
+#else
+    adv_fields->uuids128 = ble_hs_adv_uuids128;
+    adv_fields->num_uuids128 = uuid_cnt;
+
+    for (int i = 0; i < adv_fields->num_uuids128; i++) {
         ble_uuid_init_from_buf(&uuid, data + i * 16, 16);
         ble_hs_adv_uuids128[i] = uuid.u128;
     }
-
+#endif
     return 0;
 }
 
