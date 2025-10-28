@@ -471,10 +471,15 @@ static const struct ble_gattc_rx_exec_entry {
 };
 
 #endif
+
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_gattc_proc_mem = NULL;
+#else
 static os_membuf_t ble_gattc_proc_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_GATT_MAX_PROCS),
                     sizeof (struct ble_gattc_proc))
 ];
+#endif
 
 static struct os_mempool ble_gattc_proc_pool;
 

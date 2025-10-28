@@ -58,10 +58,14 @@ static uint16_t ble_att_svr_id;
 static void *ble_att_svr_entry_mem;
 static struct os_mempool ble_att_svr_entry_pool;
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_att_svr_prep_entry_mem = NULL;
+#else
 static os_membuf_t ble_att_svr_prep_entry_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_ATT_SVR_MAX_PREP_ENTRIES),
                     sizeof (struct ble_att_prep_entry))
 ];
+#endif
 
 static struct os_mempool ble_att_svr_prep_entry_pool;
 
@@ -71,7 +75,7 @@ ble_att_svr_entry_alloc(void)
     struct ble_att_svr_entry *entry;
 
     entry = os_memblock_get(&ble_att_svr_entry_pool);
-#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE) && !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* if dynamic services are enabled, try to allocate from heap */
     if (entry == NULL) {
         entry = nimble_platform_mem_malloc(sizeof *entry);
@@ -87,7 +91,7 @@ ble_att_svr_entry_alloc(void)
 static void
 ble_att_svr_entry_free(struct ble_att_svr_entry *entry)
 {
-#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE) && !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (os_memblock_from(&ble_att_svr_entry_pool, entry)) {
         os_memblock_put(&ble_att_svr_entry_pool, entry);
     }
@@ -3333,6 +3337,7 @@ ble_att_svr_start(void)
     ble_att_svr_free_start_mem();
 
     if (ble_hs_max_attrs > 0) {
+        #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_att_svr_entry_mem = nimble_platform_mem_malloc(
             OS_MEMPOOL_BYTES(ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry)));
@@ -3340,6 +3345,7 @@ ble_att_svr_start(void)
             rc = BLE_HS_ENOMEM;
             goto err;
         }
+        #endif
 
         rc = os_mempool_init(&ble_att_svr_entry_pool, ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry),

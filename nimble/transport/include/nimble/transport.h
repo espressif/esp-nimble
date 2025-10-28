@@ -64,6 +64,12 @@ extern "C" {
 /* Host-to-controller command. */
 #define BLE_HCI_TRANS_BUF_CMD       3
 
+#define BLE_HCI_NONE 0x00
+#define BLE_HCI_CMD  0x01
+#define BLE_HCI_ACL  0x02
+#define BLE_HCI_SCO  0x03
+#define BLE_HCI_EVT  0x04
+
 void ble_transport_init(void);
 
 esp_err_t ble_buf_alloc(void);
@@ -199,7 +205,11 @@ struct os_mbuf *ble_transport_alloc_acl_from_ll(void);
 struct os_mbuf *ble_transport_alloc_iso_from_ll(void);
 
 /* Generic deallocator for cmd/evt buffers */
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+void ble_transport_free(uint8_t type, void *buf);
+#else
 void ble_transport_free(void *buf);
+#endif
 
 /* Register put callback on acl_from_ll mbufs (for ll-hs flow control) */
 int ble_transport_register_put_acl_from_ll_cb(os_mempool_put_fn *cb);

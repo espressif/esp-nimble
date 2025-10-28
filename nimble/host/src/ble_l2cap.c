@@ -33,11 +33,15 @@ _Static_assert(sizeof (struct ble_l2cap_hdr) == BLE_L2CAP_HDR_SZ,
 
 struct os_mempool ble_l2cap_chan_pool;
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_l2cap_chan_mem = NULL;
+#else
 static os_membuf_t ble_l2cap_chan_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_MAX_CHANS) +
                     MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                     sizeof (struct ble_l2cap_chan))
 ];
+#endif
 
 STATS_SECT_DECL(ble_l2cap_stats) ble_l2cap_stats;
 STATS_NAME_START(ble_l2cap_stats)

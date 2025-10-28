@@ -302,7 +302,11 @@ static struct ble_hs_hci_sup_cmd ble_hs_hci_sup_cmd;
  *  from fragmenting outgoing packets and sending them (and ultimately freeing
  *  them).
  */
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_hs_hci_frag_data = NULL;
+#else
 static os_membuf_t ble_hs_hci_frag_data[BLE_HS_HCI_FRAG_MEMPOOL_SIZE];
+#endif
 static struct os_mbuf_pool ble_hs_hci_frag_mbuf_pool;
 static struct os_mempool ble_hs_hci_frag_mempool;
 
@@ -578,7 +582,11 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
     }
 done:
     if (ble_hs_hci_ack != NULL) {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, (uint8_t *) ble_hs_hci_ack);
+#else
         ble_transport_free((uint8_t *) ble_hs_hci_ack);
+#endif
         ble_hs_hci_ack = NULL;
     }
 
@@ -608,7 +616,11 @@ ble_hs_hci_rx_ack(uint8_t *ack_ev)
 {
     if (ble_npl_sem_get_count(&ble_hs_hci_sem) > 0) {
         /* This ack is unexpected; ignore it. */
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, ack_ev);
+#else
         ble_transport_free(ack_ev);
+#endif
         return;
     }
     BLE_HS_DBG_ASSERT(ble_hs_hci_ack == NULL);
