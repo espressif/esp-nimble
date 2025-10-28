@@ -74,6 +74,8 @@ struct os_mempool {
     SLIST_HEAD(,os_memblock);
     /** Name for memory block */
     const char *name;
+    /** The number of allocated blocks. */
+    uint32_t mp_alloc_blocks;
 };
 
 /**
@@ -81,6 +83,10 @@ struct os_mempool {
  * (struct os_mempool_ext *).
  */
 #define OS_MEMPOOL_F_EXT        0x01
+/* Flag to indicate runtime allocation mode */
+#define OS_MEMPOOL_F_RUNTIME    0x02
+/* Flag to indicate reuse block for runtime allocation mode */
+#define OS_MEMPOOL_F_REUSED     0x04
 
 struct os_mempool_ext;
 

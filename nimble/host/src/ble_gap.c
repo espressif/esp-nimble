@@ -296,9 +296,13 @@ struct ble_gap_snapshot {
 };
 
 static SLIST_HEAD(ble_gap_hook_list, ble_gap_event_listener) ble_gap_event_listener_list;
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_gap_update_entry_mem = NULL;
+#else
 static os_membuf_t ble_gap_update_entry_mem[
                         OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_GAP_MAX_PENDING_CONN_PARAM_UPDATE),
                                         sizeof (struct ble_gap_update_entry))];
+#endif
 static struct os_mempool ble_gap_update_entry_pool;
 static struct ble_gap_update_entry_list ble_gap_update_entries;
 

@@ -241,7 +241,11 @@ hci_h4_sm_completed(struct hci_h4_sm *h4sm)
             assert(h4sm->frame_cb);
             rc = h4sm->frame_cb(h4sm->pkt_type, h4sm->buf);
             if (rc != 0) {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+                ble_transport_free(h4sm->pkt_type, h4sm->buf);
+#else
                 ble_transport_free(h4sm->buf);
+#endif
             }
             h4sm->buf = NULL;
         }

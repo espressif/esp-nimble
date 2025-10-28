@@ -28,10 +28,14 @@
 static SLIST_HEAD(, ble_hs_periodic_sync) g_ble_hs_periodic_sync_handles;
 static struct os_mempool ble_hs_periodic_sync_pool;
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_hs_psync_elem_mem = NULL;
+#else
 static os_membuf_t ble_hs_psync_elem_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_MAX_PERIODIC_SYNCS),
                     sizeof (struct ble_hs_periodic_sync))
 ];
+#endif
 
 struct ble_hs_periodic_sync *
 ble_hs_periodic_sync_alloc(void)

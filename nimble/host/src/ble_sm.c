@@ -146,10 +146,14 @@ ble_sm_state_dispatch[BLE_SM_PROC_STATE_CNT] = {
 #endif
 };
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_sm_proc_mem = NULL;
+#else
 static os_membuf_t ble_sm_proc_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_SM_MAX_PROCS),
                     sizeof (struct ble_sm_proc))
 ];
+#endif
 
 static struct os_mempool ble_sm_proc_pool;
 

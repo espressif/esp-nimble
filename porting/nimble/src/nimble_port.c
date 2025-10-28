@@ -66,6 +66,9 @@ static struct ble_npl_event ble_hs_ev_stop;
 
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+extern void os_mempool_deinit(void);
+#endif
 
 /**
  * Called when the host stop procedure has completed.
@@ -93,6 +96,9 @@ esp_err_t esp_nimble_init(void)
     esp_err_t ret;
 #endif
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
+    /* Initialize the global memory pool */
+    os_mempool_module_init();
+
     /* Initialize the function pointers for OS porting */
     npl_freertos_funcs_init();
 
@@ -117,8 +123,6 @@ esp_err_t esp_nimble_init(void)
 
     /* Initialize default event queue */
     ble_npl_eventq_init(&g_eventq_dflt);
-    /* Initialize the global memory pool */
-    os_mempool_module_init();
     os_msys_init();
 
 #endif
@@ -163,6 +167,10 @@ esp_err_t esp_nimble_deinit(void)
 
 #if !SOC_ESP_NIMBLE_CONTROLLER
     npl_freertos_mempool_deinit();
+#endif
+
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    os_mempool_deinit();
 #endif
 
     return ESP_OK;
