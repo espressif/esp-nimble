@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include "syscfg/syscfg.h"
 #include "modlog/modlog.h"
+#include "esp_nimble_mem.h"
 #if !MYNEWT_VAL(OS_SYSVIEW_TRACE_MEMPOOL)
 #define OS_TRACE_DISABLE_FILE_API
 #endif
@@ -33,8 +34,8 @@
 #if MYNEWT_VAL(OS_MEMPOOL_GUARD)
 #define OS_MEMPOOL_TRUE_BLOCK_SIZE(mp)                                  \
     (((mp)->mp_flags & OS_MEMPOOL_F_EXT) ?                              \
-      OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size) :                       \
-      (OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size) + sizeof(os_membuf_t)))
+     OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size) :                       \
+     (OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size) + sizeof(os_membuf_t)))
 #else
 #define OS_MEMPOOL_TRUE_BLOCK_SIZE(mp) OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size)
 #endif
@@ -96,7 +97,7 @@ os_mempool_guard(const struct os_mempool *mp, void *start)
 
     if ((mp->mp_flags & OS_MEMPOOL_F_EXT) == 0) {
         tgt = (uint32_t *)((uintptr_t)start +
-                                     OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size));
+                           OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size));
         *tgt = OS_MEMPOOL_GUARD_PATTERN;
     }
 }
@@ -108,7 +109,7 @@ os_mempool_guard_check(const struct os_mempool *mp, void *start)
 
     if ((mp->mp_flags & OS_MEMPOOL_F_EXT) == 0) {
         tgt = (uint32_t *)((uintptr_t)start +
-                                     OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size));
+                           OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size));
         assert(*tgt == OS_MEMPOOL_GUARD_PATTERN);
     }
 }
@@ -132,15 +133,18 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
         return OS_INVALID_PARM;
     }
 
+    /* For runtime allocation mode, membuf can be NULL */
+    #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if ((!membuf) && (blocks != 0)) {
         return OS_INVALID_PARM;
     }
+    #endif
 
     if (membuf != NULL) {
         /* Blocks need to be sized properly and memory buffer should be
          * aligned
          */
-        if (((uintptr_t)membuf & (OS_ALIGNMENT - 1)) != 0) {
+        if (((uint32_t)(uintptr_t)membuf & (OS_ALIGNMENT - 1)) != 0) {
             return OS_MEM_NOT_ALIGNED;
         }
     }
@@ -151,9 +155,25 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
     mp->mp_min_free = blocks;
     mp->mp_flags = flags;
     mp->mp_num_blocks = blocks;
-    mp->mp_membuf_addr = (uintptr_t)membuf;
+    mp->mp_membuf_addr = (uint32_t)(uintptr_t)membuf;
     mp->name = name;
     SLIST_FIRST(mp) = membuf;
+
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (membuf == NULL) {
+        /* Runtime allocation mode */
+        mp->mp_membuf_addr = 0;
+        mp->mp_flags |= OS_MEMPOOL_F_RUNTIME;
+        #if MYNEWT_VAL(MP_BLOCK_REUSED)
+        mp->mp_flags |= OS_MEMPOOL_F_REUSED;
+        mp->mp_alloc_blocks = 0;
+        #endif
+        SLIST_FIRST(mp) = NULL;
+
+        STAILQ_INSERT_TAIL(&g_os_mempool_list, mp, mp_list);
+        return OS_OK;
+    }
+    #endif
 
     if (blocks > 0) {
         os_mempool_poison(mp, membuf);
@@ -255,6 +275,28 @@ os_mempool_clear(struct os_mempool *mp)
         return OS_INVALID_PARM;
     }
 
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    /* For runtime allocation mode, check whether all blocks have been freed */
+    if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
+        assert(mp->mp_num_free == mp->mp_num_blocks);
+        /* For block reused mode, free all allocated blocks */
+        if (mp->mp_flags & OS_MEMPOOL_F_REUSED) {
+            void *temp_ptr;
+            block_ptr = SLIST_FIRST(mp);
+            while (block_ptr) {
+                temp_ptr = block_ptr;
+                block_ptr = SLIST_NEXT(block_ptr, mb_next);
+                nimble_platform_mem_free(temp_ptr);
+            }
+            mp->mp_alloc_blocks = 0;
+        }
+        /* Only reset statistics */
+        SLIST_FIRST(mp) = NULL;
+        mp->mp_min_free = mp->mp_num_blocks;
+        return OS_OK;
+    }
+    #endif
+
     true_block_size = OS_MEMPOOL_TRUE_BLOCK_SIZE(mp);
 
     /* cleanup the memory pool structure */
@@ -262,10 +304,10 @@ os_mempool_clear(struct os_mempool *mp)
     mp->mp_min_free = mp->mp_num_blocks;
     os_mempool_poison(mp, (void *)mp->mp_membuf_addr);
     os_mempool_guard(mp, (void *)mp->mp_membuf_addr);
-    SLIST_FIRST(mp) = (void *)mp->mp_membuf_addr;
+    SLIST_FIRST(mp) = (void *)(uintptr_t)mp->mp_membuf_addr;
 
     /* Chain the memory blocks to the free list */
-    block_addr = (uint8_t *)mp->mp_membuf_addr;
+    block_addr = (uint8_t *)(uintptr_t)mp->mp_membuf_addr;
     block_ptr = (struct os_memblock *)block_addr;
     blocks = mp->mp_num_blocks;
 
@@ -287,7 +329,11 @@ os_mempool_clear(struct os_mempool *mp)
 os_error_t
 os_mempool_ext_clear(struct os_mempool_ext *mpe)
 {
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    mpe->mpe_mp.mp_flags &= ~OS_MEMPOOL_F_EXT;
+    #else
     mpe->mpe_mp.mp_flags = 0;
+    #endif
     mpe->mpe_put_cb = NULL;
     mpe->mpe_put_arg = NULL;
 
@@ -298,6 +344,13 @@ bool
 os_mempool_is_sane(const struct os_mempool *mp)
 {
     struct os_memblock *block;
+
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    /* Runtime mode cannot verify sanity */
+    if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
+        assert(0);
+    }
+    #endif
 
     /* Verify that each block in the free list belongs to the mempool. */
     SLIST_FOREACH(block, mp, mb_next) {
@@ -315,20 +368,30 @@ int
 os_memblock_from(const struct os_mempool *mp, const void *block_addr)
 {
     uint32_t true_block_size;
-    uintptr_t baddr;
-    uintptr_t end;
+    uintptr_t baddr32;
+    uint32_t end;
 
-    baddr = (uintptr_t)block_addr;
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    /* Runtime allocation mode doesn't support from */
+    if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
+        assert(0);
+    }
+    #endif
+
+    static_assert(sizeof block_addr == sizeof baddr32,
+                  "Pointer to void must be 32-bits.");
+
+    baddr32 = (uint32_t)(uintptr_t)block_addr;
     true_block_size = OS_MEMPOOL_TRUE_BLOCK_SIZE(mp);
     end = mp->mp_membuf_addr + (mp->mp_num_blocks * true_block_size);
 
     /* Check that the block is in the memory buffer range. */
-    if ((baddr < mp->mp_membuf_addr) || (baddr >= end)) {
+    if ((baddr32 < mp->mp_membuf_addr) || (baddr32 >= end)) {
         return 0;
     }
 
     /* All freed blocks should be on true block size boundaries! */
-    if (((baddr - mp->mp_membuf_addr) % true_block_size) != 0) {
+    if (((baddr32 - mp->mp_membuf_addr) % true_block_size) != 0) {
         return 0;
     }
 
@@ -341,10 +404,68 @@ os_memblock_get(struct os_mempool *mp)
     os_sr_t sr;
     struct os_memblock *block;
 
-    os_trace_api_u32(OS_TRACE_ID_MEMBLOCK_GET, (uintptr_t)mp);
+    os_trace_api_u32(OS_TRACE_ID_MEMBLOCK_GET, (uint32_t)(uintptr_t)mp);
 
     /* Check to make sure they passed in a memory pool (or something) */
     block = NULL;
+
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    /* Runtime allocation mode */
+    if (mp && mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
+        bool need_alloc = false;
+        void *allocated_block;
+        uint32_t alloc_size;
+        
+        OS_ENTER_CRITICAL(sr);
+
+        if (mp->mp_num_free) {
+            if (mp->mp_flags & OS_MEMPOOL_F_REUSED) {
+                if (SLIST_FIRST(mp) != NULL) {
+                    block = SLIST_FIRST(mp);
+                    SLIST_FIRST(mp) = SLIST_NEXT(block, mb_next);
+                } else if (mp->mp_alloc_blocks < mp->mp_num_blocks) {
+                    need_alloc = true;
+                    mp->mp_alloc_blocks++;
+                }
+            } else {
+                need_alloc = true;
+            }
+            /* Decrement number free by 1 */
+            mp->mp_num_free--;
+            if (mp->mp_min_free > mp->mp_num_free) {
+                mp->mp_min_free = mp->mp_num_free;
+            }
+        }
+
+        OS_EXIT_CRITICAL(sr);
+
+        /* Allocate outside critical section to avoid holding lock too long */
+        if (need_alloc) {
+            alloc_size = OS_MEMPOOL_TRUE_BLOCK_SIZE(mp);
+            allocated_block = nimble_platform_mem_malloc(alloc_size);
+
+            if (allocated_block) {
+                /* Initialize poison and guard */
+                os_mempool_poison(mp, allocated_block);
+                os_mempool_guard(mp, allocated_block);
+                /* Save mempool pointer for block */
+                block = (struct os_memblock *)(allocated_block);
+            } else {
+                // Should not happen
+                OS_ENTER_CRITICAL(sr);
+                mp->mp_num_free++;
+                OS_EXIT_CRITICAL(sr);
+                esp_rom_printf("%s malloc failed, size=%u\n", __func__, alloc_size);
+            }
+        } else if (block) {
+            os_mempool_poison_check(mp, block);
+            os_mempool_guard_check(mp, block);
+        }
+
+        return block;
+    }
+    #endif
+
     if (mp) {
         OS_ENTER_CRITICAL(sr);
         /* Check for any free */
@@ -369,7 +490,7 @@ os_memblock_get(struct os_mempool *mp)
         }
     }
 
-    os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, (uintptr_t)block);
+    os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, (uint32_t)(uintptr_t)block);
 
     return (void *)block;
 }
@@ -380,8 +501,35 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
     os_sr_t sr;
     struct os_memblock *block;
 
-    os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uintptr_t)mp,
-                       (uintptr_t)block_addr);
+    os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uint32_t)(uintptr_t)mp,
+                       (uint32_t)(uintptr_t)block_addr);
+
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
+        bool need_free = true;
+        os_mempool_guard_check(mp, block_addr);
+
+        /* Runtime allocation mode - free directly */
+        OS_ENTER_CRITICAL(sr);
+        if (mp->mp_flags & OS_MEMPOOL_F_REUSED) {
+            block = (struct os_memblock *)block_addr;
+            SLIST_NEXT(block, mb_next) = SLIST_FIRST(mp);
+            SLIST_FIRST(mp) = block;
+            need_free = false;
+        }
+        mp->mp_num_free++;
+        assert(mp->mp_num_blocks >= mp->mp_num_free);
+        OS_EXIT_CRITICAL(sr);
+
+        /* Free outside critical section */
+        if (need_free) {
+            free(block_addr);
+        } else {
+            os_mempool_poison(mp, block_addr);
+        }
+        return OS_OK;
+    }
+    #endif
 
     os_mempool_guard_check(mp, block_addr);
     os_mempool_poison(mp, block_addr);
@@ -411,11 +559,10 @@ os_memblock_put(struct os_mempool *mp, void *block_addr)
     os_error_t ret;
 #if MYNEWT_VAL(OS_MEMPOOL_CHECK)
     struct os_memblock *block;
-    int sr;
 #endif
 
-    os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT, (uintptr_t)mp,
-                       (uintptr_t)block_addr);
+    os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT, (uint32_t)(uintptr_t)mp,
+                       (uint32_t)(uintptr_t)block_addr);
 
     /* Make sure parameters are valid */
     if ((mp == NULL) || (block_addr == NULL)) {
@@ -424,18 +571,20 @@ os_memblock_put(struct os_mempool *mp, void *block_addr)
     }
 
 #if MYNEWT_VAL(OS_MEMPOOL_CHECK)
-    /* Check that the block we are freeing is a valid block! */
-    assert(os_memblock_from(mp, block_addr));
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (!(mp->mp_flags & OS_MEMPOOL_F_RUNTIME))
+#endif
+    {
+        /* Check that the block we are freeing is a valid block! */
+        assert(os_memblock_from(mp, block_addr));
+    }
 
     /*
      * Check for duplicate free.
      */
-    OS_ENTER_CRITICAL(sr);
     SLIST_FOREACH(block, mp, mb_next) {
         assert(block != (struct os_memblock *)block_addr);
     }
-    OS_EXIT_CRITICAL(sr);
-
 #endif
     /* If this is an extended mempool with a put callback, call the callback
      * instead of freeing the block directly.
@@ -481,34 +630,26 @@ os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
     return (cur);
 }
 
-struct os_mempool *
-os_mempool_get(const char *mempool_name, struct os_mempool_info *info)
-{
-    struct os_mempool *mp;
-
-    mp = STAILQ_FIRST(&g_os_mempool_list);
-    while (mp) {
-        if (strcmp(mempool_name, mp->name) == 0) {
-            break;
-        }
-        mp = STAILQ_NEXT(mp, mp_list);
-    }
-
-    if (mp != NULL && info != NULL) {
-        info->omi_block_size = mp->mp_block_size;
-        info->omi_num_blocks = mp->mp_num_blocks;
-        info->omi_num_free = mp->mp_num_free;
-        info->omi_min_free = mp->mp_min_free;
-        info->omi_name[0] = '\0';
-        strncat(info->omi_name, mp->name, sizeof(info->omi_name) - 1);
-    }
-
-    return mp;
-}
-
 void
 os_mempool_module_init(void)
 {
     STAILQ_INIT(&g_os_mempool_list);
 }
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+void
+os_mempool_deinit(void)
+{
+    struct os_mempool *mp = NULL;
+
+    mp = STAILQ_FIRST(&g_os_mempool_list);
+
+    // All mempool blocks should be reclaimed after nimble deinit
+    while (mp) {
+        if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
+            os_mempool_clear(mp);
+        }
+        mp = STAILQ_NEXT(mp, mp_list);
+    }
+}
+#endif

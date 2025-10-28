@@ -59,12 +59,18 @@ static ble_eatt_att_rx_fn ble_eatt_att_rx_cb;
 
 #define BLE_EATT_MEMPOOL_SIZE    \
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_EATT_CHAN_NUM) + 1, BLE_EATT_MEMBLOCK_SIZE)
+
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_eatt_conn_mem = NULL;
+static os_membuf_t *ble_eatt_sdu_coc_mem = NULL;
+#else
 static os_membuf_t ble_eatt_conn_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_EATT_CHAN_NUM),
     sizeof(struct ble_eatt))
 ];
-static struct os_mempool ble_eatt_conn_pool;
 static os_membuf_t ble_eatt_sdu_coc_mem[BLE_EATT_MEMPOOL_SIZE];
+#endif
+static struct os_mempool ble_eatt_conn_pool;
 struct os_mbuf_pool ble_eatt_sdu_os_mbuf_pool;
 static struct os_mempool ble_eatt_sdu_mbuf_mempool;
 

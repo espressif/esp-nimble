@@ -39,6 +39,7 @@ static ble_npl_event_fn ble_hs_flow_event_cb;
 
 static struct ble_npl_event ble_hs_flow_ev;
 
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
 /* Connection handle associated with each mbuf in ACL pool */
 static uint16_t ble_hs_flow_mbuf_conn_handle[ MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT) ];
 
@@ -55,6 +56,7 @@ ble_hs_flow_mbuf_index(const struct os_mbuf *om)
 
     return idx;
 }
+#endif
 
 static int
 ble_hs_flow_tx_num_comp_pkts(void)
@@ -160,13 +162,18 @@ ble_hs_flow_acl_free(struct os_mempool_ext *mpe, void *data, void *arg)
     struct ble_hs_conn *conn;
     const struct os_mbuf *om;
     uint16_t conn_handle;
-    int idx;
     int rc;
 
     om = data;
 
-    idx = ble_hs_flow_mbuf_index(om);
+    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    // For runtime allocation, get the connection handle from HCI ACL data
+    const struct hci_data_hdr *hdr = (void *)om->om_data;
+    conn_handle = BLE_HCI_DATA_HANDLE(hdr->hdh_handle_pb_bc);
+    #else
+    int idx = ble_hs_flow_mbuf_index(om);
     conn_handle = ble_hs_flow_mbuf_conn_handle[idx];
+    #endif
 
     /* Free the mbuf back to its pool. */
     rc = os_memblock_put_from_cb(&mpe->mpe_mp, data);
@@ -209,7 +216,7 @@ ble_hs_flow_connection_broken(uint16_t conn_handle)
 void
 ble_hs_flow_track_data_mbuf(struct os_mbuf *om)
 {
-#if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
+#if MYNEWT_VAL(BLE_HS_FLOW_CTRL) && !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     const struct hci_data_hdr *hdr;
     int idx = ble_hs_flow_mbuf_index(om);
 

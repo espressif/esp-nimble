@@ -55,6 +55,7 @@ static void ble_hs_event_start_stage2(struct ble_npl_event *ev);
 static void ble_hs_timer_sched(int32_t ticks_from_now);
 
 struct os_mempool ble_hs_hci_ev_pool;
+/* It is not recommended to use MP_RUNTIME_ALLOC when the block size is 4 bytes. */
 static os_membuf_t ble_hs_hci_os_event_buf[
     OS_MEMPOOL_SIZE(BLE_HS_HCI_EVT_COUNT, sizeof (struct ble_npl_event))
 ];
@@ -617,8 +618,12 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
         ble_npl_eventq_put(ble_hs_evq, ev);
     } else {
-	/* Either ev is NULL or queue doesn't exist */
+        /* Either ev is NULL or queue doesn't exist */
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, hci_evt);
+#else
         ble_transport_free(hci_evt);
+#endif
     }
 }
 
