@@ -101,7 +101,11 @@ hci_uart_tx_char(void *arg)
         ch = tx->buf[tx->idx];
         tx->idx++;
         if (tx->idx == tx->len) {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+            ble_transport_free(BLE_HCI_EVT, tx->buf);
+#else
             ble_transport_free(tx->buf);
+#endif
             OS_ENTER_CRITICAL(sr);
             STAILQ_REMOVE_HEAD(&tx_q, tx_q_next);
             OS_EXIT_CRITICAL(sr);

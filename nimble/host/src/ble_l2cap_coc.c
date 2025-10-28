@@ -33,10 +33,14 @@ STAILQ_HEAD(ble_l2cap_coc_srv_list, ble_l2cap_coc_srv);
 
 static struct ble_l2cap_coc_srv_list ble_l2cap_coc_srvs;
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_l2cap_coc_srv_mem = NULL;
+#else
 static os_membuf_t ble_l2cap_coc_srv_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                     sizeof (struct ble_l2cap_coc_srv))
 ];
+#endif
 
 static struct os_mempool ble_l2cap_coc_srv_pool;
 

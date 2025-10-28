@@ -92,10 +92,12 @@ ble_transport_alloc_evt(int discardable)
     if (discardable) {
         buf = os_memblock_get(&pool_evt_lo);
     } else {
-        buf = os_memblock_get(&pool_evt);
+        buf = try_alloc_evt(&pool_evt);
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         if (!buf) {
             buf = os_memblock_get(&pool_evt_lo);
         }
+#endif
     }
 
     return buf;
@@ -138,8 +140,68 @@ ble_transport_alloc_acl_from_ll(void)
     return om;
 }
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+void
+ble_transport_free(uint8_t type, void *buf)
+{
+    struct ble_hci_ev *ev = buf;
+    bool discardable = false;
+
+    // HCI command
+    if (type == BLE_HCI_CMD) {
+        os_memblock_put(&pool_cmd, buf);
+        return;
+    }
+
+    assert(type == BLE_HCI_EVT);
+    // HCI low prio event
+    if (ev->opcode == BLE_HCI_EVCODE_LE_META) {
+        switch (ev->data[0]) {
+        case BLE_HCI_LE_SUBEV_ADV_RPT:
+        case BLE_HCI_LE_SUBEV_EXT_ADV_RPT:
+            discardable = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (discardable) {
+        os_memblock_put(&pool_evt_lo, buf);
+#if BLE_TRANSPORT_IPC
+        hci_ipc_put(HCI_IPC_TYPE_EVT_DISCARDABLE);
+#endif
+    } else {
+        os_memblock_put(&pool_evt, buf);
+#if BLE_TRANSPORT_IPC
+        hci_ipc_put(HCI_IPC_TYPE_EVT);
+#endif
+    }
+}
+#else
 void
 ble_transport_free(void *buf)
+{
+    if (os_memblock_from(&pool_cmd, buf)) {
+        os_memblock_put(&pool_cmd, buf);
+    } else if (os_memblock_from(&pool_evt, buf)) {
+        os_memblock_put(&pool_evt, buf);
+#if BLE_TRANSPORT_IPC
+        hci_ipc_put(HCI_IPC_TYPE_EVT);
+#endif
+    } else if (os_memblock_from(&pool_evt_lo, buf)) {
+        os_memblock_put(&pool_evt_lo, buf);
+#if BLE_TRANSPORT_IPC
+        hci_ipc_put(HCI_IPC_TYPE_EVT_DISCARDABLE);
+#endif
+    } else {
+        assert(0);
+    }
+}
+#endif // MYNEWT_VAL(MP_RUNTIME_ALLOC)
+
+void
+ble_transport_ipc_free(void *buf)
 {
     if (os_memblock_from(&pool_cmd, buf)) {
         os_memblock_put(&pool_cmd, buf);
@@ -188,6 +250,10 @@ ble_transport_acl_put(struct os_mempool_ext *mpe, void *data, void *arg)
 
 void ble_buf_free(void)
 {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    return;
+#endif
+
     os_msys_buf_free();
 
     nimble_platform_mem_free(pool_evt_buf);
@@ -202,6 +268,10 @@ void ble_buf_free(void)
 
 esp_err_t ble_buf_alloc(void)
 {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    return ESP_OK;
+#endif
+
     if (os_msys_buf_alloc()) {
         return ESP_ERR_NO_MEM;
     }

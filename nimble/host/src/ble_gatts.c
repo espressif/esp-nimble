@@ -134,10 +134,12 @@ ble_gatts_svc_entry_alloc(void)
     struct ble_gatts_svc_entry *entry;
 
     entry = os_memblock_get(&ble_gatts_svc_entry_pool);
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* if dynamic services are enabled, try to allocate from heap */
     if (entry == NULL) {
         entry = nimble_platform_mem_malloc(sizeof *entry);
     }
+#endif
     if (entry != NULL) {
         memset(entry, 0, sizeof *entry);
     }
@@ -148,12 +150,16 @@ ble_gatts_svc_entry_alloc(void)
 static void
 ble_gatts_svc_entry_free(struct ble_gatts_svc_entry *entry)
 {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    os_memblock_put(&ble_gatts_svc_entry_pool, entry);
+#else
     if (os_memblock_from(&ble_gatts_svc_entry_pool, entry)) {
         os_memblock_put(&ble_gatts_svc_entry_pool, entry);
     }
     else {
         nimble_platform_mem_free(entry);
     }
+#endif
 }
 
 static struct ble_gatts_clt_cfg *
@@ -162,10 +168,12 @@ ble_gatts_clt_cfg_alloc(void)
     struct ble_gatts_clt_cfg *cfg;
 
     cfg = os_memblock_get(&ble_gatts_clt_cfg_pool);
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* if dynamic services are enabled, try to allocate from heap */
     if (cfg == NULL) {
         cfg = nimble_platform_mem_malloc(sizeof *cfg);
     }
+#endif
     if (cfg != NULL) {
         memset(cfg, 0, sizeof *cfg);
     }
@@ -175,12 +183,16 @@ ble_gatts_clt_cfg_alloc(void)
 static void
 ble_gatts_clt_cfg_free(struct ble_gatts_clt_cfg *cfg)
 {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    os_memblock_put(&ble_gatts_clt_cfg_pool, cfg);
+#else
     if (os_memblock_from(&ble_gatts_clt_cfg_pool, cfg)) {
         os_memblock_put(&ble_gatts_clt_cfg_pool, cfg);
     }
     else {
         nimble_platform_mem_free(cfg);
     }
+#endif
 }
 #endif
 
@@ -1649,6 +1661,9 @@ ble_gatts_stop(void)
 
     ble_gatts_free_mem();
     ble_gatts_free_svc_defs();
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    ble_att_svr_reset();
+#endif
     ble_att_svr_stop();
 }
 
@@ -1681,6 +1696,7 @@ ble_gatts_start(void)
         goto done;
     }
 
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (ble_hs_max_client_configs > 0) {
         ble_gatts_clt_cfg_mem = nimble_platform_mem_malloc(
             OS_MEMPOOL_BYTES(ble_hs_max_client_configs,
@@ -1690,20 +1706,26 @@ ble_gatts_start(void)
             goto done;
         }
     }
+#endif
 
     if (ble_hs_max_services > 0) {
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_gatts_svc_entry_mem =
-            nimble_platform_mem_malloc(ble_hs_max_services * sizeof(struct ble_gatts_svc_entry));
+            nimble_platform_mem_calloc(1, ble_hs_max_services * sizeof(struct ble_gatts_svc_entry));
         if (ble_gatts_svc_entry_mem == NULL) {
+            rc = BLE_HS_ENOMEM;
+            goto done;
+        }
+#endif
 #else
         ble_gatts_svc_entries =
             nimble_platform_mem_malloc(ble_hs_max_services * sizeof *ble_gatts_svc_entries);
         if (ble_gatts_svc_entries == NULL) {
-#endif
             rc = BLE_HS_ENOMEM;
             goto done;
         }
+#endif
     }
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)

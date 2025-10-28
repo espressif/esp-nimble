@@ -1382,7 +1382,11 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
         rc = entry->cb(ev->opcode, ev->data, ev->length);
     }
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    ble_transport_free(BLE_HCI_EVT, (uint8_t *)ev);
+#else
     ble_transport_free((uint8_t *)ev);
+#endif
 
     return rc;
 }
