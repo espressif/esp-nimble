@@ -25,7 +25,7 @@
 #include "services/gap/ble_svc_gap.h"
 #include "os/endian.h"
 
-#if MYNEWT_VAL(BLE_GATTS)
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
 
 #define PPCP_ENABLED \
     MYNEWT_VAL(BLE_ROLE_PERIPHERAL) && \
