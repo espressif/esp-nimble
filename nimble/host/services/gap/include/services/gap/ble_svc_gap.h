@@ -25,6 +25,8 @@
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #include "host/ble_ead.h"
 #endif
+#include "esp_nimble_cfg.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,15 +52,22 @@ typedef void (ble_svc_gap_chr_changed_fn) (uint16_t uuid);
 
 void ble_svc_gap_set_chr_changed_cb(ble_svc_gap_chr_changed_fn *cb);
 
-const char *ble_svc_gap_device_name(void);
-int ble_svc_gap_device_name_set(const char *name);
 uint16_t ble_svc_gap_device_appearance(void);
+
+#ifdef CONFIG_BT_NIMBLE_GAP_SERVICE
+void ble_svc_gap_init(void);
+int ble_svc_gap_device_name_set(const char *name);
+const char *ble_svc_gap_device_name(void);
 int ble_svc_gap_device_appearance_set(uint16_t appearance);
 #if MYNEWT_VAL(ENC_ADV_DATA)
 int ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv);
 #endif
 
-void ble_svc_gap_init(void);
+#else
+#include "ble_svc_gap_stub.h"
+
+#endif
+
 void ble_svc_gap_deinit(void);
 
 #ifdef __cplusplus
