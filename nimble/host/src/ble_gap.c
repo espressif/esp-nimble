@@ -5490,7 +5490,7 @@ ble_gap_calc_periodic_adv_data_size(uint8_t num_subevents,
                                     const struct ble_gap_set_periodic_adv_subev_data_params *params) {
     int len = 0;
     const struct ble_gap_set_periodic_adv_subev_data_params *param;
-    int raw_subev_size = sizeof(*param) - sizeof(struct os_mbuf*);
+    uint8_t raw_subev_size = sizeof(struct periodic_adv_subevents);
 
     for(int i = 0; i < num_subevents; i++) {
         param = params + i;
@@ -5499,17 +5499,28 @@ ble_gap_calc_periodic_adv_data_size(uint8_t num_subevents,
     }
     return len;
 }
+
 int
 ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
                                     const struct ble_gap_set_periodic_adv_subev_data_params *params)
 {
     struct ble_hci_le_set_periodic_adv_subev_data_cp *cmd;
     struct periodic_adv_subevents *subevents;
-    uint8_t len = ble_gap_calc_periodic_adv_data_size(num_subevents, params);
-    uint8_t buf[len + 2];
+    uint16_t cmd_len = ble_gap_calc_periodic_adv_data_size(num_subevents, params) + 2;
     uint16_t opcode;
     uint16_t subev_data_len;
+    uint8_t buf_size;
+    uint8_t param_size;
+    uint8_t buf_offset;
     int rc; 
+
+    /* Check if we can set all of data in one hci command. */
+    if (cmd_len >= 0xff) {
+        buf_size = 0xff;
+    } else {
+        buf_size = cmd_len;
+    }
+    uint8_t buf[buf_size];
 
     if (instance >= BLE_ADV_INSTANCES) {
         rc = BLE_HS_EINVAL;
@@ -5517,13 +5528,7 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
     }
 
     if (!ble_hs_is_enabled()) {
-       rc = BLE_HS_EDISABLED;
-       goto done;
-    }
-
-    /* Check if we can set all of data in one hci command. */
-    if ((len + 2) >= 0xff) {
-        rc = BLE_HS_EINVAL;
+        rc = BLE_HS_EDISABLED;
         goto done;
     }
 
@@ -5539,15 +5544,34 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_PERIODIC_ADV_SUBEV_DATA);
 
     cmd = (void *) buf;
+    param_size = sizeof(struct periodic_adv_subevents);
+    
     subevents = cmd->subevents;
-
     cmd->adv_handle = instance;
-    cmd->num_subevents = num_subevents;
-
+    cmd->num_subevents = 0;
+    buf_offset = 0;
     for (int i = 0; i < num_subevents; i++) {
-   	    subevents->subevent = params[i].subevent;
-   	    subevents->response_slot_start = params[i].response_slot_start;
-   	    subevents->response_slot_count = params[i].response_slot_count;
+        if ((buf_offset + OS_MBUF_PKTLEN(params[i].data) + param_size) > buf_size) {
+            if (!cmd->num_subevents) {
+                ble_hs_unlock();
+                rc = BLE_HS_EINVAL;
+                goto done;
+            } else {
+                rc = ble_hs_hci_cmd_tx(opcode, cmd, buf_offset + 2, NULL, 0);
+                if (rc != 0) {
+                    ble_hs_unlock();
+                    goto done;
+                }
+                subevents = cmd->subevents;
+                cmd->num_subevents = 0;
+                buf_offset = 0;
+            }
+        }
+        buf_offset += OS_MBUF_PKTLEN(params[i].data) + param_size;
+        subevents->subevent = params[i].subevent;
+        subevents->response_slot_start = params[i].response_slot_start;
+        subevents->response_slot_count = params[i].response_slot_count;
+        cmd->num_subevents ++;
         ble_hs_mbuf_to_flat(params[i].data, subevents->subevent_data, OS_MBUF_PKTLEN(params[i].data),
                             (void*)&subev_data_len);
    	    subevents->subevent_data_length = OS_MBUF_PKTLEN(params[i].data);
@@ -5555,7 +5579,7 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
                         (uint32_t)subevents + sizeof(struct periodic_adv_subevents) + subev_data_len);
    	}
 
-    rc = ble_hs_hci_cmd_tx(opcode, cmd, len + 2, NULL, 0);
+    rc = ble_hs_hci_cmd_tx(opcode, cmd, buf_offset + 2, NULL, 0);
     if (rc != 0) {
         ble_hs_unlock();
         goto done;
@@ -5567,7 +5591,7 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
 
 done:
     for (int i = 0; i < num_subevents; i++) {
-        os_mbuf_free_chain(params[i].data);  
+        os_mbuf_free_chain(params[i].data);
     }
     return rc;
 }
