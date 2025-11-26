@@ -365,6 +365,9 @@ bool ble_sm_sc_oob_data_check(struct ble_sm_proc *proc,
                               bool oob_data_remote_present);
 void ble_sm_sc_oob_confirm(struct ble_sm_proc *proc, struct ble_sm_result *res);
 void ble_sm_sc_init(void);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_sm_sc_deinit(void);
+#endif
 #else
 #define ble_sm_sc_io_action(proc, action) (BLE_HS_ENOTSUP)
 #define ble_sm_sc_confirm_exec(proc, res)
@@ -407,6 +410,9 @@ int ble_sm_enc_initiate(uint16_t conn_handle, uint8_t key_size,
 int ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
                        uint8_t *enc_data);
 int ble_sm_init(void);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_sm_deinit(void);
+#endif
 #else
 
 #define ble_sm_incr_our_sign_counter(conn_handle) BLE_HS_ENOTSUP
@@ -424,7 +430,7 @@ int ble_sm_init(void);
         BLE_HS_ENOTSUP
 
 #define ble_sm_init() 0
-
+#define ble_sm_deinit()
 #define ble_sm_alg_encrypt(key, plaintext, enc_data) \
         BLE_HS_ENOTSUP
 
@@ -434,6 +440,9 @@ struct ble_l2cap_chan *ble_sm_create_chan(uint16_t handle);
 void *ble_sm_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom);
 int ble_sm_tx(uint16_t conn_handle, struct os_mbuf *txom);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_sm_proc_deinit(void);
+#endif
 
 #ifdef __cplusplus
 }

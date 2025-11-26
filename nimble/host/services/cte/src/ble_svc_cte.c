@@ -119,54 +119,64 @@ static int ble_svc_cte_adv_cte_phy_access(uint16_t conn_handle, uint16_t attr_ha
 /**
  * @brief Constant Tone Extensio Service definition
  */
+
+static const ble_uuid16_t uuid_svc_cte = BLE_UUID16_INIT(BLE_SVC_CTE_UUID16);
+static const ble_uuid16_t uuid_chr_cte_enable = BLE_UUID16_INIT(BLE_SVC_CTE_CHR_UUID16_ENABLE);
+static const ble_uuid16_t uuid_chr_cte_min_len = BLE_UUID16_INIT(BLE_SVC_CTE_CHR_UUID16_MINIMUM_LENGTH);
+static const ble_uuid16_t uuid_chr_cte_min_trans_cnt = BLE_UUID16_INIT(BLE_SVC_CTE_CHR_UUID16_MINIMUM_TRANSMIT_COUNT);
+static const ble_uuid16_t uuid_chr_cte_trans_dur = BLE_UUID16_INIT(BLE_SVC_CTE_CHR_UUID16_TRANSMIT_DURATION);
+static const ble_uuid16_t uuid_chr_cte_ext_itvl = BLE_UUID16_INIT(BLE_SVC_CTE_CHR_UUID16_INTERVAL);
+static const ble_uuid16_t uuid_chr_cte_ext_phy = BLE_UUID16_INIT(BLE_SVC_CTE_CHR_UUID16_PHY);
+
+static const struct ble_gatt_chr_def cte_characteristics[] = {
+    {
+        /*** Characteristic: Constant Tone Extension Enable. */
+        .uuid = &uuid_chr_cte_enable.u,
+        .access_cb = ble_svc_cte_enable_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+    },
+    {
+        /*** Characteristic: Advertising Constant Tone Extension Minimum Length. */
+        .uuid = &uuid_chr_cte_min_len.u,
+        .access_cb = ble_svc_cte_adv_cte_min_length_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+    },
+    {
+        /*** Characteristic: Advertising Constant Tone Extension Minimum Transmit Count. */
+        .uuid = &uuid_chr_cte_min_trans_cnt.u,
+        .access_cb = ble_svc_cte_adv_cte_min_transmit_count_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+    },
+    {
+        /*** Characteristic: Advertising Constant Tone Extension Transmit Duration. */
+        .uuid = &uuid_chr_cte_trans_dur.u,
+        .access_cb = ble_svc_cte_adv_cte_transmit_duration_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+    },
+    {
+        /*** Characteristic: Advertising Constant Tone Extension Interval. */
+        .uuid = &uuid_chr_cte_ext_itvl.u,
+        .access_cb = ble_svc_cte_adv_cte_interval_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+    },
+    {
+        /*** Characteristic: Advertising Constant Tone Extension PHY. */
+        .uuid = &uuid_chr_cte_ext_phy.u,
+        .access_cb = ble_svc_cte_adv_cte_phy_access,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+    },
+    {
+        0, /* No more characteristics in this service. */
+    }
+};
+
 static const struct ble_gatt_svc_def ble_svc_cte_defs[] = {
     {
         /*** Service: Asset Tracking Service. */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { 
-            {
-                /*** Characteristic: Constant Tone Extension Enable. */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_CHR_UUID16_ENABLE),
-                .access_cb = ble_svc_cte_enable_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                /*** Characteristic: Advertising Constant Tone Extension Minimum Length. */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_CHR_UUID16_MINIMUM_LENGTH),
-                .access_cb = ble_svc_cte_adv_cte_min_length_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                /*** Characteristic: Advertising Constant Tone Extension Minimum Transmit Count. */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_CHR_UUID16_MINIMUM_TRANSMIT_COUNT),
-                .access_cb = ble_svc_cte_adv_cte_min_transmit_count_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                /*** Characteristic: Advertising Constant Tone Extension Transmit Duration. */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_CHR_UUID16_TRANSMIT_DURATION),
-                .access_cb = ble_svc_cte_adv_cte_transmit_duration_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                /*** Characteristic: Advertising Constant Tone Extension Interval. */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_CHR_UUID16_INTERVAL),
-                .access_cb = ble_svc_cte_adv_cte_interval_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                /*** Characteristic: Advertising Constant Tone Extension PHY. */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTE_CHR_UUID16_PHY),
-                .access_cb = ble_svc_cte_adv_cte_phy_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-            },
-            {
-                0, /* No more characteristics in this service. */
-            }
-        },
+        .uuid = &uuid_svc_cte.u,
+        .characteristics = cte_characteristics,
     },
-
     {
         0, /* No more services. */
     },

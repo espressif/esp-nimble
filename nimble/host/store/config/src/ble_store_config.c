@@ -25,7 +25,13 @@
 #include "host/ble_hs.h"
 #include "store/config/ble_store_config.h"
 #include "ble_store_config_priv.h"
+#include "esp_nimble_mem.h"
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+ble_store_config_vars_t * ble_store_config_vars = NULL;
+#endif
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 struct ble_store_value_sec
     ble_store_config_our_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
@@ -70,11 +76,13 @@ int ble_store_config_num_rpa_recs;
 struct ble_store_value_local_irk
     ble_store_config_local_irks[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
 int ble_store_config_num_local_irks;
+#endif /* !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 /*****************************************************************************
  * $sec                                                                      *
  *****************************************************************************/
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 int ble_store_config_compare_bond_count(const void *a, const void *b) {
     const struct ble_store_value_sec *sec_a = (const struct ble_store_value_sec *)a;
     const struct ble_store_value_sec *sec_b = (const struct ble_store_value_sec *)b;
@@ -85,11 +93,9 @@ int ble_store_config_compare_bond_count(const void *a, const void *b) {
 /* This function gets the stored device records of OUR_SEC object type, arranges them in order of their bond count,
  * and then updates them with new counts so they're in sequence.
  */
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 int ble_restore_our_sec_nvs(void)
 {
     esp_err_t err;
-    extern uint16_t ble_store_config_our_bond_count;
     struct ble_store_value_sec temp_our_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int temp_count = 0;
 
@@ -135,7 +141,6 @@ int ble_restore_our_sec_nvs(void)
 int ble_restore_peer_sec_nvs(void)
 {
     esp_err_t err;
-    extern uint16_t ble_store_config_peer_bond_count;
     struct ble_store_value_sec temp_peer_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int temp_count = 0;
 
@@ -353,10 +358,10 @@ ble_store_config_delete_sec(const struct ble_store_key_sec *key_sec,
 }
 #endif
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 static int
 ble_store_config_delete_our_sec(const struct ble_store_key_sec *key_sec)
 {
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int rc;
 
     rc = ble_store_config_delete_sec(key_sec, ble_store_config_our_secs,
@@ -371,15 +376,11 @@ ble_store_config_delete_our_sec(const struct ble_store_key_sec *key_sec)
     }
 
     return 0;
-#else
-    return BLE_HS_ENOENT;
-#endif
 }
 
 static int
 ble_store_config_delete_peer_sec(const struct ble_store_key_sec *key_sec)
 {
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int rc;
 
     rc = ble_store_config_delete_sec(key_sec, ble_store_config_peer_secs,
@@ -393,10 +394,8 @@ ble_store_config_delete_peer_sec(const struct ble_store_key_sec *key_sec)
         return rc;
     }
     return 0;
-#else
-    return BLE_HS_ENOENT;
-#endif
 }
+#endif
 
 static int
 ble_store_config_read_peer_sec(const struct ble_store_key_sec *key_sec,
@@ -1144,6 +1143,7 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
     int rc;
 
     switch (obj_type) {
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     case BLE_STORE_OBJ_TYPE_PEER_SEC:
         rc = ble_store_config_delete_peer_sec(&key->sec);
         return rc;
@@ -1151,6 +1151,7 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
     case BLE_STORE_OBJ_TYPE_OUR_SEC:
         rc = ble_store_config_delete_our_sec(&key->sec);
         return rc;
+#endif
 
     case BLE_STORE_OBJ_TYPE_CCCD:
         rc = ble_store_config_delete_cccd(&key->cccd);
@@ -1181,6 +1182,15 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
 void
 ble_store_config_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_store_config_vars == NULL) {
+        ble_store_config_vars = nimble_platform_mem_calloc(1, sizeof(ble_store_config_vars_t));
+        if (ble_store_config_vars == NULL) {
+            return;
+        }
+    }
+#endif
+
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
@@ -1200,3 +1210,14 @@ ble_store_config_init(void)
     ble_store_config_num_local_irks=0;
     ble_store_config_conf_init();
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_store_config_deinit(void)
+{
+    if (ble_store_config_vars != NULL) {
+        nimble_platform_mem_free(ble_store_config_vars);
+        ble_store_config_vars = NULL;
+    }
+}
+#endif

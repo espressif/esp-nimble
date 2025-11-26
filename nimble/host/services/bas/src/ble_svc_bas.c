@@ -40,14 +40,13 @@ static int
 ble_svc_bas_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
 
-static const struct ble_gatt_svc_def ble_svc_bas_defs[] = {
+static const ble_uuid16_t uuid_svc_bas = BLE_UUID16_INIT(BLE_SVC_BAS_UUID16);
+static const ble_uuid16_t uuid_chr_bat_lvl = BLE_UUID16_INIT(BLE_SVC_BAS_CHR_UUID16_BATTERY_LEVEL);
+
+static const struct ble_gatt_chr_def bas_characteristics[] = {
     {
-        /*** Battery Service. */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_BAS_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
 	    /*** Battery level characteristic */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_BAS_CHR_UUID16_BATTERY_LEVEL),
+            .uuid = &uuid_chr_bat_lvl.u,
             .access_cb = ble_svc_bas_access,
 #if MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_NOTIFY_ENABLE) > 0
 	    .val_handle = &ble_svc_bas_battery_handle,
@@ -57,12 +56,19 @@ static const struct ble_gatt_svc_def ble_svc_bas_defs[] = {
 	             BLE_GATT_CHR_F_NOTIFY |
 #endif
 	             MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_READ_PERM),
-	    }, {
-            0, /* No more characteristics in this service. */
-        } },
     },
-
     {
+        0, /* No more characteristics in this service. */
+    },
+};
+
+static const struct ble_gatt_svc_def ble_svc_bas_defs[] = {
+    {
+        /*** Battery Service. */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_bas.u,
+        .characteristics = bas_characteristics,
+    }, {
         0, /* No more services. */
     },
 };
@@ -108,6 +114,7 @@ ble_svc_bas_battery_level_set(uint8_t level) {
     }
     return 0;
 }
+
 
 /**
  * Initialize the Battery Service.

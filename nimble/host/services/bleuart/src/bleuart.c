@@ -200,7 +200,7 @@ bleuart_init(void)
     rc = console_init(bleuart_uart_read);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    console_buf = nimble_platform_mem_malloc(MYNEWT_VAL(BLEUART_MAX_INPUT));
+    console_buf = nimble_platform_mem_calloc(1,MYNEWT_VAL(BLEUART_MAX_INPUT));
     SYSINIT_PANIC_ASSERT(console_buf != NULL);
 }
 #endif

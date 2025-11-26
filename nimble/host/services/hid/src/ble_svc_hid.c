@@ -29,6 +29,9 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "services/hid/ble_svc_hid.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 /* 1 more instance for empty service */
 #define HID_MAX_SVC_INSTANCES (MYNEWT_VAL(BLE_SVC_HID_MAX_SVC_INSTANCES) + 1)
@@ -37,33 +40,55 @@
 #define HID_MAX_CHRS (HID_MAX_SVC_INSTANCES * \
                     ((MYNEWT_VAL(BLE_SVC_HID_MAX_RPTS) + 7)))
 /* 16 bit UUIDs */
-static  ble_uuid_t *uuid_ext_rpt_ref = BLE_UUID16_DECLARE(BLE_SVC_HID_DSC_UUID16_EXT_RPT_REF);
-static  ble_uuid_t *uuid_report_map = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_REPORT_MAP);
-static  ble_uuid_t *uuid_rpt_ref = BLE_UUID16_DECLARE(BLE_SVC_HID_DSC_UUID16_RPT_REF);
-static  ble_uuid_t *uuid_report = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_RPT);
-static  ble_uuid_t *uuid_hid_info = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_HID_INFO);
-static  ble_uuid_t *uuid_hid_ctrl_pt = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_HID_CTRL_PT);
-static  ble_uuid_t *uuid_proto_mode = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_PROTOCOL_MODE);
-static  ble_uuid_t *uuid_boot_kbd_inp = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_BOOT_KBD_INP);
-static  ble_uuid_t *uuid_boot_kbd_out = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_BOOT_KBD_OUT);
-static  ble_uuid_t *uuid_boot_mouse_inp = BLE_UUID16_DECLARE(BLE_SVC_HID_CHR_UUID16_BOOT_MOUSE_INP);
-static  ble_uuid_t *uuid_hid_svc = BLE_UUID16_DECLARE(BLE_SVC_HID_UUID16);
+static const ble_uuid16_t uuid_ext_rpt_ref = BLE_UUID16_INIT(BLE_SVC_HID_DSC_UUID16_EXT_RPT_REF);
+static const ble_uuid16_t uuid_report_map = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_REPORT_MAP);
+static const ble_uuid16_t uuid_rpt_ref = BLE_UUID16_INIT(BLE_SVC_HID_DSC_UUID16_RPT_REF);
+static const ble_uuid16_t uuid_report = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_RPT);
+static const ble_uuid16_t uuid_hid_info = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_HID_INFO);
+static const ble_uuid16_t uuid_hid_ctrl_pt = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_HID_CTRL_PT);
+static const ble_uuid16_t uuid_proto_mode = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_PROTOCOL_MODE);
+static const ble_uuid16_t uuid_boot_kbd_inp = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_BOOT_KBD_INP);
+static const ble_uuid16_t uuid_boot_kbd_out = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_BOOT_KBD_OUT);
+static const ble_uuid16_t uuid_boot_mouse_inp = BLE_UUID16_INIT(BLE_SVC_HID_CHR_UUID16_BOOT_MOUSE_INP);
+static const ble_uuid16_t uuid_hid_svc = BLE_UUID16_INIT(BLE_SVC_HID_UUID16);
 
-uint8_t ble_svc_hid_rpt_val[RPT_MAX_LEN];
-uint8_t ble_svc_hid_rpt_len;
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static struct ble_svc_hid_params hid_instances[HID_MAX_SVC_INSTANCES];
+static uint8_t ble_svc_hid_dsc_index = 0; // used to store the current index in the dscs array
+static struct ble_gatt_dsc_def ble_svc_hid_dscs[HID_MAX_CHRS];
+static struct ble_gatt_chr_def ble_svc_hid_chrs[HID_MAX_CHRS];
+static struct ble_gatt_svc_def ble_svc_hid_defs[HID_MAX_SVC_INSTANCES];
+static uint8_t ble_svc_hid_chr_index = 0; // used to store the current index in the chrs array
+static uint8_t ble_svc_hid_svc_index = 0; // used to store the current index in the svcs array
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    struct ble_svc_hid_params _hid_instances[HID_MAX_SVC_INSTANCES];
+    uint8_t _ble_svc_hid_dsc_index;
+    struct ble_gatt_dsc_def _ble_svc_hid_dscs[HID_MAX_CHRS];
+    struct ble_gatt_chr_def _ble_svc_hid_chrs[HID_MAX_CHRS];
+    struct ble_gatt_svc_def _ble_svc_hid_defs[HID_MAX_SVC_INSTANCES];
+    uint8_t _ble_svc_hid_chr_index;
+    uint8_t _ble_svc_hid_svc_index;
+} ble_svc_hid_static_vars_t;
+
+static ble_svc_hid_static_vars_t * ble_svc_hid_static_vars = NULL;
+
+#define hid_instances (ble_svc_hid_static_vars->_hid_instances)
+#define ble_svc_hid_dsc_index (ble_svc_hid_static_vars->_ble_svc_hid_dsc_index)
+#define ble_svc_hid_dscs (ble_svc_hid_static_vars->_ble_svc_hid_dscs)
+#define ble_svc_hid_chrs (ble_svc_hid_static_vars->_ble_svc_hid_chrs)
+#define ble_svc_hid_defs (ble_svc_hid_static_vars->_ble_svc_hid_defs)
+#define ble_svc_hid_chr_index (ble_svc_hid_static_vars->_ble_svc_hid_chr_index)
+#define ble_svc_hid_svc_index (ble_svc_hid_static_vars->_ble_svc_hid_svc_index)
+
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 /* Access function */
 static int
 ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
-static struct ble_gatt_dsc_def ble_svc_hid_dscs[HID_MAX_CHRS];
-static uint8_t ble_svc_hid_dsc_index = 0; // used to store the current index in the dscs array
-static struct ble_gatt_chr_def ble_svc_hid_chrs[HID_MAX_CHRS];
-static uint8_t ble_svc_hid_chr_index = 0; // used to store the current index in the chrs array
-static uint8_t ble_svc_hid_svc_index = 0; // used to store the current index in the svcs array
-
-static struct ble_gatt_svc_def ble_svc_hid_defs[HID_MAX_SVC_INSTANCES];
 
 static int
 ble_svc_hid_chr_write(struct os_mbuf *om, uint16_t min_len,
@@ -160,7 +185,7 @@ fill_proto_mode(uint8_t instance)
     }
     demo_chr = (struct ble_gatt_chr_def) {
         /*** Report Map characteristic */
-        .uuid = uuid_proto_mode,
+        .uuid = &uuid_proto_mode.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].proto_mode_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE_NO_RSP |
@@ -199,7 +224,7 @@ fill_boot_kbd_inp(uint8_t instance)
 
     demo_chr = (struct ble_gatt_chr_def) {
         /*** Report Map characteristic */
-        .uuid = uuid_boot_kbd_inp,
+        .uuid = &uuid_boot_kbd_inp.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].kbd_inp_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
@@ -227,7 +252,7 @@ fill_boot_kbd_out(uint8_t instance)
     }
     demo_chr = (struct ble_gatt_chr_def) {
         /*** Report Map characteristic */
-        .uuid = uuid_boot_kbd_out,
+        .uuid = &uuid_boot_kbd_out.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].kbd_out_handle,
         .flags = BLE_GATT_CHR_F_READ |
@@ -266,7 +291,7 @@ fill_boot_mouse_inp(uint8_t instance)
 
     demo_chr = (struct ble_gatt_chr_def) {
         /*** Report Map characteristic */
-        .uuid = uuid_boot_mouse_inp,
+        .uuid = &uuid_boot_mouse_inp.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].mouse_inp_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
@@ -291,7 +316,7 @@ fill_rpt_map(uint8_t instance)
     struct ble_gatt_dsc_def *demo_dsc = (struct ble_gatt_dsc_def[]) {
         {
             /* External Report Reference descriptor */
-            .uuid = uuid_ext_rpt_ref,
+            .uuid = &uuid_ext_rpt_ref.u,
             .access_cb = ble_svc_hid_access,
             .att_flags = BLE_ATT_F_READ,
             .arg = &hid_instances[instance].report_map_handle,
@@ -301,7 +326,7 @@ fill_rpt_map(uint8_t instance)
     };
     demo_chr = (struct ble_gatt_chr_def) {
         /*** Report Map characteristic */
-        .uuid = uuid_report_map,
+        .uuid = &uuid_report_map.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].report_map_handle,
         .flags = BLE_GATT_CHR_F_READ |
@@ -333,7 +358,7 @@ fill_reports(uint8_t instance)
     struct ble_gatt_dsc_def *demo_dsc = (struct ble_gatt_dsc_def[]) {
         {
             /* Report Reference descriptor */
-            .uuid = uuid_rpt_ref,
+            .uuid = &uuid_rpt_ref.u,
             .access_cb = ble_svc_hid_access,
             .att_flags = BLE_ATT_F_READ
         }, {
@@ -342,7 +367,7 @@ fill_reports(uint8_t instance)
     };
     demo_chr = (struct ble_gatt_chr_def) {
         /*** Report characteristic */
-        .uuid = uuid_report,
+        .uuid = &uuid_report.u,
         .access_cb = ble_svc_hid_access,
     };
     /* Multiple instances of this characteristic are allowed*/
@@ -390,7 +415,7 @@ fill_hid_info(uint8_t instance)
 
     demo_chr = (struct ble_gatt_chr_def) {
         /*** HID Information Characteristic */
-        .uuid = uuid_hid_info,
+        .uuid = &uuid_hid_info.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].hid_info_handle,
         .flags = BLE_GATT_CHR_F_READ |
@@ -413,7 +438,7 @@ fill_ctrl_pt(uint8_t instance)
 
     demo_chr = (struct ble_gatt_chr_def) {
         /*** HID Control Point Characteristic */
-        .uuid = uuid_hid_ctrl_pt,
+        .uuid = &uuid_hid_ctrl_pt.u,
         .access_cb = ble_svc_hid_access,
         .val_handle = &hid_instances[instance].ctrl_pt_handle,
         .flags = BLE_GATT_CHR_F_WRITE_NO_RSP |
@@ -626,11 +651,22 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
     struct ble_gatt_svc_def *svc;
     uint8_t chr_idx;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_hid_static_vars == NULL) {
+        ble_svc_hid_static_vars = nimble_platform_mem_calloc(1, sizeof(ble_svc_hid_static_vars_t));
+        if (ble_svc_hid_static_vars == NULL) {
+            rc = BLE_HS_ENOMEM;
+            goto error;
+        }
+    }
+#endif
+
     svc_idx = get_curr_svc_idx();
     /* one instance is required for empty service */
     if (HID_MAX_SVC_INSTANCES  - 1 <= svc_idx) {
         /* increase instances count */
-        return BLE_HS_ENOMEM;
+        rc = BLE_HS_ENOMEM;
+        goto error;
     }
 
     memcpy(&hid_instances[svc_idx], &params, sizeof(struct ble_svc_hid_params));
@@ -659,8 +695,14 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
 
     svc = ble_svc_get_svc_block();
     svc->type = BLE_GATT_SVC_TYPE_PRIMARY;
-    svc->uuid = uuid_hid_svc;
+    svc->uuid = &uuid_hid_svc.u;
     svc->characteristics = ble_svc_hid_chrs + chr_idx;
+
+    return 0;
+error:
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_hid_reset();
+#endif
     return rc;
 }
 
@@ -688,9 +730,22 @@ ble_svc_hid_end(void)
 void
 ble_svc_hid_reset(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_hid_static_vars == NULL) {
+        return;
+    }
+#endif
+
     ble_svc_hid_dsc_index = 0;
     ble_svc_hid_chr_index = 0;
     ble_svc_hid_svc_index = 0;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_hid_static_vars != NULL) {
+        nimble_platform_mem_free(ble_svc_hid_static_vars);
+        ble_svc_hid_static_vars = NULL;
+    }
+#endif
 }
 
 /**
@@ -712,6 +767,7 @@ ble_svc_hid_init(void)
 
     rc = ble_gatts_add_svcs(ble_svc_hid_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
+
 }
 #endif
 #endif // CONFIG_BT_NIMBLE_HID_SERVICE

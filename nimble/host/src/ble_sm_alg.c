@@ -57,10 +57,14 @@
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
 #if MYNEWT_VAL(BLE_SM_SC)
-#ifndef CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+static mbedtls_ecp_keypair * keypair_ptr = NULL;
+#define keypair (*keypair_ptr)
+#else
 static mbedtls_ecp_keypair keypair;
-#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
-#endif // MYNEWT_VAL(BLE_SM_SC)
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+#endif
 #else
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(TRNG)
 static struct trng_dev *g_trng;
@@ -646,6 +650,12 @@ exit:
     swap_buf(pk, peer_pub_key_x, 32);
     swap_buf(&pk[32], peer_pub_key_y, 32);
 
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!keypair_ptr) {
+        keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
+    }
+#endif
+
     struct mbedtls_ecp_point pt = {0}, Q = {0};
     mbedtls_mpi z = {0}, d = {0};
     mbedtls_ctr_drbg_context ctr_drbg = {0};
@@ -712,6 +722,12 @@ exit:
     mbedtls_ctr_drbg_free(&ctr_drbg);
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     if (rc != 0) {
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (keypair_ptr) {
+            nimble_platform_mem_free(keypair_ptr);
+            keypair_ptr = NULL;
+        }
+#endif
         return BLE_HS_EUNKNOWN;
     }
 #else
@@ -803,6 +819,12 @@ exit:
     mbedtls_entropy_context entropy = {0};
     mbedtls_ctr_drbg_context ctr_drbg = {0};
 
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!keypair_ptr) {
+        keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
+    }
+#endif
+
     mbedtls_entropy_init(&entropy);
     mbedtls_ctr_drbg_init(&ctr_drbg);
 
@@ -840,7 +862,14 @@ exit:
     mbedtls_entropy_free( &entropy );
     if (rc != 0) {
         mbedtls_ecp_keypair_free(&keypair);
-        return BLE_HS_EUNKNOWN;
+
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (keypair_ptr) {
+            nimble_platform_mem_free(keypair_ptr);
+            keypair_ptr = NULL;
+        }
+#endif
+        rc = BLE_HS_EUNKNOWN;
     }
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     return 0;
@@ -861,6 +890,7 @@ void mbedtls_free_keypair(void)
 int
 ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 {
+
 #if MYNEWT_VAL(BLE_SM_SC_DEBUG_KEYS)
     swap_buf(pub, ble_sm_alg_dbg_pub_key, 32);
     swap_buf(&pub[32], &ble_sm_alg_dbg_pub_key[32], 32);

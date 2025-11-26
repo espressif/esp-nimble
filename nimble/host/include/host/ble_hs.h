@@ -509,7 +509,18 @@ void ble_hs_init(void);
  * @return                      SYSDOWN_IN_PROGRESS. 
  */
 int ble_hs_shutdown(int reason);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 
+/**
+ * Get the current enabled state of the BLE host.
+ *
+ * In dynamic memory mode, the host state is stored in a dynamically allocated
+ * context. Returns the current value of the enabled_state field. If the
+ * context or its internal variables are not yet initialized, 0 is returned.
+ *
+ */
+uint8_t ble_hs_get_enabled_state(void);
+#endif
 #ifdef __cplusplus
 }
 #endif

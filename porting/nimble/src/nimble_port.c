@@ -54,20 +54,62 @@
 extern void os_msys_init(void);
 
 #if CONFIG_BT_NIMBLE_ENABLED 
-
 extern void ble_hs_deinit(void);
-static struct ble_hs_stop_listener stop_listener;
+#endif
 
-#endif //CONFIG_BT_NIMBLE_ENABLED
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+typedef struct {
+    struct ble_npl_eventq eventq;
+    struct ble_npl_sem stop_sem;
+    struct ble_npl_event ev_stop;
+#if CONFIG_BT_NIMBLE_ENABLED
+    struct ble_hs_stop_listener listener;
+#endif
+} ble_npl_ctx_t;
 
+static ble_npl_ctx_t *ble_npl_ctx;
+
+#define g_eventq_dflt   (ble_npl_ctx->eventq)
+#define ble_hs_stop_sem (ble_npl_ctx->stop_sem)
+#define ble_hs_ev_stop  (ble_npl_ctx->ev_stop)
+
+#if CONFIG_BT_NIMBLE_ENABLED
+#define stop_listener   (ble_npl_ctx->listener)
+#endif
+
+#else
 static struct ble_npl_eventq g_eventq_dflt;
 static struct ble_npl_sem ble_hs_stop_sem;
 static struct ble_npl_event ble_hs_ev_stop;
+
+#if CONFIG_BT_NIMBLE_ENABLED
+static struct ble_hs_stop_listener stop_listener;
+#endif //CONFIG_BT_NIMBLE_ENABLED
+
+#endif
 
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 extern void os_mempool_deinit(void);
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_npl_ensure_ctx(void)
+{
+    if (ble_npl_ctx != NULL) {
+        return 0;
+    }
+
+    ble_npl_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_npl_ctx));
+    if (ble_npl_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+   }
+
+    return 0;
+}
 #endif
 
 /**
@@ -169,6 +211,12 @@ esp_err_t esp_nimble_deinit(void)
     npl_freertos_mempool_deinit();
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ctx) {
+        nimble_platform_mem_free(ble_npl_ctx);
+	    ble_npl_ctx = NULL;
+    }
+#endif
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     os_mempool_deinit();
 #endif
@@ -206,6 +254,13 @@ nimble_port_init(void)
         }
 
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller enable failed\n");
+        return ret;
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ret = ble_npl_ensure_ctx();
+    if (ret != ESP_OK) {
         return ret;
     }
 #endif
@@ -312,8 +367,10 @@ nimble_port_stop(void)
     return ESP_OK;
 }
 
-void
-IRAM_ATTR nimble_port_run(void)
+#if !MYNEWT_VAL(BLE_LOW_SPEED_MODE)
+IRAM_ATTR
+#endif
+void nimble_port_run(void)
 {
     struct ble_npl_event *ev;
 
@@ -328,8 +385,17 @@ IRAM_ATTR nimble_port_run(void)
     }
 }
 
+#if !MYNEWT_VAL(BLE_LOW_SPEED_MODE)
+IRAM_ATTR
+#endif
 struct ble_npl_eventq *
-IRAM_ATTR nimble_port_get_dflt_eventq(void)
+nimble_port_get_dflt_eventq(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ensure_ctx()) {
+        return NULL;
+    }
+#endif
+
     return &g_eventq_dflt;
 }

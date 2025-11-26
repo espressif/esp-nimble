@@ -26,13 +26,17 @@
 #include "nimble/hci_common.h"
 #include "ble_hs_priv.h"
 #include "ble_l2cap_coc_priv.h"
+#include "esp_nimble_mem.h"
 
 #if NIMBLE_BLE_CONNECT
 _Static_assert(sizeof (struct ble_l2cap_hdr) == BLE_L2CAP_HDR_SZ,
                "struct ble_l2cap_hdr must be 4 bytes");
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+ble_l2cap_ctx_t *ble_l2cap_ctx;
+#define ble_l2cap_chan_mem (ble_l2cap_ctx->chan_mem)
+#else
 struct os_mempool ble_l2cap_chan_pool;
-
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_l2cap_chan_mem = NULL;
 #else
@@ -41,6 +45,25 @@ static os_membuf_t ble_l2cap_chan_mem[
                     MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                     sizeof (struct ble_l2cap_chan))
 ];
+#endif // MP_RUNTIME_ALLOC
+#endif
+
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_l2cap_ensure_ctx(void)
+{
+    if (ble_l2cap_ctx != NULL) {
+        return 0;
+    }
+
+    ble_l2cap_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_l2cap_ctx));
+    if (ble_l2cap_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
 #endif
 
 STATS_SECT_DECL(ble_l2cap_stats) ble_l2cap_stats;
@@ -62,7 +85,13 @@ ble_l2cap_chan_alloc(uint16_t conn_handle)
 {
     struct ble_l2cap_chan *chan;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_l2cap_ctx == NULL) {
+        return NULL;
+    }
+#endif
     chan = os_memblock_get(&ble_l2cap_chan_pool);
+
     if (chan == NULL) {
         return NULL;
     }
@@ -90,7 +119,14 @@ ble_l2cap_chan_free(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     memset(chan, 0xff, sizeof *chan);
 #endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_l2cap_ctx == NULL) {
+        return;
+    }
+#endif
     rc = os_memblock_put(&ble_l2cap_chan_pool, chan);
+
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
 
     STATS_INC(ble_l2cap_stats, chan_delete);
@@ -214,7 +250,7 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
 
     return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
 }
-
+#if MYNEWT_VAL(BLE_RECONFIG_MTU)
 int
 ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu, uint16_t new_mps)
 {
@@ -236,6 +272,7 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t
 
     return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
 }
+#endif
 
 int
 ble_l2cap_disconnect(struct ble_l2cap_chan *chan)
@@ -262,7 +299,11 @@ ble_l2cap_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
 void
 ble_l2cap_remove_rx(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 {
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+    conn->bhc_rx_scid = 0x0000;
+#else
     conn->bhc_rx_chan = NULL;
+#endif
     os_mbuf_free_chain(chan->rx_buf);
     chan->rx_buf = NULL;
     chan->rx_len = 0;
@@ -435,12 +476,20 @@ ble_l2cap_rx(struct ble_hs_conn *conn,
         }
 
         /* Remember channel and length of L2CAP data for reassembly. */
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+        conn->bhc_rx_scid = chan->scid;
+#else
         conn->bhc_rx_chan = chan;
-        chan->rx_len = l2cap_hdr.len;
-        break;
+#endif
+	chan->rx_len = l2cap_hdr.len;
+	break;
 
     case BLE_HCI_PB_MIDDLE:
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+        chan = ble_hs_conn_chan_find_by_scid(conn,conn->bhc_rx_scid);
+#else
         chan = conn->bhc_rx_chan;
+#endif
         if (chan == NULL || chan->rx_buf == NULL) {
             /* Middle fragment without the start.  Discard new packet. */
             rc = BLE_HS_EBADDATA;
@@ -508,28 +557,61 @@ ble_l2cap_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_l2cap_ensure_ctx();
+    if (rc != 0) {
+        return rc;
+    }
+
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    size_t chan_mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_MAX_CHANS) +
+                         MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
+                         sizeof (struct ble_l2cap_chan)) * sizeof(os_membuf_t);
+    if (ble_l2cap_chan_mem == NULL) {
+        ble_l2cap_chan_mem = (os_membuf_t *)nimble_platform_mem_calloc(1, chan_mem_bytes);
+        if (ble_l2cap_chan_mem == NULL) {
+            nimble_platform_mem_free(ble_l2cap_ctx);
+            ble_l2cap_ctx = NULL;
+	    return BLE_HS_ENOMEM;
+        }
+    }
+#endif
+#endif
+
     rc = os_mempool_init(&ble_l2cap_chan_pool,
                          MYNEWT_VAL(BLE_L2CAP_MAX_CHANS) +
                          MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                          sizeof (struct ble_l2cap_chan),
                          ble_l2cap_chan_mem, "ble_l2cap_chan_pool");
+
+
     if (rc != 0) {
-        return BLE_HS_EOS;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        nimble_platform_mem_free(ble_l2cap_chan_mem);
+        ble_l2cap_chan_mem = NULL;
+#endif
+        memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
+
+	nimble_platform_mem_free(ble_l2cap_ctx);
+	ble_l2cap_ctx = NULL;
+#endif
+       return BLE_HS_EOS;
     }
 
     rc = ble_l2cap_sig_init();
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     rc = ble_l2cap_coc_init();
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     rc = ble_sm_init();
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     rc = stats_init_and_reg(
@@ -540,6 +622,38 @@ ble_l2cap_init(void)
     }
 
     return 0;
+done:
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    nimble_platform_mem_free(ble_l2cap_chan_mem);
+    ble_l2cap_chan_mem = NULL;
+#endif
+    nimble_platform_mem_free(ble_l2cap_ctx);
+    ble_l2cap_ctx = NULL;
+#endif
+    return rc;
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_l2cap_deinit(void)
+{
+    if (ble_l2cap_ctx != NULL) {
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        if (ble_l2cap_chan_mem != NULL) {
+            nimble_platform_mem_free(ble_l2cap_chan_mem);
+            ble_l2cap_chan_mem = NULL;
+        }
+#endif
+        memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
+    }
+    ble_l2cap_sig_deinit();
+    ble_l2cap_coc_deinit();
+    ble_sm_deinit();
+
+    nimble_platform_mem_free(ble_l2cap_ctx);
+    ble_l2cap_ctx = NULL;
+}
+#endif
 
 #endif

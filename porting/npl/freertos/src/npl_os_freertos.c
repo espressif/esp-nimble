@@ -37,6 +37,7 @@
 #include "soc/soc_caps.h"
 
 #include "esp_nimble_mem.h"
+#include "host/ble_hs.h"
 
 portMUX_TYPE ble_port_mutex = portMUX_INITIALIZER_UNLOCKED;
 
@@ -106,60 +107,128 @@ static const char *TAG = "Timer";
 
 #define BLE_TOTAL_MUTEX_COUNT (10)
 
-#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    struct os_mempool ev_pool;
+    struct os_mempool evq_pool;
+    struct os_mempool co_pool;
+    struct os_mempool sem_pool;
+    struct os_mempool mutex_pool;
 
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
+    os_membuf_t *ev_buf;
+#else
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    os_membuf_t *ev_buf;
+#else
+    os_membuf_t ev_buf[
+        OS_MEMPOOL_SIZE(BLE_TOTAL_EV_COUNT, sizeof (struct ble_npl_event_freertos))
+    ];
+#endif // MP_RUNTIME_ALLOC
+
+#endif
+
+#if CONFIG_BT_CONTROLLER_ENABLED
+    os_membuf_t *evq_buf;
+    os_membuf_t *co_buf;
+    os_membuf_t *sem_buf;
+    os_membuf_t *mutex_buf;
+#else
+    os_membuf_t evq_buf[
+        OS_MEMPOOL_SIZE(BLE_TOTAL_EVQ_COUNT, sizeof (struct ble_npl_eventq_freertos))
+    ];
+
+    os_membuf_t co_buf[
+        OS_MEMPOOL_SIZE(BLE_TOTAL_CO_COUNT, sizeof (struct ble_npl_callout_freertos))
+    ];
+
+    os_membuf_t sem_buf[
+        OS_MEMPOOL_SIZE(BLE_TOTAL_SEM_COUNT, sizeof (struct ble_npl_sem_freertos))
+    ];
+
+    os_membuf_t mutex_buf[
+        OS_MEMPOOL_SIZE(BLE_TOTAL_MUTEX_COUNT, sizeof (struct ble_npl_mutex_freertos))
+    ];
+#endif /* CONFIG_BT_CONTROLLER_ENABLED */
+} ble_freertos_ctx_t;
+
+static ble_freertos_ctx_t *ble_freertos_ctx;
+
+#define ble_freertos_ev_pool    (ble_freertos_ctx->ev_pool)
+#define ble_freertos_evq_pool   (ble_freertos_ctx->evq_pool)
+#define ble_freertos_co_pool    (ble_freertos_ctx->co_pool)
+#define ble_freertos_sem_pool   (ble_freertos_ctx->sem_pool)
+#define ble_freertos_mutex_pool (ble_freertos_ctx->mutex_pool)
+
+#define ble_freertos_ev_buf      (ble_freertos_ctx->ev_buf)
+#define ble_freertos_evq_buf     (ble_freertos_ctx->evq_buf)
+#define ble_freertos_co_buf      (ble_freertos_ctx->co_buf)
+#define ble_freertos_sem_buf     (ble_freertos_ctx->sem_buf)
+#define ble_freertos_mutex_buf   (ble_freertos_ctx->mutex_buf)
+#else
 struct os_mempool ble_freertos_ev_pool;
-static os_membuf_t *ble_freertos_ev_buf = NULL;
+
+struct os_mempool ble_freertos_evq_pool;
+struct os_mempool ble_freertos_co_pool;
+struct os_mempool ble_freertos_sem_pool;
+struct os_mempool ble_freertos_mutex_pool;
+
+#if CONFIG_BT_CONTROLLER_ENABLED
+
+static os_membuf_t *ble_freertos_evq_buf = NULL;
+static os_membuf_t *ble_freertos_co_buf = NULL;
+static os_membuf_t *ble_freertos_sem_buf = NULL;
+static os_membuf_t *ble_freertos_mutex_buf = NULL;
 
 #else
 
-struct os_mempool ble_freertos_ev_pool;
+static os_membuf_t ble_freertos_evq_buf[
+    OS_MEMPOOL_SIZE(BLE_TOTAL_EVQ_COUNT, sizeof (struct ble_npl_eventq_freertos))
+];
+
+static os_membuf_t ble_freertos_co_buf[
+    OS_MEMPOOL_SIZE(BLE_TOTAL_CO_COUNT, sizeof (struct ble_npl_callout_freertos))
+];
+
+static os_membuf_t ble_freertos_sem_buf[
+    OS_MEMPOOL_SIZE(BLE_TOTAL_SEM_COUNT, sizeof (struct ble_npl_sem_freertos))
+];
+
+static os_membuf_t ble_freertos_mutex_buf[
+    OS_MEMPOOL_SIZE(BLE_TOTAL_MUTEX_COUNT, sizeof (struct ble_npl_mutex_freertos))
+];
+
+#endif /* CONFIG_BT_CONTROLLER_ENABLED */
+
+#if (SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+static os_membuf_t *ble_freertos_ev_buf = NULL;
+#else
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_freertos_ev_buf = NULL;
 #else
 static os_membuf_t ble_freertos_ev_buf[
     OS_MEMPOOL_SIZE(BLE_TOTAL_EV_COUNT, sizeof (struct ble_npl_event_freertos))
 ];
-#endif
+#endif // MP_RUNTIME_ALLOC
 
 #endif
+#endif // BLE_STATIC_TO_DYNAMIC
 
-#if CONFIG_BT_CONTROLLER_ENABLED
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_freertos_ensure_ctx(void)
+{
+    if (ble_freertos_ctx != NULL) {
+        return 0;
+    }
 
-struct os_mempool ble_freertos_evq_pool;
-static os_membuf_t *ble_freertos_evq_buf = NULL;
+    ble_freertos_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_freertos_ctx));
+    if (ble_freertos_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
 
-struct os_mempool ble_freertos_co_pool;
-static os_membuf_t *ble_freertos_co_buf = NULL;
-
-struct os_mempool ble_freertos_sem_pool;
-static os_membuf_t *ble_freertos_sem_buf = NULL;
-
-struct os_mempool ble_freertos_mutex_pool;
-static os_membuf_t *ble_freertos_mutex_buf = NULL;
-
-#else
-
-struct os_mempool ble_freertos_evq_pool;
-static os_membuf_t ble_freertos_evq_buf[
-    OS_MEMPOOL_SIZE(BLE_TOTAL_EVQ_COUNT, sizeof (struct ble_npl_eventq_freertos))
-];
-
-struct os_mempool ble_freertos_co_pool;
-static os_membuf_t ble_freertos_co_buf[
-    OS_MEMPOOL_SIZE(BLE_TOTAL_CO_COUNT, sizeof (struct ble_npl_callout_freertos))
-];
-
-struct os_mempool ble_freertos_sem_pool;
-static os_membuf_t ble_freertos_sem_buf[
-    OS_MEMPOOL_SIZE(BLE_TOTAL_SEM_COUNT, sizeof (struct ble_npl_sem_freertos))
-];
-
-struct os_mempool ble_freertos_mutex_pool;
-static os_membuf_t ble_freertos_mutex_buf[
-    OS_MEMPOOL_SIZE(BLE_TOTAL_MUTEX_COUNT, sizeof (struct ble_npl_mutex_freertos))
-];
-
+    return 0;
+}
 #endif
 
 bool
@@ -179,13 +248,15 @@ npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
                     void *arg)
 {
     struct ble_npl_event_freertos *event = NULL;
+
 #if OS_MEM_ALLOC
     if (!ev->event) {
         ev->event = os_memblock_get(&ble_freertos_ev_pool);
     }
+
 #else
     if(!ev->event) {
-        ev->event = nimble_platform_mem_malloc(sizeof(struct ble_npl_event_freertos));
+        ev->event = nimble_platform_mem_calloc(1,sizeof(struct ble_npl_event_freertos));
     }
 #endif
     event = (struct ble_npl_event_freertos *)ev->event;
@@ -201,6 +272,7 @@ npl_freertos_event_deinit(struct ble_npl_event *ev)
 {
     BLE_LL_ASSERT(ev->event);
 #if OS_MEM_ALLOC
+
     os_memblock_put(&ble_freertos_ev_pool,ev->event);
 #else
     nimble_platform_mem_free(ev->event);
@@ -220,6 +292,7 @@ void
 npl_freertos_eventq_init(struct ble_npl_eventq *evq)
 {
     struct ble_npl_eventq_freertos *eventq = NULL;
+
 #if OS_MEM_ALLOC
     if (!evq->eventq) {
         evq->eventq = os_memblock_get(&ble_freertos_evq_pool);
@@ -232,7 +305,7 @@ npl_freertos_eventq_init(struct ble_npl_eventq *evq)
     }
 #else
     if(!evq->eventq) {
-        evq->eventq = nimble_platform_mem_malloc(sizeof(struct ble_npl_eventq_freertos));
+        evq->eventq = nimble_platform_mem_calloc(1,sizeof(struct ble_npl_eventq_freertos));
         eventq = (struct ble_npl_eventq_freertos*)evq->eventq;
         BLE_LL_ASSERT(eventq);
 
@@ -417,7 +490,7 @@ npl_freertos_mutex_init(struct ble_npl_mutex *mu)
     }
 #else
     if(!mu->mutex) {
-        mu->mutex = nimble_platform_mem_malloc(sizeof(struct ble_npl_mutex_freertos));
+        mu->mutex = nimble_platform_mem_calloc(1,sizeof(struct ble_npl_mutex_freertos));
         mutex = (struct ble_npl_mutex_freertos *)mu->mutex;
 
         if (!mutex) {
@@ -564,7 +637,7 @@ npl_freertos_sem_init(struct ble_npl_sem *sem, uint16_t tokens)
     }
 #else
     if(!sem->sem) {
-        sem->sem = nimble_platform_mem_malloc(sizeof(struct ble_npl_sem_freertos));
+        sem->sem = nimble_platform_mem_calloc(1,sizeof(struct ble_npl_sem_freertos));
         semaphor = (struct ble_npl_sem_freertos *)sem->sem;
 
         if (!semaphor) {
@@ -757,7 +830,7 @@ npl_freertos_callout_init(struct ble_npl_callout *co, struct ble_npl_eventq *evq
 #else
 
     if(!co->co) {
-        co->co = nimble_platform_mem_malloc(sizeof(struct ble_npl_callout_freertos));
+        co->co = nimble_platform_mem_calloc(1,sizeof(struct ble_npl_callout_freertos));
         callout = (struct ble_npl_callout_freertos *)co->co;
         if (!callout) {
             return -1;
@@ -1143,9 +1216,8 @@ struct npl_funcs_t * npl_freertos_funcs_get(void)
 
 void npl_freertos_funcs_init(void)
 {
-    npl_funcs = (struct npl_funcs_t *)nimble_platform_mem_malloc(sizeof(struct npl_funcs_t));
+    npl_funcs = (struct npl_funcs_t *)nimble_platform_mem_calloc(1,sizeof(struct npl_funcs_t));
     if(!npl_funcs) {
-        printf("npl funcs init failed\n");
         assert(0);
     }
     memcpy(npl_funcs, &npl_funcs_ro, sizeof(struct npl_funcs_t));
@@ -1155,8 +1227,14 @@ int npl_freertos_mempool_init(void)
 {
     int rc = -1;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_freertos_ensure_ctx()) {
+        goto _error;
+    }
+#endif
+
 #if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED && !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    ble_freertos_ev_buf  = nimble_platform_mem_malloc(OS_MEMPOOL_SIZE(BLE_TOTAL_EV_COUNT, sizeof (struct ble_npl_event_freertos)) * sizeof(os_membuf_t));
+    ble_freertos_ev_buf  = nimble_platform_mem_calloc(1,OS_MEMPOOL_SIZE(BLE_TOTAL_EV_COUNT, sizeof (struct ble_npl_event_freertos)) * sizeof(os_membuf_t));
     if(!ble_freertos_ev_buf) {
         goto _error;
     }
@@ -1164,21 +1242,21 @@ int npl_freertos_mempool_init(void)
 
 #if CONFIG_BT_CONTROLLER_ENABLED
     /* It is not recommended to use MP_RUNTIME_ALLOC when the block size is 4 bytes. */
-    ble_freertos_evq_buf  = nimble_platform_mem_malloc(OS_MEMPOOL_SIZE(BLE_TOTAL_EVQ_COUNT, sizeof (struct ble_npl_eventq_freertos)) * sizeof(os_membuf_t));
+    ble_freertos_evq_buf  = nimble_platform_mem_calloc(1,OS_MEMPOOL_SIZE(BLE_TOTAL_EVQ_COUNT, sizeof (struct ble_npl_eventq_freertos)) * sizeof(os_membuf_t));
     if(!ble_freertos_evq_buf) {
         goto _error;
     }
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    ble_freertos_co_buf  = nimble_platform_mem_malloc(OS_MEMPOOL_SIZE(BLE_TOTAL_CO_COUNT, sizeof (struct ble_npl_callout_freertos)) * sizeof(os_membuf_t));
+    ble_freertos_co_buf  = nimble_platform_mem_calloc(1,OS_MEMPOOL_SIZE(BLE_TOTAL_CO_COUNT, sizeof (struct ble_npl_callout_freertos)) * sizeof(os_membuf_t));
     if(!ble_freertos_co_buf) {
         goto _error;
     }
 #endif
-    ble_freertos_sem_buf  = nimble_platform_mem_malloc(OS_MEMPOOL_SIZE(BLE_TOTAL_SEM_COUNT, sizeof (struct ble_npl_sem_freertos)) * sizeof(os_membuf_t));
+    ble_freertos_sem_buf  = nimble_platform_mem_calloc(1,OS_MEMPOOL_SIZE(BLE_TOTAL_SEM_COUNT, sizeof (struct ble_npl_sem_freertos)) * sizeof(os_membuf_t));
     if(!ble_freertos_sem_buf) {
         goto _error;
     }
-    ble_freertos_mutex_buf  = nimble_platform_mem_malloc( OS_MEMPOOL_SIZE(BLE_TOTAL_MUTEX_COUNT, sizeof (struct ble_npl_mutex_freertos)) * sizeof(os_membuf_t));
+    ble_freertos_mutex_buf  = nimble_platform_mem_calloc(1, OS_MEMPOOL_SIZE(BLE_TOTAL_MUTEX_COUNT, sizeof (struct ble_npl_mutex_freertos)) * sizeof(os_membuf_t));
     if(!ble_freertos_mutex_buf) {
         goto _error;
     }
@@ -1188,6 +1266,7 @@ int npl_freertos_mempool_init(void)
     rc = os_mempool_init(&ble_freertos_ev_pool, BLE_TOTAL_EV_COUNT,
                          sizeof (struct ble_npl_event_freertos), ble_freertos_ev_buf,
                          "ble_freertos_ev_pool");
+
     if(rc != 0) {
         goto _error;
     }
@@ -1195,30 +1274,33 @@ int npl_freertos_mempool_init(void)
     rc = os_mempool_init(&ble_freertos_evq_pool, BLE_TOTAL_EVQ_COUNT,
                          sizeof (struct ble_npl_eventq_freertos), ble_freertos_evq_buf,
                          "ble_freertos_evq_pool");
-    if(rc != 0) {
+
+  if(rc != 0) {
         goto _error;
     }
 
     rc = os_mempool_init(&ble_freertos_co_pool, BLE_TOTAL_CO_COUNT,
                          sizeof (struct ble_npl_callout_freertos), ble_freertos_co_buf,
                          "ble_freertos_co_pool");
+
     if(rc != 0) {
         goto _error;
     }
-
     rc = os_mempool_init(&ble_freertos_sem_pool, BLE_TOTAL_SEM_COUNT,
                          sizeof (struct ble_npl_sem_freertos), ble_freertos_sem_buf,
                          "ble_freertos_sem_pool");
-    if(rc != 0) {
+
+     if(rc != 0) {
         goto _error;
     }
-
     rc = os_mempool_init(&ble_freertos_mutex_pool, BLE_TOTAL_MUTEX_COUNT,
                          sizeof (struct ble_npl_mutex_freertos), ble_freertos_mutex_buf,
                          "ble_freertos_mutex_pool");
+
     if(rc == 0) {
         return rc;
     }
+
 _error:
 
 #if CONFIG_BT_CONTROLLER_ENABLED
@@ -1236,16 +1318,23 @@ _error:
     }
     if (ble_freertos_mutex_buf) {
         nimble_platform_mem_free(ble_freertos_mutex_buf);
-        ble_freertos_mutex_buf = NULL;
+	    ble_freertos_mutex_buf = NULL;
     }
 #endif
 
-#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
-    if (ble_freertos_ev_buf) {
+#if (SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+    if(ble_freertos_ev_buf) {
         nimble_platform_mem_free(ble_freertos_ev_buf);
-        ble_freertos_ev_buf = NULL;
+	    ble_freertos_ev_buf = NULL;
     }
-    return -1;
+    rc = -1;
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_freertos_ctx) {
+        nimble_platform_mem_free(ble_freertos_ctx);
+        ble_freertos_ctx = NULL;
+    }
 #endif
 
    BLE_LL_ASSERT(rc == 0);
@@ -1277,6 +1366,12 @@ void npl_freertos_mempool_deinit(void)
     if (ble_freertos_mutex_buf) {
         nimble_platform_mem_free(ble_freertos_mutex_buf);
         ble_freertos_mutex_buf = NULL;
+    }
+#endif
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_freertos_ctx) {
+        nimble_platform_mem_free(ble_freertos_ctx);
+	    ble_freertos_ctx = NULL;
     }
 #endif
 }

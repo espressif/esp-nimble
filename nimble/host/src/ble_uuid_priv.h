@@ -37,6 +37,7 @@ int ble_uuid_to_any(const ble_uuid_t *uuid, ble_uuid_any_t *uuid_any);
 int ble_uuid_to_mbuf(const ble_uuid_t *uuid, struct os_mbuf *om);
 int ble_uuid_flat(const ble_uuid_t *uuid, void *dst);
 int ble_uuid_length(const ble_uuid_t *uuid);
+void ble_uuid_deinit(void);
 
 #ifdef __cplusplus
 }

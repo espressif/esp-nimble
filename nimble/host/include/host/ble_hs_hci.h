@@ -120,6 +120,7 @@ int ble_hs_hci_send_vs_cmd(uint16_t ocf, const void *cmdbuf, uint8_t cmdlen,
                            void *rspbuf, uint8_t rsplen);
 #endif
 
+#if MYNEWT_VAL(BLE_UTIL_API)
 /**
  * Instructs the controller to set or clear a bit controlled by the Host in the
  * Link Layer FeatureSet stored in the Controller.
@@ -129,6 +130,7 @@ int ble_hs_hci_send_vs_cmd(uint16_t ocf, const void *cmdbuf, uint8_t cmdlen,
  * @return          0 on success, error code on failure
  */
 int ble_hs_hci_set_host_feature(uint8_t bit_num, uint8_t bit_val);
+#endif
 
 #ifdef __cplusplus
 }

@@ -28,6 +28,7 @@
 void *
 ble_sm_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom)
 {
+#if NIMBLE_BLE_SM
     struct ble_sm_hdr *hdr;
     void *data;
 
@@ -47,12 +48,15 @@ ble_sm_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom)
     hdr->opcode = opcode;
 
     return hdr->data;
+#endif
+    return NULL;
 }
 
 /* this function consumes tx os_mbuf */
 int
 ble_sm_tx(uint16_t conn_handle, struct os_mbuf *txom)
 {
+#if NIMBLE_BLE_SM
     struct ble_l2cap_chan *chan;
     struct ble_hs_conn *conn;
     int rc;
@@ -70,6 +74,8 @@ ble_sm_tx(uint16_t conn_handle, struct os_mbuf *txom)
     }
 
     return rc;
+#endif
+    return BLE_HS_ENOTSUP;
 }
 
 #endif
