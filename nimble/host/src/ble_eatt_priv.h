@@ -32,14 +32,16 @@ typedef int (* ble_eatt_att_rx_fn)(uint16_t conn_handle, uint16_t cid, struct os
 #define BLE_GATT_OP_DUMMY  0xF2
 
 #if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
-void ble_eatt_init(ble_eatt_att_rx_fn att_rx_fn);
+int ble_eatt_init(ble_eatt_att_rx_fn att_rx_fn);
+void ble_eatt_deinit(void);
 uint16_t ble_eatt_get_available_chan_cid(uint16_t conn_handle, uint8_t op);
 void ble_eatt_release_chan(uint16_t conn_handle, uint8_t op);
 int ble_eatt_tx(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom);
 #else
-static inline void
+static inline int
 ble_eatt_init(ble_eatt_att_rx_fn att_rx_fn)
 {
+    return 0;
 }
 
 static inline void
@@ -54,5 +56,6 @@ ble_eatt_get_available_chan_cid(uint16_t conn_handle, uint8_t op)
     return BLE_L2CAP_CID_ATT;
 }
 
+static inline void ble_eatt_deinit(void) {}
 #endif
 #endif

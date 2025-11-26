@@ -38,21 +38,27 @@ static int
 ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
 
+static const ble_uuid16_t uuid_chr_power_level = BLE_UUID16_INIT(BLE_SVC_TPS_CHR_UUID16_TX_POWER_LEVEL);
+static const ble_uuid16_t uuid_svc_tps = BLE_UUID16_INIT(BLE_SVC_TPS_UUID16);
+
+static const struct ble_gatt_chr_def tps_characteristics[] = {
+    {
+        /*** Characteristic: Tx Power Level. */
+        .uuid = &uuid_chr_power_level.u,
+        .access_cb = ble_svc_tps_access,
+        .flags = BLE_GATT_CHR_F_READ,
+    }, {
+	0, /* No more characeteristics in this service */
+    },
+};
+
 static const struct ble_gatt_svc_def ble_svc_tps_defs[] = {
     {
-        /*** Service: Tx Power Service. */
+        /*** Service: Tx Power Service */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_TPS_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
-            /*** Characteristic: Tx Power Level. */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_TPS_CHR_UUID16_TX_POWER_LEVEL),
-            .access_cb = ble_svc_tps_access,
-            .flags = BLE_GATT_CHR_F_READ,
-        }, {
-            0, /* No more characteristics in this service. */
-        } },
+        .uuid = &uuid_svc_tps.u,
+        .characteristics = tps_characteristics,
     },
-
     {
         0, /* No more services. */
     },

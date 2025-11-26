@@ -278,6 +278,7 @@ ble_hs_hci_set_chan_class(const uint8_t *chan_map)
                              &cmd, sizeof(cmd), NULL, 0);
 }
 
+#if MYNEWT_VAL(BLE_UTIL_API)
 int
 ble_hs_hci_util_set_data_addr_change(uint8_t adv_handle, uint8_t change_reason)
 {
@@ -291,7 +292,9 @@ ble_hs_hci_util_set_data_addr_change(uint8_t adv_handle, uint8_t change_reason)
 
     return ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), NULL, 0);
 }
+#endif
 
+#if MYNEWT_VAL(BLE_DTM_MODE_TEST)
 int
 ble_hs_hci_dtm_tx_start(const uint8_t tx_chan, const uint8_t test_data_len,
 		        const uint8_t payload)
@@ -360,7 +363,9 @@ ble_hs_hci_dtm_enh_rx_start(const uint8_t rx_chan, const uint8_t index,
 
     return ble_hs_hci_cmd_tx_no_rsp(opcode, &cmd, sizeof(cmd));
 }
+#endif
 
+#if MYNEWT_VAL(BLE_UTIL_API)
 int
 ble_hs_hci_set_host_feature(uint8_t bit_num, uint8_t bit_val)
 {
@@ -377,6 +382,7 @@ ble_hs_hci_set_host_feature(uint8_t bit_num, uint8_t bit_val)
                                         BLE_HCI_OCF_LE_SET_HOST_FEATURE),
                              &cmd, sizeof(cmd), NULL, 0);
 }
+#endif
 
 int
 ble_hs_hci_rd_all_local_supp_features(uint8_t* status, uint8_t* max_page,

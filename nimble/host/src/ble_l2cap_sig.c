@@ -46,6 +46,7 @@
 #include <errno.h>
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
+#include "esp_nimble_mem.h"
 
 #if NIMBLE_BLE_CONNECT
 /*****************************************************************************
@@ -66,6 +67,9 @@
 #define BLE_L2CAP_MAX_COC_CONN_REQ  (5)
 #else
 #define BLE_L2CAP_MAX_COC_CONN_REQ  (1)
+#endif
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
 #endif
 
 struct ble_l2cap_sig_proc {
@@ -100,8 +104,6 @@ struct ble_l2cap_sig_proc {
 };
 
 STAILQ_HEAD(ble_l2cap_sig_proc_list, ble_l2cap_sig_proc);
-
-static struct ble_l2cap_sig_proc_list ble_l2cap_sig_procs;
 
 typedef int ble_l2cap_sig_rx_fn(uint16_t conn_handle,
                                 struct ble_l2cap_sig_hdr *hdr,
@@ -160,8 +162,9 @@ static ble_l2cap_sig_rx_fn * const ble_l2cap_sig_dispatch[] = {
     [BLE_L2CAP_SIG_OP_CREDIT_RECONFIG_RSP]  = ble_l2cap_sig_credit_base_reconfig_rsp_rx,
 };
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static struct ble_l2cap_sig_proc_list ble_l2cap_sig_procs;
 static uint8_t ble_l2cap_sig_cur_id;
-
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_l2cap_sig_proc_mem = NULL;
 #else
@@ -172,6 +175,30 @@ static os_membuf_t ble_l2cap_sig_proc_mem[
 #endif
 
 static struct os_mempool ble_l2cap_sig_proc_pool;
+#else
+
+typedef struct {
+    os_membuf_t *sig_proc_mem;
+
+    struct os_mempool sig_proc_pool;
+
+    /* active signal process list */
+    struct ble_l2cap_sig_proc_list sig_procs;
+
+    /* current signal identifier */
+    uint8_t sig_cur_id;
+} ble_l2cap_sig_ctx_t;
+
+static ble_l2cap_sig_ctx_t *ble_l2cap_sig_ctx;
+
+/* macros for access */
+#define ble_l2cap_sig_proc_mem   (ble_l2cap_sig_ctx->sig_proc_mem)
+#define ble_l2cap_sig_proc_pool  (ble_l2cap_sig_ctx->sig_proc_pool)
+#define ble_l2cap_sig_procs      (ble_l2cap_sig_ctx->sig_procs)
+#define ble_l2cap_sig_cur_id     (ble_l2cap_sig_ctx->sig_cur_id)
+
+#endif // BLE_STATIC_TO_DYNAMIC
+
 
 /*****************************************************************************
  * $debug                                                                    *
@@ -226,6 +253,7 @@ ble_l2cap_sig_proc_alloc(void)
     struct ble_l2cap_sig_proc *proc;
 
     proc = os_memblock_get(&ble_l2cap_sig_proc_pool);
+
     if (proc != NULL) {
         memset(proc, 0, sizeof *proc);
     }
@@ -2049,6 +2077,28 @@ ble_l2cap_sig_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_l2cap_sig_ctx) {
+        ble_l2cap_sig_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_l2cap_sig_ctx));
+        if (!ble_l2cap_sig_ctx) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    size_t proc_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_SIG_MAX_PROCS),
+                                        sizeof (struct ble_l2cap_sig_proc)) * sizeof(os_membuf_t);
+
+    if (!ble_l2cap_sig_proc_mem) {
+        ble_l2cap_sig_proc_mem = nimble_platform_mem_calloc(1, proc_bytes);
+        if (!ble_l2cap_sig_proc_mem) {
+            // free the allocated memory
+            nimble_platform_mem_free(ble_l2cap_sig_ctx);
+            return BLE_HS_ENOMEM;
+        }
+    }
+#endif
+#endif
     STAILQ_INIT(&ble_l2cap_sig_procs);
 
     rc = os_mempool_init(&ble_l2cap_sig_proc_pool,
@@ -2056,11 +2106,39 @@ ble_l2cap_sig_init(void)
                          sizeof (struct ble_l2cap_sig_proc),
                          ble_l2cap_sig_proc_mem,
                          "ble_l2cap_sig_proc_pool");
+
     if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        nimble_platform_mem_free(ble_l2cap_sig_proc_mem);
+        ble_l2cap_sig_proc_mem = NULL;
+#endif
+        nimble_platform_mem_free(ble_l2cap_sig_ctx);
+        ble_l2cap_sig_ctx = NULL;
+#endif
         return rc;
     }
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_l2cap_sig_deinit(void)
+{
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (ble_l2cap_sig_proc_mem) {
+        nimble_platform_mem_free(ble_l2cap_sig_proc_mem);
+        ble_l2cap_sig_proc_mem = NULL;
+    }
+#endif
+    if (ble_l2cap_sig_ctx) {
+        nimble_platform_mem_free(ble_l2cap_sig_ctx);
+        ble_l2cap_sig_ctx = NULL;
+    }
+
+    return ;
+}
+#endif
 
 #endif

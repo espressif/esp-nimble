@@ -40,7 +40,12 @@
 #define OS_MEMPOOL_TRUE_BLOCK_SIZE(mp) OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size)
 #endif
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 STAILQ_HEAD(, os_mempool) g_os_mempool_list = STAILQ_HEAD_INITIALIZER(g_os_mempool_list);
+#else
+STAILQ_HEAD(, os_mempool) g_os_mempool_list;
+static bool g_os_mempool_list_inited;
+#endif
 
 #if MYNEWT_VAL(OS_MEMPOOL_POISON)
 static uint32_t os_mem_poison = 0xde7ec7ed;
@@ -118,6 +123,17 @@ os_mempool_guard_check(const struct os_mempool *mp, void *start)
 #define os_mempool_guard_check(mp, start)
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static void
+os_mempool_list_ensure_init(void)
+{
+    if (!g_os_mempool_list_inited) {
+        STAILQ_INIT(&g_os_mempool_list);
+        g_os_mempool_list_inited = true;
+    }
+}
+#endif
+
 static os_error_t
 os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
                          uint32_t block_size, void *membuf, const char *name,
@@ -159,7 +175,7 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
     mp->name = name;
     SLIST_FIRST(mp) = membuf;
 
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (membuf == NULL) {
         /* Runtime allocation mode */
         mp->mp_membuf_addr = 0;
@@ -173,7 +189,7 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
         STAILQ_INSERT_TAIL(&g_os_mempool_list, mp, mp_list);
         return OS_OK;
     }
-    #endif
+#endif
 
     if (blocks > 0) {
         os_mempool_poison(mp, membuf);
@@ -194,6 +210,22 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
         /* Last one in the list should be NULL */
         SLIST_NEXT(block_ptr, mb_next) = NULL;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_mempool_list_ensure_init();
+
+    /* Check if mempool is already in the list (reinitialization case) */
+    {
+        struct os_mempool *cur;
+        STAILQ_FOREACH(cur, &g_os_mempool_list, mp_list) {
+            if (cur == mp) {
+                /* Mempool is already in the list, remove it first */
+                os_mempool_unregister(mp);
+                break;
+            }
+        }
+    }
+#endif
 
     STAILQ_INSERT_TAIL(&g_os_mempool_list, mp, mp_list);
 
@@ -236,6 +268,9 @@ os_mempool_unregister(struct os_mempool *mp)
      * than with `STAILQ_REMOVE` to allow for a graceful failure if the mempool
      * isn't found.
      */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_mempool_list_ensure_init();
+#endif
 
     prev = NULL;
     STAILQ_FOREACH(cur, &g_os_mempool_list, mp_list) {
@@ -275,7 +310,7 @@ os_mempool_clear(struct os_mempool *mp)
         return OS_INVALID_PARM;
     }
 
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* For runtime allocation mode, check whether all blocks have been freed */
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         assert(mp->mp_num_free == mp->mp_num_blocks);
@@ -295,7 +330,7 @@ os_mempool_clear(struct os_mempool *mp)
         mp->mp_min_free = mp->mp_num_blocks;
         return OS_OK;
     }
-    #endif
+#endif
 
     true_block_size = OS_MEMPOOL_TRUE_BLOCK_SIZE(mp);
 
@@ -329,11 +364,11 @@ os_mempool_clear(struct os_mempool *mp)
 os_error_t
 os_mempool_ext_clear(struct os_mempool_ext *mpe)
 {
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     mpe->mpe_mp.mp_flags &= ~OS_MEMPOOL_F_EXT;
-    #else
+#else
     mpe->mpe_mp.mp_flags = 0;
-    #endif
+#endif
     mpe->mpe_put_cb = NULL;
     mpe->mpe_put_arg = NULL;
 
@@ -345,12 +380,12 @@ os_mempool_is_sane(const struct os_mempool *mp)
 {
     struct os_memblock *block;
 
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* Runtime mode cannot verify sanity */
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         assert(0);
     }
-    #endif
+#endif
 
     /* Verify that each block in the free list belongs to the mempool. */
     SLIST_FOREACH(block, mp, mb_next) {
@@ -371,12 +406,12 @@ os_memblock_from(const struct os_mempool *mp, const void *block_addr)
     uintptr_t baddr32;
     uint32_t end;
 
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* Runtime allocation mode doesn't support from */
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         assert(0);
     }
-    #endif
+#endif
 
     static_assert(sizeof block_addr == sizeof baddr32,
                   "Pointer to void must be 32-bits.");
@@ -409,7 +444,7 @@ os_memblock_get(struct os_mempool *mp)
     /* Check to make sure they passed in a memory pool (or something) */
     block = NULL;
 
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* Runtime allocation mode */
     if (mp && mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         bool need_alloc = false;
@@ -464,7 +499,7 @@ os_memblock_get(struct os_mempool *mp)
 
         return block;
     }
-    #endif
+#endif
 
     if (mp) {
         OS_ENTER_CRITICAL(sr);
@@ -504,7 +539,7 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
     os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uint32_t)(uintptr_t)mp,
                        (uint32_t)(uintptr_t)block_addr);
 
-    #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         bool need_free = true;
         os_mempool_guard_check(mp, block_addr);
@@ -523,13 +558,20 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
 
         /* Free outside critical section */
         if (need_free) {
-            free(block_addr);
+            nimble_platform_mem_free(block_addr);
         } else {
             os_mempool_poison(mp, block_addr);
         }
         return OS_OK;
     }
-    #endif
+#endif
+
+ #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    /* Validate that the block belongs to this mempool */
+    if (!os_memblock_from(mp, block_addr)) {
+        return OS_INVALID_PARM;
+    }
+#endif
 
     os_mempool_guard_check(mp, block_addr);
     os_mempool_poison(mp, block_addr);
@@ -537,11 +579,27 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
     block = (struct os_memblock *)block_addr;
     OS_ENTER_CRITICAL(sr);
 
+    /* Check for duplicate free - verify block is not already in free list */
+    {
+        struct os_memblock *cur;
+        SLIST_FOREACH(cur, mp, mb_next) {
+            if (cur == block) {
+                OS_EXIT_CRITICAL(sr);
+                return OS_INVALID_PARM;
+            }
+        }
+    }
+
+    /* Check that the number free doesn't exceed number blocks */
+    if (mp->mp_num_free >= mp->mp_num_blocks) {
+        OS_EXIT_CRITICAL(sr);
+        return OS_INVALID_PARM;
+    }
+
     /* Chain current free list pointer to this block; make this block head */
     SLIST_NEXT(block, mb_next) = SLIST_FIRST(mp);
     SLIST_FIRST(mp) = block;
 
-    /* XXX: Should we check that the number free <= number blocks? */
     /* Increment number free */
     mp->mp_num_free++;
 
@@ -610,6 +668,10 @@ os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
 {
     struct os_mempool *cur;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_mempool_list_ensure_init();
+#endif
+
     if (mp == NULL) {
         cur = STAILQ_FIRST(&g_os_mempool_list);
     } else {
@@ -633,6 +695,10 @@ os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
 void
 os_mempool_module_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_mempool_list_ensure_init();
+#endif
+
     STAILQ_INIT(&g_os_mempool_list);
 }
 

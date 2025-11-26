@@ -26,8 +26,21 @@
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static SLIST_HEAD(, ble_hs_periodic_sync) g_ble_hs_periodic_sync_handles;
-static struct os_mempool ble_hs_periodic_sync_pool;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+static struct
+{
+    struct os_mempool pool;
+    os_membuf_t *elem_mem;
+} *ble_hs_periodic_ctx;
+#define ble_hs_periodic_sync_pool (ble_hs_periodic_ctx->pool)
+#define ble_hs_psync_elem_mem (ble_hs_periodic_ctx->elem_mem)
+#else
+static struct os_mempool ble_hs_periodic_sync_pool;
+#endif
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_hs_psync_elem_mem = NULL;
 #else
@@ -35,6 +48,21 @@ static os_membuf_t ble_hs_psync_elem_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_MAX_PERIODIC_SYNCS),
                     sizeof (struct ble_hs_periodic_sync))
 ];
+#endif
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_hs_periodic_sync_ensure_ctx(void)
+{
+    if (ble_hs_periodic_ctx != NULL)
+    {
+        return 0;
+    }
+
+    ble_hs_periodic_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_periodic_ctx));
+    return ble_hs_periodic_ctx ? 0 : BLE_HS_ENOMEM;
+}
 #endif
 
 struct ble_hs_periodic_sync *
@@ -59,7 +87,7 @@ ble_hs_periodic_sync_free(struct ble_hs_periodic_sync *psync)
         return;
     }
 
-    if((psync->lost_ev).event != NULL)
+    if ((psync->lost_ev).event != NULL)
         ble_npl_event_deinit(&psync->lost_ev);
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
@@ -75,7 +103,7 @@ ble_hs_periodic_sync_insert(struct ble_hs_periodic_sync *psync)
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
     BLE_HS_DBG_ASSERT_EVAL(
-                       ble_hs_periodic_sync_find_by_handle(psync->sync_handle) == NULL);
+                           ble_hs_periodic_sync_find_by_handle(psync->sync_handle) == NULL);
 
     SLIST_INSERT_HEAD(&g_ble_hs_periodic_sync_handles, psync, next);
 }
@@ -118,7 +146,8 @@ ble_hs_periodic_sync_find(const ble_addr_t *addr, uint8_t sid)
 
     SLIST_FOREACH(psync, &g_ble_hs_periodic_sync_handles, next) {
         if ((ble_addr_cmp(&psync->advertiser_addr, addr) == 0) &&
-                (psync->adv_sid == sid)) {
+            (psync->adv_sid == sid))
+        {
             return psync;
         }
     }
@@ -141,16 +170,81 @@ ble_hs_periodic_sync_first(void)
     return psync;
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_hs_periodic_sync_deinit(void)
+{
+    if (ble_hs_periodic_ctx == NULL)
+    {
+        return;
+    }
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (ble_hs_psync_elem_mem)
+    {
+        nimble_platform_mem_free(ble_hs_psync_elem_mem);
+    }
+#endif
+    memset(&ble_hs_periodic_sync_pool, 0, sizeof(ble_hs_periodic_sync_pool));
+    nimble_platform_mem_free(ble_hs_periodic_ctx);
+    ble_hs_periodic_ctx = NULL;
+}
+#endif
+
 int
 ble_hs_periodic_sync_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_hs_periodic_sync_ensure_ctx();
+    if (rc != 0)
+    {
+        return rc;
+    }
+
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (!ble_hs_psync_elem_mem)
+    {
+        ble_hs_psync_elem_mem = nimble_platform_mem_calloc(1,
+                                                           OS_MEMPOOL_SIZE(
+                                                               MYNEWT_VAL(BLE_MAX_PERIODIC_SYNCS),
+                                                               sizeof(struct ble_hs_periodic_sync)) *
+                                                               sizeof(os_membuf_t));
+    }
+
+    if (ble_hs_psync_elem_mem == NULL)
+    {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_hs_periodic_ctx) {
+            nimble_platform_mem_free(ble_hs_periodic_ctx);
+            ble_hs_periodic_ctx = NULL;
+        }
+#endif
+        return BLE_HS_ENOMEM;
+    }
+
+    memset(&ble_hs_periodic_sync_pool, 0, sizeof(ble_hs_periodic_sync_pool));
+#endif
+#endif
+
     rc = os_mempool_init(&ble_hs_periodic_sync_pool,
                          MYNEWT_VAL(BLE_MAX_PERIODIC_SYNCS),
-                         sizeof (struct ble_hs_periodic_sync),
+                         sizeof(struct ble_hs_periodic_sync),
                          ble_hs_psync_elem_mem, "ble_hs_periodic_disc_pool");
     if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        if (ble_hs_psync_elem_mem)
+        {
+            nimble_platform_mem_free(ble_hs_psync_elem_mem);
+        }
+#endif
+        if (ble_hs_periodic_ctx)
+        {
+            nimble_platform_mem_free(ble_hs_periodic_ctx);
+            ble_hs_periodic_ctx = NULL;
+        }
+#endif
         return BLE_HS_EOS;
     }
 

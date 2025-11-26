@@ -26,7 +26,11 @@
 extern "C" {
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+extern uint8_t *ble_hs_pvcy_default_irk;
+#else
 extern uint8_t ble_hs_pvcy_default_irk[16];
+#endif
 
 void ble_hs_pvcy_set_default_irk(void);
 int ble_hs_pvcy_set_our_irk(const uint8_t *irk);
@@ -40,6 +44,7 @@ int ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode);
 bool ble_hs_pvcy_enabled(void);
 #endif
 
+void ble_hs_pvcy_irk_deinit(void);
 #ifdef __cplusplus
 }
 #endif

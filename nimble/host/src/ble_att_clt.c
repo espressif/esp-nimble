@@ -776,13 +776,12 @@ ble_att_clt_rx_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     return 0;
 }
 
+
+#if NIMBLE_BLE_ATT_CLT_SIGNED_WRITE
 int
 ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t handle,
                                 uint8_t *csrk, uint32_t counter, struct os_mbuf *txom)
 {
-#if !NIMBLE_BLE_ATT_CLT_SIGNED_WRITE
-    return BLE_HS_ENOTSUP;
-#endif
 
     struct ble_att_signed_write_cmd *cmd;
     struct os_mbuf *txom2;
@@ -809,7 +808,7 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
      * where || represents concatenation
      */
     len = BLE_ATT_SIGNED_WRITE_DATA_OFFSET + OS_MBUF_PKTLEN(txom) + sizeof(counter);
-    message = nimble_platform_mem_malloc(len);
+    message = nimble_platform_mem_calloc(1,len);
 
     /** Copying opcode and handle */
     rc = os_mbuf_copydata(txom2, 0, BLE_ATT_SIGNED_WRITE_DATA_OFFSET, message);
@@ -862,14 +861,21 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
         goto err;
     }
 
-    if(message != NULL) nimble_platform_mem_free(message);
+    if (message != NULL) {
+        nimble_platform_mem_free(message);
+	message = NULL;
+    }
     os_mbuf_concat(txom2, txom);
     return ble_att_tx(conn_handle, cid, txom2);
 err:
-    if(message != NULL) nimble_platform_mem_free(message);
+    if (message != NULL) {
+        nimble_platform_mem_free(message);
+	message = NULL;
+    }
     os_mbuf_free_chain(txom2);
     return rc;
 }
+#endif
 
 /*****************************************************************************
  * $prepare write request                                                    *

@@ -652,6 +652,7 @@ static const uint8_t ble_sm_alg_dbg_pub_key[64] = {
 int
 ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 {
+
 #if MYNEWT_VAL(BLE_SM_SC_DEBUG_KEYS)
     swap_buf(pub, ble_sm_alg_dbg_pub_key, 32);
     swap_buf(&pub[32], &ble_sm_alg_dbg_pub_key[32], 32);

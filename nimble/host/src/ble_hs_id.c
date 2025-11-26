@@ -20,13 +20,56 @@
 #include <string.h>
 #include "host/ble_hs_id.h"
 #include "ble_hs_priv.h"
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 #include "ble_hs_resolv_priv.h"
+#endif
 
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+typedef struct {
+    uint8_t ble_hs_id_pub[6];
+    uint8_t ble_hs_id_rnd[6];
+}ble_hs_id_ctx_t;
+
+static ble_hs_id_ctx_t *ble_hs_id_ctx;
+
+#define ble_hs_id_pub  (ble_hs_id_ctx->ble_hs_id_pub)
+#define ble_hs_id_rnd  (ble_hs_id_ctx->ble_hs_id_rnd)
+#else
 static uint8_t ble_hs_id_pub[6];
 static uint8_t ble_hs_id_rnd[6];
+#endif
+
 static const uint8_t ble_hs_misc_null_addr[6];
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_hs_id_ensure_ctx(void)
+{
+    if (ble_hs_id_ctx) {
+        return 0;
+    }
 
+    ble_hs_id_ctx = nimble_platform_mem_calloc(1, sizeof(* ble_hs_id_ctx));
+
+    if (!ble_hs_id_ctx) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
+
+void ble_hs_id_ctx_free(void)
+{
+    if (ble_hs_id_ctx) {
+        nimble_platform_mem_free(ble_hs_id_ctx);
+	ble_hs_id_ctx = NULL;
+    }
+}
+#endif
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 bool
 ble_hs_is_rpa(uint8_t *addr, uint8_t addr_type)
 {
@@ -38,10 +81,16 @@ ble_hs_is_rpa(uint8_t *addr, uint8_t addr_type)
     }
     return rc;
 }
+#endif
 
 void
 ble_hs_id_set_pub(const uint8_t *pub_addr)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        return;
+    }
+#endif
     ble_hs_lock();
     memcpy(ble_hs_id_pub, pub_addr, 6);
     ble_hs_unlock();
@@ -156,6 +205,12 @@ ble_hs_id_set_rnd(const uint8_t *rnd_addr)
     uint8_t addr_type_byte;
     int rc;
     int ones;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        return BLE_HS_EINVAL;
+    }
+#endif
 
     ble_hs_lock();
 
@@ -320,11 +375,14 @@ ble_hs_id_use_addr(uint8_t own_addr_type)
     /* If privacy is being used, make sure RPA rotation is in effect. */
     if (own_addr_type == BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT ||
         own_addr_type == BLE_OWN_ADDR_RPA_RANDOM_DEFAULT) {
-
+#if MYNEWT_VAL(BLE_HS_PVCY)
         rc = ble_hs_pvcy_ensure_started();
         if (rc != 0) {
             return rc;
         }
+#else
+        return BLE_HS_ENOTSUP;
+#endif
     }
 
     return 0;
@@ -388,6 +446,11 @@ done:
 void
 ble_hs_id_reset(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        return;
+    }
+#endif
     memset(ble_hs_id_pub, 0, sizeof ble_hs_id_pub);
     memset(ble_hs_id_rnd, 0, sizeof ble_hs_id_rnd);
 }
@@ -396,8 +459,15 @@ ble_hs_id_reset(void)
  * Clears random address. This function is necessary when the host wants to
  * clear random address.
  */
- void
- ble_hs_id_rnd_reset(void)
- {
+void
+ble_hs_id_rnd_reset(void)
+{
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        return;
+    }
+#endif
+
     memset(ble_hs_id_rnd, 0, sizeof ble_hs_id_rnd);
- }
+}

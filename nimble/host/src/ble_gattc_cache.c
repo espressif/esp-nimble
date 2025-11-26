@@ -38,8 +38,10 @@ static const char *cache_key = "key";
 static const char *cache_addr = "cache_addr_tab";
 static uint8_t ble_gattc_cache_find_addr(ble_addr_t addr);
 static uint8_t ble_gattc_cache_find_hash(uint8_t * hash_key);
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static uint8_t svc_end_handle;
 struct cache_fn_mapping cache_fn;
+#endif
 
 typedef struct {
     /*Save the service data in the list according to the address */
@@ -57,7 +59,23 @@ typedef struct {
     cache_addr_info_t cache_addr[MAX_DEVICE_IN_CACHE];
 } cache_env_t;
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static cache_env_t *cache_env = NULL;
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    uint8_t _svc_end_handle;
+    struct cache_fn_mapping _cache_fn;
+    cache_env_t * _cache_env;
+} ble_gattc_cache_static_vars_t;
+
+static ble_gattc_cache_static_vars_t * ble_gattc_cache_static_vars = NULL;
+
+#define svc_end_handle (ble_gattc_cache_static_vars->_svc_end_handle)
+#define cache_fn (ble_gattc_cache_static_vars->_cache_fn)
+#define cache_env (ble_gattc_cache_static_vars->_cache_env)
+#endif
 
 static void
 print_hash_key(uint8_t * hash_key)
@@ -222,7 +240,7 @@ ble_gattc_cacheReset(ble_addr_t *addr)
 
         /* Update addr list to storage flash */
         if (cache_env->num_addr > 0) {
-            uint8_t *p_buf = nimble_platform_mem_malloc(MAX_ADDR_LIST_CACHE_BUF);
+            uint8_t *p_buf = nimble_platform_mem_calloc(1,MAX_ADDR_LIST_CACHE_BUF);
             if (!p_buf) {
                 BLE_HS_LOG(ERROR, "%s malloc error", __func__);
                 return;
@@ -263,10 +281,41 @@ ble_gattc_cacheReset(ble_addr_t *addr)
     }
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_gattc_cache_static_vars_init(void)
+{
+    if (ble_gattc_cache_static_vars == NULL) {
+
+        ble_gattc_cache_static_vars = nimble_platform_mem_calloc(1, sizeof(ble_gattc_cache_static_vars_t));
+        if (ble_gattc_cache_static_vars == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+
+    return 0;
+}
+#endif
+
 static uint8_t
 ble_gattc_cache_find_addr(ble_addr_t addr)
 {
     uint8_t addr_index = 0;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    uint8_t rc = 0;
+    rc = ble_gattc_cache_static_vars_init();
+    if (rc != 0) {
+     return rc;
+    }
+#endif
+
+    if (cache_env == NULL) {
+        cache_env = nimble_platform_mem_calloc(1, sizeof(cache_env_t));
+        if (cache_env == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+
     uint8_t num = cache_env->num_addr;
     cache_addr_info_t *addr_info = &cache_env->cache_addr[0];
 
@@ -427,7 +476,7 @@ ble_gattc_cache_addr_save(uint8_t *out_index, ble_addr_t addr, uint8_t * hash_ke
     uint8_t i = 0;
     uint8_t *p_buf;
 
-    p_buf = nimble_platform_mem_malloc(MAX_ADDR_LIST_CACHE_BUF);
+    p_buf = nimble_platform_mem_calloc(1,MAX_ADDR_LIST_CACHE_BUF);
     if (p_buf == NULL) {
         return BLE_HS_ENOMEM;
     }
@@ -529,7 +578,7 @@ ble_gattc_cache_save(struct ble_gattc_cache_conn *peer, size_t num_attr)
     uint8_t index = INVALID_ADDR_NUM;
     struct ble_gatt_nv_attr *nv_attr;
 
-    nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_malloc(num_attr * sizeof(ble_gatt_nv_attr));
+    nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_calloc(1,num_attr * sizeof(ble_gatt_nv_attr));
     if (nv_attr == NULL) {
         BLE_HS_LOG(DEBUG, "Failed to allocate memory to nv_attr");
         return;
@@ -577,7 +626,7 @@ ble_gattc_cache_load_nv_attr(uint8_t index, int *num_attr)
 
     *num_attr = length / (sizeof(ble_gatt_nv_attr));
 
-    nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_malloc((*num_attr) * sizeof(struct ble_gatt_nv_attr));
+    nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_calloc(1,(*num_attr) * sizeof(struct ble_gatt_nv_attr));
     if (nv_attr == NULL) {
         return NULL;
     }
@@ -594,7 +643,7 @@ ble_gattc_add_svc_from_cache(ble_addr_t peer_addr, struct ble_gatt_nv_attr nv_at
     struct ble_gatt_svc *gatt_svc;
     int rc;
 
-    gatt_svc = (struct ble_gatt_svc *)nimble_platform_mem_malloc(sizeof(struct ble_gatt_svc));
+    gatt_svc = (struct ble_gatt_svc *)nimble_platform_mem_calloc(1,sizeof(struct ble_gatt_svc));
     if (gatt_svc == NULL) {
         return BLE_HS_ENOMEM;
     }
@@ -615,7 +664,7 @@ ble_gattc_add_inc_from_cache(ble_addr_t peer_addr, struct ble_gatt_nv_attr nv_at
     int rc;
     struct ble_gatt_incl_svc *gatt_incl_svc;
 
-    gatt_incl_svc = (struct ble_gatt_incl_svc *)nimble_platform_mem_malloc(sizeof(struct ble_gatt_incl_svc));
+    gatt_incl_svc = (struct ble_gatt_incl_svc *)nimble_platform_mem_calloc(1,sizeof(struct ble_gatt_incl_svc));
     if (gatt_incl_svc == NULL) {
         return BLE_HS_ENOMEM;
     }
@@ -636,7 +685,7 @@ ble_gattc_add_chr_from_cache(ble_addr_t peer_addr, struct ble_gatt_nv_attr nv_at
 {
     struct ble_gatt_chr *gatt_chr;
     int rc;
-    gatt_chr = (struct ble_gatt_chr *)nimble_platform_mem_malloc(sizeof(struct ble_gatt_chr));
+    gatt_chr = (struct ble_gatt_chr *)nimble_platform_mem_calloc(1,sizeof(struct ble_gatt_chr));
     if (gatt_chr == NULL) {
         return BLE_HS_ENOMEM;
     }
@@ -656,7 +705,7 @@ ble_gattc_add_dsc_from_cache(ble_addr_t peer_addr, struct ble_gatt_nv_attr nv_at
 {
     struct ble_gatt_dsc *gatt_dsc;
     int rc;
-    gatt_dsc = (struct ble_gatt_dsc *)nimble_platform_mem_malloc(sizeof(struct ble_gatt_dsc));
+    gatt_dsc = (struct ble_gatt_dsc *)nimble_platform_mem_calloc(1,sizeof(struct ble_gatt_dsc));
     if (gatt_dsc == NULL) {
         return BLE_HS_ENOMEM;
     }
@@ -721,6 +770,11 @@ ble_gattc_cache_assoc_load(ble_addr_t src_addr, uint8_t src_index, ble_addr_t as
                                    cache_env->cache_addr[src_index].hash_key);
 
     BLE_HS_LOG(DEBUG, "Successfully associated cache from src_addr to assoc_addr.");
+
+    if (rc != 0) {
+        return rc;
+    }
+
     return 0;
 }
 
@@ -814,32 +868,54 @@ ble_gattc_cache_check_hash(struct ble_gattc_cache_conn *peer, struct os_mbuf *om
     return -1;
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_gattc_cache_free_mem(void)
+{
+    if (ble_gattc_cache_static_vars) {
+        if (cache_env) {
+            nimble_platform_mem_free(cache_env);
+            cache_env = NULL;
+        }
+        nimble_platform_mem_free(ble_gattc_cache_static_vars);
+        ble_gattc_cache_static_vars = NULL;
+    }
+}
+#endif
+
 int
 ble_gattc_cache_init(void *storage_cb)
 {
+    int rc = 0;
+    cache_handle_t fp;
+    uint8_t num_addr;
+    size_t length = MAX_ADDR_LIST_CACHE_BUF;
+    uint8_t *p_buf = NULL;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+   rc = ble_gattc_cache_static_vars_init();
+   if (rc != 0) {
+    return rc;
+   }
+#endif
+
     /* Point where to store data */
     cache_fn = link_storage_fn(storage_cb);
 
-    cache_handle_t fp;
-    int rc = 0;
-    uint8_t num_addr;
-    size_t length = MAX_ADDR_LIST_CACHE_BUF;
-
     svc_end_handle = 0;
 
-    uint8_t *p_buf = nimble_platform_mem_malloc(MAX_ADDR_LIST_CACHE_BUF);
+    p_buf = nimble_platform_mem_calloc(1,MAX_ADDR_LIST_CACHE_BUF);
     if (p_buf == NULL) {
         BLE_HS_LOG(ERROR, "%s malloc failed!", __func__);
         rc = BLE_HS_ENOMEM;
-        return rc;
+        goto error;
     }
 
-    cache_env = (cache_env_t *)nimble_platform_mem_malloc(sizeof(cache_env_t));
+    cache_env = (cache_env_t *)nimble_platform_mem_calloc(1,sizeof(cache_env_t));
     if (cache_env == NULL) {
         BLE_HS_LOG(ERROR, "%s malloc failed!", __func__);
-        nimble_platform_mem_free(p_buf);
         rc = BLE_HS_ENOMEM;
-        return rc;
+        goto error;
     }
 
     memset(cache_env, 0x0, sizeof(cache_env_t));
@@ -855,8 +931,7 @@ ble_gattc_cache_init(void *storage_cb)
                     BLE_HS_LOG(DEBUG, "%s, Line = %d, storage flash get blob data fail, err_code = 0x%x",
                                __func__, __LINE__, rc);
                 }
-                nimble_platform_mem_free(p_buf);
-                return rc;
+                goto error;
             }
 
             num_addr = length / (sizeof(ble_addr_t) + sizeof(uint8_t) * 16);
@@ -880,11 +955,28 @@ ble_gattc_cache_init(void *storage_cb)
     } else {
         BLE_HS_LOG(ERROR, "%s, Line = %d, storage flash open fail, err_code = %x", __func__, __LINE__,
                    rc);
-        nimble_platform_mem_free(p_buf);
-        return rc;
+        goto error;
     }
 
     nimble_platform_mem_free(p_buf);
     return 0;
+error:
+    if (p_buf) {
+        nimble_platform_mem_free(p_buf);
+        p_buf = NULL;
+    }
+    if (cache_env) {
+        nimble_platform_mem_free(cache_env);
+        cache_env = NULL;
+    }
+
+ #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_static_vars) {
+        nimble_platform_mem_free(ble_gattc_cache_static_vars);
+        ble_gattc_cache_static_vars = NULL;
+    }
+#endif
+
+    return rc;
 }
 #endif /* MYNEWT_VAL(BLE_GATT_CACHING) */

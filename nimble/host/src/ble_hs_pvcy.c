@@ -24,12 +24,32 @@
 #include "ble_hs_resolv_priv.h"
 #include "host/ble_hs_pvcy.h"
 
+#if MYNEWT_VAL(BLE_HS_PVCY)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+
+typedef struct {
+    uint8_t pvcy_started;             /* Indicates if privacy is started */
+    uint8_t pvcy_irk[16];             /* Static IRK */
+    uint8_t pvcy_default_irk[16];     /* Static default IRK */
+    uint16_t rpa_timeout;             /* Timeout for RPA rotation */
+} ble_hs_pvcy_ctx_t;
+
+static ble_hs_pvcy_ctx_t *ble_hs_pvcy_ctx;
+
+#define ble_hs_pvcy_started        (ble_hs_pvcy_ctx->pvcy_started)
+#define ble_hs_pvcy_irk            (ble_hs_pvcy_ctx->pvcy_irk)
+#define ble_hs_pvcy_default_irk    (ble_hs_pvcy_ctx->pvcy_default_irk)
+#define l_rpa_timeout              (ble_hs_pvcy_ctx->rpa_timeout)
+
+#else
 static uint8_t ble_hs_pvcy_started;
 static uint8_t ble_hs_pvcy_irk[16];
 
 /** Use this as a default IRK if none gets set. */
 uint8_t ble_hs_pvcy_default_irk[16];
-uint16_t rpa_timeout;
+uint16_t l_rpa_timeout;
+#endif
 
 static int
 ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
@@ -53,19 +73,19 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
 
 int ble_hs_set_rpa_timeout (uint16_t timeout)
 {
-    rpa_timeout = timeout;
+    l_rpa_timeout = timeout;
 
-    return ble_hs_pvcy_set_addr_timeout(rpa_timeout);
+    return ble_hs_pvcy_set_addr_timeout(l_rpa_timeout);
 }
 
 uint16_t ble_hs_get_rpa_timeout(void)
 {
-    return rpa_timeout;
+    return l_rpa_timeout;
 }
 
 void ble_hs_reset_rpa_timeout(void)
 {
-    rpa_timeout = 0 ;
+    l_rpa_timeout = 0 ;
 }
 
 #if (!MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
@@ -250,12 +270,28 @@ void ble_hs_pvcy_set_default_irk(void)
 
     /* Read NVS for local IRK */
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_pvcy_ctx) {
+        ble_hs_pvcy_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_pvcy_ctx));
+        if (!ble_hs_pvcy_ctx) {
+            BLE_HS_LOG(ERROR," Failed to allocate memory for ble_hs_pvcy_ctx");
+            return;
+        }
+    }
+
+    void ble_store_config_init(void);
+    ble_store_config_init();
+#endif
+
     rc = ble_store_read_local_irk(&key_local_irk, &value_local_irk);
     if (!rc) {
         memcpy(ble_hs_pvcy_default_irk, value_local_irk.irk, 16);
     } else {
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         /* No entry for local IRK found . Generate one and load in NVS */
         memset(ble_hs_pvcy_default_irk, 0x0, 16);
+#endif
         rc = ble_hs_hci_util_rand(ble_hs_pvcy_default_irk, 16);
 
         if (rc != 0) {
@@ -276,6 +312,17 @@ void ble_hs_pvcy_set_default_irk(void)
         ble_store_write_local_irk(&value_local_irk);
     }
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_hs_pvcy_irk_deinit(void)
+{
+    if (ble_hs_pvcy_ctx) {
+        nimble_platform_mem_free(ble_hs_pvcy_ctx);
+        ble_hs_pvcy_ctx = NULL;
+    }
+}
+#endif
 
 int
 ble_hs_pvcy_set_our_irk(const uint8_t *irk)
@@ -323,6 +370,8 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
     }
 
 #endif
+
+#if MYNEWT_VAL(BLE_HS_PVCY)
     /*
       * Add local IRK entry with 00:00:00:00:00:00 address. This entry will
       * be used to generate RPA for non-directed advertising if own_addr_type
@@ -336,6 +385,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
     if (rc != 0) {
         return rc;
     }
+#endif
 
     return 0;
 }
@@ -367,13 +417,13 @@ ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
                              &cmd, sizeof(cmd), NULL, 0);
 }
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 bool
 ble_hs_pvcy_enabled(void)
 {
     return ble_hs_pvcy_started;
 }
 
-#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 int
 ble_hs_pvcy_rpa_config(uint8_t enable)
 {
@@ -402,4 +452,5 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
 
     return rc;
 }
+#endif
 #endif

@@ -183,7 +183,7 @@ void ble_att_set_peer_mtu(struct ble_l2cap_chan *chan, uint16_t peer_mtu);
 uint16_t ble_att_chan_mtu(const struct ble_l2cap_chan *chan);
 uint16_t ble_att_mtu_by_cid(uint16_t conn_handle, uint16_t cid);
 int ble_att_init(void);
-
+void ble_att_deinit(void);
 /*** @svr */
 
 int ble_att_svr_start(void);
@@ -234,6 +234,9 @@ int ble_att_svr_read_handle(uint16_t conn_handle, uint16_t attr_handle,
 void ble_att_svr_reset(void);
 int ble_att_svr_init(void);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_att_svr_deinit(void);
+#endif
 void ble_att_svr_hide_range(uint16_t start_handle, uint16_t end_handle);
 void ble_att_svr_restore_range(uint16_t start_handle, uint16_t end_handle);
 

@@ -49,12 +49,12 @@ typedef uint8_t ble_hs_conn_flags_t;
 
 struct ble_hs_conn {
     SLIST_ENTRY(ble_hs_conn) bhc_next;
-    uint16_t bhc_handle;
     uint8_t bhc_our_addr_type;
     uint8_t slave_conn : 1;
 #if MYNEWT_VAL(BLE_EXT_ADV)
     uint8_t bhc_our_rnd_addr[6];
 #endif
+    uint16_t bhc_handle;
     ble_addr_t bhc_peer_addr;
     ble_addr_t bhc_our_rpa_addr;
     ble_addr_t bhc_peer_rpa_addr;
@@ -66,6 +66,9 @@ struct ble_hs_conn {
     uint16_t bhc_max_rx_octets;
     uint16_t bhc_max_tx_time;
     uint16_t bhc_max_rx_time;
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+    uint16_t bhc_rx_scid;
+#endif
     uint8_t bhc_master_clock_accuracy;
 
     uint32_t supported_feat;
@@ -73,7 +76,9 @@ struct ble_hs_conn {
     ble_hs_conn_flags_t bhc_flags;
 
     struct ble_l2cap_chan_list bhc_channels;
+#if !MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
     struct ble_l2cap_chan *bhc_rx_chan; /* Channel rxing current packet. */
+#endif
     ble_npl_time_t bhc_rx_timeout;
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM)
     uint32_t l2cap_coc_cid_mask[BLE_HS_CONN_L2CAP_COC_CID_MASK_LEN];
@@ -105,8 +110,14 @@ struct ble_hs_conn {
     ble_gap_event_fn *bhc_cb;
     void *bhc_cb_arg;
 
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
+    struct ble_hs_periodic_sync *psync;
+#endif
+#else
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
     struct ble_hs_periodic_sync *psync;
+#endif
 #endif
 
     STAILQ_HEAD(, os_mbuf_pkthdr) att_tx_q;
@@ -151,6 +162,9 @@ int32_t ble_hs_conn_timer(void);
 typedef int ble_hs_conn_foreach_fn(struct ble_hs_conn *conn, void *arg);
 void ble_hs_conn_foreach(ble_hs_conn_foreach_fn *cb, void *arg);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_hs_conn_deinit(void);
+#endif
 int ble_hs_conn_init(void);
 
 #ifdef __cplusplus

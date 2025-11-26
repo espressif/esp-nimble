@@ -161,6 +161,9 @@ int32_t ble_gattc_timer(void);
 
 int ble_gattc_any_jobs(void);
 int ble_gattc_init(void);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_gattc_deinit(void);
+#endif
 #if MYNEWT_VAL(BLE_GATTC) && MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
 void ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status);
 #endif
@@ -198,6 +201,7 @@ struct ble_gatt_resources {
      */
     uint16_t cccds;
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     /**
      * Number of client presentation format descriptors. Each of
      * these also contributes to the total descriptor count.
@@ -209,6 +213,7 @@ struct ble_gatt_resources {
      * these also contributes to the total descriptor count.
      */
     uint16_t cafds;
+#endif
 
     /** Total number of ATT attributes. */
     uint16_t attrs;
@@ -234,7 +239,12 @@ struct ble_gatts_aware_state {
     bool aware;
     uint8_t half_aware:1;
 };
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+extern struct ble_gatts_aware_state * ble_gatts_conn_aware_states;
+#else
 extern struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+#endif
 #endif
 
 /*** @misc. */

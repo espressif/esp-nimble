@@ -75,28 +75,112 @@ void os_msys_buf_free(void);
                                       BLE_HCI_DATA_HDR_SZ, OS_ALIGNMENT))
 
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    os_membuf_t *_pool_cmd_buf;
+    os_membuf_t *_pool_evt_buf;
+    os_membuf_t *_pool_evt_lo_buf;
+
+#if POOL_ACL_COUNT > 0
+    os_membuf_t *_pool_acl_buf;
+#endif
+
+#if POOL_ISO_COUNT > 0
+    os_membuf_t *_pool_iso_buf;
+#endif
+
+    struct os_mempool _pool_cmd;
+    struct os_mempool _pool_evt;
+    struct os_mempool _pool_evt_lo;
+
+#if POOL_ACL_COUNT > 0
+    struct os_mempool_ext _pool_acl;
+    struct os_mbuf_pool _mpool_acl;
+#endif
+
+#if POOL_ISO_COUNT > 0
+    struct os_mempool_ext _pool_iso;
+    struct os_mbuf_pool _mpool_iso;
+#endif
+}ble_trans_ctx_t;
+
+static ble_trans_ctx_t *ble_trans_ctx;
+
+#define pool_cmd_buf (ble_trans_ctx->_pool_cmd_buf)
+#define pool_evt_buf (ble_trans_ctx->_pool_evt_buf)
+#define pool_evt_lo_buf (ble_trans_ctx->_pool_evt_lo_buf)
+
+#if POOL_ACL_COUNT > 0
+#define pool_acl_buf (ble_trans_ctx->_pool_acl_buf)
+#endif
+
+#if POOL_ISO_COUNT > 0
+#define pool_iso_buf (ble_trans_ctx->_pool_iso_buf)
+#endif
+
+#define pool_cmd  (ble_trans_ctx->_pool_cmd)
+#define pool_evt  (ble_trans_ctx->_pool_evt)
+#define pool_evt_lo (ble_trans_ctx->_pool_evt_lo)
+
+#if POOL_ACL_COUNT > 0
+#define pool_acl  (ble_trans_ctx->_pool_acl)
+#define mpool_acl (ble_trans_ctx->_mpool_acl)
+#endif
+
+#if POOL_ISO_COUNT > 0
+#define pool_iso  (ble_trans_ctx->_pool_iso)
+#define mpool_iso (ble_trans_ctx->_mpool_iso)
+#endif
+
+#else /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
 static os_membuf_t *pool_cmd_buf;
-static struct os_mempool pool_cmd;
-
 static os_membuf_t *pool_evt_buf;
-static struct os_mempool pool_evt;
-
 static os_membuf_t *pool_evt_lo_buf;
-static struct os_mempool pool_evt_lo;
 
 #if POOL_ACL_COUNT > 0
 static os_membuf_t *pool_acl_buf;
+#endif
+
+#if POOL_ISO_COUNT > 0
+static os_membuf_t *pool_iso_buf;
+#endif
+
+static struct os_mempool pool_cmd;
+static struct os_mempool pool_evt;
+static struct os_mempool pool_evt_lo;
+
+#if POOL_ACL_COUNT > 0
 static struct os_mempool_ext pool_acl;
 static struct os_mbuf_pool mpool_acl;
 #endif
 
 #if POOL_ISO_COUNT > 0
-static os_membuf_t *pool_iso_buf;
 static struct os_mempool_ext pool_iso;
 static struct os_mbuf_pool mpool_iso;
 #endif
 
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
 static os_mempool_put_fn *transport_put_acl_from_ll_cb;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_transport_ensure_ctx(void)
+{
+    if (ble_trans_ctx) {
+        return 0;
+    }
+
+    ble_trans_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_trans_ctx));
+    if (!ble_trans_ctx) {
+        return -1;
+    }
+
+    return 0;
+}
+#endif
 
 void *
 ble_transport_alloc_cmd(void)
@@ -318,7 +402,7 @@ ble_transport_ipc_free(void *buf)
     }
 }
 
-#if POOL_ACL_COUNT > 0
+#if POOL_ACL_COUNT > 0 && NIMBLE_BLE_CONNECT
 static os_error_t
 ble_transport_acl_put(struct os_mempool_ext *mpe, void *data, void *arg)
 {
@@ -362,31 +446,64 @@ void ble_buf_free(void)
 
     os_msys_buf_free();
 
-    nimble_platform_mem_free(pool_evt_buf);
-    pool_evt_buf = NULL;
-    nimble_platform_mem_free(pool_evt_lo_buf);
-    pool_evt_lo_buf = NULL;
-    nimble_platform_mem_free(pool_cmd_buf);
-    pool_cmd_buf = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_trans_ctx == NULL) {
+        return;
+    }
+#endif
+
+    if (pool_evt_buf ){
+        nimble_platform_mem_free(pool_evt_buf);
+        pool_evt_buf = NULL;
+    }
+
+    if (pool_evt_lo_buf) {
+        nimble_platform_mem_free(pool_evt_lo_buf);
+        pool_evt_lo_buf = NULL;
+    }
+
+    if (pool_cmd_buf) {
+        nimble_platform_mem_free(pool_cmd_buf);
+        pool_cmd_buf = NULL;
+    }
+
 #if POOL_ACL_COUNT > 0
-    nimble_platform_mem_free(pool_acl_buf);
-    pool_acl_buf = NULL;
+    if (pool_acl_buf) {
+        nimble_platform_mem_free(pool_acl_buf);
+        pool_acl_buf = NULL;
+    }
 #endif
 #if POOL_ISO_COUNT > 0
-    nimble_platform_mem_free(pool_iso_buf);
-    pool_iso_buf = NULL;
+    if (pool_iso_buf) {
+        nimble_platform_mem_free(pool_iso_buf);
+        pool_iso_buf = NULL;
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_trans_ctx) {
+        nimble_platform_mem_free(ble_trans_ctx);
+	ble_trans_ctx = NULL;
+    }
 #endif
 }
 
 esp_err_t ble_buf_alloc(void)
 {
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    return ESP_OK;
-#endif
-
     if (os_msys_buf_alloc()) {
         return ESP_ERR_NO_MEM;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_transport_ensure_ctx()) {
+        os_msys_buf_free();
+        return ESP_ERR_NO_MEM;
+    }
+#endif
+
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    return ESP_OK;
+#endif
 
     pool_evt_buf = (os_membuf_t *) nimble_platform_mem_calloc(1,
                    (sizeof(os_membuf_t) * OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT),
@@ -431,6 +548,12 @@ ble_transport_init(void)
 
     SYSINIT_ASSERT_ACTIVE();
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_transport_ensure_ctx()) {
+       return;
+    }
+#endif
+
     rc = os_mempool_init(&pool_cmd, POOL_CMD_COUNT, POOL_CMD_SIZE,
                          pool_cmd_buf, "transport_pool_cmd");
     SYSINIT_PANIC_ASSERT(rc == 0);
@@ -438,6 +561,7 @@ ble_transport_init(void)
     rc = os_mempool_init(&pool_evt, POOL_EVT_COUNT, POOL_EVT_SIZE,
                          pool_evt_buf, "transport_pool_evt");
     SYSINIT_PANIC_ASSERT(rc == 0);
+
 
     rc = os_mempool_init(&pool_evt_lo, POOL_EVT_LO_COUNT, POOL_EVT_SIZE,
                          pool_evt_lo_buf, "transport_pool_evt_lo");
@@ -452,7 +576,9 @@ ble_transport_init(void)
                            POOL_ACL_SIZE, POOL_ACL_COUNT);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
+#if NIMBLE_BLE_CONNECT
     pool_acl.mpe_put_cb = ble_transport_acl_put;
+#endif
 #endif
 
 #if POOL_ISO_COUNT > 0
@@ -470,6 +596,7 @@ void
 ble_transport_deinit(void)
 {
     int rc = 0;
+
     rc = os_mempool_ext_clear(&pool_acl);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
@@ -481,7 +608,12 @@ ble_transport_deinit(void)
 
     rc = os_mempool_clear(&pool_cmd);
     SYSINIT_PANIC_ASSERT(rc == 0);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_buf_free();
+#endif
 }
+
 int
 ble_transport_register_put_acl_from_ll_cb(os_mempool_put_fn (*cb))
 {

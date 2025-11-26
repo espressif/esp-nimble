@@ -41,23 +41,28 @@ static int
 ble_svc_ias_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
 
+static const ble_uuid16_t uuid_svc_ias = BLE_UUID16_INIT(BLE_SVC_IAS_UUID16);
+static const ble_uuid16_t uuid_chr_alert_level = BLE_UUID16_INIT(BLE_SVC_IAS_CHR_UUID16_ALERT_LEVEL);
+
+static const struct ble_gatt_chr_def alert_characteristics[] =  {
+    {
+        /*** Characteristic: Alert Level. */
+        .uuid = &uuid_chr_alert_level.u,
+        .access_cb = ble_svc_ias_access,
+        .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
+    }, {
+        0,
+    }
+};
+
 static const struct ble_gatt_svc_def ble_svc_ias_defs[] = {
     {
         /*** Service: Immediate Alert Service (IAS). */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_IAS_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
-            /*** Characteristic: Alert Level. */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_IAS_CHR_UUID16_ALERT_LEVEL),
-            .access_cb = ble_svc_ias_access,
-            .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
-        }, {
-            0, /* No more characteristics in this service. */
-        } },
-    },
-
-    {
-        0, /* No more services. */
+        .uuid = &uuid_svc_ias.u,
+        .characteristics = alert_characteristics,
+    }, {
+        0, /* No more characteristics in this service. */
     },
 };
 

@@ -568,18 +568,22 @@ ble_hs_startup_go(void)
         memset(&gen_key, 0, sizeof(gen_key));
         rc = ble_hs_cfg.store_gen_key_cb(BLE_STORE_GEN_KEY_IRK, &gen_key,
                                          BLE_HS_CONN_HANDLE_NONE);
-        if (rc == 0) {
+#if MYNEWT_VAL(BLE_HS_PVCY)
+	if (rc == 0) {
             ble_hs_pvcy_set_our_irk(gen_key.irk);
         }
+#endif
     } else {
         rc = -1;
     }
 
+#if MYNEWT_VAL(BLE_HS_PVCY)
     if (rc != 0) {
         ble_hs_pvcy_set_default_irk();
 
         ble_hs_pvcy_set_our_irk(NULL);
     }
+#endif
 
     /* If flow control is enabled, configure the controller to use it. */
     ble_hs_flow_startup();

@@ -87,6 +87,10 @@
         break; \
     }
 #define BLE_SVC_GATT_CHR_SERVICE_CHANGED_UUID16     0x2a05
+
+SLIST_HEAD(ble_gattc_cache_conn_struct, ble_gattc_cache_conn);
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static void *ble_gattc_cache_conn_svc_mem;
 static struct os_mempool ble_gattc_cache_conn_svc_pool;
 
@@ -103,7 +107,51 @@ static struct os_mempool ble_gattc_cache_conn_dsc_pool;
 
 static void *ble_gattc_cache_conn_mem;
 static struct os_mempool ble_gattc_cache_conn_pool;
+
 static SLIST_HEAD(, ble_gattc_cache_conn) ble_gattc_cache_conns;
+
+static struct ble_gatt_error ble_gattc_cache_conn_error;
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    void *_ble_gattc_cache_conn_svc_mem;
+    struct os_mempool _ble_gattc_cache_conn_svc_pool;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    void *_ble_gattc_cache_conn_incl_svc_mem;
+    struct os_mempool _ble_gattc_cache_conn_incl_svc_pool;
+#endif
+
+    void *_ble_gattc_cache_conn_chr_mem;
+    struct os_mempool _ble_gattc_cache_conn_chr_pool;
+
+    void *_ble_gattc_cache_conn_dsc_mem;
+    struct os_mempool _ble_gattc_cache_conn_dsc_pool;
+
+    void *_ble_gattc_cache_conn_mem;
+    struct os_mempool _ble_gattc_cache_conn_pool;
+
+    SLIST_HEAD(, ble_gattc_cache_conn) _ble_gattc_cache_conns;
+
+    struct ble_gatt_error _ble_gattc_cache_conn_error;
+} ble_gattc_cache_conn_static_vars_t;
+
+static ble_gattc_cache_conn_static_vars_t * ble_gattc_cache_conn_static_vars = NULL;
+
+#define ble_gattc_cache_conn_svc_mem (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_svc_mem)
+#define ble_gattc_cache_conn_svc_pool (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_svc_pool)
+#define ble_gattc_cache_conn_incl_svc_mem (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_incl_svc_mem)
+#define ble_gattc_cache_conn_incl_svc_pool (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_incl_svc_pool)
+#define ble_gattc_cache_conn_chr_mem (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_chr_mem)
+#define ble_gattc_cache_conn_chr_pool (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_chr_pool)
+#define ble_gattc_cache_conn_dsc_mem (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_dsc_mem)
+#define ble_gattc_cache_conn_dsc_pool (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_dsc_pool)
+#define ble_gattc_cache_conn_mem (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_mem)
+#define ble_gattc_cache_conn_pool (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_pool)
+#define ble_gattc_cache_conns (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conns)
+#define ble_gattc_cache_conn_error (ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conn_error)
+#endif
 
 static struct ble_gattc_cache_conn_svc *
 ble_gattc_cache_conn_svc_find_range(struct ble_gattc_cache_conn *ble_gattc_cache_conn, uint16_t attr_handle);
@@ -136,11 +184,41 @@ static void
 ble_gattc_cache_conn_disc_dscs(struct ble_gattc_cache_conn *peer);
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_gattc_cache_conn_free_mem(void);
+
+static ble_gattc_cache_conn_static_vars_t *
+ble_gattc_cache_conn_static_vars_init(void)
+{
+    if (ble_gattc_cache_conn_static_vars == NULL) {
+        ble_gattc_cache_conn_static_vars =
+            nimble_platform_mem_calloc(1, sizeof(ble_gattc_cache_conn_static_vars_t));
+        if (ble_gattc_cache_conn_static_vars == NULL) {
+            return NULL;
+        }
+    }
+
+    return ble_gattc_cache_conn_static_vars;
+}
+#endif
+
 struct ble_gattc_cache_conn *
 ble_gattc_cache_conn_find(uint16_t conn_handle)
 {
     struct ble_gattc_cache_conn *ble_gattc_cache_conn;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_conn_static_vars == NULL) {
+        if (ble_gattc_cache_conn_static_vars_init() == NULL) {
+            return NULL;
+        }
+        SLIST_INIT(&ble_gattc_cache_conn_static_vars->_ble_gattc_cache_conns);
+    }
+    else if (SLIST_FIRST(&ble_gattc_cache_conns) == NULL) {
+        SLIST_INIT(&ble_gattc_cache_conns);
+    }
+#endif
     SLIST_FOREACH(ble_gattc_cache_conn, &ble_gattc_cache_conns, next) {
         if (ble_gattc_cache_conn->conn_handle == conn_handle) {
             return ble_gattc_cache_conn;
@@ -1388,6 +1466,10 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
 
     }
     os_memblock_put(&ble_gattc_cache_conn_pool, conn);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_gattc_cache_conn_free_mem();
+#endif
 }
 
 void
@@ -2123,6 +2205,9 @@ ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
 void
 ble_gattc_cache_conn_free_mem(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_conn_static_vars != NULL) {
+#endif
     if (ble_gattc_cache_conn_mem) {
         nimble_platform_mem_free(ble_gattc_cache_conn_mem);
         ble_gattc_cache_conn_mem = NULL;
@@ -2149,6 +2234,19 @@ ble_gattc_cache_conn_free_mem(void)
         nimble_platform_mem_free(ble_gattc_cache_conn_dsc_mem);
         ble_gattc_cache_conn_dsc_mem = NULL;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_conn_static_vars != NULL) {
+        nimble_platform_mem_free(ble_gattc_cache_conn_static_vars);
+        ble_gattc_cache_conn_static_vars = NULL;
+    }
+
+    ble_gattc_cache_free_mem();
+#endif
 }
 
 int
@@ -2177,6 +2275,15 @@ ble_gattc_cache_conn_init()
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_DSCS));
     /* Free memory first in case this function gets called more than once. */
     ble_gattc_cache_conn_free_mem();
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_conn_static_vars == NULL) {
+        if (ble_gattc_cache_conn_static_vars_init() == NULL) {
+            rc = BLE_HS_ENOMEM;
+            goto err;
+        }
+    }
+#endif
 
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     ble_gattc_cache_conn_mem = nimble_platform_mem_malloc(
@@ -2283,16 +2390,14 @@ err:
 static struct ble_gatt_error *
 ble_gattc_cache_error(int status, uint16_t att_handle)
 {
-    static struct ble_gatt_error error;
-
     /* For consistency, always indicate a handle of 0 on success. */
     if (status == 0 || status == BLE_HS_EDONE) {
         att_handle = 0;
     }
 
-    error.status = status;
-    error.att_handle = att_handle;
-    return &error;
+    ble_gattc_cache_conn_error.status = status;
+    ble_gattc_cache_conn_error.att_handle = att_handle;
+    return &ble_gattc_cache_conn_error;
 }
 
 /* gattc discovery apis */
