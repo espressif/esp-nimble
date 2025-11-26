@@ -35,6 +35,10 @@
 #if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
 #include "services/hid/ble_svc_hid.h"
 #endif
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+/* Declaration for de-init API */
+#include "services/sps/ble_svc_sps.h"
+#endif
 
 #define BLE_GATTS_INCLUDE_SZ    6
 #define BLE_GATTS_CHR_MAX_SZ    19
@@ -49,7 +53,11 @@ enum {
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 /* store the aware state only for the bonded peers */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+struct ble_gatts_aware_state * ble_gatts_conn_aware_states;
+#else
 struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
+#endif
 #endif
 
 #if MYNEWT_VAL(BLE_GATTS)
@@ -63,18 +71,14 @@ static const ble_uuid_t *uuid_chr =
     BLE_UUID16_DECLARE(BLE_ATT_UUID_CHARACTERISTIC);
 static const ble_uuid_t *uuid_ccc =
     BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16);
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
 static const ble_uuid_t *uuid_cpf =
     BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_PRE_FMT16);
 static const ble_uuid_t *uuid_caf =
     BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_AGG_FMT16);
+#endif
 
 static const struct ble_gatt_svc_def **ble_gatts_svc_defs;
-static int ble_gatts_num_svc_defs;
-
-#if MYNEWT_VAL(BLE_GATT_CACHING)
-/* index of latest bonded peer */
-static int last_conn_aware_state_index;
-#endif
 
 struct ble_gatts_svc_entry {
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
@@ -85,8 +89,72 @@ struct ble_gatts_svc_entry {
     uint16_t end_group_handle;  /* 0xffff means unset. */
 };
 
+#if !MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+struct ble_gatts_clt_cfg {
+    uint16_t chr_val_handle;
+    uint8_t flags;
+    uint8_t allowed;
+};
+#endif
+
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 STAILQ_HEAD(ble_gatts_svc_entry_list, ble_gatts_svc_entry);
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    int _ble_gatts_num_svc_defs;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    /* index of latest bonded peer */
+    int _last_conn_aware_state_index;
+#endif
+
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    struct ble_gatts_svc_entry_list _ble_gatts_svc_entries;
+    void *_ble_gatts_svc_entry_mem;
+    struct os_mempool _ble_gatts_svc_entry_pool;
+#else
+    struct ble_gatts_svc_entry *_ble_gatts_svc_entries;
+    uint16_t _ble_gatts_num_svc_entries;
+#endif
+
+    os_membuf_t *_ble_gatts_clt_cfg_mem;
+    struct os_mempool _ble_gatts_clt_cfg_pool;
+
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    /** A cached list of handles for the configurable characteristics. */
+    struct ble_gatts_clt_cfg_list _ble_gatts_clt_cfgs;
+#else
+    struct ble_gatts_clt_cfg *_ble_gatts_clt_cfgs;
+#endif
+
+    int _ble_gatts_num_cfgable_chrs;
+} ble_gatts_static_vars_t;
+
+static ble_gatts_static_vars_t * ble_gatts_static_vars = NULL;
+
+#define ble_gatts_num_svc_defs      (ble_gatts_static_vars->_ble_gatts_num_svc_defs)
+#define last_conn_aware_state_index (ble_gatts_static_vars->_last_conn_aware_state_index)
+#define ble_gatts_svc_entries       (ble_gatts_static_vars->_ble_gatts_svc_entries)
+#define ble_gatts_svc_entry_mem     (ble_gatts_static_vars->_ble_gatts_svc_entry_mem)
+#define ble_gatts_svc_entry_pool    (ble_gatts_static_vars->_ble_gatts_svc_entry_pool)
+#define ble_gatts_num_svc_entries   (ble_gatts_static_vars->_ble_gatts_num_svc_entries)
+#define ble_gatts_clt_cfg_mem       (ble_gatts_static_vars->_ble_gatts_clt_cfg_mem)
+#define ble_gatts_clt_cfg_pool      (ble_gatts_static_vars->_ble_gatts_clt_cfg_pool)
+#define ble_gatts_clt_cfgs          (ble_gatts_static_vars->_ble_gatts_clt_cfgs)
+#define ble_gatts_num_cfgable_chrs  (ble_gatts_static_vars->_ble_gatts_num_cfgable_chrs)
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int ble_gatts_num_svc_defs;
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+/* index of latest bonded peer */
+static int last_conn_aware_state_index;
+#endif
+
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 static struct ble_gatts_svc_entry_list ble_gatts_svc_entries;
 static void *ble_gatts_svc_entry_mem;
 static struct os_mempool ble_gatts_svc_entry_pool;
@@ -102,16 +170,12 @@ static struct os_mempool ble_gatts_clt_cfg_pool;
 /** A cached list of handles for the configurable characteristics. */
 static struct ble_gatts_clt_cfg_list ble_gatts_clt_cfgs;
 #else
-struct ble_gatts_clt_cfg {
-    uint16_t chr_val_handle;
-    uint8_t flags;
-    uint8_t allowed;
-};
-
 /** A cached array of handles for the configurable characteristics. */
 static struct ble_gatts_clt_cfg *ble_gatts_clt_cfgs;
 #endif
+
 static int ble_gatts_num_cfgable_chrs;
+#endif /* !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 STATS_SECT_DECL(ble_gatts_stats) ble_gatts_stats;
 STATS_NAME_START(ble_gatts_stats)
@@ -127,6 +191,26 @@ STATS_NAME_START(ble_gatts_stats)
     STATS_NAME(ble_gatts_stats, dsc_writes)
 STATS_NAME_END(ble_gatts_stats)
 
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_gatts_ensure_ctx(void)
+{
+    if (ble_gatts_static_vars) {
+        return 0;
+    }
+
+    ble_gatts_static_vars = nimble_platform_mem_calloc(1, sizeof(ble_gatts_static_vars_t));
+
+    if (!ble_gatts_static_vars) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
+#endif
+
+
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 static struct ble_gatts_svc_entry *
 ble_gatts_svc_entry_alloc(void)
@@ -137,7 +221,7 @@ ble_gatts_svc_entry_alloc(void)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* if dynamic services are enabled, try to allocate from heap */
     if (entry == NULL) {
-        entry = nimble_platform_mem_malloc(sizeof *entry);
+        entry = nimble_platform_mem_calloc(1,sizeof *entry);
     }
 #endif
     if (entry != NULL) {
@@ -158,6 +242,7 @@ ble_gatts_svc_entry_free(struct ble_gatts_svc_entry *entry)
     }
     else {
         nimble_platform_mem_free(entry);
+	entry = NULL;
     }
 #endif
 }
@@ -168,15 +253,17 @@ ble_gatts_clt_cfg_alloc(void)
     struct ble_gatts_clt_cfg *cfg;
 
     cfg = os_memblock_get(&ble_gatts_clt_cfg_pool);
+
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* if dynamic services are enabled, try to allocate from heap */
     if (cfg == NULL) {
-        cfg = nimble_platform_mem_malloc(sizeof *cfg);
+        cfg = nimble_platform_mem_calloc(1,sizeof *cfg);
     }
 #endif
     if (cfg != NULL) {
         memset(cfg, 0, sizeof *cfg);
     }
+
     return cfg;
 }
 
@@ -188,9 +275,9 @@ ble_gatts_clt_cfg_free(struct ble_gatts_clt_cfg *cfg)
 #else
     if (os_memblock_from(&ble_gatts_clt_cfg_pool, cfg)) {
         os_memblock_put(&ble_gatts_clt_cfg_pool, cfg);
-    }
-    else {
+    } else {
         nimble_platform_mem_free(cfg);
+	    cfg = NULL;
     }
 #endif
 }
@@ -639,7 +726,7 @@ ble_gatts_calculate_hash(uint8_t *out_hash_key)
     if(rc != 0) {
         return rc;
     }
-    buf = nimble_platform_mem_malloc(sizeof(uint8_t) * size);
+    buf = nimble_platform_mem_calloc(1,sizeof(uint8_t) * size);
     if(buf == NULL) {
         rc = BLE_HS_ENOMEM;
         return rc;
@@ -787,6 +874,7 @@ ble_gatts_register_dsc(const struct ble_gatt_svc_def *svc,
 
 }
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
 static int
 ble_gatts_cpfd_is_sane(const struct ble_gatt_cpfd *cpfd)
 {
@@ -813,15 +901,17 @@ ble_gatts_cpfd_is_sane(const struct ble_gatt_cpfd *cpfd)
 
     return 1;
 }
+#endif
+
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 static struct ble_gatts_clt_cfg *
-ble_gatts_clt_cfg_find(struct ble_gatts_clt_cfg_list *ble_gatts_clt_cfgs,
+ble_gatts_clt_cfg_find(struct ble_gatts_clt_cfg_list *ble_gatts_clt_cfgs_local,
                            uint16_t chr_val_handle)
 {
     struct ble_gatts_clt_cfg *cfg;
 
-    STAILQ_FOREACH(cfg, ble_gatts_clt_cfgs, next) {
+    STAILQ_FOREACH(cfg, ble_gatts_clt_cfgs_local, next) {
         if (cfg->chr_val_handle == chr_val_handle) {
             return cfg;
         }
@@ -1057,6 +1147,7 @@ ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle, uint8_t cccd_flags)
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
 static int
 ble_gatts_cafd_access(uint16_t conn_handle, uint16_t attr_handle,
                       uint8_t op, uint16_t offset, struct os_mbuf **om,
@@ -1159,7 +1250,7 @@ ble_gatts_register_cpfds(const struct ble_gatt_cpfd *cpfds)
 
     return 0;
 }
-
+#endif
 
 static int
 ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
@@ -1229,12 +1320,13 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
         }
         BLE_HS_DBG_ASSERT(dsc_handle == def_handle + 2);
     }
-
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     /* Register each Client Presentation Format Descriptor. */
     rc = ble_gatts_register_cpfds(chr->cpfd);
     if (rc != 0) {
         return rc;
     }
+#endif
 
     /* Register each descriptor. */
     if (chr->descriptors != NULL) {
@@ -1444,6 +1536,10 @@ ble_gatts_register_svcs(const struct ble_gatt_svc_def *svcs,
     int i;
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_svc_entry *entry;
+
+    if (STAILQ_EMPTY(&ble_gatts_svc_entries)) {
+        STAILQ_INIT(&ble_gatts_svc_entries);
+    }
 #else
     int idx;
 #endif
@@ -1600,6 +1696,7 @@ ble_gatts_connection_broken(uint16_t conn_handle)
         }
 
         rc = os_memblock_put(&ble_gatts_clt_cfg_pool, clt_cfgs);
+
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
     }
 #endif
@@ -1608,15 +1705,22 @@ ble_gatts_connection_broken(uint16_t conn_handle)
 static void
 ble_gatts_free_svc_defs(void)
 {
-    nimble_platform_mem_free(ble_gatts_svc_defs);
-    ble_gatts_svc_defs = NULL;
-    ble_gatts_num_svc_defs = 0;
+    if (ble_gatts_svc_defs) {
+        nimble_platform_mem_free(ble_gatts_svc_defs);
+        ble_gatts_svc_defs = NULL;
+    }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars != NULL) {
+#endif
+        ble_gatts_num_svc_defs = 0;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
 }
 
 static void
 ble_gatts_free_mem(void)
 {
-
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_svc_entry *entry;
     struct ble_gatts_clt_cfg *clt_cfg;
@@ -1629,8 +1733,14 @@ ble_gatts_free_mem(void)
         }
     }
 #endif
-    nimble_platform_mem_free(ble_gatts_clt_cfg_mem);
-    ble_gatts_clt_cfg_mem = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_max_client_configs > 0) {
+#endif
+        nimble_platform_mem_free(ble_gatts_clt_cfg_mem);
+        ble_gatts_clt_cfg_mem = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     /* free services memory */
@@ -1641,30 +1751,60 @@ ble_gatts_free_mem(void)
             ble_gatts_svc_entry_free(entry);
         }
     }
-    nimble_platform_mem_free(ble_gatts_svc_entry_mem);
-    ble_gatts_svc_entry_mem = NULL;
+    if (ble_gatts_svc_entry_mem) {
+        nimble_platform_mem_free(ble_gatts_svc_entry_mem);
+        ble_gatts_svc_entry_mem = NULL;
+    }
 #else
-    nimble_platform_mem_free(ble_gatts_svc_entries);
-    ble_gatts_svc_entries = NULL;
-    ble_gatts_num_svc_entries = 0;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+   if (ble_hs_max_services > 0) {
+#endif
+      nimble_platform_mem_free(ble_gatts_svc_entries);
+      ble_gatts_svc_entries = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars != NULL) {
+#endif
+        ble_gatts_num_svc_entries = 0;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
+
 #endif
 }
-
 
 void
 ble_gatts_stop(void)
 {
+    ble_gatts_free_mem();
 
     ble_hs_max_services = 0;
     ble_hs_max_attrs = 0;
     ble_hs_max_client_configs = 0;
 
-    ble_gatts_free_mem();
     ble_gatts_free_svc_defs();
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     ble_att_svr_reset();
 #endif
     ble_att_svr_stop();
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars != NULL) {
+        nimble_platform_mem_free(ble_gatts_static_vars);
+        ble_gatts_static_vars = NULL;
+    }
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    if (ble_gatts_conn_aware_states) {
+        nimble_platform_mem_free(ble_gatts_conn_aware_states);
+        ble_gatts_conn_aware_states = NULL;
+    }
+#endif
+#endif
+
 }
 
 int
@@ -1675,6 +1815,12 @@ ble_gatts_start(void)
     uint16_t allowed_flags;
     ble_uuid16_t uuid = BLE_UUID16_INIT(BLE_ATT_UUID_CHARACTERISTIC);
     int num_elems;
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    if (STAILQ_EMPTY(&ble_gatts_clt_cfgs)) {
+        STAILQ_INIT(&ble_gatts_clt_cfgs);
+    }
+#endif
+
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_clt_cfg *clt_cfg;
 #else
@@ -1696,9 +1842,28 @@ ble_gatts_start(void)
         goto done;
     }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_ensure_ctx()) {
+        rc = BLE_HS_ENOMEM;
+        goto done;
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_conn_aware_states == NULL) {
+        ble_gatts_conn_aware_states = nimble_platform_mem_calloc(1, sizeof(struct ble_gatts_aware_state) * MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+    }
+#else
+    memset(ble_gatts_conn_aware_states, 0, sizeof ble_gatts_conn_aware_states);
+#endif
+
+    last_conn_aware_state_index = 0;
+#endif
+
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (ble_hs_max_client_configs > 0) {
-        ble_gatts_clt_cfg_mem = nimble_platform_mem_malloc(
+        ble_gatts_clt_cfg_mem = nimble_platform_mem_calloc(1,
             OS_MEMPOOL_BYTES(ble_hs_max_client_configs,
                              sizeof (struct ble_gatts_clt_cfg)));
         if (ble_gatts_clt_cfg_mem == NULL) {
@@ -1720,7 +1885,7 @@ ble_gatts_start(void)
 #endif
 #else
         ble_gatts_svc_entries =
-            nimble_platform_mem_malloc(ble_hs_max_services * sizeof *ble_gatts_svc_entries);
+            nimble_platform_mem_calloc(1,ble_hs_max_services * sizeof *ble_gatts_svc_entries);
         if (ble_gatts_svc_entries == NULL) {
             rc = BLE_HS_ENOMEM;
             goto done;
@@ -1729,12 +1894,14 @@ ble_gatts_start(void)
     }
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
-    rc = os_mempool_init(&ble_gatts_svc_entry_pool, ble_hs_max_services,
-                         sizeof (struct ble_gatts_svc_entry),
-                         ble_gatts_svc_entry_mem, "ble_gatts_svc_entry_pool");
-    if (rc != 0) {
-        rc = BLE_HS_EOS;
-        goto done;
+    if (ble_hs_max_services > 0 ) {
+        rc = os_mempool_init(&ble_gatts_svc_entry_pool, ble_hs_max_services,
+                             sizeof (struct ble_gatts_svc_entry),
+                             ble_gatts_svc_entry_mem, "ble_gatts_svc_entry_pool");
+        if (rc != 0) {
+            rc = BLE_HS_EOS;
+            goto done;
+        }
     }
 #else
 
@@ -1759,15 +1926,18 @@ ble_gatts_start(void)
     /* Initialize client-configuration memory pool. */
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     num_elems = ble_hs_max_client_configs;
+
     rc = os_mempool_init(&ble_gatts_clt_cfg_pool, num_elems,
-                            sizeof(struct ble_gatts_clt_cfg),
-                            ble_gatts_clt_cfg_mem,
-                            "ble_gatts_clt_cfg_pool");
+                         sizeof(struct ble_gatts_clt_cfg),
+                         ble_gatts_clt_cfg_mem,
+                         "ble_gatts_clt_cfg_pool");
 #else
     num_elems = ble_hs_max_client_configs / ble_gatts_num_cfgable_chrs;
+
     rc = os_mempool_init(&ble_gatts_clt_cfg_pool, num_elems,
-                         ble_gatts_clt_cfg_size(), ble_gatts_clt_cfg_mem,
+		    ble_gatts_clt_cfg_size(), ble_gatts_clt_cfg_mem,
                          "ble_gatts_clt_cfg_pool");
+
 #endif
     if (rc != 0) {
         rc = BLE_HS_EOS;
@@ -1778,7 +1948,9 @@ ble_gatts_start(void)
     /* Allocate the cached array of handles for the configuration
      * characteristics.
      */
+
     ble_gatts_clt_cfgs = os_memblock_get(&ble_gatts_clt_cfg_pool);
+
     if (ble_gatts_clt_cfgs == NULL) {
         rc = BLE_HS_ENOMEM;
         goto done;
@@ -1830,6 +2002,12 @@ done:
 int
 ble_gatts_conn_can_alloc(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_ensure_ctx()) {
+        return 0;
+    }
+#endif
+
     return ble_gatts_num_cfgable_chrs == 0 ||
            ble_gatts_clt_cfg_pool.mp_num_free > 0;
 }
@@ -1876,7 +2054,8 @@ done:
 #else
     if (ble_gatts_num_cfgable_chrs > 0) {
         gatts_conn->clt_cfgs = os_memblock_get(&ble_gatts_clt_cfg_pool);
-        if (gatts_conn->clt_cfgs == NULL) {
+
+	if (gatts_conn->clt_cfgs == NULL) {
             return BLE_HS_ENOMEM;
         }
 
@@ -2443,7 +2622,9 @@ ble_gatts_bonding_established(uint16_t conn_handle)
 #endif
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     struct ble_hs_conn_addrs addrs;
+#if (MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 0)
     int new_idx;
+#endif
 #endif
 
     ble_hs_lock();
@@ -2496,16 +2677,23 @@ ble_gatts_bonding_established(uint16_t conn_handle)
     /* store the bonded peer aware_state
        if space not available delete the
        oldest bond */
-    ble_hs_conn_addrs(conn, &addrs);
-    new_idx = (last_conn_aware_state_index + 1) %
-              MYNEWT_VAL(BLE_STORE_MAX_BONDS);
-    memset(&ble_gatts_conn_aware_states[new_idx], 0,
-           sizeof(struct ble_gatts_aware_state));
-    memcpy(ble_gatts_conn_aware_states[new_idx].peer_id_addr,
-           addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val);
-    ble_gatts_conn_aware_states[new_idx].aware = conn->bhc_gatt_svr.aware_state;
-    ble_gatts_conn_aware_states[new_idx].half_aware = conn->bhc_gatt_svr.half_aware;
-    last_conn_aware_state_index = new_idx;
+#if (MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 0)
+        ble_hs_conn_addrs(conn, &addrs);
+        new_idx = (last_conn_aware_state_index + 1) %
+                  MYNEWT_VAL(BLE_STORE_MAX_BONDS);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states == NULL) {
+            ble_gatts_conn_aware_states = nimble_platform_mem_calloc(1, sizeof(struct ble_gatts_aware_state) * MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+        }
+#endif
+	memset(&ble_gatts_conn_aware_states[new_idx], 0,
+               sizeof(struct ble_gatts_aware_state));
+        memcpy(ble_gatts_conn_aware_states[new_idx].peer_id_addr,
+               addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val);
+        ble_gatts_conn_aware_states[new_idx].aware = conn->bhc_gatt_svr.aware_state;
+        ble_gatts_conn_aware_states[new_idx].half_aware = conn->bhc_gatt_svr.half_aware;
+        last_conn_aware_state_index = new_idx;
+#endif
 #endif
     ble_hs_unlock();
 }
@@ -2870,11 +3058,11 @@ static int ble_gatts_update_conn_clt_cfg(struct ble_hs_conn *conn, void *arg) {
     }
     return 0;
 }
-static struct ble_gatts_clt_cfg * ble_gatts_get_last_cfg(struct ble_gatts_clt_cfg_list *ble_gatts_clt_cfgs)
+static struct ble_gatts_clt_cfg * ble_gatts_get_last_cfg(struct ble_gatts_clt_cfg_list *ble_gatts_clt_cfgs_local)
 {
     struct ble_gatts_clt_cfg *cfg, *prev;
     prev = NULL;
-    STAILQ_FOREACH(cfg, ble_gatts_clt_cfgs, next) {
+    STAILQ_FOREACH(cfg, ble_gatts_clt_cfgs_local, next) {
         prev = cfg;
     }
     return prev;
@@ -2892,7 +3080,7 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
     uint16_t arg[3];
     uint16_t start_handle, end_handle;
 
-    p = nimble_platform_mem_malloc(sizeof *ble_gatts_svc_defs);
+    p = nimble_platform_mem_calloc(1,sizeof *ble_gatts_svc_defs);
     if (p == NULL) {
         rc = BLE_HS_ENOMEM;
         goto done;
@@ -3064,7 +3252,14 @@ ble_gatts_add_svcs(const struct ble_gatt_svc_def *svcs)
         goto done;
     }
 
-    p = realloc(ble_gatts_svc_defs,
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_ensure_ctx()) {
+	rc = BLE_HS_ENOMEM;
+        goto done;
+    }
+#endif
+
+    p = nimble_platform_mem_realloc(ble_gatts_svc_defs,
                 (ble_gatts_num_svc_defs + 1) * sizeof *ble_gatts_svc_defs);
     if (p == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -3150,7 +3345,9 @@ ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
     int i;
     int c;
     int d;
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     int pf;
+#endif
 
     for (s = 0; svcs[s].type != BLE_GATT_SVC_TYPE_END; s++) {
         svc = svcs + s;
@@ -3225,7 +3422,7 @@ ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
                         res->attrs++;
                     }
                 }
-
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
                 if (chr->cpfd != NULL) {
                     for (pf = 0; chr->cpfd[pf].format != 0; pf++) {
                         if (!ble_gatts_cpfd_is_sane(chr->cpfd + pf)) {
@@ -3250,6 +3447,7 @@ ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
                         res->attrs++;
                     }
                 }
+#endif
             }
         }
     }
@@ -3277,11 +3475,18 @@ ble_gatts_count_cfg(const struct ble_gatt_svc_def *defs)
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_HOST_STATUS)
 int
 ble_gatts_get_cfgable_chrs(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        return 0;
+    }
+#endif
     return ble_gatts_num_cfgable_chrs;
 }
+#endif
 
 void
 ble_gatts_lcl_svc_foreach(ble_gatt_svc_foreach_fn cb, void *arg)
@@ -3324,6 +3529,12 @@ ble_gatts_reset(void)
     struct ble_gatts_svc_entry *entry;
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_ensure_ctx()) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
+
     ble_hs_lock();
 
     if (!ble_gatts_mutable()) {
@@ -3348,6 +3559,9 @@ ble_gatts_reset(void)
 #if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
     ble_svc_hid_reset();
 #endif
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_sps_reset();
+#endif
     ble_hs_unlock();
 
     return rc;
@@ -3357,6 +3571,12 @@ int
 ble_gatts_init(void)
 {
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_ensure_ctx()) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     ble_gatts_num_cfgable_chrs = 0;
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
@@ -3374,10 +3594,6 @@ ble_gatts_init(void)
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     STAILQ_INIT(&ble_gatts_svc_entries);
-#endif
-#if MYNEWT_VAL(BLE_GATT_CACHING)
-    memset(ble_gatts_conn_aware_states, 0, sizeof ble_gatts_conn_aware_states);
-    last_conn_aware_state_index = 0;
 #endif
 
     return 0;

@@ -24,8 +24,14 @@
 #include "services/dis/ble_svc_dis.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_DIS_SERVICE
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+struct ble_svc_dis_data *ble_svc_dis_data_ptr = NULL;
+#define ble_svc_dis_data (*ble_svc_dis_data_ptr)
+#else
 /* Device information */
-struct ble_svc_dis_data ble_svc_dis_data = {
+struct ble_svc_dis_data _ble_svc_dis_data = {
     .model_number      = MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_DEFAULT),
     .serial_number     = MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_DEFAULT),
     .firmware_revision = MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_DEFAULT),
@@ -37,6 +43,8 @@ struct ble_svc_dis_data ble_svc_dis_data = {
     .ieee              = "dummy_data",
     .udi               = NULL,  /** For now no UID fields are supported */
 };
+#define ble_svc_dis_data _ble_svc_dis_data
+#endif
 
 /* Access function */
 #if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM)      >= 0) ||	\
@@ -52,96 +60,116 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
 #endif
 
-static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
-    { /*** Service: Device Information Service (DIS). */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
+/* Pre-defined UUIDs to avoid compound literals in DRAM */
+static const ble_uuid16_t uuid_svc_dis = BLE_UUID16_INIT(BLE_SVC_DIS_UUID16);
+static const ble_uuid16_t uuid_chr_model_number = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_MODEL_NUMBER);
+static const ble_uuid16_t uuid_chr_serial_number = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_SERIAL_NUMBER);
+static const ble_uuid16_t uuid_chr_firmware_revision = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_FIRMWARE_REVISION);
+static const ble_uuid16_t uuid_chr_hardware_revision = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_HARDWARE_REVISION);
+static const ble_uuid16_t uuid_chr_software_revision = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_SOFTWARE_REVISION);
+static const ble_uuid16_t uuid_chr_manufacturer_name = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_MANUFACTURER_NAME);
+static const ble_uuid16_t uuid_chr_system_id = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_SYSTEM_ID);
+static const ble_uuid16_t uuid_chr_ieee_cert = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST);
+static const ble_uuid16_t uuid_chr_pnp_id = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_PNP_ID);
+static const ble_uuid16_t uuid_chr_udi = BLE_UUID16_INIT(BLE_SVC_DIS_CHR_UUID16_UDI);
+
+/* Pre-defined characteristics array to avoid compound literal in DRAM */
+static const struct ble_gatt_chr_def dis_characteristics[] = {
 #if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM) >= 0)
-	    /*** Characteristic: Model Number String */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_MODEL_NUMBER),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-	             MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM),
-        }, {
+    {
+        /*** Characteristic: Model Number String */
+        .uuid = &uuid_chr_model_number.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM),
+    },
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_READ_PERM) >= 0)
-	    /*** Characteristic: Serial Number String */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_SERIAL_NUMBER),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-	             MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_READ_PERM),
-        }, {
+    {
+        /*** Characteristic: Serial Number String */
+        .uuid = &uuid_chr_serial_number.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_READ_PERM),
+    },
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_READ_PERM) >= 0)
-	    /*** Characteristic: Hardware Revision String */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_HARDWARE_REVISION),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-	             MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_READ_PERM),
-        }, {
+    {
+        /*** Characteristic: Hardware Revision String */
+        .uuid = &uuid_chr_hardware_revision.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_READ_PERM),
+    },
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM) >= 0)
-	    /*** Characteristic: Firmware Revision String */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_FIRMWARE_REVISION),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-	             MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM),
-        }, {
+    {
+        /*** Characteristic: Firmware Revision String */
+        .uuid = &uuid_chr_firmware_revision.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM),
+    },
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0)
-	    /*** Characteristic: Software Revision String */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_SOFTWARE_REVISION),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-	             MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM),
-        }, {
+    {
+        /*** Characteristic: Software Revision String */
+        .uuid = &uuid_chr_software_revision.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM),
+    },
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0)
-	    /*** Characteristic: Manufacturer Name */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_MANUFACTURER_NAME),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-	             MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM),
-        }, {
+    {
+        /*** Characteristic: Manufacturer Name */
+        .uuid = &uuid_chr_manufacturer_name.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM),
+    },
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0)
-      /*** Characteristic: System Id */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_SYSTEM_ID),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-               MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM),
-            }, {
-#endif
-    /*** Chatacteristic: IEEE 11073-20601 Regulatory Certification Data List */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST),
-            .access_cb = ble_svc_dis_access,
-            .flags =  BLE_GATT_CHR_F_READ,
-        }, {
-#if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
-      /*** Characteristic: PNP Id */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_PNP_ID),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ |
-               MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM),
-            }, {
-#endif
-    /*** UDI for Medical Devices */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_DIS_CHR_UUID16_UDI),
-            .access_cb = ble_svc_dis_access,
-            .flags = BLE_GATT_CHR_F_READ
-        }, {
-
-            0, /* No more characteristics in this service */
-        }, }
+    {
+        /*** Characteristic: System Id */
+        .uuid = &uuid_chr_system_id.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM),
     },
+#endif
+    {
+        /*** Characteristic: IEEE 11073-20601 Regulatory Certification Data List */
+        .uuid = &uuid_chr_ieee_cert.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ,
+    },
+#if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
+    {
+        /*** Characteristic: PNP Id */
+        .uuid = &uuid_chr_pnp_id.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM),
+    },
+#endif
+    {
+        /*** Characteristic: UDI for Medical Devices */
+        .uuid = &uuid_chr_udi.u,
+        .access_cb = ble_svc_dis_access,
+        .flags = BLE_GATT_CHR_F_READ,
+    },
+    {
+        0, /* Terminator: No more characteristics in this service */
+    },
+};
 
+static const struct ble_gatt_svc_def ble_svc_dis_defs[] = {
+    {
+        /*** Service: Device Information Service (DIS). */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_dis.u,
+        .characteristics = dis_characteristics,
+    },
     {
         0, /* No more services. */
     },
 };
 
-const struct ble_gatt_svc_def *included_services[] = {ble_svc_dis_defs, NULL};
+/* Make pointer array itself constant to place in Flash instead of DRAM */
+static const struct ble_gatt_svc_def *included_services[] = {ble_svc_dis_defs, NULL};
 const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
@@ -395,6 +423,31 @@ ble_svc_dis_included_init(void)
     SYSINIT_PANIC_ASSERT(rc == 0);
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_svc_dis_init_dynamic(void)
+{
+    ble_svc_dis_data_ptr = nimble_platform_mem_calloc(1, sizeof(ble_svc_dis_data));
+    if (!ble_svc_dis_data_ptr) {
+        return BLE_HS_ENOMEM;
+    }
+
+
+    /* Initialize default fields */
+    ble_svc_dis_data_ptr->model_number      = MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_DEFAULT);
+    ble_svc_dis_data_ptr->serial_number     = MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_DEFAULT);
+    ble_svc_dis_data_ptr->firmware_revision = MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_DEFAULT);
+    ble_svc_dis_data_ptr->hardware_revision = MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_DEFAULT);
+    ble_svc_dis_data_ptr->software_revision = MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_DEFAULT);
+    ble_svc_dis_data_ptr->manufacturer_name = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT);
+    ble_svc_dis_data_ptr->system_id         = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT);
+    ble_svc_dis_data_ptr->pnp_id            = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT);
+    ble_svc_dis_data_ptr->ieee              = "dummy_data";
+    ble_svc_dis_data_ptr->udi               = NULL;
+
+    return 0;
+}
+#endif
 
 /**
  * Initialize the DIS package.
@@ -403,6 +456,16 @@ void
 ble_svc_dis_init(void)
 {
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr != NULL) {
+        nimble_platform_mem_free(ble_svc_dis_data_ptr);
+	ble_svc_dis_data_ptr = NULL;
+    }
+
+    rc = ble_svc_dis_init_dynamic();
+    SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
 
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();

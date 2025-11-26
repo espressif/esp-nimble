@@ -36,19 +36,19 @@ ble_svc_hr_chr_write(struct os_mbuf *om, uint16_t min_len,
                      uint16_t max_len, void *dst,
                      uint16_t *len);
 
-static const struct ble_gatt_svc_def ble_svc_hr_defs[] = {
-    {
-        /*** Heart Rate Measurement Service. */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_HR_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[])
-        { {
+static const ble_uuid16_t uuid_svc_hr = BLE_UUID16_INIT(BLE_SVC_HR_UUID16);
+static const ble_uuid16_t uuid_chr_hr_measure = BLE_UUID16_INIT(BLE_SVC_HR_CHR_UUID16_MEASUREMENT);
+static const ble_uuid16_t uuid_chr_body_sensor = BLE_UUID16_INIT(BLE_SVC_HR_CHR_UUID16_BODY_SENSOR_LOC);
+static const ble_uuid16_t uuid_chr_hr_cp = BLE_UUID16_INIT(BLE_SVC_HR_CHR_UUID16_CTRL_PT);
+
+static const struct ble_gatt_chr_def hr_characteristics[] = {
+            {
                 /** Heart Rate Measurement
                  *
                  * This characteristic exposes heart rate measurement value
                  * by notifying.
                  */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_HR_CHR_UUID16_MEASUREMENT),
+                .uuid = &uuid_chr_hr_measure.u,
                 .access_cb = ble_svc_hr_access,
                 .val_handle = &ble_svc_hr_measurement_val_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
@@ -58,7 +58,7 @@ static const struct ble_gatt_svc_def ble_svc_hr_defs[] = {
                  * This characteristic exposes information about
                  * the location of the heart rate measurement device.
                  */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_HR_CHR_UUID16_BODY_SENSOR_LOC),
+                .uuid = &uuid_chr_body_sensor.u,
                 .access_cb = ble_svc_hr_access,
                 .val_handle = &ble_svc_hr_body_sensor_loc_val_handle,
                 .flags = BLE_GATT_CHR_F_READ,
@@ -68,14 +68,21 @@ static const struct ble_gatt_svc_def ble_svc_hr_defs[] = {
                  * This characteristic enable a Client to write control
                  * points to a Server to control behavior
                  */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_HR_CHR_UUID16_CTRL_PT),
+                .uuid = &uuid_chr_hr_cp.u,
                 .access_cb = ble_svc_hr_access,
                 .val_handle = &ble_svc_hr_ctrl_pt_val_handle,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             }, {
                 0, /* No more characteristics in this service. */
             }
-        },
+};
+
+static const struct ble_gatt_svc_def ble_svc_hr_defs[] = {
+    {
+        /*** Heart Rate Measurement Service. */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_hr.u,
+        .characteristics = hr_characteristics,
     },
 
     {

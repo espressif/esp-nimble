@@ -50,6 +50,29 @@
  */
 
 STAILQ_HEAD(ble_att_svr_entry_list, ble_att_svr_entry);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    os_membuf_t *prep_entry_mem;
+    struct os_mempool prep_entry_pool;
+    void *entry_mem;
+    struct os_mempool entry_pool;
+    struct ble_att_svr_entry_list list;
+    struct ble_att_svr_entry_list hidden_list;
+    uint16_t id;
+} ble_att_svr_ctx_t;
+
+static ble_att_svr_ctx_t *ble_att_svr_ctx;
+
+#define ble_att_svr_prep_entry_mem  (ble_att_svr_ctx->prep_entry_mem)
+#define ble_att_svr_prep_entry_pool (ble_att_svr_ctx->prep_entry_pool)
+#define ble_att_svr_entry_mem       (ble_att_svr_ctx->entry_mem)
+#define ble_att_svr_entry_pool      (ble_att_svr_ctx->entry_pool)
+#define ble_att_svr_list            (ble_att_svr_ctx->list)
+#define ble_att_svr_hidden_list     (ble_att_svr_ctx->hidden_list)
+#define ble_att_svr_id              (ble_att_svr_ctx->id)
+
+#else
 static struct ble_att_svr_entry_list ble_att_svr_list;
 static struct ble_att_svr_entry_list ble_att_svr_hidden_list;
 
@@ -68,6 +91,25 @@ static os_membuf_t ble_att_svr_prep_entry_mem[
 #endif
 
 static struct os_mempool ble_att_svr_prep_entry_pool;
+static struct os_mempool ble_att_svr_entry_pool;
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_att_svr_ensure_ctx(void)
+{
+    if (ble_att_svr_ctx != NULL) {
+        return 0;
+    }
+
+    ble_att_svr_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_att_svr_ctx));
+    if (ble_att_svr_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
+#endif
 
 static struct ble_att_svr_entry *
 ble_att_svr_entry_alloc(void)
@@ -78,7 +120,7 @@ ble_att_svr_entry_alloc(void)
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE) && !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* if dynamic services are enabled, try to allocate from heap */
     if (entry == NULL) {
-        entry = nimble_platform_mem_malloc(sizeof *entry);
+        entry = nimble_platform_mem_calloc(1,sizeof *entry);
     }
 #endif
     if (entry != NULL) {
@@ -287,7 +329,6 @@ ble_att_svr_get_sec_state(uint16_t conn_handle,
 
     ble_hs_unlock();
 }
-
 
 #if MYNEWT_VAL(BLE_GATTS)
 static int
@@ -2412,13 +2453,10 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     return ble_att_svr_write_handle(conn_handle, handle, 0, rxom, &att_err);
 }
 
+#if MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE)
 int
 ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
-#if !MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE)
-    return BLE_HS_ENOTSUP;
-#endif
-
     if (MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0 && ble_hs_cfg.eatt) {
         return BLE_HS_ENOTSUP;
     }
@@ -2473,7 +2511,7 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 
     /* Authentication procedure */
     len = OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter) + 1;
-    message = nimble_platform_mem_malloc(len);
+    message = nimble_platform_mem_calloc(1,len);
 
     message[0] = BLE_ATT_OP_SIGNED_WRITE_CMD;
     os_mbuf_copydata(*rxom, 0, OS_MBUF_PKTLEN(*rxom), &message[1]);
@@ -2507,11 +2545,13 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
         goto err;
     }
 
+#if MYNEWT_VAL(BLE_SM_SIGN_CNT)
     /* Signature matches, increment sign counter and pass the data to the upper layer */
     rc = ble_sm_incr_peer_sign_counter(conn_handle);
     if (rc != 0) {
         goto err;
     }
+#endif
 
     /* Strip the request base from the front of the mbuf. */
     os_mbuf_adj(*rxom, sizeof(*req));
@@ -2527,6 +2567,7 @@ err:
     nimble_platform_mem_free(message);
     return rc;
 }
+#endif
 
 int
 ble_att_svr_write_local(uint16_t attr_handle, struct os_mbuf *om)
@@ -3325,8 +3366,18 @@ ble_att_svr_reset(void)
 static void
 ble_att_svr_free_start_mem(void)
 {
-    nimble_platform_mem_free(ble_att_svr_entry_mem);
-    ble_att_svr_entry_mem = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_att_svr_ctx == NULL) {
+        return;
+    }
+#endif
+    if (ble_att_svr_entry_mem) {
+        nimble_platform_mem_free(ble_att_svr_entry_mem);
+        ble_att_svr_entry_mem = NULL;
+    }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    memset(&ble_att_svr_entry_pool, 0, sizeof(ble_att_svr_entry_pool));
+#endif
 }
 
 int
@@ -3334,11 +3385,18 @@ ble_att_svr_start(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_att_svr_ensure_ctx();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
+
     ble_att_svr_free_start_mem();
 
     if (ble_hs_max_attrs > 0) {
         #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-        ble_att_svr_entry_mem = nimble_platform_mem_malloc(
+        ble_att_svr_entry_mem = nimble_platform_mem_calloc(1,
             OS_MEMPOOL_BYTES(ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry)));
         if (ble_att_svr_entry_mem == NULL) {
@@ -3351,6 +3409,9 @@ ble_att_svr_start(void)
                              sizeof (struct ble_att_svr_entry),
                              ble_att_svr_entry_mem, "ble_att_svr_entry_pool");
         if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+            memset(&ble_att_svr_entry_pool, 0, sizeof(ble_att_svr_entry_pool));
+#endif
             rc = BLE_HS_EOS;
             goto err;
         }
@@ -3363,6 +3424,26 @@ err:
     return rc;
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_att_svr_deinit(void)
+{
+    if (ble_att_svr_ctx == NULL) {
+        return;
+    }
+
+    if (ble_att_svr_prep_entry_mem) {
+        nimble_platform_mem_free(ble_att_svr_prep_entry_mem);
+        ble_att_svr_prep_entry_mem = NULL;
+    }
+    memset(&ble_att_svr_prep_entry_pool, 0, sizeof(ble_att_svr_prep_entry_pool));
+    ble_att_svr_free_start_mem();
+
+    nimble_platform_mem_free(ble_att_svr_ctx);
+    ble_att_svr_ctx = NULL;
+}
+#endif
+
 void
 ble_att_svr_stop(void)
 {
@@ -3374,13 +3455,39 @@ ble_att_svr_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_att_svr_ensure_ctx();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
+
     if (MYNEWT_VAL(BLE_ATT_SVR_MAX_PREP_ENTRIES) > 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+     size_t mem_size = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_ATT_SVR_MAX_PREP_ENTRIES),
+                                          sizeof(struct ble_att_prep_entry)) * sizeof(os_membuf_t);
+     ble_att_svr_prep_entry_mem = (os_membuf_t *)nimble_platform_mem_calloc(1, mem_size);
+     if (!ble_att_svr_prep_entry_mem) {
+         return BLE_HS_ENOMEM;
+     }
+#endif
+#endif
         rc = os_mempool_init(&ble_att_svr_prep_entry_pool,
                              MYNEWT_VAL(BLE_ATT_SVR_MAX_PREP_ENTRIES),
                              sizeof (struct ble_att_prep_entry),
                              ble_att_svr_prep_entry_mem,
                              "ble_att_svr_prep_entry_pool");
         if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+            nimble_platform_mem_free(ble_att_svr_prep_entry_mem);
+            ble_att_svr_prep_entry_mem = NULL;
+#endif
+            memset(&ble_att_svr_prep_entry_pool, 0,
+                   sizeof(ble_att_svr_prep_entry_pool));
+#endif
+
             return BLE_HS_EOS;
         }
     }

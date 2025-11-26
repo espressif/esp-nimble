@@ -23,6 +23,7 @@
 #include "host/ble_sm.h"
 #include "ble_hs_priv.h"
 #include "ble_sm_priv.h"
+#include "esp_nimble_mem.h"
 
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_SM_SC)
@@ -30,8 +31,30 @@
 #define BLE_SM_SC_PASSKEY_BYTES     4
 #define BLE_SM_SC_PASSKEY_BITS      20
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+
+typedef struct {
+    uint8_t pub_key[64];
+    uint8_t priv_key[32];
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    uint8_t dbg_pub_key[64];
+    uint8_t dbg_priv_key[32];
+#endif
+}ble_sm_sc_ctx_t;
+
+static ble_sm_sc_ctx_t *ble_sm_sc_ctx;
+
+#define ble_sm_sc_pub_key       (ble_sm_sc_ctx->pub_key)
+#define ble_sm_sc_priv_key      (ble_sm_sc_ctx->priv_key)
+#define ble_sm_dbg_sc_pub_key   (ble_sm_sc_ctx->dbg_pub_key)
+#define ble_sm_dbg_sc_priv_key  (ble_sm_sc_ctx->dbg_priv_key)
+
+#else
 static uint8_t ble_sm_sc_pub_key[64];
 static uint8_t ble_sm_sc_priv_key[32];
+#endif
 
 /**
  * Whether our public-private key pair has been generated.  We generate it on
@@ -79,19 +102,47 @@ static const uint8_t ble_sm_sc_resp_ioa[5 /*resp*/ ][5 /*init*/ ] =
       {IOACT_INPUT,   IOACT_NUMCMP, IOACT_DISP,  IOACT_NONE, IOACT_NUMCMP},
 };
 
-#if MYNEWT_VAL(BLE_HS_DEBUG)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_sm_sc_ensure_ctx (void)
+{
+    if (ble_sm_sc_ctx) {
+        return 0;
+    }
 
+    ble_sm_sc_ctx = nimble_platform_mem_calloc(1, sizeof(* ble_sm_sc_ctx));
+
+    if (!ble_sm_sc_ctx) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static uint8_t ble_sm_dbg_sc_pub_key[64];
 static uint8_t ble_sm_dbg_sc_priv_key[32];
+#endif
+#define sizeof_ble_sm_dbg_sc_pub_key sizeof(ble_sm_dbg_sc_pub_key)
+#define sizeof_ble_sm_dbg_sc_priv_key sizeof(ble_sm_dbg_sc_priv_key)
+
 static uint8_t ble_sm_dbg_sc_keys_set;
 
 void
 ble_sm_dbg_set_sc_keys(uint8_t *pubkey, uint8_t *privkey)
 {
-    memcpy(ble_sm_dbg_sc_pub_key, pubkey,
-           sizeof ble_sm_dbg_sc_pub_key);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_sm_sc_ensure_ctx()) {
+        return ;
+    }
+#endif
+
+   memcpy(ble_sm_dbg_sc_pub_key, pubkey,
+           sizeof_ble_sm_dbg_sc_pub_key);
     memcpy(ble_sm_dbg_sc_priv_key, privkey,
-           sizeof ble_sm_dbg_sc_priv_key);
+           sizeof_ble_sm_dbg_sc_priv_key);
     ble_sm_dbg_sc_keys_set = 1;
 }
 
@@ -176,8 +227,8 @@ ble_sm_gen_pub_priv(uint8_t *pub, uint8_t *priv)
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     if (ble_sm_dbg_sc_keys_set) {
         ble_sm_dbg_sc_keys_set = 0;
-        memcpy(pub, ble_sm_dbg_sc_pub_key, sizeof ble_sm_dbg_sc_pub_key);
-        memcpy(priv, ble_sm_dbg_sc_priv_key, sizeof ble_sm_dbg_sc_priv_key);
+        memcpy(pub, ble_sm_dbg_sc_pub_key, sizeof_ble_sm_dbg_sc_pub_key);
+        memcpy(priv, ble_sm_dbg_sc_priv_key, sizeof_ble_sm_dbg_sc_priv_key);
         return 0;
     }
 #endif
@@ -196,6 +247,11 @@ ble_sm_sc_ensure_keys_generated(void)
     int rc;
 
     if (!ble_sm_sc_keys_generated) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+	if (ble_sm_sc_ensure_ctx()) {
+	    return BLE_HS_ENOMEM;
+	}
+#endif
         rc = ble_sm_gen_pub_priv(ble_sm_sc_pub_key, ble_sm_sc_priv_key);
         if (rc != 0) {
             return rc;
@@ -205,10 +261,18 @@ ble_sm_sc_ensure_keys_generated(void)
     }
 
     BLE_HS_LOG(DEBUG, "our pubkey=");
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_hs_log_flat_buf(ble_sm_sc_pub_key, 64);
+#else
     ble_hs_log_flat_buf(&ble_sm_sc_pub_key, 64);
+#endif
     BLE_HS_LOG(DEBUG, "\n");
     BLE_HS_LOG(DEBUG, "our privkey=");
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_hs_log_flat_buf(ble_sm_sc_priv_key, 32);
+#else
     ble_hs_log_flat_buf(&ble_sm_sc_priv_key, 32);
+#endif
     BLE_HS_LOG(DEBUG, "\n");
 
     return 0;
@@ -941,6 +1005,17 @@ ble_sm_sc_init(void)
     ble_sm_alg_ecc_init();
     ble_sm_sc_keys_generated = 0;
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_sm_sc_deinit(void)
+{
+    if (ble_sm_sc_ctx) {
+        nimble_platform_mem_free(ble_sm_sc_ctx);
+        ble_sm_sc_ctx = NULL;
+    }
+}
+#endif
 
 #endif  /* MYNEWT_VAL(BLE_SM_SC) */
 #endif

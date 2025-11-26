@@ -96,12 +96,29 @@ STATS_SECT_END
 extern STATS_SECT_DECL(ble_hs_stats) ble_hs_stats;
 
 extern struct os_mbuf_pool ble_hs_mbuf_pool;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    uint8_t sync_state;
+    uint8_t enabled_state;
+    uint16_t max_attrs;
+    uint16_t max_services;
+    uint16_t max_client_configs;
+} ble_hs_state_ctx_t;
+
+#define ble_hs_sync_state             (ble_hs_state_ctx->sync_state)
+#define ble_hs_enabled_state          (ble_hs_state_ctx->enabled_state)
+#define ble_hs_max_attrs              (ble_hs_state_ctx->max_attrs)
+#define ble_hs_max_services           (ble_hs_state_ctx->max_services)
+#define ble_hs_max_client_configs     (ble_hs_state_ctx->max_client_configs)
+extern ble_hs_state_ctx_t *ble_hs_state_ctx;
+#else
 extern uint8_t ble_hs_sync_state;
 extern uint8_t ble_hs_enabled_state;
 
 extern uint16_t ble_hs_max_attrs;
 extern uint16_t ble_hs_max_services;
 extern uint16_t ble_hs_max_client_configs;
+#endif // BT_NIMBLE_MEM_OPTIMIZATION
 
 void ble_hs_process_rx_data_queue(void);
 int ble_hs_tx_data(struct os_mbuf *om);
@@ -144,7 +161,9 @@ int ble_mqueue_init(struct ble_mqueue *mq, ble_npl_event_fn *ev_fn, void *ev_arg
 struct os_mbuf *ble_mqueue_get(struct ble_mqueue *mq);
 int ble_mqueue_put(struct ble_mqueue *mq, struct ble_npl_eventq *evq, struct os_mbuf *om);
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 void ble_gap_npl_sync_lost(struct ble_npl_event *ev);
+#endif
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     #define BLE_HS_DBG_ASSERT(x) assert(x)

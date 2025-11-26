@@ -3199,6 +3199,7 @@ int ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                     const struct ble_gap_conn_params *params,
                     ble_gap_event_fn *cb, void *cb_arg);
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
 /**
  * Initiates an Sync connect procedure for PAwR.
  *
@@ -3264,6 +3265,7 @@ int ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handl
                 const struct ble_gap_conn_params *phy_2m_conn_params,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 ble_gap_event_fn *cb, void *cb_arg);
+#endif
 /**
  * Initiates an extended connect procedure.
  *
@@ -4031,6 +4033,7 @@ int ble_gap_set_path_loss_reporting_param(uint16_t conn_handle, uint8_t high_thr
                                           uint8_t low_hysteresis, uint16_t min_time_spent);
 #endif
 
+#if MYNEWT_VAL(BLE_UTIL_API)
 /**
  * Set Data Related Address Changes Param
  *
@@ -4040,7 +4043,9 @@ int ble_gap_set_path_loss_reporting_param(uint16_t conn_handle, uint8_t high_thr
  * @return                  0 on success; nonzero on failure.
  */
 int ble_gap_set_data_related_addr_change_param(uint8_t adv_handle, uint8_t change_reason);
+#endif
 
+#if MYNEWT_VAL(BLE_DTM_MODE_TEST)
 /**
  * Start a test where the DUT generates reference packets at a fixed interval.
  *
@@ -4105,6 +4110,7 @@ int ble_gap_dtm_enh_tx_start(uint8_t tx_chan, uint8_t test_data_len, uint8_t pay
  * @return                0 on success; nonzero on failure
  */
 int ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy);
+#endif
 
 /**
  * Set Read Remote Version Information is used to retrieve the version, manufacturer,
@@ -4120,6 +4126,7 @@ int ble_gap_dtm_enh_rx_start(uint8_t rx_chan, uint8_t index, uint8_t phy);
 
 int ble_gap_read_rem_ver_info(uint16_t conn_handle, uint8_t *version, uint16_t *manufacturer, uint16_t *subversion);
 
+#if MYNEWT_VAL(BLE_UTIL_API)
 /**
  * Read local resolvable address command
  *
@@ -4134,6 +4141,7 @@ int ble_gap_read_rem_ver_info(uint16_t conn_handle, uint8_t *version, uint16_t *
 
 int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_addr,
                                  uint8_t *out_addr);
+#endif
 
 #if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
 /**

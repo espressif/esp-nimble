@@ -176,6 +176,9 @@ void ble_l2cap_sig_conn_broken(uint16_t conn_handle, int reason);
 int32_t ble_l2cap_sig_timer(void);
 struct ble_l2cap_chan *ble_l2cap_sig_create_chan(uint16_t conn_handle);
 int ble_l2cap_sig_init(void);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_l2cap_sig_deinit(void);
+#endif
 
 #ifdef __cplusplus
 }

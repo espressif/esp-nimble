@@ -26,7 +26,7 @@
 #include "host/ble_gap.h"
 #include "services/ans/ble_svc_ans.h"
 
-#if MYNEWT_VAL(BLE_GATTS)
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_ANS_SERVICE
 /* Max length of new alert info string */
 #define BLE_SVC_ANS_INFO_STR_MAX_LEN        18
 /* Max length of a new alert notification, max string length + 2 bytes
@@ -77,18 +77,21 @@ static int
 ble_svc_ans_chr_write(struct os_mbuf *om, uint16_t min_len, uint16_t max_len,
                       void *dst, uint16_t *len);
 
-static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
-    {
-        /*** Alert Notification Service. */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_ANS_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
+static const ble_uuid16_t uuid_svc_ans = BLE_UUID16_INIT(BLE_SVC_ANS_UUID16);
+static const ble_uuid16_t uuid_chr_new_alert_cat = BLE_UUID16_INIT(BLE_SVC_ANS_CHR_UUID16_SUP_NEW_ALERT_CAT);
+static const ble_uuid16_t uuid_chr_new_alert = BLE_UUID16_INIT(BLE_SVC_ANS_CHR_UUID16_NEW_ALERT);
+static const ble_uuid16_t uuid_chr_unr_alert_cat = BLE_UUID16_INIT(BLE_SVC_ANS_CHR_UUID16_SUP_UNR_ALERT_CAT);
+static const ble_uuid16_t uuid_chr_unr_alert_stat = BLE_UUID16_INIT(BLE_SVC_ANS_CHR_UUID16_UNR_ALERT_STAT);
+static const ble_uuid16_t uuid_chr_alert_notif_ctrl_pt = BLE_UUID16_INIT(BLE_SVC_ANS_CHR_UUID16_ALERT_NOT_CTRL_PT);
+
+static const struct ble_gatt_chr_def ans_characteristics[] = {
+        {
             /** Supported New Alert Catagory
              *
              * This characteristic exposes what categories of new
              * alert are supported in the server.
              */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_ANS_CHR_UUID16_SUP_NEW_ALERT_CAT),
+            .uuid = &uuid_chr_new_alert_cat.u,
             .access_cb = ble_svc_ans_access,
             .flags = BLE_GATT_CHR_F_READ,
         }, {
@@ -97,7 +100,7 @@ static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
              * This characteristic exposes information about
              * the count of new alerts (for a given category).
              */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_ANS_CHR_UUID16_NEW_ALERT),
+            .uuid = &uuid_chr_new_alert.u,
             .access_cb = ble_svc_ans_access,
             .val_handle = &ble_svc_ans_new_alert_val_handle,
             .flags = BLE_GATT_CHR_F_NOTIFY,
@@ -107,7 +110,7 @@ static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
              * This characteristic exposes what categories of
              * unread alert are supported in the server.
              */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_ANS_CHR_UUID16_SUP_UNR_ALERT_CAT),
+            .uuid = &uuid_chr_unr_alert_cat.u,
             .access_cb = ble_svc_ans_access,
             .flags = BLE_GATT_CHR_F_READ,
         }, {
@@ -116,7 +119,7 @@ static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
              * This characteristic exposes the count of unread
              * alert events existing in the server.
              */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_ANS_CHR_UUID16_UNR_ALERT_STAT),
+            .uuid = &uuid_chr_unr_alert_stat.u,
             .access_cb = ble_svc_ans_access,
             .val_handle = &ble_svc_ans_unr_alert_val_handle,
             .flags = BLE_GATT_CHR_F_NOTIFY,
@@ -130,12 +133,20 @@ static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
              * Client Characteristic Configuration for each alert
              * characteristic.
              */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_ANS_CHR_UUID16_ALERT_NOT_CTRL_PT),
+            .uuid = &uuid_chr_alert_notif_ctrl_pt.u,
             .access_cb = ble_svc_ans_access,
             .flags = BLE_GATT_CHR_F_WRITE,
         }, {
             0, /* No more characteristics in this service. */
-        } },
+        }
+};
+
+static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
+    {
+        /*** Alert Notification Service. */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_ans.u,
+        .characteristics = ans_characteristics,
     },
 
     {

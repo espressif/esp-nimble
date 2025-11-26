@@ -271,14 +271,18 @@ static ble_gattc_err_fn ble_gattc_read_mult_var_err;
 static ble_gattc_err_fn ble_gattc_write_err;
 static ble_gattc_err_fn ble_gattc_write_long_err;
 static ble_gattc_err_fn ble_gattc_write_reliable_err;
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 static bool gatt_proc_active = false;
+#endif
 #endif
 
 #if MYNEWT_VAL(BLE_GATTS)
 static ble_gattc_err_fn ble_gatts_indicate_err;
 #endif
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static ble_gattc_err_fn * const ble_gattc_err_dispatch[BLE_GATT_OP_CNT] = {
+
 #if MYNEWT_VAL(BLE_GATTC)
     [BLE_GATT_OP_MTU]               = ble_gattc_mtu_err,
     [BLE_GATT_OP_DISC_ALL_SVCS]     = ble_gattc_disc_all_svcs_err,
@@ -300,6 +304,7 @@ static ble_gattc_err_fn * const ble_gattc_err_dispatch[BLE_GATT_OP_CNT] = {
     [BLE_GATT_OP_INDICATE]          = ble_gatts_indicate_err,
 #endif
 };
+#endif
 
 #if MYNEWT_VAL(BLE_GATTC)
 /**
@@ -317,26 +322,6 @@ static ble_gattc_resume_fn ble_gattc_disc_all_dscs_resume;
 static ble_gattc_resume_fn ble_gattc_read_long_resume;
 static ble_gattc_resume_fn ble_gattc_write_long_resume;
 static ble_gattc_resume_fn ble_gattc_write_reliable_resume;
-
-static ble_gattc_resume_fn * const
-ble_gattc_resume_dispatch[BLE_GATT_OP_CNT] = {
-    [BLE_GATT_OP_MTU]               = NULL,
-    [BLE_GATT_OP_DISC_ALL_SVCS]     = ble_gattc_disc_all_svcs_resume,
-    [BLE_GATT_OP_DISC_SVC_UUID]     = ble_gattc_disc_svc_uuid_resume,
-    [BLE_GATT_OP_FIND_INC_SVCS]     = ble_gattc_find_inc_svcs_resume,
-    [BLE_GATT_OP_DISC_ALL_CHRS]     = ble_gattc_disc_all_chrs_resume,
-    [BLE_GATT_OP_DISC_CHR_UUID]     = ble_gattc_disc_chr_uuid_resume,
-    [BLE_GATT_OP_DISC_ALL_DSCS]     = ble_gattc_disc_all_dscs_resume,
-    [BLE_GATT_OP_READ]              = NULL,
-    [BLE_GATT_OP_READ_UUID]         = NULL,
-    [BLE_GATT_OP_READ_LONG]         = ble_gattc_read_long_resume,
-    [BLE_GATT_OP_READ_MULT]         = NULL,
-    [BLE_GATT_OP_READ_MULT_VAR]     = NULL,
-    [BLE_GATT_OP_WRITE]             = NULL,
-    [BLE_GATT_OP_WRITE_LONG]        = ble_gattc_write_long_resume,
-    [BLE_GATT_OP_WRITE_RELIABLE]    = ble_gattc_write_reliable_resume,
-    [BLE_GATT_OP_INDICATE]          = NULL,
-};
 
 #endif
 /**
@@ -367,6 +352,101 @@ static ble_gattc_tmo_fn ble_gattc_write_reliable_tmo;
 static ble_gattc_tmo_fn ble_gatts_indicate_tmo;
 #endif
 
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    struct ble_gattc_proc_list procs;
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    struct ble_gattc_proc_list cached_procs;
+#endif
+    os_membuf_t *proc_mem;
+    struct os_mempool proc_pool;
+#if MYNEWT_VAL(BLE_GATTC)
+    ble_npl_time_t resume_at;
+    ble_gattc_resume_fn **resume_dispatch;
+#endif
+    ble_gattc_err_fn **err_dispatch;
+    ble_gattc_tmo_fn **tmo_dispatch;
+} ble_gattc_ctx_t;
+
+static ble_gattc_ctx_t *ble_gattc_ctx;
+
+#define ble_gattc_procs            (ble_gattc_ctx->procs)
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+#define ble_gattc_cached_procs     (ble_gattc_ctx->cached_procs)
+#endif
+#define ble_gattc_proc_mem         (ble_gattc_ctx->proc_mem)
+#define ble_gattc_proc_pool        (ble_gattc_ctx->proc_pool)
+#if MYNEWT_VAL(BLE_GATTC)
+#define ble_gattc_resume_at        (ble_gattc_ctx->resume_at)
+#define ble_gattc_resume_dispatch  (ble_gattc_ctx->resume_dispatch)
+#endif
+#define ble_gattc_err_dispatch     (ble_gattc_ctx->err_dispatch)
+#define ble_gattc_tmo_dispatch     (ble_gattc_ctx->tmo_dispatch)
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+static int
+ble_gattc_ensure_ctx(void)
+{
+    if (ble_gattc_ctx != NULL) {
+        return 0;
+    }
+
+    ble_gattc_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_gattc_ctx));
+    if (ble_gattc_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
+#endif
+#else
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+static os_membuf_t *ble_gattc_proc_mem = NULL;
+#else
+static os_membuf_t ble_gattc_proc_mem[
+    OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_GATT_MAX_PROCS),
+                    sizeof (struct ble_gattc_proc))
+];
+#endif
+
+static struct os_mempool ble_gattc_proc_pool;
+
+/* The list of active GATT client procedures. */
+static struct ble_gattc_proc_list ble_gattc_procs;
+
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+/** Retry procedure after encryption response. */
+static struct ble_gattc_proc_list ble_gattc_cached_procs;
+#endif
+#if MYNEWT_VAL(BLE_GATTC)
+static ble_npl_time_t ble_gattc_resume_at;
+static ble_gattc_resume_fn * const
+ble_gattc_resume_dispatch[BLE_GATT_OP_CNT] = {
+    [BLE_GATT_OP_MTU]               = NULL,
+    [BLE_GATT_OP_DISC_ALL_SVCS]     = ble_gattc_disc_all_svcs_resume,
+    [BLE_GATT_OP_DISC_SVC_UUID]     = ble_gattc_disc_svc_uuid_resume,
+    [BLE_GATT_OP_FIND_INC_SVCS]     = ble_gattc_find_inc_svcs_resume,
+    [BLE_GATT_OP_DISC_ALL_CHRS]     = ble_gattc_disc_all_chrs_resume,
+    [BLE_GATT_OP_DISC_CHR_UUID]     = ble_gattc_disc_chr_uuid_resume,
+    [BLE_GATT_OP_DISC_ALL_DSCS]     = ble_gattc_disc_all_dscs_resume,
+    [BLE_GATT_OP_READ]              = NULL,
+    [BLE_GATT_OP_READ_UUID]         = NULL,
+    [BLE_GATT_OP_READ_LONG]         = ble_gattc_read_long_resume,
+    [BLE_GATT_OP_READ_MULT]         = NULL,
+    [BLE_GATT_OP_READ_MULT_VAR]     = NULL,
+    [BLE_GATT_OP_WRITE]             = NULL,
+    [BLE_GATT_OP_WRITE_LONG]        = ble_gattc_write_long_resume,
+    [BLE_GATT_OP_WRITE_RELIABLE]    = ble_gattc_write_reliable_resume,
+    [BLE_GATT_OP_INDICATE]          = NULL,
+};
+#endif
+#endif
+
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static ble_gattc_tmo_fn * const
 ble_gattc_tmo_dispatch[BLE_GATT_OP_CNT] = {
 #if MYNEWT_VAL(BLE_GATTC)
@@ -390,6 +470,7 @@ ble_gattc_tmo_dispatch[BLE_GATT_OP_CNT] = {
     [BLE_GATT_OP_INDICATE]          = ble_gatts_indicate_tmo,
 #endif
 };
+#endif
 
 #if MYNEWT_VAL(BLE_GATTC)
 /**
@@ -469,34 +550,9 @@ static const struct ble_gattc_rx_exec_entry {
     { BLE_GATT_OP_WRITE_LONG,       ble_gattc_write_long_rx_exec },
     { BLE_GATT_OP_WRITE_RELIABLE,   ble_gattc_write_reliable_rx_exec },
 };
-
-#endif
-
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-static os_membuf_t *ble_gattc_proc_mem = NULL;
-#else
-static os_membuf_t ble_gattc_proc_mem[
-    OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_GATT_MAX_PROCS),
-                    sizeof (struct ble_gattc_proc))
-];
-#endif
-
-static struct os_mempool ble_gattc_proc_pool;
-
-/* The list of active GATT client procedures. */
-static struct ble_gattc_proc_list ble_gattc_procs;
-
-#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
-/** Retry procedure after encryption response. */
-static struct ble_gattc_proc_list ble_gattc_cached_procs;
 #endif
 
 #if MYNEWT_VAL(BLE_GATTC)
-/* The time when we should attempt to resume stalled procedures, in OS ticks.
- * A value of 0 indicates no stalled procedures.
- */
-static ble_npl_time_t ble_gattc_resume_at;
-
 /* Statistics. */
 STATS_SECT_DECL(ble_gattc_stats) ble_gattc_stats;
 STATS_NAME_START(ble_gattc_stats)
@@ -714,6 +770,7 @@ ble_gattc_log_write_reliable(struct ble_gattc_proc *proc)
 }
 #endif
 
+#if MYNEWT_VAL(BLE_GATTS)
 static void
 ble_gattc_log_notify(uint16_t att_handle)
 {
@@ -721,8 +778,6 @@ ble_gattc_log_notify(uint16_t att_handle)
     BLE_HS_LOG(INFO, "att_handle=%d\n", att_handle);
 }
 
-
-#if MYNEWT_VAL(BLE_GATTS)
 static void
 ble_gattc_log_multi_notify(struct ble_gatt_notif * tuples, uint16_t num)
 {
@@ -780,7 +835,13 @@ ble_gattc_proc_alloc(void)
 {
     struct ble_gattc_proc *proc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_ctx == NULL) {
+        return NULL;
+    }
+#endif
     proc = os_memblock_get(&ble_gattc_proc_pool);
+
     if (proc != NULL) {
         memset(proc, 0, sizeof *proc);
     }
@@ -844,7 +905,14 @@ ble_gattc_proc_free(struct ble_gattc_proc *proc)
 #if MYNEWT_VAL(BLE_HS_DEBUG)
         memset(proc, 0xff, sizeof *proc);
 #endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gattc_ctx == NULL) {
+            return;
+        }
+#endif
         rc = os_memblock_put(&ble_gattc_proc_pool, proc);
+
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
     }
 }
@@ -888,6 +956,7 @@ ble_gattc_proc_set_resume_timer(struct ble_gattc_proc *proc)
 
 #endif
 
+#if MYNEWT_VAL(BLE_GATTS) || MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_process_status(struct ble_gattc_proc *proc, int status)
 {
@@ -906,6 +975,7 @@ ble_gattc_process_status(struct ble_gattc_proc *proc, int status)
         break;
     }
 }
+#endif
 
 #if MYNEWT_VAL(BLE_GATTC)
 /**
@@ -953,6 +1023,11 @@ static ble_gattc_resume_fn *
 ble_gattc_resume_dispatch_get(uint8_t op)
 {
     BLE_HS_DBG_ASSERT(op < BLE_GATT_OP_CNT);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_ctx == NULL || ble_gattc_resume_dispatch == NULL) {
+        return NULL;
+    }
+#endif
     return ble_gattc_resume_dispatch[op];
 }
 
@@ -960,6 +1035,11 @@ static ble_gattc_tmo_fn *
 ble_gattc_tmo_dispatch_get(uint8_t op)
 {
     BLE_HS_DBG_ASSERT(op < BLE_GATT_OP_CNT);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_ctx == NULL || ble_gattc_tmo_dispatch == NULL) {
+        return NULL;
+    }
+#endif
     return ble_gattc_tmo_dispatch[op];
 }
 
@@ -1268,11 +1348,24 @@ ble_gattc_extract_with_rx_entry(uint16_t conn_handle, uint16_t cid,
  * @return                      The matching proc entry on success;
  *                                  null on failure.
  */
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #define BLE_GATTC_RX_EXTRACT_RX_ENTRY(conn_handle, cid, rx_entries, out_rx_entry)  \
     ble_gattc_extract_with_rx_entry(                                          \
         (conn_handle), (cid), (rx_entries),                                   \
         sizeof (rx_entries) / sizeof (rx_entries)[0],                         \
         (const void **)(out_rx_entry))
+#else
+/*
+ * When memory optimization flag is enabled:
+ * RX entry table is dynamically allocated with 4 entries
+ * to optimize memory usage and reduce static allocation.
+ */
+#define BLE_GATTC_RX_EXTRACT_RX_ENTRY(conn_handle, cid, rx_entries, out_rx_entry)  \
+    ble_gattc_extract_with_rx_entry(                                          \
+        (conn_handle), (cid), (rx_entries),                                   \
+        4,                                                                    \
+        (const void **)(out_rx_entry))
+#endif
 #endif
 
 /**
@@ -4364,6 +4457,7 @@ ble_gattc_write_no_rsp_flat(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
+#if NIMBLE_BLE_ATT_CLT_SIGNED_WRITE
 /*****************************************************************************
  * $signed write                                                             *
  ****************************************************************************/
@@ -4424,6 +4518,7 @@ err:
     return rc;
 }
 
+#endif
 /*****************************************************************************
  * $write                                                                    *
  *****************************************************************************/
@@ -5175,6 +5270,7 @@ static int ble_gatts_check_conn_aware(uint16_t conn_handle, bool *aware) {
 }
 #endif
 
+#if MYNEWT_VAL(BLE_GATTS)
 int
 ble_gatts_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
                         struct os_mbuf *txom)
@@ -5242,7 +5338,6 @@ done:
 }
 
 
-#if MYNEWT_VAL(BLE_GATTS)
 int
 ble_gatts_notify_multiple_custom(uint16_t conn_handle,
                                  size_t chr_count,
@@ -5367,8 +5462,8 @@ ble_gattc_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
     return ble_gatts_notify_custom(conn_handle, chr_val_handle, txom);
 }
 
-
 #if MYNEWT_VAL(BLE_GATTC)
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 static int
 ble_gattc_cccd_write_complete_cb(uint16_t conn_handle,
                                  const struct ble_gatt_error *error,
@@ -5432,7 +5527,7 @@ int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_
         return BLE_HS_EBUSY;
     }
 
-    bool *cccd_reg_flag = (bool *)nimble_platform_mem_malloc(sizeof(bool));
+    bool *cccd_reg_flag = (bool *)nimble_platform_mem_calloc(1,sizeof(bool));
     if (!cccd_reg_flag) {
         BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag.");
         return BLE_HS_ENOMEM;
@@ -5502,7 +5597,7 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
     }
 
     int rc;
-    bool *cccd_unreg_flag = (bool *)nimble_platform_mem_malloc(sizeof(bool));
+    bool *cccd_unreg_flag = (bool *)nimble_platform_mem_calloc(1,sizeof(bool));
 
     if (!cccd_unreg_flag) {
         BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag");
@@ -5521,8 +5616,10 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
 
     return rc;
 }
-#endif
+#endif  //MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+#endif  //MYNEWT_VAL(BLE_GATTC)
 
+#if MYNEWT_VAL(BLE_GATTS)
 int
 ble_gatts_notify(uint16_t conn_handle, uint16_t chr_val_handle)
 {
@@ -5549,7 +5646,6 @@ ble_gattc_notify(uint16_t conn_handle, uint16_t chr_val_handle)
 /*****************************************************************************
  * $indicate                                                                 *
  *****************************************************************************/
-#if MYNEWT_VAL(BLE_GATTS)
 /**
  * Handles an incoming ATT error response for the specified indication proc.
  * A device should never send an error in response to an indication.  If this
@@ -6201,13 +6297,167 @@ ble_gattc_any_jobs(void)
 {
     return !STAILQ_EMPTY(&ble_gattc_procs);
 }
+#endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+static int
+ble_gattc_err_dispatch_init(void)
+{
+
+    if (ble_gattc_ctx == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    ble_gattc_err_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_err_fn *));
+
+    if (!ble_gattc_err_dispatch) {
+            return BLE_HS_ENOMEM;
+    }
+
+#if MYNEWT_VAL(BLE_GATTC)
+    ble_gattc_err_dispatch[BLE_GATT_OP_MTU]            = ble_gattc_mtu_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_DISC_ALL_SVCS]  = ble_gattc_disc_all_svcs_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_DISC_SVC_UUID]  = ble_gattc_disc_svc_uuid_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_FIND_INC_SVCS]  = ble_gattc_find_inc_svcs_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_DISC_ALL_CHRS]  = ble_gattc_disc_all_chrs_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_DISC_CHR_UUID]  = ble_gattc_disc_chr_uuid_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_DISC_ALL_DSCS]  = ble_gattc_disc_all_dscs_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_READ]           = ble_gattc_read_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_READ_UUID]      = ble_gattc_read_uuid_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_READ_LONG]      = ble_gattc_read_long_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_READ_MULT]      = ble_gattc_read_mult_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_READ_MULT_VAR]  = ble_gattc_read_mult_var_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_WRITE]          = ble_gattc_write_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_WRITE_LONG]     = ble_gattc_write_long_err;
+    ble_gattc_err_dispatch[BLE_GATT_OP_WRITE_RELIABLE] = ble_gattc_write_reliable_err;
+#endif
+#if MYNEWT_VAL(BLE_GATTS)
+    ble_gattc_err_dispatch[BLE_GATT_OP_INDICATE]       = ble_gatts_indicate_err;
+#endif
+
+    return 0;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+static void
+ble_gattc_err_dispatch_deinit(void)
+{
+    if (ble_gattc_ctx != NULL && ble_gattc_err_dispatch) {
+        nimble_platform_mem_free(ble_gattc_err_dispatch);
+        ble_gattc_err_dispatch = NULL;
+    }
+}
+#endif
+
+#if MYNEWT_VAL(BLE_GATTC)
+static int
+ble_gattc_resume_dispatch_init(void)
+{
+    if (ble_gattc_ctx == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    ble_gattc_resume_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_resume_fn *));
+
+    if (!ble_gattc_resume_dispatch) {
+            return BLE_HS_ENOMEM;
+    }
+    ble_gattc_resume_dispatch[BLE_GATT_OP_MTU]               = NULL;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_DISC_ALL_SVCS]     = ble_gattc_disc_all_svcs_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_DISC_SVC_UUID]     = ble_gattc_disc_svc_uuid_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_FIND_INC_SVCS]     = ble_gattc_find_inc_svcs_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_DISC_ALL_CHRS]     = ble_gattc_disc_all_chrs_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_DISC_CHR_UUID]     = ble_gattc_disc_chr_uuid_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_DISC_ALL_DSCS]     = ble_gattc_disc_all_dscs_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_READ]              = NULL;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_READ_UUID]         = NULL;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_READ_LONG]         = ble_gattc_read_long_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_READ_MULT]         = NULL;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_READ_MULT_VAR]     = NULL;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_WRITE]             = NULL;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_WRITE_LONG]        = ble_gattc_write_long_resume;
+    ble_gattc_resume_dispatch[BLE_GATT_OP_WRITE_RELIABLE]    = ble_gattc_write_reliable_resume;
+#if MYNEWT_VAL(BLE_GATTS)
+    ble_gattc_resume_dispatch[BLE_GATT_OP_INDICATE]          = NULL;
+#endif
+    return 0;
+}
+
+static void
+ble_gattc_resume_dispatch_deinit(void)
+{
+    if (ble_gattc_ctx != NULL && ble_gattc_resume_dispatch) {
+        nimble_platform_mem_free(ble_gattc_resume_dispatch);
+        ble_gattc_resume_dispatch = NULL;
+    }
+}
+#endif
+
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+static int
+ble_gattc_tmo_dispatch_init(void)
+{
+    if (ble_gattc_ctx == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    ble_gattc_tmo_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_tmo_fn *));
+
+    if (!ble_gattc_tmo_dispatch) {
+            return BLE_HS_ENOMEM;
+    }
+
+#if MYNEWT_VAL(BLE_GATTC)
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_MTU]               = ble_gattc_mtu_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_DISC_ALL_SVCS]     = ble_gattc_disc_all_svcs_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_DISC_SVC_UUID]     = ble_gattc_disc_svc_uuid_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_FIND_INC_SVCS]     = ble_gattc_find_inc_svcs_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_DISC_ALL_CHRS]     = ble_gattc_disc_all_chrs_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_DISC_CHR_UUID]     = ble_gattc_disc_chr_uuid_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_DISC_ALL_DSCS]     = ble_gattc_disc_all_dscs_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_READ]              = ble_gattc_read_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_READ_UUID]         = ble_gattc_read_uuid_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_READ_LONG]         = ble_gattc_read_long_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_READ_MULT]         = ble_gattc_read_mult_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_READ_MULT_VAR]     = ble_gattc_read_mult_var_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_WRITE]             = ble_gattc_write_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_WRITE_LONG]        = ble_gattc_write_long_tmo;
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_WRITE_RELIABLE]    = ble_gattc_write_reliable_tmo;
+#endif
+#if MYNEWT_VAL(BLE_GATTS)
+    ble_gattc_tmo_dispatch[BLE_GATT_OP_INDICATE]          = ble_gatts_indicate_tmo;
+#endif
+
+    return 0;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+static void
+ble_gattc_tmo_dispatch_deinit(void)
+{
+    if (ble_gattc_ctx != NULL && ble_gattc_tmo_dispatch) {
+        nimble_platform_mem_free(ble_gattc_tmo_dispatch);
+        ble_gattc_tmo_dispatch = NULL;
+    }
+}
+#endif
 #endif
 
 int
 ble_gattc_init(void)
 {
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_gattc_ensure_ctx();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
 
 #if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
     STAILQ_INIT(&temp_proc_list);
@@ -6218,14 +6468,60 @@ ble_gattc_init(void)
 #endif
 
     if (MYNEWT_VAL(BLE_GATT_MAX_PROCS) > 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        size_t mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_GATT_MAX_PROCS),
+                                           sizeof (struct ble_gattc_proc));
+        if (ble_gattc_proc_mem == NULL) {
+            ble_gattc_proc_mem = (os_membuf_t *)nimble_platform_mem_calloc(mem_bytes, sizeof(os_membuf_t));
+            if (ble_gattc_proc_mem == NULL) {
+                return BLE_HS_ENOMEM;
+            }
+        }
+#endif
+#endif
         rc = os_mempool_init(&ble_gattc_proc_pool,
                              MYNEWT_VAL(BLE_GATT_MAX_PROCS),
                              sizeof (struct ble_gattc_proc),
                              ble_gattc_proc_mem,
                              "ble_gattc_proc_pool");
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (rc != 0) {
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+            nimble_platform_mem_free(ble_gattc_proc_mem);
+            ble_gattc_proc_mem = NULL;
+#endif
+            memset(&ble_gattc_proc_pool, 0, sizeof(ble_gattc_proc_pool));
+            return rc;
+        }
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+        rc = ble_gattc_err_dispatch_init();
+        if (rc != 0) {
+            ble_gattc_deinit();
+            return rc;
+        }
+#endif
+
+#if MYNEWT_VAL(BLE_GATTC)
+        rc = ble_gattc_resume_dispatch_init();
+        if (rc != 0) {
+            ble_gattc_deinit();
+            return rc;
+        }
+#endif
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+        rc = ble_gattc_tmo_dispatch_init();
+        if (rc != 0) {
+            ble_gattc_deinit();
+            return rc;
+        }
+#endif
+
+#else
         if (rc != 0) {
             return rc;
         }
+#endif
     }
 
     rc = stats_init_and_reg(
@@ -6236,6 +6532,45 @@ ble_gattc_init(void)
     }
 
     return 0;
+#else
+    return BLE_HS_ENOTSUP;
+#endif
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_gattc_deinit(void)
+{
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+    if (ble_gattc_ctx == NULL) {
+        return;
+    }
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    if (ble_gattc_proc_mem != NULL) {
+        nimble_platform_mem_free(ble_gattc_proc_mem);
+        ble_gattc_proc_mem = NULL;
+    }
+#endif
+    memset(&ble_gattc_proc_pool, 0, sizeof(ble_gattc_proc_pool));
+    STAILQ_INIT(&ble_gattc_procs);
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    STAILQ_INIT(&ble_gattc_cached_procs);
+#endif
+
+    ble_gattc_err_dispatch_deinit();
+
+#if MYNEWT_VAL(BLE_GATTC)
+    ble_gattc_resume_dispatch_deinit();
+#endif
+
+    ble_gattc_tmo_dispatch_deinit();
+
+    nimble_platform_mem_free(ble_gattc_ctx);
+    ble_gattc_ctx = NULL;
+#else
+    return ;
+#endif
+}
+#endif
 
 #endif

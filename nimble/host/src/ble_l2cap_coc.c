@@ -31,8 +31,20 @@
 
 STAILQ_HEAD(ble_l2cap_coc_srv_list, ble_l2cap_coc_srv);
 
-static struct ble_l2cap_coc_srv_list ble_l2cap_coc_srvs;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+typedef struct {
+    os_membuf_t *srv_mem;
+    struct os_mempool srv_pool;
+    struct ble_l2cap_coc_srv_list l2cap_coc_srvs;
+} ble_l2cap_coc_ctx_t;
 
+static ble_l2cap_coc_ctx_t  *ble_l2cap_coc_ctx;
+
+#define ble_l2cap_coc_srv_mem  (ble_l2cap_coc_ctx->srv_mem)
+#define ble_l2cap_coc_srv_pool (ble_l2cap_coc_ctx->srv_pool)
+#define ble_l2cap_coc_srvs     (ble_l2cap_coc_ctx->l2cap_coc_srvs)
+#else
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_l2cap_coc_srv_mem = NULL;
 #else
@@ -41,8 +53,10 @@ static os_membuf_t ble_l2cap_coc_srv_mem[
                     sizeof(struct ble_l2cap_coc_srv))
 ];
 #endif
-
 static struct os_mempool ble_l2cap_coc_srv_pool;
+static struct ble_l2cap_coc_srv_list ble_l2cap_coc_srvs;
+#endif
+
 
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -69,6 +83,11 @@ ble_l2cap_coc_srv_alloc(void)
 {
     struct ble_l2cap_coc_srv *srv;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_l2cap_coc_ctx == NULL) {
+        return NULL;
+    }
+#endif
     srv = os_memblock_get(&ble_l2cap_coc_srv_pool);
     if (srv != NULL) {
         memset(srv, 0, sizeof(*srv));
@@ -685,13 +704,65 @@ ble_l2cap_coc_send(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_tx)
 int
 ble_l2cap_coc_init(void)
 {
+   int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_l2cap_coc_ctx == NULL) {
+        ble_l2cap_coc_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_l2cap_coc_ctx));
+        if (ble_l2cap_coc_ctx == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC) // Doubt
+    size_t srv_mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
+                           sizeof (struct ble_l2cap_coc_srv)) * sizeof(os_membuf_t);
+
+    if (!ble_l2cap_coc_srv_mem) {
+        ble_l2cap_coc_srv_mem = nimble_platform_mem_calloc(1, srv_mem_bytes);
+        if (!ble_l2cap_coc_srv_mem) {
+            nimble_platform_mem_free(ble_l2cap_coc_ctx);
+            ble_l2cap_coc_ctx = NULL;
+            return BLE_HS_ENOMEM;
+        }
+    }
+#endif
+    memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
+#endif
+
     STAILQ_INIT(&ble_l2cap_coc_srvs);
 
-    return os_mempool_init(&ble_l2cap_coc_srv_pool,
+    rc = os_mempool_init(&ble_l2cap_coc_srv_pool,
                            MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                            sizeof(struct ble_l2cap_coc_srv),
                            ble_l2cap_coc_srv_mem,
                            "ble_l2cap_coc_srv_pool");
+    if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC) // Doubt
+        nimble_platform_mem_free(ble_l2cap_coc_srv_mem);
+#endif
+        memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
+#endif
+    }
+
+    return rc;
 }
 
+void ble_l2cap_coc_deinit(void)
+{
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+     if (ble_l2cap_coc_ctx) {
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC) // Doubt
+        if (ble_l2cap_coc_srv_mem) {
+             nimble_platform_mem_free(ble_l2cap_coc_srv_mem);
+             ble_l2cap_coc_srv_mem = NULL;
+        }
+#endif
+        memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
+        nimble_platform_mem_free(ble_l2cap_coc_ctx);
+        ble_l2cap_coc_ctx = NULL;
+
+     }
+#endif
+}
 #endif

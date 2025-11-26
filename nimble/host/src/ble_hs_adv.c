@@ -25,15 +25,35 @@
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #include "host/ble_ead.h"
 #endif
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 struct find_field_data {
     uint8_t type;
     const struct ble_hs_adv_field *field;
 };
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static const char *TAG = "ble_hs_adv";
+
+typedef struct{
+    ble_uuid16_t _ble_hs_adv_uuids16[BLE_HS_ADV_MAX_FIELD_SZ / 2];
+    ble_uuid32_t _ble_hs_adv_uuids32[BLE_HS_ADV_MAX_FIELD_SZ / 4];
+    ble_uuid128_t _ble_hs_adv_uuids128[BLE_HS_ADV_MAX_FIELD_SZ / 16];
+}ble_hs_adv_uuids_ctx;
+
+static ble_hs_adv_uuids_ctx *ble_hs_adv_uuids;
+
+#define ble_hs_adv_uuids16        (ble_hs_adv_uuids->_ble_hs_adv_uuids16)
+#define ble_hs_adv_uuids32        (ble_hs_adv_uuids->_ble_hs_adv_uuids32)
+#define ble_hs_adv_uuids128       (ble_hs_adv_uuids->_ble_hs_adv_uuids128)
+
+#else
 static ble_uuid16_t ble_hs_adv_uuids16[BLE_HS_ADV_MAX_FIELD_SZ / 2];
 static ble_uuid32_t ble_hs_adv_uuids32[BLE_HS_ADV_MAX_FIELD_SZ / 4];
 static ble_uuid128_t ble_hs_adv_uuids128[BLE_HS_ADV_MAX_FIELD_SZ / 16];
+#endif
 
 static int
 ble_hs_adv_set_hdr(uint8_t type, uint8_t data_len, uint8_t max_len,
@@ -239,7 +259,9 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
     uint8_t type;
     int8_t tx_pwr_lvl;
     uint8_t dst_len_local;
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     uint8_t dev_addr_ad[7];
+#endif
     int rc;
 
     dst_len_local = 0;
@@ -347,6 +369,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         }
     }
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     /*** 0x10 - Security Manager TK value */
     if (adv_fields->sm_tk_value_is_present) {
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_SEC_MGR_TK_VALUE, 16,
@@ -368,6 +391,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
              return rc;
         }
      }
+#endif
 
     /*** 0x12 - Slave connection interval range. */
     if (adv_fields->slave_itvl_range != NULL) {
@@ -379,6 +403,8 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
             return rc;
         }
     }
+
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
 
     /*** 0x14 - 16 bit service solicitaion */
     if (adv_fields->sol_uuids16 != NULL) {
@@ -399,6 +425,8 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
             return rc;
         }
     }
+
+#endif
 
     /*** 0x16 - Service data - 16-bit UUID. */
     if (adv_fields->svc_data_uuid16 != NULL && adv_fields->svc_data_uuid16_len) {
@@ -425,6 +453,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         }
     }
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     /*** 0x18 - Random target address. */
     if (adv_fields->random_tgt_addr != NULL &&
         adv_fields->num_random_tgt_addrs != 0) {
@@ -438,6 +467,8 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
             return rc;
         }
     }
+#endif
+
 
     /*** 0x19 - Appearance. */
     if (adv_fields->appearance_is_present) {
@@ -460,6 +491,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         }
     }
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     /*** 0x1b - LE Bluetooth Device address. */
     if (adv_fields->device_addr != NULL) {
         for (int i = 0; i < BLE_HS_ADV_PUBLIC_TGT_ADDR_ENTRY_LEN; i++) {
@@ -496,6 +528,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
             return rc;
         }
     }
+#endif
 
     /*** 0x20 - Service data - 32-bit UUID. */
     if (adv_fields->svc_data_uuid32 != NULL && adv_fields->svc_data_uuid32_len) {
@@ -529,6 +562,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         }
     }
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     /*** 0x27 - LE Supported Features. */
     if (adv_fields->le_supp_feat_is_present) {
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_LE_SUPP_FEAT,
@@ -554,6 +588,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->enc_adv_data, dst, &dst_len_local,
                                       max_len, om);
     }
+#endif
 #endif
 
     /*** 0xff - Manufacturer specific data. */
@@ -666,6 +701,22 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_hs_adv_uuids_alloc(void)
+{
+    if (ble_hs_adv_uuids) {
+        nimble_platform_mem_free(ble_hs_adv_uuids);
+        ble_hs_adv_uuids = NULL;
+    }
+    ble_hs_adv_uuids = nimble_platform_mem_calloc(1, sizeof(*ble_hs_adv_uuids));
+    if (!ble_hs_adv_uuids) {
+        return BLE_HS_ENOMEM;
+    }
+    return 0;
+}
+#endif
+
 static int
 ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
                            uint8_t *total_len, const uint8_t *src,
@@ -769,6 +820,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->tx_pwr_lvl_is_present = 1;
         break;
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_SEC_MGR_TK_VALUE:
         if (data_len != 16) {
             return BLE_HS_EBADDATA;
@@ -784,6 +836,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->sm_oob_flag = *data;
         adv_fields->sm_oob_flag_is_present = 1;
         break;
+#endif
 
     case BLE_HS_ADV_TYPE_SLAVE_ITVL_RANGE:
         if (data_len != BLE_HS_ADV_SLAVE_ITVL_RANGE_LEN) {
@@ -792,6 +845,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->slave_itvl_range = data;
         break;
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_SOL_UUIDS16:
         rc = ble_hs_adv_parse_uuids16(adv_fields, data, data_len);
         if (rc != 0) {
@@ -805,6 +859,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
             return rc;
         }
         break;
+#endif
 
     case BLE_HS_ADV_TYPE_SVC_DATA_UUID16:
         if (data_len < BLE_HS_ADV_SVC_DATA_UUID16_MIN_LEN) {
@@ -823,6 +878,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
             data_len / BLE_HS_ADV_PUBLIC_TGT_ADDR_ENTRY_LEN;
         break;
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_RANDOM_TGT_ADDR:
         if (data_len % BLE_HS_ADV_PUBLIC_TGT_ADDR_ENTRY_LEN != 0) {
             return BLE_HS_EBADDATA;
@@ -831,6 +887,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->num_random_tgt_addrs =
             data_len / BLE_HS_ADV_PUBLIC_TGT_ADDR_ENTRY_LEN;
         break;
+#endif
 
     case BLE_HS_ADV_TYPE_APPEARANCE:
         if (data_len != BLE_HS_ADV_APPEARANCE_LEN) {
@@ -840,6 +897,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->appearance_is_present = 1;
         break;
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_DEVICE_ADDR:
         if (data_len != 7) {
             return BLE_HS_EBADDATA;
@@ -855,6 +913,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->le_role = *data;
         adv_fields->le_role_is_present = 1;
         break;
+#endif
 
     case BLE_HS_ADV_TYPE_ADV_ITVL:
         if (data_len != BLE_HS_ADV_ADV_ITVL_LEN) {
@@ -885,12 +944,14 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->uri_len = data_len;
         break;
 
+#if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_SOL_UUIDS32:
         rc = ble_hs_adv_parse_uuids32(adv_fields, data, data_len);
         if (rc != 0) {
             return rc;
         }
         break;
+#endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
     case BLE_HS_ADV_TYPE_ENC_ADV_DATA:
@@ -898,7 +959,6 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->enc_adv_data_len = data_len;
         break;
 #endif
-
     case BLE_HS_ADV_TYPE_MFG_DATA:
         adv_fields->mfg_data = data;
         adv_fields->mfg_data_len = data_len;
@@ -919,6 +979,13 @@ ble_hs_adv_parse_fields(struct ble_hs_adv_fields *adv_fields,
     int rc;
 
     memset(adv_fields, 0, sizeof *adv_fields);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_adv_uuids_alloc() != 0) {
+        ESP_LOGE(TAG, "Failed to allocate BLE adv UUIDs");
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     while (src_len > 0) {
         rc = ble_hs_adv_parse_one_field(adv_fields, &field_len, src, src_len);
@@ -994,3 +1061,14 @@ ble_hs_adv_find_field(uint8_t type, const uint8_t *data, uint8_t length,
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_hs_adv_parse_free(void)
+{
+    if (ble_hs_adv_uuids) {
+        nimble_platform_mem_free(ble_hs_adv_uuids);
+	ble_hs_adv_uuids = NULL;
+    }
+}
+#endif

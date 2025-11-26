@@ -58,8 +58,22 @@
  *   @{
  */
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
     STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
+#else
+STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list;
+static bool g_msys_pool_list_inited;
+
+static void
+os_msys_pool_list_ensure_init(void)
+{
+    if (!g_msys_pool_list_inited) {
+        STAILQ_INIT(&g_msys_pool_list);
+        g_msys_pool_list_inited = true;
+    }
+}
+#endif
 
 static uint8_t log_count;
 
@@ -133,6 +147,10 @@ os_msys_register(struct os_mbuf_pool *new_pool)
 {
     struct os_mbuf_pool *pool;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_msys_pool_list_ensure_init();
+#endif
+
     pool = NULL;
     STAILQ_FOREACH(pool, &g_msys_pool_list, omp_next) {
         if (new_pool->omp_databuf_len > pool->omp_databuf_len) {
@@ -153,12 +171,19 @@ void
 os_msys_reset(void)
 {
     STAILQ_INIT(&g_msys_pool_list);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    g_msys_pool_list_inited = true;
+#endif
 }
 
 static struct os_mbuf_pool *
 _os_msys_find_pool(uint16_t dsize)
 {
     struct os_mbuf_pool *pool;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_msys_pool_list_ensure_init();
+#endif
 
     pool = NULL;
     STAILQ_FOREACH(pool, &g_msys_pool_list, omp_next) {
@@ -228,6 +253,10 @@ os_msys_count(void)
     struct os_mbuf_pool *omp;
     int total;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_msys_pool_list_ensure_init();
+#endif
+
     total = 0;
     STAILQ_FOREACH(omp, &g_msys_pool_list, omp_next) {
         total += omp->omp_pool->mp_num_blocks;
@@ -241,6 +270,10 @@ os_msys_num_free(void)
 {
     struct os_mbuf_pool *omp;
     int total;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_msys_pool_list_ensure_init();
+#endif
 
     total = 0;
     STAILQ_FOREACH(omp, &g_msys_pool_list, omp_next) {
