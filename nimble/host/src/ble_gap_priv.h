@@ -157,7 +157,11 @@ void ble_gap_mtu_event(uint16_t conn_handle, uint16_t cid, uint16_t mtu);
 void ble_gap_identity_event(uint16_t conn_handle);
 int ble_gap_repeat_pairing_event(const struct ble_gap_repeat_pairing *rp);
 void ble_gap_vs_hci_event(const void *buf, uint8_t len);
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+uint8_t ble_gap_authorize_event(uint16_t conn_handle, uint16_t attr_handle, uint8_t is_read);
+#else
 int ble_gap_authorize_event(uint16_t conn_handle, uint16_t attr_handle, int is_read);
+#endif
 void ble_gap_eatt_event(uint16_t conn_handle, uint8_t status, uint16_t cid);
 int ble_gap_master_in_progress(void);
 

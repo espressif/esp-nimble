@@ -36,9 +36,27 @@
 #include "hci_log/bt_hci_log.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "host/ble_hs_hci.h"
+#include "host/ble_sm.h"
+#endif
+
+#if MYNEWT_VAL(BLE_ISO)
+#include "host/ble_hs_iso.h"
+#endif /* MYNEWT_VAL(BLE_ISO) */
+
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
+#include "services/gap/ble_svc_gap.h"
+#endif
+
 #include "esp_nimble_mem.h"
 
-#define BLE_HS_HCI_EVT_COUNT    MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT)
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+#define MAX_NESTED_LOCKS 5
+#endif
+
+#define BLE_HS_HCI_EVT_COUNT    (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT) + \
+                                 MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))
 
 static void ble_hs_event_rx_hci_ev(struct ble_npl_event *ev);
 #if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_GATTS)
@@ -49,12 +67,84 @@ static void ble_hs_event_start_stage1(struct ble_npl_event *ev);
 static void ble_hs_event_start_stage2(struct ble_npl_event *ev);
 static void ble_hs_timer_sched(int32_t ticks_from_now);
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 struct os_mempool ble_hs_hci_ev_pool;
 /* It is not recommended to use MP_RUNTIME_ALLOC when the block size is 4 bytes. */
 static os_membuf_t ble_hs_hci_os_event_buf[
     OS_MEMPOOL_SIZE(BLE_HS_HCI_EVT_COUNT, sizeof (struct ble_npl_event))
 ];
+#endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    /* Shared queue that the host uses for work items. */
+    struct ble_npl_eventq *ev_queue;           /* event queue */
+
+    /* BLE event context */
+    struct ble_npl_event ev_tx_notifications;  /* TX pending notifications */
+    struct ble_npl_event ev_reset;             /* Full reset */
+    struct ble_npl_event ev_start_stage1;      /* Host start stage1 */
+    struct ble_npl_event ev_start_stage2;      /* Host start stage2 */
+
+    /* Synchronization context */
+    struct ble_npl_callout timer;              /* Timer for unresponsive timeouts */
+    struct ble_mqueue rx_q;                    /* RX queue */
+    struct ble_npl_mutex mutex;                /* Mutex for shared resource protection */
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    /* Debug context */
+    TaskHandle_t task_handles[MAX_NESTED_LOCKS];
+    int          task_handle_index;
+    uint8_t      mutex_locked;
+    uint8_t      counter_lock;
+    TaskHandle_t task_handle;
+    uint8_t      dbg_mutex_locked;
+#endif
+    /* Reset and HCI memory pool */
+    int          reset_reason;
+    struct os_mempool hci_ev_pool;             /* HCI event pool */
+    os_membuf_t *hci_os_event_buf;             /* HCI event buffer */
+    void *parent_task;
+} ble_hs_ctx_t;
+
+/* Global pointer to dynamic context */
+static ble_hs_ctx_t *ble_hs_ctx;
+
+/* Macros for easy access */
+#define ble_hs_evq                   (ble_hs_ctx->ev_queue)
+#define ble_hs_ev_tx_notifications   (ble_hs_ctx->ev_tx_notifications)
+#define ble_hs_ev_reset              (ble_hs_ctx->ev_reset)
+#define ble_hs_ev_start_stage1       (ble_hs_ctx->ev_start_stage1)
+#define ble_hs_ev_start_stage2       (ble_hs_ctx->ev_start_stage2)
+#define ble_hs_timer                 (ble_hs_ctx->timer)
+#define ble_hs_rx_q                  (ble_hs_ctx->rx_q)
+#define ble_hs_mutex                 (ble_hs_ctx->mutex)
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+#define ble_hs_task_handles          (ble_hs_ctx->task_handles)
+#define ble_hs_task_handle_index     (ble_hs_ctx->task_handle_index)
+#define ble_hs_mutex_locked          (ble_hs_ctx->mutex_locked)
+#define counter_lock                 (ble_hs_ctx->counter_lock)
+#define ble_hs_task_handle           (ble_hs_ctx->task_handle)
+#define ble_hs_dbg_mutex_locked      (ble_hs_ctx->dbg_mutex_locked)
+#endif  //BLE_HS_DEBUG
+
+#define ble_hs_reset_reason          (ble_hs_ctx->reset_reason)
+#define ble_hs_hci_ev_pool           (ble_hs_ctx->hci_ev_pool)
+#define ble_hs_hci_os_event_buf      (ble_hs_ctx->hci_os_event_buf)
+#define ble_hs_parent_task           (ble_hs_ctx->parent_task)
+
+
+/** Pointer to BLE host state context */
+ble_hs_state_ctx_t *ble_hs_state_ctx;
+uint8_t ble_hs_get_enabled_state(void)
+{
+    return (ble_hs_state_ctx) ?
+        ble_hs_state_ctx->enabled_state : 0;
+
+}
+
+#else
 /** OS event - triggers tx of pending notifications and indications. */
 static struct ble_npl_event ble_hs_ev_tx_notifications;
 
@@ -66,7 +156,15 @@ static struct ble_npl_event ble_hs_ev_start_stage2;
 
 uint8_t ble_hs_sync_state;
 uint8_t ble_hs_enabled_state;
-static int ble_hs_reset_reason;
+/** These values keep track of required ATT and GATT resources counts.  They
+ * increase as services are added, and are read when the ATT server and GATT
+ * server are started.
+ */
+uint16_t ble_hs_max_attrs;
+uint16_t ble_hs_max_services;
+uint16_t ble_hs_max_client_configs;
+static void *ble_hs_parent_task;
+#endif // BLE_STATIC_TO_DYNAMIC
 
 #define BLE_HS_SYNC_RETRY_TIMEOUT_MS    100 /* ms */
 
@@ -78,38 +176,32 @@ extern void ble_hs_flow_init(void);
 extern void ble_hs_flow_deinit(void);
 extern void ble_monitor_deinit(void);
 
-static void *ble_hs_parent_task;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_store_config_deinit(void);
+extern void ble_hs_hci_ctx_free(void);
+#endif
 
-/**
- * Handles unresponsive timeouts and periodic retries in case of resource
- * shortage.
- */
-static struct ble_npl_callout ble_hs_timer;
-
-/* Shared queue that the host uses for work items. */
-static struct ble_npl_eventq *ble_hs_evq;
-
-static struct ble_mqueue ble_hs_rx_q;
-
-static struct ble_npl_mutex ble_hs_mutex;
-
-/** These values keep track of required ATT and GATT resources counts.  They
- * increase as services are added, and are read when the ATT server and GATT
- * server are started.
- */
-uint16_t ble_hs_max_attrs;
-uint16_t ble_hs_max_services;
-uint16_t ble_hs_max_client_configs;
-
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if MYNEWT_VAL(BLE_HS_DEBUG)
-#define MAX_NESTED_LOCKS 5
 static TaskHandle_t ble_hs_task_handles[MAX_NESTED_LOCKS];
 static int ble_hs_task_handle_index = 0;
 static uint8_t ble_hs_mutex_locked;
 static uint8_t counter_lock = 0;
 static TaskHandle_t ble_hs_task_handle;
 static uint8_t ble_hs_dbg_mutex_locked;
-#endif
+#endif // BLE_HS_DEBUG
+static int ble_hs_reset_reason;
+static struct ble_npl_eventq *ble_hs_evq;
+/**
+ * Handles unresponsive timeouts and periodic retries in case of resource
+ * shortage.
+ */
+static struct ble_npl_callout ble_hs_timer;
+
+static struct ble_mqueue ble_hs_rx_q;
+
+static struct ble_npl_mutex ble_hs_mutex;
+#endif // BLE_STATIC_TO_DYNAMIC
 
 STATS_SECT_DECL(ble_hs_stats) ble_hs_stats;
 STATS_NAME_START(ble_hs_stats)
@@ -256,6 +348,7 @@ ble_hs_unlock(void)
     ble_hs_unlock_nested();
 }
 
+#if NIMBLE_BLE_CONNECT
 void
 ble_hs_process_rx_data_queue(void)
 {
@@ -334,6 +427,7 @@ ble_hs_wakeup_tx(void)
 done:
     ble_hs_unlock();
 }
+#endif
 
 static void
 ble_hs_clear_rx_queue(void)
@@ -380,12 +474,13 @@ ble_hs_sync(void)
     ble_hs_timer_sched(retry_tmo_ticks);
 
     if (rc == 0) {
+#if NIMBLE_BLE_CONNECT
         rc = ble_hs_misc_restore_irks();
         if (rc != 0) {
             BLE_HS_LOG(INFO, "Failed to restore IRKs from store; status=%d\n",
                        rc);
         }
-
+#endif
         if (ble_hs_cfg.sync_cb != NULL) {
             ble_hs_cfg.sync_cb();
         }
@@ -429,7 +524,9 @@ ble_hs_reset(void)
 static void
 ble_hs_timer_exp(struct ble_npl_event *ev)
 {
+#if NIMBLE_BLE_CONNECT
     int32_t ticks_until_next;
+#endif
 
     switch (ble_hs_sync_state) {
     case BLE_HS_SYNC_STATE_GOOD:
@@ -446,11 +543,10 @@ ble_hs_timer_exp(struct ble_npl_event *ev)
 
         ticks_until_next = ble_hs_conn_timer();
         ble_hs_timer_sched(ticks_until_next);
-#endif
 
         ticks_until_next = ble_gap_timer();
         ble_hs_timer_sched(ticks_until_next);
-
+#endif
         break;
 
     case BLE_HS_SYNC_STATE_BAD:
@@ -557,13 +653,13 @@ ble_hs_event_tx_notify(struct ble_npl_event *ev)
     ble_gatts_tx_notifications();
 }
 #endif
-#endif
 
 static void
 ble_hs_event_rx_data(struct ble_npl_event *ev)
 {
     ble_hs_process_rx_data_queue();
 }
+#endif
 
 static void
 ble_hs_event_reset(struct ble_npl_event *ev)
@@ -608,6 +704,7 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
     struct ble_npl_event *ev;
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
+
     if (ev && ble_hs_evq->eventq) {
         memset (ev, 0, sizeof *ev);
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
@@ -709,6 +806,7 @@ ble_hs_start(void)
     return 0;
 }
 
+#if NIMBLE_BLE_CONNECT
 /**
  * Called when a data packet is received from the controller.  This function
  * consumes the supplied mbuf, regardless of the outcome.
@@ -772,19 +870,52 @@ ble_hs_tx_data(struct os_mbuf *om)
 
     return ble_transport_to_ll_acl(om);
 }
+#endif
 
 void
 ble_hs_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    size_t event_buf_size = OS_MEMPOOL_SIZE(BLE_HS_HCI_EVT_COUNT, sizeof(struct ble_npl_event)) * sizeof(os_membuf_t);
+
+    if (!ble_hs_ctx) {
+        ble_hs_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_ctx));
+        if (!ble_hs_ctx) {
+            MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_ctx (%zu bytes)\n", sizeof(*ble_hs_ctx));
+            return;
+        }
+    }
+
+    if (!ble_hs_ctx->hci_os_event_buf) {
+        ble_hs_ctx->hci_os_event_buf = (os_membuf_t *)nimble_platform_mem_calloc(1, event_buf_size);
+        if (!ble_hs_ctx->hci_os_event_buf) {
+            MODLOG_DFLT(ERROR, "Failed to allocate memory for hci_os_event_buf (%zu bytes)\n", event_buf_size);
+            nimble_platform_mem_free(ble_hs_ctx);
+            ble_hs_ctx = NULL;
+            return;
+        }
+    }
+
+    if (!ble_hs_state_ctx) {
+        ble_hs_state_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_state_ctx));
+        if (!ble_hs_state_ctx) {
+            MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_state_ctx (%zu bytes)\n", sizeof(*ble_hs_state_ctx));
+            return;
+        }
+    }
+
+    ble_hs_ctx->parent_task = NULL;
+#endif
+
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
-    /* Create memory pool of OS events */
     rc = os_mempool_init(&ble_hs_hci_ev_pool, BLE_HS_HCI_EVT_COUNT,
                          sizeof (struct ble_npl_event), ble_hs_hci_os_event_buf,
                          "ble_hs_hci_ev_pool");
+
     SYSINIT_PANIC_ASSERT(rc == 0);
 
     /* These get initialized here to allow unit tests to run without a zeroed
@@ -807,8 +938,10 @@ ble_hs_init(void)
 
     ble_hs_hci_init();
 
+#if NIMBLE_BLE_CONNECT
     rc = ble_hs_conn_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
     rc = ble_hs_periodic_sync_init();
@@ -833,8 +966,10 @@ ble_hs_init(void)
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
 
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
     rc = ble_gattc_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     rc = ble_gattc_cache_conn_init();
@@ -849,7 +984,9 @@ ble_hs_init(void)
 
     ble_hs_stop_init();
 
+#if NIMBLE_BLE_CONNECT
     ble_mqueue_init(&ble_hs_rx_q, ble_hs_event_rx_data, NULL);
+#endif
 
     rc = stats_init_and_reg(
         STATS_HDR(ble_hs_stats), STATS_SIZE_INIT_PARMS(ble_hs_stats,
@@ -882,7 +1019,7 @@ ble_hs_init(void)
 #endif
 #endif
     /* Initialize npl variables related to hs flow control */
-    ble_hs_flow_init();                                      
+    ble_hs_flow_init();
 }
 
 /* Transport APIs for HS side */
@@ -893,11 +1030,13 @@ ble_transport_to_hs_evt_impl(void *buf)
     return ble_hs_hci_rx_evt(buf, NULL);
 }
 
+#if NIMBLE_BLE_CONNECT
 int
 ble_transport_to_hs_acl_impl(struct os_mbuf *om)
 {
     return ble_hs_rx_data(om, NULL);
 }
+#endif
 
 void
 ble_transport_hs_init(void)
@@ -929,6 +1068,27 @@ ble_hs_deinit(void)
     ble_npl_event_deinit(&ble_hs_ev_start_stage1);
 
     ble_npl_event_deinit(&ble_hs_ev_reset);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_hs_conn_deinit();
+
+#if NIMBLE_BLE_CONNECT
+#if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
+    ble_gattc_deinit();
+#endif
+
+    ble_l2cap_deinit();
+
+    ble_att_deinit();
+#endif
+
+#if MYNEWT_VAL(BLE_GATTS)
+     ble_att_svr_deinit();
+#endif
+
+#if NIMBLE_BLE_SM
+    ble_sm_deinit();
+#endif
+#endif
 
 #if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_GATTS)
     ble_npl_event_deinit(&ble_hs_ev_tx_notifications);
@@ -940,5 +1100,44 @@ ble_hs_deinit(void)
 
 #if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
     ble_hs_resolv_deinit();
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_ctx) {
+        ble_hs_ctx->parent_task = NULL;
+        if (ble_hs_ctx->hci_os_event_buf) {
+            nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
+            ble_hs_ctx->hci_os_event_buf = NULL;
+        }
+        nimble_platform_mem_free(ble_hs_ctx);
+        ble_hs_ctx = NULL;
+    }
+
+    if (ble_hs_state_ctx) {
+        nimble_platform_mem_free(ble_hs_state_ctx);
+        ble_hs_state_ctx = NULL;
+    }
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
+    ble_hs_periodic_sync_deinit();
+#endif
+
+    ble_store_config_deinit();
+
+    ble_hs_adv_parse_free();
+
+#if MYNEWT_VAL(BLE_HS_PVCY)
+    ble_hs_pvcy_irk_deinit();
+#endif
+
+    ble_hs_id_ctx_free();
+
+    ble_hs_hci_ctx_free();
+
+    ble_uuid_deinit();
+
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
+    ble_svc_gap_deinit();
+#endif
 #endif
 }

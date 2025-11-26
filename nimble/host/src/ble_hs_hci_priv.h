@@ -141,6 +141,10 @@ int ble_hs_hci_read_monitor_adv_list_size(uint8_t *out_number);
 int ble_hs_hci_enable_monitor_adv(uint8_t enable);
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_hs_hci_ctx_free(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

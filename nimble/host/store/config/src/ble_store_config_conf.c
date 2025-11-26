@@ -51,17 +51,21 @@ static struct conf_handler ble_store_config_conf_handler = {
 #define BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ  \
     (MYNEWT_VAL(BLE_STORE_MAX_BONDS) * BLE_STORE_CONFIG_SEC_ENCODE_SZ + 1)
 
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 #define BLE_STORE_CONFIG_CCCD_ENCODE_SZ     \
     BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_cccd))
 
 #define BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ \
     (MYNEWT_VAL(BLE_STORE_MAX_CCCDS) * BLE_STORE_CONFIG_CCCD_ENCODE_SZ + 1)
+#endif
 
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 #define BLE_STORE_CONFIG_CSFC_ENCODE_SZ     \
     BASE64_ENCODE_SIZE(sizeof (struct ble_store_value_csfc))
 
 #define BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ     \
     (MYNEWT_VAL(BLE_STORE_MAX_CSFCS) * BLE_STORE_CONFIG_CSFC_ENCODE_SZ + 1)
+#endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #define BLE_STORE_CONFIG_EAD_ENCODE_SZ     \
@@ -133,7 +137,9 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     sizeof *ble_store_config_cccds,
                     &ble_store_config_num_cccds);
             return rc;
-        } else if (strcmp(argv[0], "csfc") == 0) {
+        }
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
+        else if (strcmp(argv[0], "csfc") == 0) {
             rc = ble_store_config_deserialize_arr(
                     val,
                     ble_store_config_csfcs,
@@ -141,6 +147,7 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     &&ble_store_config_num_csfcs);
             return rc;
         }
+#endif
 #if MYNEWT_VAL(ENC_ADV_DATA)
         else if (strcmp(argv[0], "ead") == 0) {
             rc = ble_store_config_deserialize_arr(
@@ -151,7 +158,8 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
             return rc;
         }
 #endif
-        else if (strcmp(argv[0],"rpa_rec") == 0){
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+        else if (strcmp(argv[0],"rpa_rec") == 0) {
             rc = ble_store_config_deserialize_arr(
                     val,
                     ble_store_config_rpa_recs,
@@ -159,6 +167,7 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     &ble_store_config_num_rpa_recs);
             return rc;
         }
+#endif
     }
     return OS_ENOENT;
 }
@@ -193,14 +202,14 @@ ble_store_config_conf_export(void (*func)(char *name, char *val),
                                    buf.cccd,
                                    sizeof buf.cccd);
     func("ble_hs/cccd", buf.cccd);
-
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
     ble_store_config_serialize_arr(ble_store_config_csfcs,
                                    sizeof *ble_store_config_csfcs,
                                    ble_store_config_num_csfcs,
                                    buf.csfc,
                                    sizeof buf.csfc);
     func("ble_hs/csfc", buf.csfc);
-
+#endif
 #if MYNEWT_VAL(ENC_ADV_DATA)
     ble_store_config_serialize_arr(ble_store_config_eads,
                                    sizeof *ble_store_config_eads,
@@ -209,11 +218,13 @@ ble_store_config_conf_export(void (*func)(char *name, char *val),
                                    sizeof buf.ead);
     func("ble_hs/ead", buf.ead);
 #endif
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     ble_store_config_serialize_arr(ble_store_config_rpa_recs,
                                    sizeof *ble_store_config_rpa_recs,
                                    ble_store_config_num_rpa_recs,
                                    buf.rpa_rec,
                                    sizeof buf.rpa_rec);
+#endif
     return 0;
 }
 
@@ -283,7 +294,7 @@ ble_store_config_persist_cccds(void)
 
     return 0;
 }
-
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 int
 ble_store_config_persist_csfcs(void)
 {
@@ -302,6 +313,7 @@ ble_store_config_persist_csfcs(void)
 
     return 0;
 }
+#endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 int
@@ -321,6 +333,8 @@ ble_store_config_persist_eads(void)
     return 0;
 }
 #endif
+
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 int
 ble_store_config_persist_rpa_recs(void)
 {
@@ -337,6 +351,8 @@ ble_store_config_persist_rpa_recs(void)
     }
     return 0;
 }
+#endif
+
 void
 ble_store_config_conf_init(void)
 {

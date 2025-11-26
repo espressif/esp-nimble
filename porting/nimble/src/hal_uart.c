@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_attr.h"
 #include "esp_nimble_mem.h"
+#include "esp_nimble_cfg.h"
 
 static const char *TAG = "hal_uart";
 
@@ -44,10 +45,21 @@ int hal_uart_init_cbs(int uart_no, hal_uart_tx_char tx_func,
     return 0;
 }
 
-static void IRAM_ATTR hci_uart_rx_task(void *pvParameters)
+void hal_uart_deinit_cbs(void)
+{
+    hci_uart.tx_char = NULL;
+    hci_uart.rx_char = NULL;
+    hci_uart.tx_done = NULL;
+    hci_uart.u_func_arg = NULL;
+}
+
+#if !MYNEWT_VAL(BLE_LOW_SPEED_MODE)
+IRAM_ATTR
+#endif
+static void hci_uart_rx_task(void *pvParameters)
 {
     uart_event_t event;
-    uint8_t* dtmp = (uint8_t*) nimble_platform_mem_malloc(RD_BUF_SIZE);
+    uint8_t* dtmp = (uint8_t*) nimble_platform_mem_calloc(1,RD_BUF_SIZE);
     while(hci_uart.uart_opened) {
         //Waiting for UART event.
         if(xQueueReceive(hci_uart.evt_queue, (void * )&event, (TickType_t)portMAX_DELAY)) {
@@ -139,7 +151,10 @@ int hal_uart_config(int uart, int32_t speed, uint8_t data_bits, uint8_t stop_bit
     return 0;
 }
 
-void IRAM_ATTR hal_uart_start_tx(int uart_no)
+#if !MYNEWT_VAL(BLE_LOW_SPEED_MODE)
+IRAM_ATTR
+#endif
+void hal_uart_start_tx(int uart_no)
 {
     int data;
     uint8_t u8_data=0;

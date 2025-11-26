@@ -25,11 +25,18 @@
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
 #include "host/ble_uuid.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static uint8_t * ble_uuid_base = NULL;
+#else
 static uint8_t ble_uuid_base[16] = {
     0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,
     0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+#endif
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
 #define VERIFY_UUID(uuid)                       \
@@ -136,6 +143,29 @@ ble_uuid_to_str(const ble_uuid_t *uuid, char *dst)
     return dst;
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_uuid_base_init(void)
+{
+    if (ble_uuid_base == NULL) {
+        ble_uuid_base = nimble_platform_mem_calloc(1, sizeof(uint8_t) * 16);
+        if (ble_uuid_base == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+
+    ble_uuid_base[0] = 0xfb;
+    ble_uuid_base[1] = 0x34;
+    ble_uuid_base[2] = 0x9b;
+    ble_uuid_base[3] = 0x5f;
+    ble_uuid_base[4] = 0x80;
+    ble_uuid_base[7] = 0x80;
+    ble_uuid_base[9] = 0x10;
+
+    return 0;
+}
+#endif
+
 uint16_t
 ble_uuid_u16(const ble_uuid_t *uuid)
 {
@@ -232,6 +262,13 @@ ble_uuid_flat(const ble_uuid_t *uuid, void *dst)
 {
     VERIFY_UUID(uuid);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc = ble_uuid_base_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
+
     switch (uuid->type) {
     case BLE_UUID_TYPE_16:
         put_le16(dst, BLE_UUID16(uuid)->value);
@@ -257,3 +294,15 @@ ble_uuid_length(const ble_uuid_t *uuid)
 
     return uuid->type >> 3;
 }
+
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_uuid_deinit(void)
+{
+    if (ble_uuid_base) {
+        nimble_platform_mem_free(ble_uuid_base);
+        ble_uuid_base = NULL;
+    }
+}
+#endif

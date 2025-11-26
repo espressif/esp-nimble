@@ -203,6 +203,7 @@ ble_transport_to_hs_evt_impl(void *buf)
     return 0;
 }
 
+#if NIMBLE_BLE_CONNECT
 int
 ble_transport_to_hs_acl_impl(struct os_mbuf *om)
 {
@@ -230,6 +231,7 @@ ble_transport_to_hs_acl_impl(struct os_mbuf *om)
 
     return 0;
 }
+#endif
 
 void
 ble_transport_hs_init(void)

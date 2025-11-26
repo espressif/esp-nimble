@@ -24,11 +24,13 @@ ble_transport_dummy_host_recv_cb(hci_trans_pkt_ind_t type, uint8_t *data, uint16
 static int
 ble_transport_host_recv_cb(hci_trans_pkt_ind_t type, uint8_t *data, uint16_t len)
 {
-    int rc;
-
+    int rc = 0;
     if (type == HCI_ACL_IND) {
+#if CONFIG_BT_NIMBLE_ROLE_CENTRAL || CONFIG_BT_NIMBLE_ROLE_PERIPHERAL
         rc = ble_transport_to_hs_acl((struct os_mbuf *)data);
-    } else {
+#endif
+    }
+    else {
         rc = ble_transport_to_hs_evt(data);
     }
     return rc;

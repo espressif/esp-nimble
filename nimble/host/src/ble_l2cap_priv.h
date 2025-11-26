@@ -47,7 +47,17 @@ STATS_SECT_START(ble_l2cap_stats)
 STATS_SECT_END
 extern STATS_SECT_DECL(ble_l2cap_stats) ble_l2cap_stats;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    os_membuf_t *chan_mem;
+    struct os_mempool chan_pool;
+} ble_l2cap_ctx_t;
+
+extern ble_l2cap_ctx_t *ble_l2cap_ctx;
+#define ble_l2cap_chan_pool (ble_l2cap_ctx->chan_pool)
+#else
 extern struct os_mempool ble_l2cap_chan_pool;
+#endif
 
 /* This is nimble specific; packets sent to the black hole CID do not elicit
  * an "invalid CID" response.
@@ -144,6 +154,9 @@ int ble_l2cap_tx(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan,
 void ble_l2cap_remove_rx(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan);
 
 int ble_l2cap_init(void);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_l2cap_deinit(void);
+#endif
 
 /* Below experimental API is available when BLE_VERSION >= 52 */
 int ble_l2cap_enhanced_connect(uint16_t conn_handle,

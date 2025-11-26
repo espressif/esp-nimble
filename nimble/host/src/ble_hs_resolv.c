@@ -117,11 +117,19 @@ ble_rpa_peer_dev_rec_clear_all(void)
      * peer_records */
     for (i = 0; i < num_peer_dev_rec; i++) {
         ble_store_num_peer_dev_rec--;
-        memmove(&peer_dev_rec[0], &peer_dev_rec[1],
-                ble_store_num_peer_dev_rec * sizeof(struct ble_hs_dev_records));
-        memset(&peer_dev_rec[ble_store_num_peer_dev_rec], 0,
+
+        if (ble_store_num_peer_dev_rec > 1) {
+            /* Copy (n-1) valid elements, only if the array can hold at least 2 */
+#if BLE_RESOLV_LIST_SIZE > 1
+            size_t move_count = (ble_store_num_peer_dev_rec - 1) * sizeof(peer_dev_rec[0]);
+            __builtin_memmove(&peer_dev_rec[0], &peer_dev_rec[1], move_count);
+#endif
+        }
+
+	memset(&peer_dev_rec[ble_store_num_peer_dev_rec], 0,
                sizeof(struct ble_hs_dev_records));
-        ble_store_persist_peer_records();
+
+	ble_store_persist_peer_records();
     }
     return;
 }

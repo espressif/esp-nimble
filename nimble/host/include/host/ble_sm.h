@@ -154,6 +154,11 @@ int ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled);
 #endif
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_sm_proc_deinit(void);
+#endif
+
+
 #ifdef __cplusplus
 }
 #endif

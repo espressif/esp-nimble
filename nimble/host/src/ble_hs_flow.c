@@ -19,12 +19,37 @@
 
 #include "syscfg/syscfg.h"
 #include "ble_hs_priv.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 #if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
 
 #define BLE_HS_FLOW_ITVL_TICKS  \
     ble_npl_time_ms_to_ticks32(MYNEWT_VAL(BLE_HS_FLOW_CTRL_ITVL))
 
+static ble_npl_event_fn ble_hs_flow_event_cb;
+
+/* Connection handle associated with each mbuf in ACL pool */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    uint16_t num_completed_pkts;              /* Tracks number of completed packets */
+    struct ble_npl_callout flow_timer;        /* Periodic flow timer */
+    struct ble_npl_event flow_ev;             /* Event for flow handling */
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    uint16_t mbuf_conn_handle[MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT)];
+#endif
+} ble_hs_flow_ctx_t;
+
+static ble_hs_flow_ctx_t  *ble_hs_flow_ctx;
+
+#define ble_hs_flow_num_completed_pkts   (ble_hs_flow_ctx->num_completed_pkts)
+#define ble_hs_flow_timer                (ble_hs_flow_ctx->flow_timer)
+#define ble_hs_flow_ev                   (ble_hs_flow_ctx->flow_ev)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#define ble_hs_flow_mbuf_conn_handle     (ble_hs_flow_ctx->mbuf_conn_handle)
+#endif
+#else
 /**
  * The number of freed buffers since the most-recent
  * number-of-completed-packets event was sent.  This is used to determine if an
@@ -34,15 +59,15 @@ static uint16_t ble_hs_flow_num_completed_pkts;
 
 /** Periodically sends number-of-completed-packets events.  */
 static struct ble_npl_callout ble_hs_flow_timer;
-
-static ble_npl_event_fn ble_hs_flow_event_cb;
-
 static struct ble_npl_event ble_hs_flow_ev;
 
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
 /* Connection handle associated with each mbuf in ACL pool */
 static uint16_t ble_hs_flow_mbuf_conn_handle[ MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT) ];
+#endif
+#endif
 
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static inline int
 ble_hs_flow_mbuf_index(const struct os_mbuf *om)
 {
@@ -244,7 +269,7 @@ ble_hs_flow_startup(void)
 
     /* Remove previous event from queue, if any*/
     ble_npl_eventq_remove(ble_hs_evq_get(), &ble_hs_flow_ev);
-   
+
 
 #if MYNEWT_VAL(SELFTEST)
     ble_npl_callout_stop(&ble_hs_flow_timer);
@@ -296,6 +321,15 @@ void
 ble_hs_flow_init(void)
 {
 #if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_flow_ctx) {
+        ble_hs_flow_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_flow_ctx));
+        if (!ble_hs_flow_ctx) {
+            return;
+        }
+    }
+#endif
+
     ble_npl_event_init(&ble_hs_flow_ev, ble_hs_flow_event_cb, NULL);
     ble_npl_callout_init(&ble_hs_flow_timer, ble_hs_evq_get(),
                          ble_hs_flow_event_cb, NULL);
@@ -308,5 +342,12 @@ ble_hs_flow_deinit(void)
 #if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
     ble_npl_event_deinit(&ble_hs_flow_ev);
     ble_npl_callout_deinit(&ble_hs_flow_timer);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_flow_ctx) {
+        nimble_platform_mem_free(ble_hs_flow_ctx);
+        ble_hs_flow_ctx = NULL;
+    }
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 #endif //MYNEWT_VAL(BLE_HS_FLOW_CTRL)
 }

@@ -113,29 +113,32 @@ struct ranging_buffer *ranging_buffer_alloc(uint16_t conn_handle , uint16_t rang
 static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handle,
                                        struct ble_gatt_access_ctxt *ctxt, void *arg);
 
-static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
-    {
-        /* Service: Ranging Data Service */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_RANGING_SERVICE_VAL),
-        .characteristics = (struct ble_gatt_chr_def[]) {
+static const ble_uuid16_t uuid_svc_ras = BLE_UUID16_INIT(BLE_SVC_RAS_RANGING_SERVICE_VAL);
+static const ble_uuid16_t uuid_chr_feat_value = BLE_UUID16_INIT(BLE_SVC_RAS_CHR_UUID_FEATURES_VAL);
+static const ble_uuid16_t uuid_chr_demand_rd = BLE_UUID16_INIT(BLE_SVC_RAS_CHR_UUID_ONDEMAND_RD_VAL);
+static const ble_uuid16_t uuid_chr_real_rd = BLE_UUID16_INIT(BLE_SVC_RAS_CHR_UUID_REALTIME_RD_VAL);
+static const ble_uuid16_t uuid_chr_ctrl_pt = BLE_UUID16_INIT(BLE_SVC_RAS_CHR_UUID_CP_VAL);
+static const ble_uuid16_t uuid_chr_data_rdy = BLE_UUID16_INIT(BLE_SVC_RAS_CHR_UUID_RD_READY_VAL);
+static const ble_uuid16_t uuid_chr_data_ow = BLE_UUID16_INIT(BLE_SVC_RAS_CHR_UUID_RD_OVERWRITTEN_VAL);
+
+static const struct ble_gatt_chr_def ras_characteristics[] = {
             {
                 /* Characteristic: Feature Value */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_FEATURES_VAL),
+                .uuid = &uuid_chr_feat_value.u,
                 .access_cb = gatt_svr_chr_access_ras_val,
                 .val_handle = &ble_svc_ras_feat_val_handle,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC,
             },
             {
                 /* Characteristic: On demand ranging data */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_ONDEMAND_RD_VAL),
+                .uuid = &uuid_chr_demand_rd.u,
                 .access_cb = gatt_svr_chr_access_ras_val,
                 .val_handle = &ble_svc_ras_od_rd_val_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE  ,
             },
             {
                  /* Characteristic: On realtime ranging data */
-                 .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_REALTIME_RD_VAL),
+                 .uuid = &uuid_chr_real_rd.u,
                  .access_cb = gatt_svr_chr_access_ras_val,
                  .val_handle = &ble_svc_ras_rt_rd_val_handle,
                  .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE  ,
@@ -143,21 +146,21 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
 
             {
                 /* Characteristic: RAS Control Point */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_CP_VAL),
+                .uuid = &uuid_chr_ctrl_pt.u,
                 .access_cb = gatt_svr_chr_access_ras_val,
                 .val_handle = &ble_svc_ras_cp_val_handle,
                 .flags = BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_INDICATE,
             },
             {
                 /* Characteristic: RAS Ranging Data Ready */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_RD_READY_VAL),
+                .uuid = &uuid_chr_data_rdy.u,
                 .access_cb = gatt_svr_chr_access_ras_val,
                 .val_handle = &ble_svc_ras_rd_val_handle,
                 .flags = BLE_GATT_CHR_F_INDICATE | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ ,
             },
             {
                 /* Characteristic: RAS  Ranging data overwritten */
-                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_RD_OVERWRITTEN_VAL),
+                .uuid = &uuid_chr_data_ow.u,
                 .access_cb = gatt_svr_chr_access_ras_val,
                 .val_handle = &ble_svc_ras_rd_ov_val_handle,
                 .flags = BLE_GATT_CHR_F_INDICATE | BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ,
@@ -165,7 +168,14 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
             {
                 0, /* No more characteristics in this service */
             },
-        },
+};
+
+static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
+    {
+        /* Service: Ranging Data Service */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_ras.u,
+        .characteristics = ras_characteristics,
     },
     {
         0, /* No more services */
@@ -407,7 +417,7 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
 
     uint16_t max_data_len = ble_att_mtu(ranging_subevent.subev_result.conn_handle) - sizeof(struct segment_header) - 4;
     MODLOG_DFLT(INFO, "Max data len : %d\n", max_data_len);
-    ras_segment= nimble_platform_mem_malloc(sizeof(struct segment)+ max_data_len);
+    ras_segment= nimble_platform_mem_calloc(1,sizeof(struct segment)+ max_data_len);
     if (ras_segment == NULL) {
         MODLOG_DFLT(INFO, "Failed to allocate memory for RAS segment\n");
         return;

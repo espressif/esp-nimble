@@ -56,7 +56,13 @@
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
 #if MYNEWT_VAL(BLE_SM_SC)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+static mbedtls_ecp_keypair * keypair_ptr = NULL;
+#define keypair (*keypair_ptr)
+#else
 static mbedtls_ecp_keypair keypair;
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 #endif
 #else
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(TRNG)
@@ -592,6 +598,12 @@ exit:
     mbedtls_entropy_free(&entropy);
     mbedtls_ctr_drbg_free(&ctr_drbg);
     if (rc != 0) {
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (keypair_ptr) {
+            nimble_platform_mem_free(keypair_ptr);
+            keypair_ptr = NULL;
+        }
+#endif
         return BLE_HS_EUNKNOWN;
     }
 
@@ -638,6 +650,11 @@ mbedtls_gen_keypair(uint8_t *public_key, uint8_t *private_key)
     mbedtls_entropy_context entropy = {0};
     mbedtls_ctr_drbg_context ctr_drbg = {0};
 
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!keypair_ptr) {
+        keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
+    }
+#endif
 
     mbedtls_entropy_init(&entropy);
     mbedtls_ctr_drbg_init(&ctr_drbg);
@@ -676,7 +693,14 @@ exit:
     mbedtls_entropy_free( &entropy );
     if (rc != 0) {
         mbedtls_ecp_keypair_free(&keypair);
-        return BLE_HS_EUNKNOWN;
+
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (keypair_ptr) {
+            nimble_platform_mem_free(keypair_ptr);
+            keypair_ptr = NULL;
+        }
+#endif
+        rc = BLE_HS_EUNKNOWN;
     }
 
     return 0;
@@ -695,6 +719,7 @@ void mbedtls_free_keypair(void)
 int
 ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 {
+
 #if MYNEWT_VAL(BLE_SM_SC_DEBUG_KEYS)
     swap_buf(pub, ble_sm_alg_dbg_pub_key, 32);
     swap_buf(&pub[32], &ble_sm_alg_dbg_pub_key[32], 32);

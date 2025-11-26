@@ -131,6 +131,9 @@ struct ble_hs_cfg;
 #define BLE_GATT_SVC_TYPE_PRIMARY                       1
 #define BLE_GATT_SVC_TYPE_SECONDARY                     2
 
+/** @} */
+
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
 /**
  * Client Presentation Format
  * GATT Format Types
@@ -328,6 +331,7 @@ struct ble_hs_cfg;
 #define BLE_GATT_CHR_BT_SIG_DESC_RIGHT                  0x010E
 #define BLE_GATT_CHR_BT_SIG_DESC_INTERNAL               0x010F
 #define BLE_GATT_CHR_BT_SIG_DESC_EXTERNAL               0x0110
+#endif
 
 /*** @server. */
 /** Represents one notification tuple in a multi notification PDU */
@@ -1019,6 +1023,7 @@ struct ble_gatt_dsc_def {
     void *arg;
 };
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
 /**
  * Client Presentation Format Descriptor
  * Defines the format of the Characteristic Value.
@@ -1052,6 +1057,7 @@ struct ble_gatt_cpfd {
     /** The description of this characteristic. Depends on name space. */
     uint16_t description;
 };
+#endif
 
 /**
  * Context for an access to a GATT characteristic or descriptor.  When a client

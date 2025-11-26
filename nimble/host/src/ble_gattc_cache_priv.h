@@ -284,6 +284,9 @@ uint16_t ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle);
 
 /* cache store */
 void ble_gattc_cache_save(struct ble_gattc_cache_conn *peer, size_t num_attr);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_gattc_cache_free_mem(void);
+#endif
 int ble_gattc_cache_init(void *storage_cb);
 int ble_gattc_cache_load(ble_addr_t peer_addr);
 int ble_gattc_cache_check_hash(struct ble_gattc_cache_conn *peer, struct os_mbuf *om);

@@ -49,6 +49,7 @@
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
 #include "../store/config/src/ble_store_config_priv.h"
+#include "esp_nimble_mem.h"
 
 #if NIMBLE_BLE_CONNECT
 
@@ -64,6 +65,10 @@
 
 /** Procedure timeout; 30 seconds. */
 #define BLE_SM_TIMEOUT_MS             (30000)
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 STAILQ_HEAD(ble_sm_proc_list, ble_sm_proc);
 
@@ -126,6 +131,9 @@ static ble_sm_state_fn ble_sm_enc_restore_exec;
 static ble_sm_state_fn ble_sm_key_exch_exec;
 static ble_sm_state_fn ble_sm_sec_req_exec;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static ble_sm_state_fn **ble_sm_state_dispatch = NULL;
+#else
 static ble_sm_state_fn * const
 ble_sm_state_dispatch[BLE_SM_PROC_STATE_CNT] = {
     [BLE_SM_PROC_STATE_PAIR]          = ble_sm_pair_exec,
@@ -145,7 +153,9 @@ ble_sm_state_dispatch[BLE_SM_PROC_STATE_CNT] = {
     [BLE_SM_PROC_STATE_DHKEY_CHECK]   = NULL,
 #endif
 };
+#endif
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_sm_proc_mem = NULL;
 #else
@@ -159,6 +169,7 @@ static struct os_mempool ble_sm_proc_pool;
 
 /* Maintains the list of active security manager procedures. */
 static struct ble_sm_proc_list ble_sm_procs;
+#endif  // BLE_STATIC_TO_DYNAMIC
 
 static void ble_sm_pair_cfg(struct ble_sm_proc *proc);
 
@@ -167,8 +178,58 @@ static void ble_sm_pair_cfg(struct ble_sm_proc *proc);
  * $debug                                                                    *
  *****************************************************************************/
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+/**
+ * Security Manager context.
+ *
+ * Contains all state for Security Manager (SM):
+ *  - Memory pool and buffer for SM procedures.
+ *  - Active procedure list.
+ *  - Key generation and pairing variables.
+ *
+ * Memory is allocated dynamically at runtime during ble_sm_init().
+ */
+typedef struct {
+     /* sm procedure memory pool */
+    struct os_membuf_t *proc_mem;
+    struct os_mempool proc_pool;
+    struct ble_sm_proc_list proc_list;
 #if MYNEWT_VAL(BLE_HS_DEBUG)
+    /* sm pairing and key variables */
+    uint8_t next_pair_rand[16];
+    uint8_t next_pair_rand_set;
+    uint16_t next_ediv;
+    uint8_t next_ediv_set;
+    uint64_t next_master_id_rand;
+    uint8_t next_master_id_rand_set;
+    uint8_t next_ltk[16];
+    uint8_t next_ltk_set;
+    uint8_t next_csrk[16];
+    uint8_t next_csrk_set;
+#endif
+} ble_sm_ctx_t;
 
+static ble_sm_ctx_t *ble_sm_ctx;
+
+/* convenient macros for access */
+#define ble_sm_proc_mem                    (ble_sm_ctx->proc_mem)
+#define ble_sm_proc_pool                   (ble_sm_ctx->proc_pool)
+#define ble_sm_procs                       (ble_sm_ctx->proc_list)
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+#define ble_sm_dbg_next_pair_rand          (ble_sm_ctx->next_pair_rand)
+#define ble_sm_dbg_next_pair_rand_set      (ble_sm_ctx->next_pair_rand_set)
+#define ble_sm_dbg_next_ediv               (ble_sm_ctx->next_ediv)
+#define ble_sm_dbg_next_ediv_set           (ble_sm_ctx->next_ediv_set)
+#define ble_sm_dbg_next_master_id_rand     (ble_sm_ctx->next_master_id_rand)
+#define ble_sm_dbg_next_master_id_rand_set (ble_sm_ctx->next_master_id_rand_set)
+#define ble_sm_dbg_next_ltk                (ble_sm_ctx->next_ltk)
+#define ble_sm_dbg_next_ltk_set            (ble_sm_ctx->next_ltk_set)
+#define ble_sm_dbg_next_csrk               (ble_sm_ctx->next_csrk)
+#define ble_sm_dbg_next_csrk_set           (ble_sm_ctx->next_csrk_set)
+#endif // BLE_HS_DEBUG
+#else
+#if MYNEWT_VAL(BLE_HS_DEBUG)
 static uint8_t ble_sm_dbg_next_pair_rand[16];
 static uint8_t ble_sm_dbg_next_pair_rand_set;
 static uint16_t ble_sm_dbg_next_ediv;
@@ -217,8 +278,8 @@ ble_sm_dbg_set_next_csrk(uint8_t *next_csrk)
            sizeof ble_sm_dbg_next_csrk);
     ble_sm_dbg_next_csrk_set = 1;
 }
-
-#endif
+#endif // BLE_HS_DEBUG
+#endif // BLE_STATIC_TO_DYNAMIC
 
 static void
 ble_sm_dbg_assert_no_cycles(void)
@@ -402,6 +463,7 @@ ble_sm_proc_alloc(void)
     struct ble_sm_proc *proc;
 
     proc = os_memblock_get(&ble_sm_proc_pool);
+
     if (proc != NULL) {
         memset(proc, 0, sizeof *proc);
     }
@@ -422,7 +484,9 @@ ble_sm_proc_free(struct ble_sm_proc *proc)
 #if MYNEWT_VAL(BLE_HS_DEBUG)
         memset(proc, 0xff, sizeof *proc);
 #endif
+
         rc = os_memblock_put(&ble_sm_proc_pool, proc);
+
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
     }
 }
@@ -959,9 +1023,10 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res)
     struct ble_sm_proc *prev;
     struct ble_sm_proc *proc;
     int rm;
+#if MYNEWT_VAL(BLE_RESTART_PAIR)
     ble_hs_conn_flags_t conn_flags;
     struct ble_hs_conn *conn;
-
+#endif
     rm = 0;
 
     if (res && res->out_of_order) {
@@ -1010,8 +1075,9 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res)
             break;
         }
 
-	if (res->app_status == 518 ) {
-	    conn = ble_hs_conn_find(conn_handle);
+#if MYNEWT_VAL(BLE_RESTART_PAIR)
+        if (res->app_status == 518 ) {
+            conn = ble_hs_conn_find(conn_handle);
 
             conn_flags = conn->bhc_flags;
 
@@ -1025,7 +1091,7 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res)
             }
 	    break;
         }
-
+#endif
         /* Persist keys if bonding has successfully completed. */
         if (res->app_status == 0    &&
             rm                      &&
@@ -2183,18 +2249,20 @@ static void
 ble_sm_key_exch_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
                      void *arg)
 {
-    struct ble_sm_id_addr_info *addr_info;
-    struct ble_hs_conn_addrs addrs;
     struct ble_sm_sign_info *sign_info;
     struct ble_sm_master_id *master_id;
     struct ble_sm_enc_info *enc_info;
-    struct ble_sm_id_info *id_info;
-    struct ble_hs_conn *conn;
     uint8_t init_key_dist;
     uint8_t resp_key_dist;
     uint8_t our_key_dist;
     struct os_mbuf *txom;
+#if MYNEWT_VAL(BLE_HS_PVCY)
+    struct ble_hs_conn *conn;
     const uint8_t *irk;
+    struct ble_hs_conn_addrs addrs;
+    struct ble_sm_id_info *id_info;
+    struct ble_sm_id_addr_info *addr_info;
+#endif
     int rc;
 
     ble_sm_key_dist(proc, &init_key_dist, &resp_key_dist);
@@ -2257,6 +2325,7 @@ ble_sm_key_exch_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
         }
     }
 
+#if MYNEWT_VAL(BLE_HS_PVCY)
     if (our_key_dist & BLE_SM_PAIR_KEY_DIST_ID) {
         /* Send identity information. */
         id_info = ble_sm_cmd_get(BLE_SM_OP_IDENTITY_INFO, sizeof(*id_info),
@@ -2317,6 +2386,7 @@ ble_sm_key_exch_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
             goto err;
         }
     }
+#endif
 
     if (our_key_dist & BLE_SM_PAIR_KEY_DIST_SIGN) {
         /* Send signing information. */
@@ -2594,6 +2664,7 @@ ble_sm_fail_rx(uint16_t conn_handle, struct os_mbuf **om,
  * $api                                                                      *
  *****************************************************************************/
 
+#if MYNEWT_VAL(BLE_SM_SIGN_CNT)
 /**
  * API to be used to increment the sign-counter whenever the CSRK is used
  * to sign a message.
@@ -2685,11 +2756,13 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
         return rc;
     }
 
+#if MYNEWT_VAL(BLE_HS_PVCY)
     if (value_sec.irk_present == 1) {
         ble_hs_pvcy_remove_entry(value_sec.peer_addr.type, value_sec.peer_addr.val);
         // No need to check if the above command fails or passes
         // Proceed with trying to write the new sign counter
     }
+#endif
 
     value_sec.sign_counter += 1;
     rc = ble_store_write_peer_sec(&value_sec);
@@ -2699,6 +2772,7 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 
     return 0;
 }
+#endif
 
 /**
  * Times out expired SM procedures.
@@ -3058,26 +3132,124 @@ ble_sm_connection_broken(uint16_t conn_handle)
     ble_sm_process_result(conn_handle, &res);
 }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static int
+ble_sm_state_dispatch_init(void)
+{
+    ble_sm_state_dispatch = nimble_platform_mem_calloc(1, BLE_SM_PROC_STATE_CNT * sizeof(ble_sm_state_fn *));
+
+    if (!ble_sm_state_dispatch) {
+            return BLE_HS_ENOMEM;
+    }
+
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_PAIR]          = ble_sm_pair_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_CONFIRM]       = ble_sm_confirm_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_RANDOM]        = ble_sm_random_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_LTK_START]     = ble_sm_ltk_start_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_LTK_RESTORE]   = ble_sm_ltk_restore_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_ENC_START]     = ble_sm_enc_start_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_ENC_RESTORE]   = ble_sm_enc_restore_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_KEY_EXCH]      = ble_sm_key_exch_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_SEC_REQ]       = ble_sm_sec_req_exec;
+#if MYNEWT_VAL(BLE_SM_SC)
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_PUBLIC_KEY]    = ble_sm_sc_public_key_exec;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_DHKEY_CHECK]   = ble_sm_sc_dhkey_check_exec;
+#else
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_PUBLIC_KEY]    = NULL;
+    ble_sm_state_dispatch[BLE_SM_PROC_STATE_DHKEY_CHECK]   = NULL;
+#endif
+
+    return 0;
+}
+
+static void ble_sm_state_dispatch_deinit(void)
+{
+    if (ble_sm_state_dispatch) {
+        nimble_platform_mem_free(ble_sm_state_dispatch);
+	ble_sm_state_dispatch = NULL;
+    }
+}
+#endif
+
 int
 ble_sm_init(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_sm_ctx) {
+        ble_sm_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_sm_ctx));
+        if (!ble_sm_ctx) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    size_t proc_mem_size = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_SM_MAX_PROCS), sizeof(struct ble_sm_proc));
+
+    if (!ble_sm_proc_mem) {
+        ble_sm_proc_mem = nimble_platform_mem_calloc(1,proc_mem_size  * sizeof(os_membuf_t));
+        if (!ble_sm_proc_mem) {
+            // free the allocated memory
+            nimble_platform_mem_free(ble_sm_ctx);
+	    ble_sm_ctx = NULL;
+            return BLE_HS_ENOMEM;
+        }
+    }
+#endif
+#endif
+
     STAILQ_INIT(&ble_sm_procs);
 
     rc = os_mempool_init(&ble_sm_proc_pool,
-                         MYNEWT_VAL(BLE_SM_MAX_PROCS),
-                         sizeof (struct ble_sm_proc),
-                         ble_sm_proc_mem,
-                         "ble_sm_proc_pool");
+                          MYNEWT_VAL(BLE_SM_MAX_PROCS),
+                          sizeof (struct ble_sm_proc),
+                          ble_sm_proc_mem,
+                          "ble_sm_proc_pool");
+
     if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+	    ble_sm_deinit();
+#endif
         return rc;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_sm_state_dispatch_init();
+
+    if (rc != 0) {
+	    ble_sm_deinit();
+        return rc;
+    }
+
+#endif
 
     ble_sm_sc_init();
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_sm_deinit(void)
+{
+    if (ble_sm_ctx != NULL) {
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        if (ble_sm_proc_mem) {
+            nimble_platform_mem_free(ble_sm_proc_mem);
+            ble_sm_proc_mem = NULL;
+        }
+#endif
+        nimble_platform_mem_free(ble_sm_ctx);
+        ble_sm_ctx = NULL;
+    }
+
+    ble_sm_sc_deinit();
+
+    ble_sm_state_dispatch_deinit();
+}
+#endif
+
 #else
 /* if pairing is not supported it is only needed to reply with Pairing
  * Failed with 'Pairing not Supported' reason so this function can be very

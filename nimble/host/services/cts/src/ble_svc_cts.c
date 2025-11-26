@@ -46,14 +46,15 @@ static int
 ble_svc_cts_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
 
-static const struct ble_gatt_svc_def ble_svc_cts_defs[] = {
+static const ble_uuid16_t uuid_svc_cts = BLE_UUID16_INIT(BLE_SVC_CTS_UUID16);
+static const ble_uuid16_t uuid_chr_current_time = BLE_UUID16_INIT(BLE_SVC_CTS_CHR_UUID16_CURRENT_TIME);
+static const ble_uuid16_t uuid_chr_loc_time_info = BLE_UUID16_INIT(BLE_SVC_CTS_CHR_UUID16_LOCAL_TIME_INFO);
+static const ble_uuid16_t uuid_chr_ref_time_info = BLE_UUID16_INIT(BLE_SVC_CTS_CHR_UUID16_REF_TIME_INFO);
+
+static const struct ble_gatt_chr_def cts_characteristics[] = {
     {
-        /*** Current Time Service. */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTS_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
-	    /*** Current Time characteristic */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTS_CHR_UUID16_CURRENT_TIME),
+        /*** Current Time characteristic */
+            .uuid = &uuid_chr_current_time.u,
             .access_cb = ble_svc_cts_access,
 	        .val_handle = &ble_svc_cts_curr_time_handle,
             .flags = BLE_GATT_CHR_F_READ |
@@ -61,22 +62,29 @@ static const struct ble_gatt_svc_def ble_svc_cts_defs[] = {
 	                 BLE_GATT_CHR_F_NOTIFY
 	    }, {
         /*** Local info characteristic */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTS_CHR_UUID16_LOCAL_TIME_INFO),
+            .uuid = &uuid_chr_loc_time_info.u,
             .access_cb = ble_svc_cts_access,
             .val_handle = &ble_svc_cts_local_time_info_handle,
             .flags = BLE_GATT_CHR_F_READ |
                      BLE_GATT_CHR_F_WRITE
 	    }, {
         /*** Reference time info Characteristic */
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_CTS_CHR_UUID16_REF_TIME_INFO),
+            .uuid = &uuid_chr_ref_time_info.u,
             .access_cb = ble_svc_cts_access,
             .val_handle = &ble_svc_cts_ref_time_handle,
             .flags = BLE_GATT_CHR_F_READ
 	    }, {
             0, /* No more characteristics in this service. */
-        } },
-    },
+        },
+};
 
+static const struct ble_gatt_svc_def ble_svc_cts_defs[] = {
+    {
+        /*** Current Time Service. */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_cts.u,
+        .characteristics = cts_characteristics,
+    },
     {
         0, /* No more services. */
     },

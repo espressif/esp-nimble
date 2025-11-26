@@ -56,24 +56,28 @@ static int
 ble_svc_gatt_cl_sup_feat_access(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg);
 
-static const struct ble_gatt_svc_def ble_svc_gatt_defs[] = {
-    {
-        /*** Service: GATT */
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_GATT_SVC_UUID16),
-        .characteristics = (struct ble_gatt_chr_def[]) { {
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_SERVICE_CHANGED_UUID16),
+static const ble_uuid16_t uuid_svc_gatt = BLE_UUID16_INIT(BLE_GATT_SVC_UUID16);
+static const ble_uuid16_t uuid_chr_svc_change = BLE_UUID16_INIT(BLE_SVC_GATT_CHR_SERVICE_CHANGED_UUID16);
+static const ble_uuid16_t uuid_chr_svr_supp_feat = BLE_UUID16_INIT(BLE_SVC_GATT_CHR_SERVER_SUPPORTED_FEAT_UUID16);
+static const ble_uuid16_t uuid_chr_cli_supp_feat = BLE_UUID16_INIT(BLE_SVC_GATT_CHR_CLIENT_SUPPORTED_FEAT_UUID16);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+static const ble_uuid16_t uuid_chr_db_hash = BLE_UUID16_INIT(BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16);
+#endif
+
+static const struct ble_gatt_chr_def gatt_characteristics[] = {
+        {
+	    .uuid = &uuid_chr_svc_change.u,
             .access_cb = ble_svc_gatt_access,
             .val_handle = &ble_svc_gatt_changed_val_handle,
             .flags = BLE_GATT_CHR_F_INDICATE,
         },
         {
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_SERVER_SUPPORTED_FEAT_UUID16),
+            .uuid = &uuid_chr_svr_supp_feat.u,
             .access_cb = ble_svc_gatt_srv_sup_feat_access,
             .flags = BLE_GATT_CHR_F_READ,
         },
         {
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_CLIENT_SUPPORTED_FEAT_UUID16),
+            .uuid = &uuid_chr_cli_supp_feat.u,
             .access_cb = ble_svc_gatt_cl_sup_feat_access,
 #if MYNEWT_VAL(BLE_GATT_CACHING)
             .val_handle = &ble_svc_gatt_client_supp_feature_handle,
@@ -82,7 +86,7 @@ static const struct ble_gatt_svc_def ble_svc_gatt_defs[] = {
         },
 #if MYNEWT_VAL(BLE_GATT_CACHING)
         {
-            .uuid = BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16),
+            .uuid = &uuid_chr_db_hash.u,
             .access_cb = ble_svc_gatt_access,
             .val_handle = &ble_svc_gatt_db_hash_handle,
             .flags = BLE_GATT_CHR_F_READ,
@@ -90,9 +94,16 @@ static const struct ble_gatt_svc_def ble_svc_gatt_defs[] = {
 #endif
         {
             0, /* No more characteristics in this service. */
-        } },
-    },
+        }
+};
 
+static const struct ble_gatt_svc_def ble_svc_gatt_defs[] = {
+    {
+        /*** Service: GATT */
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &uuid_svc_gatt.u,
+        .characteristics = gatt_characteristics,
+    },
     {
         0, /* No more services. */
     },

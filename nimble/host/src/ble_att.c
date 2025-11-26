@@ -41,7 +41,7 @@ struct ble_att_rx_dispatch_entry {
     ble_att_rx_fn *bde_fn;
 };
 
-/** Dispatch table for incoming ATT commands.  Must be ordered by op code. */
+/** Dispatch table for incoming ATT commands.*/
 static const struct ble_att_rx_dispatch_entry ble_att_rx_dispatch[] = {
 #if MYNEWT_VAL(BLE_GATTC)
     { BLE_ATT_OP_ERROR_RSP,            ble_att_clt_rx_error },
@@ -76,7 +76,9 @@ static const struct ble_att_rx_dispatch_entry ble_att_rx_dispatch[] = {
     { BLE_ATT_OP_INDICATE_RSP,         ble_att_clt_rx_indicate },
     { BLE_ATT_OP_READ_MULT_VAR_REQ,    ble_att_svr_rx_read_mult_var },
     { BLE_ATT_OP_WRITE_CMD,            ble_att_svr_rx_write_no_rsp },
+#if MYNEWT_VAL(BLE_ATT_SVR_SIGNED_WRITE)
     { BLE_ATT_OP_SIGNED_WRITE_CMD,     ble_att_svr_rx_signed_write },
+#endif
 #endif
 };
 
@@ -149,7 +151,7 @@ ble_att_rx_dispatch_entry_find(uint8_t op)
     const struct ble_att_rx_dispatch_entry *entry;
     int i;
 
-    for (i = 0; i < BLE_ATT_RX_DISPATCH_SZ; i++) {
+    for (i = 0; i < (int)BLE_ATT_RX_DISPATCH_SZ; i++) {
         entry = ble_att_rx_dispatch + i;
         if (entry->bde_op == op) {
             return entry;
@@ -766,5 +768,12 @@ ble_att_init(void)
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_att_deinit(void)
+{
+    ble_eatt_deinit();
+}
+#endif
 
 #endif

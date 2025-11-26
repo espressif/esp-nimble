@@ -28,18 +28,81 @@
 #include "esp_nimble_mem.h"
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 struct ble_gap_reattempt_ctxt {
     ble_addr_t peer_addr;
     uint8_t count;
 }reattempt_conn;
+#endif
 
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
 extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
+#endif
+#if MYNEWT_VAL(BLE_ROLE_PERIPHERAL)  || MYNEWT_VAL(BLE_ROLE_BROADCASTER)
 extern int ble_gap_slave_adv_reattempt(void);
 #endif
+#if !MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+extern int slave_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+#endif
+#endif
+
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+
+#if (NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)) || \
+    (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)) || \
+    (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV)) || \
+     MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) || \
+    (MYNEWT_VAL(BLE_EXT_ADV) && ((NIMBLE_BLE_CONNECT && (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER))) || \
+                                  (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER))))
+
+typedef struct {
+
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    struct ble_gap_reattempt_ctxt {
+        ble_addr_t peer_addr;
+        uint8_t count;
+    } reattempt_ctx;
+#endif
+
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+    struct ble_npl_mutex list_lock;
+    uint16_t adv_list_count;
+#endif
+
+#if ((NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_EXT_ADV)) || \
+     (MYNEWT_VAL(BLE_EXT_ADV) && (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER)) && \
+      (NIMBLE_BLE_CONNECT || (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER)))))
+    struct ble_gap_conn_complete conn_complete;
+#endif
+}ble_hci_ctx_t;
+
+static ble_hci_ctx_t *ble_hci_ctx;
+
+#define reattempt_conn      (ble_hci_ctx->reattempt_ctx)
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+#define adv_list_lock       (ble_hci_ctx->list_lock)
+#define ble_adv_list_count  (ble_hci_ctx->adv_list_count)
+#endif
+
+#if ((NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_EXT_ADV)) || \
+     (MYNEWT_VAL(BLE_EXT_ADV) && (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER)) && \
+      (NIMBLE_BLE_CONNECT || (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER)))))
+#define pend_conn_complete  (ble_hci_ctx->conn_complete)
+#endif
+
+#endif
+#else
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
 static struct ble_npl_mutex adv_list_lock;
 static uint16_t ble_adv_list_count;
+#endif
+#endif
+
+
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
 #define  BLE_ADV_LIST_MAX_LENGTH    50
 #define  BLE_ADV_LIST_MAX_COUNT     200
 #endif
@@ -55,24 +118,32 @@ typedef int ble_hs_hci_evt_fn(uint8_t event_code, const void *data,
                               unsigned int len);
 static ble_hs_hci_evt_fn ble_hs_hci_evt_hw_error;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_num_completed_pkts;
-static ble_hs_hci_evt_fn ble_hs_hci_evt_rd_rem_ver_complete;
 #if NIMBLE_BLE_CONNECT
 static ble_hs_hci_evt_fn ble_hs_hci_evt_disconn_complete;
+#if MYNEWT_VAL(BLE_SM_SC)
 static ble_hs_hci_evt_fn ble_hs_hci_evt_encrypt_change;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_enc_key_refresh;
+#endif
+static ble_hs_hci_evt_fn ble_hs_hci_evt_rd_rem_ver_complete;
 #endif
 static ble_hs_hci_evt_fn ble_hs_hci_evt_le_meta;
 #if MYNEWT_VAL(BLE_HCI_VS)
 static ble_hs_hci_evt_fn ble_hs_hci_evt_vs;
 #endif
 
+#if MYNEWT_VAL(BLE_DTM_MODE_TEST)
 static ble_hs_hci_evt_fn ble_hs_hci_evt_rx_test;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_tx_test;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_end_test;
+#endif
 
 typedef int ble_hs_hci_evt_le_fn(uint8_t subevent, const void *data,
                                  unsigned int len);
+
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_adv_rpt;
+#endif
+
 #if NIMBLE_BLE_CONNECT
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_complete;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_upd_complete;
@@ -81,17 +152,29 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_conn_parm_req;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_data_len_change;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_phy_update_complete;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_enh_conn_complete;
-#endif
-static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_dir_adv_rpt;
-static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_ext_adv_rpt;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_rd_rem_used_feat_complete;
+#endif
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_dir_adv_rpt;
+#endif
+#if MYNEWT_VAL(BLE_EXT_ADV)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_ext_adv_rpt;
+#endif
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_scan_timeout;
+#endif
+#if MYNEWT_VAL(BLE_ROLE_PERIPHERAL)  || MYNEWT_VAL(BLE_ROLE_BROADCASTER)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_adv_set_terminated;
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_scan_req_rcvd;
+#endif
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_sync_estab;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_rpt;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_sync_lost;
-static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_scan_req_rcvd;
+#endif
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_periodic_adv_sync_transfer;
+#endif
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_pathloss_threshold;
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_transmit_power_report;
@@ -126,6 +209,15 @@ struct host_hci_stats {
 
 #define BLE_HS_HCI_EVT_TIMEOUT        50      /* Milliseconds. */
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if NIMBLE_BLE_CONNECT || \
+    (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER))
+static struct ble_gap_conn_complete pend_conn_complete;
+#endif
+#endif
+#endif
+
 /** Dispatch table for incoming HCI events.  Sorted by event code field. */
 struct ble_hs_hci_evt_dispatch_entry {
     uint8_t event_code;
@@ -134,22 +226,26 @@ struct ble_hs_hci_evt_dispatch_entry {
 
 static const struct ble_hs_hci_evt_dispatch_entry ble_hs_hci_evt_dispatch[] = {
     { BLE_HCI_EVCODE_LE_META, ble_hs_hci_evt_le_meta },
-    { BLE_HCI_EVCODE_RD_REM_VER_INFO_CMP, ble_hs_hci_evt_rd_rem_ver_complete },
     { BLE_HCI_EVCODE_NUM_COMP_PKTS, ble_hs_hci_evt_num_completed_pkts },
 #if NIMBLE_BLE_CONNECT
+    { BLE_HCI_EVCODE_RD_REM_VER_INFO_CMP, ble_hs_hci_evt_rd_rem_ver_complete },
     { BLE_HCI_EVCODE_DISCONN_CMP, ble_hs_hci_evt_disconn_complete },
+#if MYNEWT_VAL(BLE_SM_SC)
     { BLE_HCI_EVCODE_ENCRYPT_CHG, ble_hs_hci_evt_encrypt_change },
     { BLE_HCI_EVCODE_ENC_KEY_REFRESH, ble_hs_hci_evt_enc_key_refresh },
+#endif
 #endif
     { BLE_HCI_EVCODE_HW_ERROR, ble_hs_hci_evt_hw_error },
 #if MYNEWT_VAL(BLE_HCI_VS)
     { BLE_HCI_EVCODE_VS_DEBUG, ble_hs_hci_evt_vs },
 #endif
+#if MYNEWT_VAL(BLE_DTM_MODE_TEST)
     { BLE_HCI_OCF_LE_RX_TEST, ble_hs_hci_evt_rx_test },
     { BLE_HCI_OCF_LE_TX_TEST, ble_hs_hci_evt_tx_test },
     { BLE_HCI_OCF_LE_TEST_END, ble_hs_hci_evt_end_test },
     { BLE_HCI_OCF_LE_RX_TEST_V2, ble_hs_hci_evt_rx_test },
     { BLE_HCI_OCF_LE_TX_TEST_V2, ble_hs_hci_evt_tx_test },
+#endif
 };
 
 #define BLE_HS_HCI_EVT_DISPATCH_SZ \
@@ -159,7 +255,9 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
 #if NIMBLE_BLE_CONNECT
     [BLE_HCI_LE_SUBEV_CONN_COMPLETE] = ble_hs_hci_evt_le_conn_complete,
 #endif
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
     [BLE_HCI_LE_SUBEV_ADV_RPT] = ble_hs_hci_evt_le_adv_rpt,
+#endif
 #if NIMBLE_BLE_CONNECT
     [BLE_HCI_LE_SUBEV_CONN_UPD_COMPLETE] = ble_hs_hci_evt_le_conn_upd_complete,
     [BLE_HCI_LE_SUBEV_LT_KEY_REQ] = ble_hs_hci_evt_le_lt_key_req,
@@ -167,19 +265,33 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_DATA_LEN_CHG] = ble_hs_hci_evt_le_data_len_change,
     [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE] = ble_hs_hci_evt_le_enh_conn_complete,
 #endif
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
     [BLE_HCI_LE_SUBEV_DIRECT_ADV_RPT] = ble_hs_hci_evt_le_dir_adv_rpt,
+#endif
 #if NIMBLE_BLE_CONNECT
     [BLE_HCI_LE_SUBEV_PHY_UPDATE_COMPLETE] = ble_hs_hci_evt_le_phy_update_complete,
 #endif
+#if MYNEWT_VAL(BLE_EXT_ADV)
     [BLE_HCI_LE_SUBEV_EXT_ADV_RPT] = ble_hs_hci_evt_le_ext_adv_rpt,
+#endif
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_ESTAB] = ble_hs_hci_evt_le_periodic_adv_sync_estab,
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RPT] = ble_hs_hci_evt_le_periodic_adv_rpt,
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_LOST] = ble_hs_hci_evt_le_periodic_adv_sync_lost,
+#endif
+#if NIMBLE_BLE_CONNECT
     [BLE_HCI_LE_SUBEV_RD_REM_USED_FEAT] = ble_hs_hci_evt_le_rd_rem_used_feat_complete,
+#endif
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
     [BLE_HCI_LE_SUBEV_SCAN_TIMEOUT] = ble_hs_hci_evt_le_scan_timeout,
+#endif
+#if MYNEWT_VAL(BLE_ROLE_PERIPHERAL)  || MYNEWT_VAL(BLE_ROLE_BROADCASTER)
     [BLE_HCI_LE_SUBEV_ADV_SET_TERMINATED] = ble_hs_hci_evt_le_adv_set_terminated,
     [BLE_HCI_LE_SUBEV_SCAN_REQ_RCVD] = ble_hs_hci_evt_le_scan_req_rcvd,
+#endif
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_TRANSFER] = ble_hs_hci_evt_le_periodic_adv_sync_transfer,
+#endif
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
     [BLE_HCI_LE_SUBEV_PATH_LOSS_THRESHOLD] = ble_hs_hci_evt_le_pathloss_threshold,
     [BLE_HCI_LE_SUBEV_TRANSMIT_POWER_REPORT] = ble_hs_hci_evt_le_transmit_power_report,
@@ -219,6 +331,44 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
 #endif
 };
 
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+
+#if (NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)) || \
+    (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)) || \
+    (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV)) || \
+     MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) || \
+    (MYNEWT_VAL(BLE_EXT_ADV) && (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER)))
+static int ble_hs_hci_ensure_ctx(void)
+{
+    if (ble_hci_ctx) {
+        return 0;
+    }
+
+    ble_hci_ctx = nimble_platform_mem_calloc (1, sizeof(* ble_hci_ctx));
+
+    if (!ble_hci_ctx) {
+        return BLE_HS_ENOMEM;
+    }
+
+    return 0;
+}
+
+void ble_hs_hci_ctx_free(void)
+{
+    if (ble_hci_ctx) {
+        nimble_platform_mem_free(ble_hci_ctx);
+	ble_hci_ctx = NULL;
+    }
+}
+#else
+void ble_hs_hci_ctx_free(void)
+{
+    /* Empty function */
+}
+#endif
+#endif
+
 #define BLE_HS_HCI_EVT_LE_DISPATCH_SZ \
     (sizeof ble_hs_hci_evt_le_dispatch / sizeof ble_hs_hci_evt_le_dispatch[0])
 
@@ -257,6 +407,10 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     const struct ble_hci_ev_disconn_cmp *ev = data;
     const struct ble_hs_conn *conn;
 
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+    bool should_reattempt = false;
+#endif
+
     if (len != sizeof(*ev)) {
         return BLE_HS_ECONTROLLER;
     }
@@ -273,12 +427,20 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
         uint16_t handle;
 	int rc;
 
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+        should_reattempt = (!conn->slave_conn && ev->reason == BLE_ERR_CONN_SPVN_TMO);
+#endif
 	/* For master role, check if failure reason is 0x3E, to restart connect attempt
 	 * For slave role, check whether
 	 *   a. Failure reason is 0x3E
 	 *   b. Connect event was not posted and 0x8 was received
 	 *  Restart advertising in above reasons for slave.
 	 */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+	if (ble_hs_hci_ensure_ctx()) {
+	    return BLE_HS_ENOMEM;
+	}
+#endif
 
         if ((conn->bhc_flags & BLE_HS_CONN_F_MASTER) && \
 	    (ev->reason == BLE_ERR_CONN_ESTABLISHMENT)) {  // master
@@ -292,20 +454,25 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 		handle = le16toh(ev->conn_handle);
 		/* Post event to interested application */
 		ble_gap_reattempt_count(handle, reattempt_conn.count);
-
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
                 rc = ble_gap_master_connect_reattempt(ev->conn_handle);
 		if (rc != 0) {
 		    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
 		}
+#endif
 	    } else {
 	        /* Exhausted attempts */
 		memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
 	    }
 	}
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+	else if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER) && \
+		((ev->reason == BLE_ERR_CONN_ESTABLISHMENT) || should_reattempt)) {
+#else
 	else if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER) && \
 		((ev->reason == BLE_ERR_CONN_ESTABLISHMENT) || \
 		(!conn->slave_conn && ev->reason == BLE_ERR_CONN_SPVN_TMO))) { //slave
-
+#endif
 	    BLE_HS_LOG(INFO, "Reattempt advertising; reason: 0x%x, status = %x",
                              ev->reason, ev->status);
 
@@ -326,12 +493,14 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
                 return rc;
             }
 
+#if MYNEWT_VAL(BLE_ROLE_PERIPHERAL)  || MYNEWT_VAL(BLE_ROLE_BROADCASTER)
             rc = ble_gap_slave_adv_reattempt();
             if (rc != 0) {
                 BLE_HS_LOG(INFO, "Adv reattempt failed; rc= %d ", rc);
             }
 
             return 0;  // Restart advertising, so don't post disconnect event
+#endif
 	} else {
             /* Normal disconnect. Reset the structure */
             memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
@@ -345,11 +514,14 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
      * controller for additional ACL data packets.  Wake up any stalled
      * connections.
      */
+#if NIMBLE_BLE_CONNECT
     ble_hs_wakeup_tx();
+#endif
 
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_SM_SC)
 static int
 ble_hs_hci_evt_encrypt_change(uint8_t event_code, const void *data,
                               unsigned int len)
@@ -365,6 +537,7 @@ ble_hs_hci_evt_encrypt_change(uint8_t event_code, const void *data,
     return 0;
 }
 #endif
+#endif
 static int
 ble_hs_hci_evt_hw_error(uint8_t event_code, const void *data, unsigned int len)
 {
@@ -379,7 +552,7 @@ ble_hs_hci_evt_hw_error(uint8_t event_code, const void *data, unsigned int len)
     return 0;
 }
 
-#if NIMBLE_BLE_CONNECT
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
 static int
 ble_hs_hci_evt_enc_key_refresh(uint8_t event_code, const void *data,
                                unsigned int len)
@@ -432,8 +605,10 @@ ble_hs_hci_evt_num_completed_pkts(uint8_t event_code, const void *data,
         }
     }
 
+#if NIMBLE_BLE_CONNECT
     /* If any transmissions have stalled, wake them up now. */
     ble_hs_wakeup_tx();
+#endif
 
     return 0;
 }
@@ -454,6 +629,7 @@ ble_hs_hci_evt_vs(uint8_t event_code, const void *data, unsigned int len)
 }
 #endif
 
+#if MYNEWT_VAL(BLE_DTM_MODE_TEST)
 static int
 ble_hs_hci_evt_rx_test(uint8_t event_code, const void *data, unsigned int len)
 {
@@ -477,6 +653,7 @@ ble_hs_hci_evt_end_test(uint8_t event_code, const void *data, unsigned int len)
 
     return 0;
 }
+#endif
 
 static int
 ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
@@ -496,9 +673,6 @@ ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
     return 0;
 }
 
-#if MYNEWT_VAL(BLE_EXT_ADV)
-static struct ble_gap_conn_complete pend_conn_complete;
-#endif
 
 #if NIMBLE_BLE_CONNECT
 static int
@@ -548,6 +722,13 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #if MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_hs_hci_ensure_ctx()) {
+             return BLE_HS_ENOMEM;
+        }
+#endif
+
     /* store this until we get set terminated event with adv handle */
         memcpy(&pend_conn_complete, &evt, sizeof(evt));
         return 0;
@@ -613,7 +794,14 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
 #if MYNEWT_VAL(BLE_EXT_ADV)
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
-    /* store this until we get set terminated event with adv handle */
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_hs_hci_ensure_ctx()) {
+             return BLE_HS_ENOMEM;
+        }
+#endif
+
+	/* store this until we get set terminated event with adv handle */
         memcpy(&pend_conn_complete, &evt, sizeof(evt));
         return 0;
     }
@@ -622,6 +810,7 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
 }
 #endif
 
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
 static int
 ble_hs_hci_evt_le_adv_rpt_first_pass(const void *data, unsigned int len)
 {
@@ -760,7 +949,9 @@ ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, const void *data, unsigned int l
 
     return 0;
 }
+#endif
 
+#if NIMBLE_BLE_CONNECT
 static int
 ble_hs_hci_evt_le_rd_rem_used_feat_complete(uint8_t subevent, const void *data,
                                             unsigned int len)
@@ -790,7 +981,7 @@ ble_hs_hci_evt_rd_rem_ver_complete(uint8_t subevent, const void *data,
 
     return 0;
 }
-
+#endif
 
 #if MYNEWT_VAL(BLE_EXT_ADV) && NIMBLE_BLE_SCAN
 static int
@@ -856,11 +1047,12 @@ ble_hs_hci_evt_le_ext_adv_rpt_first_pass(const void *data, unsigned int len)
 }
 #endif
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
 static int
 ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
                               unsigned int len)
 {
-#if MYNEWT_VAL(BLE_EXT_ADV) && NIMBLE_BLE_SCAN
+#if NIMBLE_BLE_SCAN
     const struct ble_hci_ev_le_subev_ext_adv_rpt *ev = data;
     const struct ext_adv_report *report;
     struct ble_gap_ext_disc_desc desc;
@@ -921,12 +1113,13 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
 #endif
     return 0;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static int
 ble_hs_hci_evt_le_periodic_adv_sync_estab(uint8_t subevent, const void *data,
                                           unsigned int len)
 {
-#if MYNEWT_VAL(BLE_PERIODIC_ADV)
     const struct ble_hci_ev_le_subev_periodic_adv_sync_estab *ev = data;
 
     if (len != sizeof(*ev)) {
@@ -934,16 +1127,16 @@ ble_hs_hci_evt_le_periodic_adv_sync_estab(uint8_t subevent, const void *data,
     }
 
     ble_gap_rx_peroidic_adv_sync_estab(ev);
-#endif
 
     return 0;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static int
 ble_hs_hci_evt_le_periodic_adv_rpt(uint8_t subevent, const void *data,
                                    unsigned int len)
 {
-#if MYNEWT_VAL(BLE_PERIODIC_ADV)
     const struct ble_hci_ev_le_subev_periodic_adv_rpt *ev = data;
 
     if (len < sizeof(*ev) || len != (sizeof(*ev) + ev->data_len)) {
@@ -951,16 +1144,16 @@ ble_hs_hci_evt_le_periodic_adv_rpt(uint8_t subevent, const void *data,
     }
 
     ble_gap_rx_periodic_adv_rpt(ev);
-#endif
 
 return 0;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static int
 ble_hs_hci_evt_le_periodic_adv_sync_lost(uint8_t subevent, const void *data,
                                          unsigned int len)
 {
-#if MYNEWT_VAL(BLE_PERIODIC_ADV)
     const struct ble_hci_ev_le_subev_periodic_adv_sync_lost *ev = data;
 
     if (len != sizeof(*ev)) {
@@ -969,9 +1162,9 @@ ble_hs_hci_evt_le_periodic_adv_sync_lost(uint8_t subevent, const void *data,
 
     ble_gap_rx_periodic_adv_sync_lost(ev);
 
-#endif
     return 0;
 }
+#endif
 
 #if MYNEWT_VAL(BLE_POWER_CONTROL)
 static int
@@ -1003,6 +1196,7 @@ ble_hs_hci_evt_le_transmit_power_report(uint8_t subevent, const void *data,
 }
 #endif
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static int
 ble_hs_hci_evt_le_periodic_adv_sync_transfer(uint8_t subevent, const void *data,
                                              unsigned int len)
@@ -1019,7 +1213,9 @@ ble_hs_hci_evt_le_periodic_adv_sync_transfer(uint8_t subevent, const void *data,
 #endif
     return 0;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
 static int
 ble_hs_hci_evt_le_scan_timeout(uint8_t subevent, const void *data,
                                unsigned int len)
@@ -1035,7 +1231,9 @@ ble_hs_hci_evt_le_scan_timeout(uint8_t subevent, const void *data,
 #endif
     return 0;
 }
+#endif
 
+#if MYNEWT_VAL(BLE_ROLE_PERIPHERAL)  || MYNEWT_VAL(BLE_ROLE_BROADCASTER)
 static int
 ble_hs_hci_evt_le_adv_set_terminated(uint8_t subevent, const void *data,
                                      unsigned int len)
@@ -1055,7 +1253,13 @@ ble_hs_hci_evt_le_adv_set_terminated(uint8_t subevent, const void *data,
     }
 
     if (ev->status == 0) {
-        /* ignore return code as we need to terminate advertising set anyway */
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_hs_hci_ensure_ctx()) {
+            return BLE_HS_ENOMEM;
+        }
+#endif
+	/* ignore return code as we need to terminate advertising set anyway */
         ble_gap_rx_conn_complete(&pend_conn_complete, ev->adv_handle);
     }
     ble_gap_rx_adv_set_terminated(ev);
@@ -1087,6 +1291,7 @@ ble_hs_hci_evt_le_scan_req_rcvd(uint8_t subevent, const void *data,
 
     return 0;
 }
+#endif
 
 #if MYNEWT_VAL(BLE_CONN_SUBRATING)
 static int
@@ -1391,6 +1596,7 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
     return rc;
 }
 
+#if NIMBLE_BLE_CONNECT
 /**
  * Called when a data packet is received from the controller.  This function
  * consumes the supplied mbuf, regardless of the outcome.
@@ -1403,10 +1609,12 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
 int
 ble_hs_hci_evt_acl_process(struct os_mbuf *om)
 {
-#if NIMBLE_BLE_CONNECT
     struct hci_data_hdr hci_hdr;
     struct ble_hs_conn *conn;
     ble_l2cap_rx_fn *rx_cb;
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+    struct ble_l2cap_chan *chan;
+#endif
     uint16_t conn_handle;
     int reject_cid;
     int rc;
@@ -1454,8 +1662,14 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
     case 0:
         /* Final fragment received. */
         BLE_HS_DBG_ASSERT(rx_cb != NULL);
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
+        chan = ble_hs_conn_chan_find_by_scid(conn,conn->bhc_rx_scid);
+        rc = rx_cb(chan);
+	ble_l2cap_remove_rx(conn, chan);
+#else
         rc = rx_cb(conn->bhc_rx_chan);
-        ble_l2cap_remove_rx(conn, conn->bhc_rx_chan);
+	ble_l2cap_remove_rx(conn, conn->bhc_rx_chan);
+#endif
         break;
 
     case BLE_HS_EAGAIN:
@@ -1474,10 +1688,8 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
 err:
     os_mbuf_free_chain(om);
     return rc;
-#else
-    return BLE_HS_ENOTSUP;
-#endif
 }
+#endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
 struct ble_addr_list_entry
@@ -1490,6 +1702,12 @@ SLIST_HEAD(ble_device_list, ble_addr_list_entry) ble_adv_list;
 
 void ble_adv_list_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_hci_ensure_ctx()) {
+        return;
+    }
+#endif
+
     ble_npl_mutex_init(&adv_list_lock);
 
     SLIST_INIT(&ble_adv_list);
@@ -1549,6 +1767,12 @@ void ble_adv_list_refresh(void)
     ble_adv_list_count = 0;
 
     if (SLIST_EMPTY(&ble_adv_list)) {
+        BLE_HS_LOG(ERROR, "%s: ble_adv_list empty — reinitializing", __func__);
+        SLIST_INIT(&ble_adv_list);
+        ble_adv_list_count = 0;
+        return;
+    }
+    if (SLIST_EMPTY(&ble_adv_list)) {
         BLE_HS_LOG(ERROR, "%s ble_adv_list is empty", __func__);
         return;
     }
@@ -1586,7 +1810,7 @@ bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type)
     ble_npl_mutex_release(&adv_list_lock);
 
     if (!found) {
-        adv_packet = nimble_platform_mem_malloc(sizeof(struct ble_addr_list_entry));
+        adv_packet = nimble_platform_mem_calloc(1,sizeof(struct ble_addr_list_entry));
         if (adv_packet) {
             adv_packet->addr.type = addr_type;
             memcpy(adv_packet->addr.val, addr, BLE_DEV_ADDR_LEN);

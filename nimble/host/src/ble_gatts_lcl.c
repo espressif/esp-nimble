@@ -29,11 +29,13 @@
 static const ble_uuid_t *uuid_ccc =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16);
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
 static const ble_uuid_t *uuid_cpfd =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_PRE_FMT16);
 
 static const ble_uuid_t *uuid_cafd =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_AGG_FMT16);
+#endif
 
 static const char * const ble_gatt_chr_f_names[] = {
     "BROADCAST",
@@ -97,7 +99,6 @@ ble_gatts_flags_to_str(uint16_t flags, char *buf,
     return buf;
 }
 
-
 #define STRINGIFY(X) #X
 #define FIELD_NAME_LEN STRINGIFY(12)
 #define FIELD_INDENT STRINGIFY(2)
@@ -108,8 +109,10 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
 {
     const struct ble_gatt_chr_def *chr;
     const struct ble_gatt_dsc_def *dsc;
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     const struct ble_gatt_cpfd *cpfd;
     int cpfd_count;
+#endif
 
     for (chr = svc->characteristics; chr && chr->uuid; ++chr) {
         console_printf("characteristic\n");
@@ -145,6 +148,7 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
             handle++;
         }
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
         cpfd_count = 0;
         for (cpfd = chr->cpfd; cpfd && cpfd->format; ++cpfd) {
             console_printf("cpf descriptor\n");
@@ -178,6 +182,7 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
                                                   flags_buf, ble_gatt_dsc_f_names));
             handle++;
         }
+#endif
 
         for (dsc = chr->descriptors; dsc && dsc->uuid; ++dsc) {
             console_printf("descriptor\n");

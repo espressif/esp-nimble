@@ -29,19 +29,43 @@
 
 #define BLE_HOST_STOP_TIMEOUT_MS MYNEWT_VAL(BLE_HS_STOP_ON_SHUTDOWN_TIMEOUT)
 
+SLIST_HEAD(ble_hs_stop_listener_slist, ble_hs_stop_listener);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+
+/**
+ * Global context for Host stop procedure.
+ * Holds listener list, GAP listener, connection count, and timeout callout.
+ */
+struct ble_hs_stop_ctx {
+    struct ble_gap_event_listener gap_listener;      /* GAP stop listener */
+    struct ble_hs_stop_listener_slist listeners;     /* Registered stop listeners */
+    uint8_t conn_cnt;                                /* Number of active connections */
+    struct ble_npl_callout terminate_tmo;            /* Stop termination timeout */
+};
+
+static struct ble_hs_stop_ctx *ble_hs_stop_ctx;
+
+/* Macros for cleaner access */
+#define ble_hs_stop_gap_listener     (ble_hs_stop_ctx->gap_listener)
+#define ble_hs_stop_listeners        (ble_hs_stop_ctx->listeners)
+#define ble_hs_stop_conn_cnt         (ble_hs_stop_ctx->conn_cnt)
+#define ble_hs_stop_terminate_tmo    (ble_hs_stop_ctx->terminate_tmo)
+#else
 static struct ble_gap_event_listener ble_hs_stop_gap_listener;
 
 /**
  * List of stop listeners.  These are notified when a stop procedure completes.
  */
-SLIST_HEAD(ble_hs_stop_listener_slist, ble_hs_stop_listener);
+//SLIST_HEAD(ble_hs_stop_listener_slist, ble_hs_stop_listener);
 static struct ble_hs_stop_listener_slist ble_hs_stop_listeners;
 
 /* Track number of connections */
 static uint8_t ble_hs_stop_conn_cnt;
 
 static struct ble_npl_callout ble_hs_stop_terminate_tmo;
-
+#endif
 /**
  * Called when a stop procedure has completed.
  */
@@ -274,6 +298,16 @@ ble_hs_stop(struct ble_hs_stop_listener *listener,
 void
 ble_hs_stop_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_stop_ctx) {
+        ble_hs_stop_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_stop_ctx));
+        if (!ble_hs_stop_ctx) {
+            MODLOG_DFLT(ERROR, "Failed to allocate memory for ble_hs_stop_ctx\n");
+            return;
+        }
+    }
+#endif
+
 #ifdef MYNEWT
     ble_npl_callout_init(&ble_hs_stop_terminate_tmo, ble_npl_eventq_dflt_get(),
                          ble_hs_stop_terminate_timeout_cb, NULL);
@@ -287,4 +321,11 @@ void
 ble_hs_stop_deinit(void)
 {
     ble_npl_callout_deinit(&ble_hs_stop_terminate_tmo);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_stop_ctx) {
+        nimble_platform_mem_free(ble_hs_stop_ctx);
+        ble_hs_stop_ctx = NULL;
+    }
+#endif
+
 }
