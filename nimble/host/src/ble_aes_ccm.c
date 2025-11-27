@@ -72,6 +72,7 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
 }
 
 #else
+#include <tinycrypt/constants.h>
 int
 ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {

@@ -171,7 +171,6 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_PER_SUBEV_DATA_REQ    40
 #define BLE_GAP_EVENT_PER_SUBEV_RESP        41
 #define BLE_GAP_EVENT_PERIODIC_TRANSFER_V2  42
-#define BLE_GAP_EVENT_CACHE_ASSOC           43
 
 /* ISO events */
 #define BLE_GAP_EVENT_CIS_ESTAB             43
@@ -185,6 +184,8 @@ struct hci_conn_update;
 
 #define BLE_GAP_EVENT_RD_ALL_REM_FEAT       51
 #define BLE_GAP_EVENT_MONITOR_ADV_REPORT    52
+
+#define BLE_GAP_EVENT_CACHE_ASSOC           53
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
