@@ -172,8 +172,9 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_CTE_REQ_FAILED        40
 #define BLE_GAP_EVENT_CACHE_ASSOC           41
 
-#define BLE_GAP_EVENT_RD_ALL_REM_FEAT       51
-#define BLE_GAP_EVENT_MONITOR_ADV_REPORT    52
+#define BLE_GAP_EVENT_RD_ALL_REM_FEAT       42
+#define BLE_GAP_EVENT_MONITOR_ADV_REPORT    43
+
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
