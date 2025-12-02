@@ -2053,6 +2053,9 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
 		/*Make application aware of the try */
 		ble_gap_reattempt_count(ev->sync_handle, ble_conn_reattempt.count);
 
+		/*Cancel ongoing sync , if any */
+		ble_gap_periodic_adv_sync_create_cancel();
+
 		rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr, ble_conn_reattempt.adv_sid,
                                                           &ble_conn_reattempt.periodic_params,
                                                           ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
