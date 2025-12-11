@@ -2686,6 +2686,14 @@ struct ble_gap_set_periodic_adv_subev_data_params {
 };
 #endif
 
+#if MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
+struct ble_gap_adv_const_did_cmd_params {
+    uint16_t handle;
+    uint8_t enable;
+    uint16_t did;
+};
+#endif // MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
+
 /**
  * Configure periodic advertising for specified advertising instance
  *
