@@ -33,8 +33,6 @@
 #include "base64/base64.h"
 #endif
 
-#include "psa/crypto.h"
-
 extern uint8_t g_mesh_addr_type;
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
@@ -140,6 +138,7 @@ void net_buf_simple_clone(const struct os_mbuf *original,
 int
 bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
     psa_status_t status;
     psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
     psa_key_id_t key_id = 0;
@@ -155,8 +154,6 @@ bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
         return -EINVAL;
     }
 
-    // For ECB_NO_PADDING with exactly one block, use psa_cipher_encrypt() directly
-    // This is simpler and avoids the psa_cipher_finish() buffer issue
     size_t output_len = 0;
     status = psa_cipher_encrypt(key_id, alg, plaintext, 16, enc_data, 16, &output_len);
     if (status != PSA_SUCCESS || output_len != 16) {
@@ -166,6 +163,22 @@ bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
     }
 
     psa_destroy_key(key_id);
+#else
+    mbedtls_aes_context s = {0};
+    mbedtls_aes_init(&s);
+
+    if (mbedtls_aes_setkey_enc(&s, key, 128) != 0) {
+        mbedtls_aes_free(&s);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, plaintext, enc_data) != 0) {
+        mbedtls_aes_free(&s);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    mbedtls_aes_free(&s);
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     return 0;
 }
 

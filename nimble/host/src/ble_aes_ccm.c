@@ -10,7 +10,11 @@
 #include "../src/ble_hs_conn_priv.h"
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #include "psa/crypto.h"
+#else
+#include "mbedtls/aes.h"
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
 #include "tinycrypt/constants.h"
 #endif
@@ -60,6 +64,7 @@ ble_aes_ccm_hex(const void *buf, size_t len)
 int
 ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
     psa_status_t status;
     psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
     psa_key_id_t key_id = 0;
@@ -77,8 +82,6 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
         return -BLE_HS_EINVAL;
     }
 
-    // For ECB_NO_PADDING with exactly one block, use psa_cipher_encrypt() directly
-    // This is simpler and avoids the psa_cipher_finish() buffer issue
     size_t output_len = 0;
     status = psa_cipher_encrypt(key_id, alg, plaintext, 16, enc_data, 16, &output_len);
     if (status != PSA_SUCCESS || output_len != 16) {
@@ -88,6 +91,22 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
     }
 
     psa_destroy_key(key_id);
+#else
+    mbedtls_aes_context s = {0};
+    mbedtls_aes_init(&s);
+
+    if (mbedtls_aes_setkey_enc(&s, key, 128) != 0) {
+        mbedtls_aes_free(&s);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, plaintext, enc_data) != 0) {
+        mbedtls_aes_free(&s);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    mbedtls_aes_free(&s);
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     return 0;
 }
 

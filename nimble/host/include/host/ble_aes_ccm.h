@@ -11,12 +11,6 @@
 #include "os/queue.h"
 #include "host/ble_hs.h"
 
-#if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
-// #include "mbedtls/aes.h"
-#else
-#include "tinycrypt/aes.h"
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -36,14 +36,17 @@
 #include "../src/ble_hs_hci_priv.h"
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
-// #include "mbedtls/aes.h"
-// #include "mbedtls/cipher.h"
-// #include "mbedtls/entropy.h"
-// #include "mbedtls/ctr_drbg.h"
-// #include "mbedtls/cmac.h"
-// #include "mbedtls/ecdh.h"
-// #include "mbedtls/ecp.h"
-
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#include "psa/crypto.h"
+#else
+#include "mbedtls/aes.h"
+#include "mbedtls/cipher.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/cmac.h"
+#include "mbedtls/ecdh.h"
+#include "mbedtls/ecp.h"
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
 #include "tinycrypt/aes.h"
 #include "tinycrypt/constants.h"
