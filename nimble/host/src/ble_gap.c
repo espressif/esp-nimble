@@ -9655,6 +9655,41 @@ int ble_gap_set_scan_chan(uint8_t state, uint8_t *bitmap)
     return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_SCAN_CHAN,
 		           &vs_cmd, sizeof(vs_cmd), NULL, 0);
 }
+
+#if MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
+int ble_gap_set_adv_constant_did(uint16_t handle, uint8_t enable, uint16_t did)
+{
+    struct ble_gap_adv_const_did_cmd_params vs_cmd;
+
+    vs_cmd.handle = handle;
+    vs_cmd.enable = enable;
+    vs_cmd.did = did;
+    return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_ADV_DID,
+		           &vs_cmd, sizeof(vs_cmd), NULL, 0);
+}
+#endif // MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
+
+#if MYNEWT_VAL(BLE_SCAN_ALLOW_ENH_ADI_FILTER)
+/* filter list in format struct ble_gap_adi_filter_entry */
+int ble_gap_config_ext_scan_adi_filter(uint8_t enable, uint8_t did_filter, uint8_t sid_cnt, 
+                                        struct ble_gap_adi_filter_entry *filter_list[])
+{
+    uint8_t vs_cmd[64];
+
+    memset(vs_cmd, 0x0, sizeof(vs_cmd));
+    if (sid_cnt > 15) {
+        return BLE_HS_EINVAL;
+    }
+
+    vs_cmd[0] = enable;
+    vs_cmd[1] = did_filter;
+    vs_cmd[2] = sid_cnt;
+    memcpy(&vs_cmd[3], filter_list, sid_cnt * sizeof(struct ble_gap_adi_filter_entry *));
+
+    return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_SCAN_SID,
+		           &vs_cmd, sid_cnt * sizeof(struct ble_gap_adi_filter_entry *) + 3, NULL, 0);
+}
+#endif // MYNEWT_VAL(BLE_SCAN_ALLOW_ENH_ADI_FILTER)
 #endif
 
 #if MYNEWT_VAL(BLE_UTIL_API)

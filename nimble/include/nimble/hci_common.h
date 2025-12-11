@@ -1544,6 +1544,8 @@ struct ble_hci_vs_duplicate_exception_list_cp {
 #define BLE_HCI_OCF_VS_SET_EVT_MASK                     (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x0116))
 
 #define BLE_HCI_OCF_VS_SET_SCAN_CHAN                    (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x0119))
+#define BLE_HCI_OCF_VS_SET_ADV_DID                      (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x012A))
+#define BLE_HCI_OCF_VS_SET_SCAN_SID                     (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x012B))
 
 struct ble_hci_vs_set_event_mask_cp {
     uint32_t event_mask;
