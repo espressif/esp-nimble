@@ -29,7 +29,17 @@
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #include "psa/crypto.h"
+#else
+#include "mbedtls/aes.h"
+#include "mbedtls/cipher.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/cmac.h"
+#include "mbedtls/ecdh.h"
+#include "mbedtls/ecp.h"
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
 #include "tinycrypt/aes.h"
 #include "tinycrypt/constants.h"
@@ -47,15 +57,22 @@
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
 #if MYNEWT_VAL(BLE_SM_SC)
-#endif
+#ifndef CONFIG_MBEDTLS_VER_4_X_SUPPORT
+static mbedtls_ecp_keypair keypair;
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#endif // MYNEWT_VAL(BLE_SM_SC)
 #else
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(TRNG)
 static struct trng_dev *g_trng;
 #endif
 #endif
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #define BLE_PUB_KEY_LEN 65
 const char *TAG = "ble_sm_alg";
+#else
+#define BLE_PUB_KEY_LEN 64
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 
 /**
   * Keep forward-compatibility with Mbed TLS 3.x.
@@ -90,6 +107,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     swap_buf(tmp, key, 16);
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
     psa_status_t status;
     psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
     psa_key_id_t key_id = 0;
@@ -115,6 +133,24 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
         return BLE_HS_EUNKNOWN;
     }
     psa_destroy_key(key_id);
+#else
+    mbedtls_aes_context s = {0};
+
+    mbedtls_aes_init(&s);
+    if (mbedtls_aes_setkey_enc(&s, tmp, 128) != 0) {
+        mbedtls_aes_free(&s);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    swap_buf(tmp, plaintext, 16);
+
+    if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, tmp, enc_data) != 0) {
+        mbedtls_aes_free(&s);
+        return BLE_HS_EUNKNOWN;
+    }
+
+    mbedtls_aes_free(&s);
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
     struct tc_aes_key_sched_struct s;
 
@@ -254,6 +290,7 @@ int
 ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
                     uint8_t *out)
 {
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
     psa_status_t status;
     psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
     psa_key_id_t key_id = 0;
@@ -295,6 +332,39 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     }
 
     psa_destroy_key(key_id);
+#else
+    int rc = BLE_HS_EUNKNOWN;
+    mbedtls_cipher_context_t ctx = {0};
+    const mbedtls_cipher_info_t *cipher_info;
+
+    mbedtls_cipher_init(&ctx);
+
+    cipher_info = mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
+
+    if (cipher_info == NULL) {
+        goto exit;
+    }
+
+    if (mbedtls_cipher_setup(&ctx, cipher_info) != 0) {
+        goto exit;
+    }
+
+    rc = mbedtls_cipher_cmac_starts(&ctx, key, 128);
+    if (rc != 0) {
+        goto exit;
+    }
+
+    rc = mbedtls_cipher_cmac_update(&ctx, in, len);
+    if (rc != 0) {
+        goto exit;
+    }
+
+    rc = mbedtls_cipher_cmac_finish(&ctx, out);
+
+exit:
+    mbedtls_cipher_free(&ctx);
+    return rc;
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     return 0;
 }
 
@@ -538,6 +608,7 @@ ble_sm_alg_gen_dhkey(const uint8_t *peer_pub_key_x, const uint8_t *peer_pub_key_
     swap_buf(priv, our_priv_key, 32);
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
     // PSA/mbedTLS expects 65 bytes: 0x04 prefix + X (32 bytes) + Y (32 bytes)
     pk[0] = 0x04; // Uncompressed format for public key
     swap_buf(&pk[1], peer_pub_key_x, 32);
@@ -571,10 +642,78 @@ ble_sm_alg_gen_dhkey(const uint8_t *peer_pub_key_x, const uint8_t *peer_pub_key_
 
 exit:
     psa_destroy_key(key_id);
+#else
+    swap_buf(pk, peer_pub_key_x, 32);
+    swap_buf(&pk[32], peer_pub_key_y, 32);
+
+    struct mbedtls_ecp_point pt = {0}, Q = {0};
+    mbedtls_mpi z = {0}, d = {0};
+    mbedtls_ctr_drbg_context ctr_drbg = {0};
+    mbedtls_entropy_context entropy = {0};
+
+    uint8_t pub[65] = {0};
+    /* Hardcoded first byte of pub key for MBEDTLS_ECP_PF_UNCOMPRESSED */
+    pub[0] = 0x04;
+    memcpy(&pub[1], pk, 64);
+
+    /* Initialize the required structures here */
+    mbedtls_ecp_point_init(&pt);
+    mbedtls_ecp_point_init(&Q);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+    mbedtls_entropy_init(&entropy);
+    mbedtls_mpi_init(&d);
+    mbedtls_mpi_init(&z);
+
+    /* Below 3 steps are to validate public key on curve secp256r1 */
+    if (mbedtls_ecp_group_load(&keypair.MBEDTLS_PRIVATE(grp), MBEDTLS_ECP_DP_SECP256R1) != 0) {
+        goto exit;
+    }
+
+    if (mbedtls_ecp_point_read_binary(&keypair.MBEDTLS_PRIVATE(grp), &pt, pub, 65) != 0) {
+        goto exit;
+    }
+
+    if (mbedtls_ecp_check_pubkey(&keypair.MBEDTLS_PRIVATE(grp), &pt) != 0) {
+        goto exit;
+    }
+
+    /* Set PRNG */
+    if ( ( rc = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                                      NULL, 0) ) != 0) {
+        goto exit;
+    }
+
+    /* Prepare point Q from pub key */
+    if (mbedtls_ecp_point_read_binary(&keypair.MBEDTLS_PRIVATE(grp), &Q, pub, 65) != 0) {
+        goto exit;
+    }
+
+    if (mbedtls_mpi_read_binary(&d, priv, 32) != 0) {
+        goto exit;
+    }
+
+    rc = mbedtls_ecdh_compute_shared(&keypair.MBEDTLS_PRIVATE(grp), &z, &Q, &d,
+                                     mbedtls_ctr_drbg_random, &ctr_drbg);
+    if (rc != 0) {
+        goto exit;
+    }
+
+    rc = mbedtls_mpi_write_binary(&z, dh, 32);
+    if (rc != 0) {
+        goto exit;
+    }
+
+exit:
+    mbedtls_ecp_point_free(&pt);
+    mbedtls_mpi_free(&z);
+    mbedtls_mpi_free(&d);
+    mbedtls_ecp_point_free(&Q);
+    mbedtls_entropy_free(&entropy);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     if (rc != 0) {
         return BLE_HS_EUNKNOWN;
     }
-
 #else
     // TinyCrypt/uECC expects 64 bytes: X (32 bytes) + Y (32 bytes), no prefix
     swap_buf(pk, peer_pub_key_x, 32);
@@ -619,6 +758,7 @@ static int
 mbedtls_gen_keypair(uint8_t *public_key, uint8_t *private_key)
 {
     int rc = BLE_HS_EUNKNOWN;
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
     psa_status_t status = PSA_SUCCESS;
     psa_key_id_t key_id = 0;
     psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
@@ -659,13 +799,58 @@ exit:
     if (rc != 0) {
         return BLE_HS_EUNKNOWN;
     }
+#else
+    mbedtls_entropy_context entropy = {0};
+    mbedtls_ctr_drbg_context ctr_drbg = {0};
 
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+
+    /* Free the previously allocate keypair */
+    mbedtls_ecp_keypair_free(&keypair);
+
+    mbedtls_ecp_keypair_init(&keypair);
+
+    if (( rc = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                                NULL, 0)) != 0) {
+        goto exit;
+    }
+
+    if ((rc = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, &keypair,
+                                  mbedtls_ctr_drbg_random, &ctr_drbg)) != 0) {
+        goto exit;
+    }
+
+    if (( rc = mbedtls_mpi_write_binary(&keypair.MBEDTLS_PRIVATE(d), private_key, 32)) != 0) {
+        goto exit;
+    }
+
+    size_t olen = 0;
+    uint8_t pub[65] = {0};
+
+    if ((rc = mbedtls_ecp_point_write_binary(&keypair.MBEDTLS_PRIVATE(grp), &keypair.MBEDTLS_PRIVATE(Q), MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                             &olen, pub, 65)) != 0) {
+        goto exit;
+    }
+
+    memcpy(public_key, &pub[1], 64);
+
+exit:
+    mbedtls_ctr_drbg_free( &ctr_drbg );
+    mbedtls_entropy_free( &entropy );
+    if (rc != 0) {
+        mbedtls_ecp_keypair_free(&keypair);
+        return BLE_HS_EUNKNOWN;
+    }
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     return 0;
 }
 
 void mbedtls_free_keypair(void)
 {
-    // mbedtls_ecp_keypair_free(&keypair);
+#ifndef CONFIG_MBEDTLS_VER_4_X_SUPPORT
+    mbedtls_ecp_keypair_free(&keypair);
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 }
 #endif
 
@@ -681,7 +866,7 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
     swap_buf(&pub[32], &ble_sm_alg_dbg_pub_key[32], 32);
     swap_buf(priv, ble_sm_alg_dbg_priv_key, 32);
 #else
-    uint8_t pk[65];
+    uint8_t pk[BLE_PUB_KEY_LEN];
 
     do {
 
@@ -689,9 +874,14 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
         if (mbedtls_gen_keypair(pk, priv) != 0) {
             return BLE_HS_EUNKNOWN;
         }
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
         // PSA/mbedTLS: pk[0]=0x04, pk[1..32]=X, pk[33..64]=Y
         swap_buf(pub, &pk[1], 32);      // Extract X (skip 0x04 prefix)
         swap_buf(&pub[32], &pk[33], 32); // Extract Y
+#else
+        swap_buf(pub, pk, 32);
+        swap_buf(&pub[32], &pk[32], 32);
+#endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
         if (uECC_make_key(pk, priv, uECC_secp256r1()) != TC_CRYPTO_SUCCESS) {
             return BLE_HS_EUNKNOWN;
