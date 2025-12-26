@@ -34,6 +34,7 @@
 #include "bt_common.h"
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
+#include "soc/soc_caps.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -57,6 +58,15 @@
 
 #define BLE_HS_HCI_EVT_COUNT    (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT) + \
                                  MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))
+
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+/* HCI logging buffer size */
+#if (SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+#define BLE_HS_HCI_LOG_BUF_SIZE (517)  /* Fixed size for ESP NIMBLE controller */
+#else
+#define BLE_HS_HCI_LOG_BUF_SIZE (MYNEWT_VAL(BLE_TRANSPORT_ACL_SIZE) + 1)
+#endif
+#endif
 
 static void ble_hs_event_rx_hci_ev(struct ble_npl_event *ev);
 #if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_GATTS)
@@ -821,14 +831,14 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 {
     int rc;
 
-#if ((BT_HCI_LOG_INCLUDED == TRUE))
-    uint16_t len = OS_MBUF_PKTHDR(om)->omp_len + 1;
-    uint8_t *data = (uint8_t *)nimble_platform_mem_malloc(len);
-    assert(data != NULL);
-    data[0] = 0x02;
-    os_mbuf_copydata(om, 0, len - 1, &data[1]);
-    bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len - 1);
-    nimble_platform_mem_free(data);
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    uint16_t len = OS_MBUF_PKTLEN(om);
+    if (len + 1 <= BLE_HS_HCI_LOG_BUF_SIZE) {
+        uint8_t data[BLE_HS_HCI_LOG_BUF_SIZE];
+        data[0] = 0x02;
+        os_mbuf_copydata(om, 0, len, &data[1]);
+        bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len);
+    }
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
     /* If flow control is enabled, mark this packet with its corresponding
@@ -857,15 +867,14 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 int
 ble_hs_tx_data(struct os_mbuf *om)
 {
-#if ((BT_HCI_LOG_INCLUDED == TRUE))
- uint16_t len = 0;
-    uint8_t data[MYNEWT_VAL(BLE_TRANSPORT_ACL_SIZE) + 1];
-    data[0] = 0x02;
-    len++;
-    os_mbuf_copydata(om, 0, OS_MBUF_PKTLEN(om), &data[1]);
-    len += OS_MBUF_PKTLEN(om);
-
-    bt_hci_log_record_hci_data(data[0], &data[1], len - 1);
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    uint16_t pkt_len = OS_MBUF_PKTLEN(om);
+    if (pkt_len + 1 <= BLE_HS_HCI_LOG_BUF_SIZE) {
+        uint8_t data[BLE_HS_HCI_LOG_BUF_SIZE];
+        data[0] = 0x02;
+        os_mbuf_copydata(om, 0, pkt_len, &data[1]);
+        bt_hci_log_record_hci_data(data[0], &data[1], pkt_len);
+    }
 #endif
 
     return ble_transport_to_ll_acl(om);
