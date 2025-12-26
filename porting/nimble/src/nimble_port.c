@@ -285,7 +285,7 @@ nimble_port_init(void)
 
 #if MYNEWT_VAL(BT_HCI_LOG_INCLUDED)
     bt_hci_log_init();
-#endif // (BT_HCI_LOG_INCLUDED == TRUE)
+#endif // MYNEWT_VAL(BT_HCI_LOG_INCLUDED)
 
     return ESP_OK;
 }
