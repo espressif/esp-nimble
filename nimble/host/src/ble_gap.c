@@ -2201,9 +2201,6 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
         if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
             if (ble_conn_reattempt.count < MAX_REATTEMPT_ALLOWED) {
-                if (ble_gap_sync.op == BLE_GAP_OP_SYNC) {
-                    memset(&ble_gap_sync, 0, sizeof(ble_gap_sync));
-                }
                 ble_conn_reattempt.count += 1;
                 ble_conn_reattempt.sync_reattempt = 1;
 
@@ -2214,37 +2211,62 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
 
 		/*Cancel ongoing sync , if any */
 		ble_gap_periodic_adv_sync_create_cancel();
+               if (ble_gap_sync.op == BLE_GAP_OP_SYNC) {
+                   memset(&ble_gap_sync, 0, sizeof(ble_gap_sync));
+               }
 
 		rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr, ble_conn_reattempt.adv_sid,
-                                                          &ble_conn_reattempt.periodic_params,
-                                                          ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
+                                                     &ble_conn_reattempt.periodic_params,
+                                                     ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
                 if (rc != 0) {
                     return;
                 }
 
                 ble_hs_lock();
-            } else {
-                memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
-                ble_conn_reattempt.adv_sid = 0;
-                ble_conn_reattempt.count = 0;
-                memset(&ble_conn_reattempt.periodic_params, 0x0, sizeof(struct ble_gap_periodic_sync_params));
-	    }
+            }
        }
 #endif
     }
 
-    cb = ble_gap_sync.cb;
-    cb_arg = ble_gap_sync.cb_arg;
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
+     /*
+     * Invoke the sync callback only when either:
+     * 1) Periodic sync is successfully established (ev->status == 0), or
+     * 2) The first sync attempt fails with a non-retryable error, or
+     * 3) All periodic sync reattempts have been exhausted, or
+     * 4) A reattempt fails with a non-retryable error (ev->status != BLE_ERR_CONN_ESTABLISHMENT).
+     *
+     * This suppresses intermediate sync callbacks during retry attempts.
+     */
+    if (ble_conn_reattempt.count >= MAX_REATTEMPT_ALLOWED || !ev->status ||
+       (ble_conn_reattempt.count == 0 &&
+        ev->status != BLE_ERR_CONN_ESTABLISHMENT) ||
+        (ble_conn_reattempt.count > 0 &&
+        ev->status != BLE_ERR_CONN_ESTABLISHMENT)) {
 
-    ble_gap_sync.op = BLE_GAP_OP_NULL;
-    ble_gap_sync.cb_arg = NULL;
-    ble_gap_sync.cb_arg = NULL;
-    ble_gap_sync.psync = NULL;
+        memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
+        ble_conn_reattempt.adv_sid = 0;
+        ble_conn_reattempt.count = 0;
+        memset(&ble_conn_reattempt.periodic_params, 0x0, sizeof(struct ble_gap_periodic_sync_params));
+#endif
+        cb = ble_gap_sync.cb;
+        cb_arg = ble_gap_sync.cb_arg;
 
-    ble_gap_event_listener_call(&event);
-    if (cb) {
-        cb(&event, cb_arg);
+        ble_gap_sync.op = BLE_GAP_OP_NULL;
+        ble_gap_sync.psync = NULL;
+
+        ble_gap_event_listener_call(&event);
+        if (cb) {
+            cb(&event, cb_arg);
+        }
+
+        ble_gap_sync.cb = NULL;
+        ble_gap_sync.cb_arg = NULL;
+
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
     }
+#endif
+
     ble_hs_unlock();
 }
 
@@ -2299,8 +2321,12 @@ ble_gap_rx_periodic_adv_sync_lost(const struct ble_hci_ev_le_subev_periodic_adv_
     ble_hs_lock();
     /* The handle must be in the list */
     psync = ble_hs_periodic_sync_find_by_handle(le16toh(ev->sync_handle));
-    BLE_HS_DBG_ASSERT(psync);
 
+    if (!psync) {
+        /* No handle found */
+        ble_hs_unlock();
+        return;
+    }
     cb = psync->cb;
     cb_arg = psync->cb_arg;
 
@@ -5734,7 +5760,7 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
     uint8_t buf_size;
     uint8_t param_size;
     uint8_t buf_offset;
-    int rc; 
+    int rc;
 
     /* Check if we can set all of data in one hci command. */
     if (cmd_len >= 0xff) {
@@ -5767,7 +5793,7 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
 
     cmd = (void *) buf;
     param_size = sizeof(struct periodic_adv_subevents);
-    
+
     subevents = cmd->subevents;
     cmd->adv_handle = instance;
     cmd->num_subevents = 0;
