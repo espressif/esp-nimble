@@ -35,10 +35,10 @@
 #include "mbedtls/aes.h"
 #include "mbedtls/cipher.h"
 #include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
 #include "mbedtls/cmac.h"
 #include "mbedtls/ecdh.h"
 #include "mbedtls/ecp.h"
+#include "mbedtls/esp_mbedtls_random.h"
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
 #include "tinycrypt/aes.h"
@@ -791,8 +791,6 @@ exit:
 
     struct mbedtls_ecp_point pt = {0}, Q = {0};
     mbedtls_mpi z = {0}, d = {0};
-    mbedtls_ctr_drbg_context ctr_drbg = {0};
-    mbedtls_entropy_context entropy = {0};
 
     uint8_t pub[65] = {0};
     /* Hardcoded first byte of pub key for MBEDTLS_ECP_PF_UNCOMPRESSED */
@@ -802,8 +800,6 @@ exit:
     /* Initialize the required structures here */
     mbedtls_ecp_point_init(&pt);
     mbedtls_ecp_point_init(&Q);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
-    mbedtls_entropy_init(&entropy);
     mbedtls_mpi_init(&d);
     mbedtls_mpi_init(&z);
 
@@ -820,12 +816,6 @@ exit:
         goto exit;
     }
 
-    /* Set PRNG */
-    if ( ( rc = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                                      NULL, 0) ) != 0) {
-        goto exit;
-    }
-
     /* Prepare point Q from pub key */
     if (mbedtls_ecp_point_read_binary(&keypair.MBEDTLS_PRIVATE(grp), &Q, pub, 65) != 0) {
         goto exit;
@@ -836,7 +826,7 @@ exit:
     }
 
     rc = mbedtls_ecdh_compute_shared(&keypair.MBEDTLS_PRIVATE(grp), &z, &Q, &d,
-                                     mbedtls_ctr_drbg_random, &ctr_drbg);
+                                     mbedtls_esp_random, NULL);
     if (rc != 0) {
         goto exit;
     }
@@ -851,8 +841,6 @@ exit:
     mbedtls_mpi_free(&z);
     mbedtls_mpi_free(&d);
     mbedtls_ecp_point_free(&Q);
-    mbedtls_entropy_free(&entropy);
-    mbedtls_ctr_drbg_free(&ctr_drbg);
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -949,8 +937,6 @@ exit:
         return BLE_HS_EUNKNOWN;
     }
 #else
-    mbedtls_entropy_context entropy = {0};
-    mbedtls_ctr_drbg_context ctr_drbg = {0};
 
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!keypair_ptr) {
@@ -958,21 +944,13 @@ exit:
     }
 #endif
 
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
-
     /* Free the previously allocate keypair */
     mbedtls_ecp_keypair_free(&keypair);
 
     mbedtls_ecp_keypair_init(&keypair);
 
-    if (( rc = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                                NULL, 0)) != 0) {
-        goto exit;
-    }
-
     if ((rc = mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, &keypair,
-                                  mbedtls_ctr_drbg_random, &ctr_drbg)) != 0) {
+                                  mbedtls_esp_random, NULL)) != 0) {
         goto exit;
     }
 
@@ -991,8 +969,6 @@ exit:
     memcpy(public_key, &pub[1], 64);
 
 exit:
-    mbedtls_ctr_drbg_free( &ctr_drbg );
-    mbedtls_entropy_free( &entropy );
     if (rc != 0) {
         mbedtls_ecp_keypair_free(&keypair);
 
