@@ -153,6 +153,10 @@ esp_err_t esp_nimble_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     /* Reset deinit flag at start of new init cycle */
     ble_npl_reset_deinit_flag();
+    
+    if (ble_npl_ensure_ctx()) {
+        return ESP_FAIL;
+    }
 #endif
 
 #if CONFIG_BT_CONTROLLER_DISABLED
@@ -299,13 +303,6 @@ nimble_port_init(void)
         }
 
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller enable failed\n");
-        return ret;
-    }
-#endif
-
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ret = ble_npl_ensure_ctx();
-    if (ret != ESP_OK) {
         return ret;
     }
 #endif

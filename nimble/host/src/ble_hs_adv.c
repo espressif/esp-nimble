@@ -641,7 +641,9 @@ ble_hs_adv_parse_uuids16(struct ble_hs_adv_fields *adv_fields,
 {
     ble_uuid_any_t uuid;
     int uuid_cnt;
+#if MYNEWT_VAL(BLE_ADV_UUID_CONCAT)
     int free_slots;
+#endif
 
     if (data_len % 2 != 0) {
         return BLE_HS_EBADDATA;
@@ -670,7 +672,7 @@ ble_hs_adv_parse_uuids16(struct ble_hs_adv_fields *adv_fields,
     adv_fields->num_uuids16 += uuid_cnt;
 #else
     adv_fields->uuids16 = ble_hs_adv_uuids16;
-    adv_fields->num_uuids16 = data_len / 2;
+    adv_fields->num_uuids16 = uuid_cnt;
 
     for (int i = 0; i < adv_fields->num_uuids16; i++) {
         ble_uuid_init_from_buf(&uuid, data + i * 2, 2);
@@ -686,7 +688,9 @@ ble_hs_adv_parse_uuids32(struct ble_hs_adv_fields *adv_fields,
 {
     ble_uuid_any_t uuid;
     int uuid_cnt;
+#if MYNEWT_VAL(BLE_ADV_UUID_CONCAT)
     int free_slots;
+#endif
 
     if (data_len % 4 != 0) {
         return BLE_HS_EBADDATA;
@@ -732,7 +736,9 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
 {
     ble_uuid_any_t uuid;
     int uuid_cnt;
+#if MYNEWT_VAL(BLE_ADV_UUID_CONCAT)
     int free_slots;
+#endif
 
     if (data_len % 16 != 0) {
         return BLE_HS_EBADDATA;
