@@ -2379,6 +2379,7 @@ ble_gap_rx_rd_all_remote_feat(const struct ble_hci_ev_le_subev_rd_all_rem_feat *
      event.type = BLE_GAP_EVENT_RD_ALL_REM_FEAT;
 
      event.rd_all_rem_feat.status = ev->status;
+     event.rd_all_rem_feat.conn_handle = le16toh(ev->conn_handle);
      event.rd_all_rem_feat.max_remote_page = ev->max_remote_page;
      event.rd_all_rem_feat.max_valid_page = ev->max_valid_page;
      memcpy(event.rd_all_rem_feat.le_features, ev->le_features, 248);
@@ -10362,6 +10363,10 @@ int ble_gap_set_scan_chan(uint8_t state, uint8_t *bitmap)
     memset(vs_cmd, 0x0, sizeof(vs_cmd));
 
     vs_cmd[0] = state;
+
+    if (bitmap == NULL) {
+        return BLE_HS_EINVAL;
+    }
     memcpy(&vs_cmd[1], bitmap, 5);
 
     return ble_hs_hci_send_vs_cmd(BLE_HCI_OCF_VS_SET_SCAN_CHAN,
@@ -10605,8 +10610,12 @@ static inline bool is_rpa(const uint8_t *addr)
 
 bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type)
 {
+    if (!rpa || !ida || !addr_type) {
+        return false;
+    }
+
     if (!is_rpa(rpa)) {
-        return ESP_FAIL; /* reject public / static random / non-RPA */
+        return false; /* reject public / static random / non-RPA */
     }
 
     /* ---- Step 1: Try peer IRKs ---- */
@@ -10629,7 +10638,7 @@ bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type)
                     /* Found a match -> copy peer identity address */
                     memcpy(ida, sec.peer_addr.val, 6);
                     *addr_type = sec.peer_addr.type; /* set type */
-                    return ESP_OK;
+                    return true;
                 }
             }
         }
@@ -10644,9 +10653,9 @@ bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type)
     if (ble_hs_pvcy_resolve_with_irk(rpa, value.irk)) {
         /* Match with local IRK -> return ida = 00:00:00:00:00:00 */
         memset(ida, 0, 6);
-	*addr_type = BLE_ADDR_PUBLIC; /* default type */
-        return ESP_OK;
+        *addr_type = BLE_ADDR_PUBLIC; /* default type */
+        return true;
     }
 
-    return ESP_FAIL; /* No match */
+    return false; /* No match */
 }
