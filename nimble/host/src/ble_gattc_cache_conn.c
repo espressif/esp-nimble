@@ -2015,7 +2015,7 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *peer)
             ble_gattc_cache_conn_disc_chrs(peer);
         }
     } else {
-         ble_gattc_cache_conn_disc_chrs(peer);
+        ble_gattc_cache_conn_disc_chrs(peer);
     }
     return;
 }

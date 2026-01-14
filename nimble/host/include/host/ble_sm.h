@@ -146,7 +146,7 @@ int ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled);
 #else
 #define ble_sm_inject_io(conn_handle, pkey) \
     ((void)(conn_handle), BLE_HS_ENOTSUP)
-#if !MYNEWT_VAL(STATIC_PASSKEY)
+#if MYNEWT_VAL(STATIC_PASSKEY)
 #define ble_sm_configure_static_passkey(passkey, enable) \
     ((void)(passkey), (void)(enable), BLE_HS_ENOTSUP)
 #define ble_sm_get_static_passkey_config(passkey, enabled) \

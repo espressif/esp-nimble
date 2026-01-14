@@ -499,11 +499,8 @@ ble_store_key_from_value_ead(struct ble_store_key_ead *out_key,
                              const struct ble_store_value_ead *value)
 {
 #if NIMBLE_BLE_CONNECT
-
     out_key->peer_addr = value->peer_addr;
     out_key->idx = 0;
-#else
-    return BLE_HS_ENOTSUP;
 #endif
 }
 #endif

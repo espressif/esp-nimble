@@ -360,7 +360,7 @@ void ble_gap_end_test_evt(const void *buf, uint8_t len);
  *        * If resolved with local IRK -> set to all zeros
  *        * If not resolved -> unchanged
  *
- * Returns: ESP_OK if resolve, ESP_FAIL otherwise.
+ * Returns: true if resolve, false otherwise.
  */
 bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type);
 
