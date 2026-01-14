@@ -1574,7 +1574,8 @@ ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status)
                     ble_gattc_write_long(conn_handle, proc->write_long.attr.handle,
                                          proc->write_long.attr.offset, om,
                                          proc->write_long.cb, proc->write_long.cb_arg);
-                case BLE_GATT_OP_WRITE_RELIABLE:
+                    break;
+		case BLE_GATT_OP_WRITE_RELIABLE:
                     for (int i = 0; i < proc->write_reliable.num_attrs; i++) {
                         attrs[i].handle = proc->write_reliable.attrs[i].handle;
                         attrs[i].offset = 0;
@@ -1583,7 +1584,8 @@ ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status)
                     ble_gattc_write_reliable(conn_handle, attrs,
                                              proc->write_reliable.num_attrs,
                                              proc->write_reliable.cb, proc->write_reliable.cb_arg);
-                }
+                    break;
+		}
             } else {
                 err_cb = ble_gattc_err_dispatch_get(proc->op);
                 if (err_cb != NULL) {
@@ -5838,7 +5840,6 @@ ble_gattc_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 {
     return ble_gatts_indicate_custom(conn_handle, chr_val_handle, txom);
 }
-//#endif
 
 int
 ble_gatts_indicate(uint16_t conn_handle, uint16_t chr_val_handle)
