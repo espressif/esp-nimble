@@ -427,7 +427,7 @@ ble_svc_dis_included_init(void)
 int
 ble_svc_dis_init_dynamic(void)
 {
-    ble_svc_dis_data_ptr = nimble_platform_mem_calloc(1, sizeof(ble_svc_dis_data));
+    ble_svc_dis_data_ptr = nimble_platform_mem_calloc(1, sizeof(*ble_svc_dis_data_ptr));
     if (!ble_svc_dis_data_ptr) {
         return BLE_HS_ENOMEM;
     }

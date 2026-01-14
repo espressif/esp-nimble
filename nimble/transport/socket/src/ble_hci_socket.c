@@ -87,6 +87,7 @@ struct sockaddr_hci {
 #include "nimble/nimble_npl.h"
 #include "nimble/transport.h"
 #include "socket/ble_hci_socket.h"
+#include "esp_nimble_mem.h"
 
 /***
  * NOTES:

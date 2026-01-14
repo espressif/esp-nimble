@@ -1997,7 +1997,7 @@ struct ble_gap_event {
 #endif /* MYNEWT_VAL(BLE_ISO) */
 
         /**
-         * Represents a read all remote features complet event
+         * Represents a read all remote features complete event
          * Valid for the following event types:
          *     o BLE_GAP_EVENT_RD_ALL_REM_FEAT
          */
@@ -2026,7 +2026,7 @@ struct ble_gap_event {
 
 #if MYNEWT_VAL(BLE_MONITOR_ADV)
 	/**
-         * Represents a read all remote features complet event
+         * Represents a monitor advertising report event
          * Valid for the following event types:
          *     o BLE_GAP_EVENT_MONITOR_ADV_REPORT
          */
@@ -2035,9 +2035,9 @@ struct ble_gap_event {
             uint8_t addr_type;
 
             /** Device Address */
-            uint16_t address[6];
+            uint8_t address[6];
 
-	    /** Represents weather RSSI threshold condition is met */
+	    /** Represents whether RSSI threshold condition is met */
             uint8_t condition;
 
         } monitor_adv_report;
@@ -4172,7 +4172,7 @@ int ble_gap_read_local_irk(uint8_t * out_irk);
  *
  * @param bit_num        Bit position in the FeatureSet
  *
- * @param                The Host feature is disabled or enabled (0 & 1)
+ * @param bit_val        The Host feature is disabled or enabled (0 & 1)
  *
  * return                0 on success; nonzero on failure
  */
