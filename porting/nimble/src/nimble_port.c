@@ -18,6 +18,7 @@
  */
 
 #include <stddef.h>
+#include <stdbool.h>
 #include "os/os.h"
 #include "sysinit/sysinit.h"
 
@@ -70,6 +71,9 @@ typedef struct {
 
 static ble_npl_ctx_t *ble_npl_ctx;
 
+static bool ble_npl_deiniting = false;
+static struct ble_npl_eventq g_eventq_shutdown_fallback = {0};
+
 #define g_eventq_dflt   (ble_npl_ctx->eventq)
 #define ble_hs_stop_sem (ble_npl_ctx->stop_sem)
 #define ble_hs_ev_stop  (ble_npl_ctx->ev_stop)
@@ -103,12 +107,24 @@ ble_npl_ensure_ctx(void)
         return 0;
     }
 
+    /* Don't allocate during shutdown - context was already freed */
+    if (ble_npl_deiniting) {
+        return BLE_HS_ENOENT;
+    }
+
     ble_npl_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_npl_ctx));
     if (ble_npl_ctx == NULL) {
         return BLE_HS_ENOMEM;
-   }
+    }
 
     return 0;
+}
+
+/* Reset the deiniting flag - called at start of new init cycle */
+static void
+ble_npl_reset_deinit_flag(void)
+{
+    ble_npl_deiniting = false;
 }
 #endif
 
@@ -134,6 +150,11 @@ nimble_port_stop_cb(struct ble_npl_event *ev)
  */
 esp_err_t esp_nimble_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* Reset deinit flag at start of new init cycle */
+    ble_npl_reset_deinit_flag();
+#endif
+
 #if CONFIG_BT_CONTROLLER_DISABLED
     esp_err_t ret;
 #endif
@@ -184,12 +205,19 @@ esp_err_t esp_nimble_init(void)
  */
 esp_err_t esp_nimble_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_npl_deiniting = true;
+#endif
+
     ble_transport_ll_deinit();
 
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "hci deinit failed\n");
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        ble_npl_deiniting = false;  /* Reset flag before early return */
+#endif
         return ESP_FAIL;
     }
 #else
@@ -200,9 +228,14 @@ esp_err_t esp_nimble_deinit(void)
     ble_buf_free();
 #endif
 
+#endif
+
+#if CONFIG_BT_CONTROLLER_ENABLED
     ble_npl_eventq_deinit(&g_eventq_dflt);
 #endif
+
     ble_hs_deinit();
+
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
     npl_freertos_funcs_deinit();
 #endif
@@ -214,8 +247,13 @@ esp_err_t esp_nimble_deinit(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_npl_ctx) {
         nimble_platform_mem_free(ble_npl_ctx);
-	    ble_npl_ctx = NULL;
+        ble_npl_ctx = NULL;
     }
+    /* Keep ble_npl_deiniting = true until nimble_port_deinit completes.
+     * This prevents controller deinit from re-allocating ble_npl_ctx when it
+     * calls nimble_port_get_dflt_eventq(). The flag will be reset at the START
+     * of the next init cycle (in ble_npl_reset_deinit_flag). */
+
 #endif
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     os_mempool_deinit();
@@ -233,6 +271,13 @@ esp_err_t
 nimble_port_init(void)
 {
     esp_err_t ret;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* Reset deinit flag at start of new init cycle.
+     * This is needed because the flag remains true after deinit to prevent
+     * re-allocation during controller shutdown. */
+    ble_npl_reset_deinit_flag();
+#endif
 
 #if CONFIG_IDF_TARGET_ESP32 && CONFIG_BT_CONTROLLER_ENABLED
     esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
@@ -392,6 +437,19 @@ struct ble_npl_eventq *
 nimble_port_get_dflt_eventq(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* If context exists, return the real eventq */
+    if (ble_npl_ctx != NULL) {
+        return &g_eventq_dflt;
+    }
+
+    /* Context is NULL - either not yet allocated or already freed during deinit.
+     * If we're in shutdown, return the static fallback to prevent crashes.
+     * The fallback eventq is not functional but callers can safely reference it. */
+    if (ble_npl_deiniting) {
+        return &g_eventq_shutdown_fallback;
+    }
+
+    /* Normal case: try to allocate context */
     if (ble_npl_ensure_ctx()) {
         return NULL;
     }
