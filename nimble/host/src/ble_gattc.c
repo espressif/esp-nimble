@@ -1693,6 +1693,8 @@ ble_gattc_exchange_mtu(uint16_t conn_handle, ble_gatt_mtu_fn *cb, void *cb_arg)
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(INFO, "GATTC proc alloc failed; conn_handle=0x%04x op=mtu\n",
+                   conn_handle);
         rc = BLE_HS_ENOMEM;
         goto done;
     }
@@ -1925,6 +1927,8 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
+                   "conn_handle=0x%04x op=disc_all_svcs\n", conn_handle);
         rc = BLE_HS_ENOMEM;
         goto done;
     }
@@ -3207,6 +3211,8 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
+                   "conn_handle=0x%04x op=disc_all_dscs\n", conn_handle);
         rc = BLE_HS_ENOMEM;
         goto done;
     }
@@ -3760,6 +3766,8 @@ ble_gattc_read(uint16_t conn_handle, uint16_t attr_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
+                   "conn_handle=0x%04x op=read\n", conn_handle);
         rc = BLE_HS_ENOMEM;
         goto done;
     }
@@ -4598,6 +4606,9 @@ ble_gattc_write(uint16_t conn_handle, uint16_t attr_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
+                   "conn_handle=0x%04x op=write attr=0x%04x\n",
+                   conn_handle, attr_handle);
         rc = BLE_HS_ENOMEM;
         goto done;
     }

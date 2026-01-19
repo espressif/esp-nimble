@@ -704,6 +704,8 @@ ble_gap_conn_find(uint16_t handle, struct ble_gap_conn_desc *out_desc)
     ble_hs_unlock();
 
     if (conn == NULL) {
+        BLE_HS_LOG(INFO, "GAP conn_find: connection not found; "
+                   "conn_handle=0x%04x\n", handle);
         return BLE_HS_ENOTCONN;
     } else {
         return 0;
@@ -7793,6 +7795,8 @@ ble_gap_terminate(uint16_t conn_handle, uint8_t hci_reason)
 
     conn = ble_hs_conn_find(conn_handle);
     if (conn == NULL) {
+        BLE_HS_LOG(INFO, "GAP terminate: connection not found; "
+                   "conn_handle=0x%04x\n", conn_handle);
         rc = BLE_HS_ENOTCONN;
         goto done;
     }
@@ -8158,6 +8162,8 @@ ble_gap_update_params(uint16_t conn_handle,
 
     conn = ble_hs_conn_find(conn_handle);
     if (conn == NULL) {
+        BLE_HS_LOG(INFO, "GAP update_params: connection not found; "
+                   "conn_handle=0x%04x\n", conn_handle);
         rc = BLE_HS_ENOTCONN;
         goto done;
     }
@@ -8165,12 +8171,16 @@ ble_gap_update_params(uint16_t conn_handle,
     /* Don't allow two concurrent updates to the same connection. */
     dup = ble_gap_update_entry_find(conn_handle, NULL);
     if (dup != NULL) {
+        BLE_HS_LOG(INFO, "GAP update_params: update already in progress; "
+                   "conn_handle=0x%04x\n", conn_handle);
         rc = BLE_HS_EALREADY;
         goto done;
     }
 
     entry = ble_gap_update_entry_alloc();
     if (entry == NULL) {
+        BLE_HS_LOG(INFO, "GAP update_params: entry alloc failed; "
+                   "conn_handle=0x%04x\n", conn_handle);
         rc = BLE_HS_ENOMEM;
         goto done;
     }
