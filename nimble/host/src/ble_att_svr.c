@@ -348,6 +348,9 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
 
     if (is_read) {
         if (!(entry->ha_flags & BLE_ATT_F_READ)) {
+            BLE_HS_LOG(INFO, "ATT read not permitted; "
+                       "conn_handle=0x%04x attr_handle=0x%04x\n",
+                       conn_handle, entry->ha_handle_id);
             *out_att_err = BLE_ATT_ERR_READ_NOT_PERMITTED;
             return BLE_HS_EREJECT;
         }
@@ -357,6 +360,9 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
         author = entry->ha_flags & BLE_ATT_F_READ_AUTHOR;
     } else {
         if (!(entry->ha_flags & BLE_ATT_F_WRITE)) {
+            BLE_HS_LOG(INFO, "ATT write not permitted; "
+                       "conn_handle=0x%04x attr_handle=0x%04x\n",
+                       conn_handle, entry->ha_handle_id);
             *out_att_err = BLE_ATT_ERR_WRITE_NOT_PERMITTED;
             return BLE_HS_EREJECT;
         }
@@ -578,6 +584,9 @@ ble_att_svr_read_handle(uint16_t conn_handle, uint16_t attr_handle,
 
     entry = ble_att_svr_find_by_handle(attr_handle);
     if (entry == NULL) {
+        BLE_HS_LOG(INFO, "ATT read: invalid handle; "
+                   "conn_handle=0x%04x attr_handle=0x%04x\n",
+                   conn_handle, attr_handle);
         if (out_att_err != NULL) {
             *out_att_err = BLE_ATT_ERR_INVALID_HANDLE;
         }
@@ -660,6 +669,9 @@ ble_att_svr_write_handle(uint16_t conn_handle, uint16_t attr_handle,
 
     entry = ble_att_svr_find_by_handle(attr_handle);
     if (entry == NULL) {
+        BLE_HS_LOG(INFO, "ATT write: invalid handle; "
+                   "conn_handle=0x%04x attr_handle=0x%04x\n",
+                   conn_handle, attr_handle);
         if (out_att_err != NULL) {
             *out_att_err = BLE_ATT_ERR_INVALID_HANDLE;
         }
