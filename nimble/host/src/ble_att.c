@@ -508,6 +508,9 @@ ble_att_rx_handle_unknown_request(uint8_t op, uint16_t conn_handle,
 {
     /* If this is command (bit6 is set to 1), do nothing */
     if (op & 0x40) {
+        BLE_HS_LOG(INFO, "ATT command discarded (no response required); "
+                   "op=0x%02x conn_handle=0x%04x cid=0x%04x\n",
+                   op, conn_handle, cid);
         return;
     }
 #if MYNEWT_VAL(BLE_GATTS)
@@ -558,6 +561,8 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 
     entry = ble_att_rx_dispatch_entry_find(op);
     if (entry == NULL) {
+        BLE_HS_LOG(INFO, "ATT handler not found; op=0x%02x conn_handle=0x%04x "
+                   "cid=0x%04x; packet dropped\n", op, conn_handle, cid);
         ble_att_rx_handle_unknown_request(op, conn_handle, cid, om);
         return BLE_HS_ENOTSUP;
     }
