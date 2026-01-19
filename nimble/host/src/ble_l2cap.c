@@ -304,6 +304,15 @@ ble_l2cap_remove_rx(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 #else
     conn->bhc_rx_chan = NULL;
 #endif
+    if (chan->rx_buf == NULL) {
+        BLE_HS_LOG(INFO, "L2CAP remove_rx: rx_buf already NULL; "
+                   "conn_handle=0x%04x scid=0x%04x\n",
+                   conn->bhc_handle, chan->scid);
+    } else {
+        BLE_HS_LOG(INFO, "L2CAP remove_rx: freeing partial rx_buf; "
+                   "conn_handle=0x%04x scid=0x%04x rx_len=%d\n",
+                   conn->bhc_handle, chan->scid, chan->rx_len);
+    }
     os_mbuf_free_chain(chan->rx_buf);
     chan->rx_buf = NULL;
     chan->rx_len = 0;

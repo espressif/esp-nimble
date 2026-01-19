@@ -214,6 +214,9 @@ ble_hs_flow_acl_free(struct os_mempool_ext *mpe, void *data, void *arg)
     conn = ble_hs_conn_find(conn_handle);
     if (conn != NULL) {
         ble_hs_flow_inc_completed_pkts(conn);
+    } else {
+        BLE_HS_LOG(INFO, "ACL free: connection not found; "
+                   "conn_handle=0x%04x; flow credit may be lost\n", conn_handle);
     }
 
     ble_hs_unlock_nested();

@@ -1639,6 +1639,8 @@ ble_sm_random_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpectedly received pairing random value.
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected pairing random; "
+                   "conn_handle=0x%04x no proc in RANDOM state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->out_of_order = 1;
     } else {
@@ -1692,6 +1694,8 @@ ble_sm_confirm_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpectedly received pairing confirm value.
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected pairing confirm; "
+                   "conn_handle=0x%04x no proc in CONFIRM state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->out_of_order = 1;
     } else {
@@ -2113,6 +2117,8 @@ ble_sm_pair_rsp_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpectedly received pairing response.
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected pairing response; "
+                   "conn_handle=0x%04x no proc in PAIR state\n", conn_handle);
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_UNSPECIFIED);
         res->out_of_order = 1;
@@ -2520,6 +2526,8 @@ ble_sm_enc_info_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpected encryption info received
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected encryption info; "
+                   "conn_handle=0x%04x no proc in KEY_EXCH state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
@@ -2559,6 +2567,8 @@ ble_sm_master_id_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpected central indentification info recieved
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected master ID; "
+                   "conn_handle=0x%04x no proc in KEY_EXCH state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
@@ -2599,6 +2609,8 @@ ble_sm_id_info_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpected ID info received
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected identity info; "
+                   "conn_handle=0x%04x no proc in KEY_EXCH state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
@@ -2638,6 +2650,8 @@ ble_sm_id_addr_info_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpected identity address info received
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected identity addr info; "
+                   "conn_handle=0x%04x no proc in KEY_EXCH state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
@@ -2677,6 +2691,8 @@ ble_sm_sign_info_rx(uint16_t conn_handle, struct os_mbuf **om,
          * Unexpected signing info received
          * Recommended action: Ignore
          */
+        BLE_HS_LOG(INFO, "SMP: unexpected signing info; "
+                   "conn_handle=0x%04x no proc in KEY_EXCH state\n", conn_handle);
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
@@ -2894,6 +2910,8 @@ ble_sm_pair_initiate(uint16_t conn_handle)
 
     proc = ble_sm_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(INFO, "SMP: proc alloc failed; "
+                   "conn_handle=0x%04x op=pair_initiate\n", conn_handle);
         res.app_status = BLE_HS_ENOMEM;
     } else {
         proc->conn_handle = conn_handle;
@@ -2934,6 +2952,8 @@ ble_sm_slave_initiate(uint16_t conn_handle)
     } else {
         proc = ble_sm_proc_alloc();
         if (proc == NULL) {
+            BLE_HS_LOG(INFO, "SMP: proc alloc failed; "
+                       "conn_handle=0x%04x op=slave_initiate\n", conn_handle);
             res.app_status = BLE_HS_ENOMEM;
         } else {
             proc->conn_handle = conn_handle;
@@ -2978,6 +2998,8 @@ ble_sm_enc_initiate(uint16_t conn_handle, uint8_t key_size,
     } else {
         proc = ble_sm_proc_alloc();
         if (proc == NULL) {
+            BLE_HS_LOG(INFO, "SMP: proc alloc failed; "
+                       "conn_handle=0x%04x op=enc_initiate\n", conn_handle);
             res.app_status = BLE_HS_ENOMEM;
         } else {
             proc->conn_handle = conn_handle;
@@ -3043,6 +3065,8 @@ ble_sm_rx(struct ble_l2cap_chan *chan)
                               false : true);
         rc = res.app_status;
     } else {
+        BLE_HS_LOG(INFO, "SMP: no handler for opcode; "
+                   "op=0x%02x conn_handle=0x%04x\n", op, conn_handle);
         rc = BLE_HS_ENOTSUP;
     }
 
