@@ -60,25 +60,25 @@ static void
 get_nvs_key_string(int obj_type, int index, char *key_string)
 {
     if (obj_type == BLE_STORE_OBJ_TYPE_PEER_DEV_REC) {
-        sprintf(key_string, "%s_%d", NIMBLE_NVS_PEER_RECORDS_KEY, index);
+        snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_PEER_RECORDS_KEY, index);
     } else {
         if (obj_type == BLE_STORE_OBJ_TYPE_PEER_SEC) {
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_PEER_SEC_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_PEER_SEC_KEY, index);
         } else if (obj_type == BLE_STORE_OBJ_TYPE_OUR_SEC) {
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_OUR_SEC_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_OUR_SEC_KEY, index);
 #if MYNEWT_VAL(ENC_ADV_DATA)
         } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_EAD_SEC_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_EAD_SEC_KEY, index);
 #endif
         } else if (obj_type == BLE_STORE_OBJ_TYPE_LOCAL_IRK) {
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_LOCAL_IRK_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_LOCAL_IRK_KEY, index);
 
         } else if (obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR){
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_RPA_RECORDS_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_RPA_RECORDS_KEY, index);
         } else if (obj_type == BLE_STORE_OBJ_TYPE_CCCD) {
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_CCCD_SEC_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_CCCD_SEC_KEY, index);
         } else {
-            sprintf(key_string, "%s_%d", NIMBLE_NVS_CSFC_SEC_KEY, index);
+            snprintf(key_string, NIMBLE_NVS_STR_NAME_MAX_LEN, "%s_%d", NIMBLE_NVS_CSFC_SEC_KEY, index);
         }
     }
 }
@@ -149,6 +149,14 @@ get_nvs_peer_record(char *key_string, struct ble_hs_dev_records *p_dev_rec)
         goto end;
     }
 
+    /* Validate that NVS data size matches expected struct size */
+    if (required_size != sizeof(struct ble_hs_dev_records)) {
+        ESP_LOGE(TAG, "NVS data size mismatch for peer record: expected %d, got %d",
+                 (int)sizeof(struct ble_hs_dev_records), (int)required_size);
+        err = ESP_ERR_NVS_INVALID_LENGTH;
+        goto end;
+    }
+
     err = nvs_get_blob(nimble_handle, key_string, p_dev_rec,
                        &required_size);
 
@@ -158,11 +166,35 @@ end:
 }
 #endif
 
+static size_t
+get_expected_size_for_obj_type(int obj_type)
+{
+    switch (obj_type) {
+    case BLE_STORE_OBJ_TYPE_CCCD:
+        return sizeof(struct ble_store_value_cccd);
+    case BLE_STORE_OBJ_TYPE_CSFC:
+        return sizeof(struct ble_store_value_csfc);
+#if MYNEWT_VAL(ENC_ADV_DATA)
+    case BLE_STORE_OBJ_TYPE_ENC_ADV_DATA:
+        return sizeof(struct ble_store_value_ead);
+#endif
+    case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
+        return sizeof(struct ble_store_value_local_irk);
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+        return sizeof(struct ble_store_value_rpa_rec);
+    case BLE_STORE_OBJ_TYPE_PEER_SEC:
+    case BLE_STORE_OBJ_TYPE_OUR_SEC:
+    default:
+        return sizeof(struct ble_store_value_sec);
+    }
+}
+
 static int
 get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
 {
     esp_err_t err;
     size_t required_size = 0;
+    size_t expected_size;
     nvs_handle_t nimble_handle;
 
     err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
@@ -175,6 +207,15 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
 
     /* if Address pointer for value is NULL, filling of value not needed */
     if (err != ESP_OK || val == NULL) {
+        goto end;
+    }
+
+    /* Validate that NVS data size matches expected struct size */
+    expected_size = get_expected_size_for_obj_type(obj_type);
+    if (required_size != expected_size) {
+        ESP_LOGE(TAG, "NVS data size mismatch for obj_type %d: expected %d, got %d",
+                 obj_type, (int)expected_size, (int)required_size);
+        err = ESP_ERR_NVS_INVALID_LENGTH;
         goto end;
     }
 
@@ -307,7 +348,7 @@ get_nvs_db_attribute(int obj_type, bool empty, void *value, int num_value)
 *                       -1 on NVS memory access failure
 */
 static int
-ble_nvs_delete_value(int obj_type, int8_t index)
+ble_nvs_delete_value(int obj_type, int index)
 {
     esp_err_t err;
     nvs_handle_t nimble_handle;
@@ -463,9 +504,13 @@ populate_db_from_nvs(int obj_type, void *dst, int *db_num)
 
     esp_err_t err;
     int i;
+    int max_entries;
     char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
 
-    for (i = 1; i <= get_nvs_max_obj_value(obj_type); i++) {
+    /* Get the maximum number of entries allowed for this object type */
+    max_entries = get_nvs_max_obj_value(obj_type);
+
+    for (i = 1; i <= max_entries; i++) {
         get_nvs_key_string(obj_type, i, key_string);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -491,6 +536,11 @@ populate_db_from_nvs(int obj_type, void *dst, int *db_num)
 
         /* NVS index has data, fill up the ram db with it */
         if (obj_type == BLE_STORE_OBJ_TYPE_PEER_DEV_REC) {
+            /* Bounds check before writing to RAM array */
+            if (*db_num >= max_entries) {
+                ESP_LOGW(TAG, "Peer dev records: RAM array full, skipping NVS index %d", i);
+                continue;
+            }
             ESP_LOGD(TAG, "Peer dev records filled from NVS index = %d", i);
             memcpy(db_item, &p_dev_rec, sizeof(struct ble_hs_dev_records));
             db_item += sizeof(struct ble_hs_dev_records);
@@ -499,34 +549,64 @@ populate_db_from_nvs(int obj_type, void *dst, int *db_num)
 #endif
         {
             if (obj_type == BLE_STORE_OBJ_TYPE_CCCD) {
+                /* Bounds check before writing to RAM array */
+                if (*db_num >= MYNEWT_VAL(BLE_STORE_MAX_CCCDS)) {
+                    ESP_LOGW(TAG, "CCCD: RAM array full, skipping NVS index %d", i);
+                    continue;
+                }
                 ESP_LOGD(TAG, "CCCD in RAM is filled up from NVS index = %d", i);
                 memcpy(db_item, &cur.cccd, sizeof(struct ble_store_value_cccd));
                 db_item += sizeof(struct ble_store_value_cccd);
                 (*db_num)++;
             } else if (obj_type == BLE_STORE_OBJ_TYPE_CSFC) {
+                /* Bounds check before writing to RAM array */
+                if (*db_num >= MYNEWT_VAL(BLE_STORE_MAX_CSFCS)) {
+                    ESP_LOGW(TAG, "CSFC: RAM array full, skipping NVS index %d", i);
+                    continue;
+                }
                 ESP_LOGD(TAG, "CSFC in RAM is filled up from NVS index = %d", i);
                 memcpy(db_item, &cur.csfc, sizeof(struct ble_store_value_csfc));
                 db_item += sizeof(struct ble_store_value_csfc);
                 (*db_num)++;
 #if MYNEWT_VAL(ENC_ADV_DATA)
             } else if (obj_type == BLE_STORE_OBJ_TYPE_ENC_ADV_DATA) {
+                  /* Bounds check before writing to RAM array */
+                  if (*db_num >= MYNEWT_VAL(BLE_STORE_MAX_EADS)) {
+                      ESP_LOGW(TAG, "EAD: RAM array full, skipping NVS index %d", i);
+                      continue;
+                  }
                   ESP_LOGD(TAG, "EAD in RAM is filled up from NVS index = %d", i);
                   memcpy(db_item, &cur.ead, sizeof(struct ble_store_value_ead));
                   db_item += sizeof(struct ble_store_value_ead);
                   (*db_num)++;
 #endif
            } else if(obj_type == BLE_STORE_OBJ_TYPE_LOCAL_IRK) {
+                  /* Bounds check before writing to RAM array */
+                  if (*db_num >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
+                      ESP_LOGW(TAG, "Local IRK: RAM array full, skipping NVS index %d", i);
+                      continue;
+                  }
                   ESP_LOGD(TAG, "Local IRK in RAM is filled up from NVS index = %d", i);
                   memcpy(db_item, &cur.local_irk, sizeof(struct ble_store_value_local_irk));
                   db_item += sizeof(struct ble_store_value_local_irk);
                   (*db_num)++;
 
             } else if(obj_type == BLE_STORE_OBJ_TYPE_PEER_ADDR) {
+                  /* Bounds check before writing to RAM array */
+                  if (*db_num >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
+                      ESP_LOGW(TAG, "RPA_REC: RAM array full, skipping NVS index %d", i);
+                      continue;
+                  }
                   ESP_LOGD(TAG, "RPA_REC in RAM is filled up from NVS index = %d", i);
                   memcpy(db_item, &cur.rpa_rec, sizeof(struct ble_store_value_rpa_rec));
                   db_item += sizeof(struct ble_store_value_rpa_rec);
                   (*db_num)++;
             } else {
+                /* Bounds check before writing to RAM array (sec type) */
+                if (*db_num >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
+                    ESP_LOGW(TAG, "SEC: RAM array full, skipping NVS index %d", i);
+                    continue;
+                }
                 ESP_LOGD(TAG, "KEY in RAM is filled up from NVS index = %d", i);
                 memcpy(db_item, &cur.sec, sizeof(struct ble_store_value_sec));
                 db_item += sizeof(struct ble_store_value_sec);
@@ -563,11 +643,21 @@ ble_nvs_restore_sec_keys(void)
         return err;
     }
 
-    for (int i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS) - 1; i++) {
-        if ((ble_store_config_our_secs[i].bond_count > ble_store_config_our_secs[i+1].bond_count)
-            || (ble_store_config_peer_secs[i].bond_count > ble_store_config_peer_secs[i+1].bond_count)) {
+    /* Only check for out-of-order entries if we have valid data */
+    if (ble_store_config_num_our_secs > 1 || ble_store_config_num_peer_secs > 1) {
+        /* Use actual populated count, not max config value */
+        int our_check_limit = (ble_store_config_num_our_secs > 1) ? (ble_store_config_num_our_secs - 1) : 0;
+        int peer_check_limit = (ble_store_config_num_peer_secs > 1) ? (ble_store_config_num_peer_secs - 1) : 0;
+        int check_limit = (our_check_limit > peer_check_limit) ? our_check_limit : peer_check_limit;
+
+        for (int i = 0; i < check_limit; i++) {
+            if ((i < our_check_limit &&
+                 ble_store_config_our_secs[i].bond_count > ble_store_config_our_secs[i+1].bond_count) ||
+                (i < peer_check_limit &&
+                 ble_store_config_peer_secs[i].bond_count > ble_store_config_peer_secs[i+1].bond_count)) {
                 flag = 1;
                 break;
+            }
         }
     }
 
@@ -580,8 +670,18 @@ ble_nvs_restore_sec_keys(void)
             sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
     }
 
-    ble_store_config_our_bond_count = ble_store_config_our_secs[ble_store_config_num_our_secs - 1].bond_count;
-    ble_store_config_peer_bond_count = ble_store_config_peer_secs[ble_store_config_num_peer_secs - 1].bond_count;
+    /* Only access array if we have valid entries to prevent index -1 access */
+    if (ble_store_config_num_our_secs > 0) {
+        ble_store_config_our_bond_count = ble_store_config_our_secs[ble_store_config_num_our_secs - 1].bond_count;
+    } else {
+        ble_store_config_our_bond_count = 0;
+    }
+
+    if (ble_store_config_num_peer_secs > 0) {
+        ble_store_config_peer_bond_count = ble_store_config_peer_secs[ble_store_config_num_peer_secs - 1].bond_count;
+    } else {
+        ble_store_config_peer_bond_count = 0;
+    }
 
     ESP_LOGD(TAG, "ble_store_config_peer_secs restored %d bonds",
              ble_store_config_num_peer_secs);
