@@ -144,7 +144,7 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     val,
                     ble_store_config_csfcs,
                     sizeof *ble_store_config_csfcs,
-                    &&ble_store_config_num_csfcs);
+                    &ble_store_config_num_csfcs);
             return rc;
         }
 #endif
@@ -180,6 +180,12 @@ ble_store_config_conf_export(void (*func)(char *name, char *val),
         char sec[BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ];
         char cccd[BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ];
         char rpa_rec[BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ];
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
+        char csfc[BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ];
+#endif
+#if MYNEWT_VAL(ENC_ADV_DATA)
+        char ead[BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ];
+#endif
     } buf;
 
     ble_store_config_serialize_arr(ble_store_config_our_secs,

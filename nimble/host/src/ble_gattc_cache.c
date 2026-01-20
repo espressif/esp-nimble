@@ -96,15 +96,20 @@ print_addr(ble_addr_t addr)
     }
 }
 
+/* Increased buffer size to safely hold "key" + 12 hex chars + null + margin */
+#define GATT_CACHE_KEY_NAME_MAX_LEN 20
+
+/* Thread-local storage for key name to avoid static buffer thread safety issues */
+static __thread char tls_key_buffer[GATT_CACHE_KEY_NAME_MAX_LEN];
+
 char *getKeyname(const ble_addr_t *addr)
 {
-    static char buffer[16];
-    sprintf(buffer, "%s%02X%02X%02X%02X%02X%02X",
-            cache_key,
-            addr->val[5], addr->val[4], addr->val[3],
-            addr->val[2], addr->val[1], addr->val[0]);
+    snprintf(tls_key_buffer, GATT_CACHE_KEY_NAME_MAX_LEN, "%s%02X%02X%02X%02X%02X%02X",
+             cache_key,
+             addr->val[5], addr->val[4], addr->val[3],
+             addr->val[2], addr->val[1], addr->val[0]);
 
-    return buffer;
+    return tls_key_buffer;
 }
 
 static int
