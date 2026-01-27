@@ -831,7 +831,7 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 {
     int rc;
 
-#if (BT_HCI_LOG_INCLUDED == TRUE)
+#if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     uint16_t len = OS_MBUF_PKTLEN(om);
     if (len + 1 <= BLE_HS_HCI_LOG_BUF_SIZE) {
         uint8_t data[BLE_HS_HCI_LOG_BUF_SIZE];
@@ -867,7 +867,7 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 int
 ble_hs_tx_data(struct os_mbuf *om)
 {
-#if (BT_HCI_LOG_INCLUDED == TRUE)
+#if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     uint16_t pkt_len = OS_MBUF_PKTLEN(om);
     if (pkt_len + 1 <= BLE_HS_HCI_LOG_BUF_SIZE) {
         uint8_t data[BLE_HS_HCI_LOG_BUF_SIZE];
