@@ -580,7 +580,7 @@ ble_l2cap_init(void)
     size_t chan_mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_MAX_CHANS) +
                          MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                          sizeof (struct ble_l2cap_chan)) * sizeof(os_membuf_t);
-    if (ble_l2cap_chan_mem == NULL) {
+    if (ble_l2cap_chan_mem == NULL && chan_mem_bytes != 0) {
         ble_l2cap_chan_mem = (os_membuf_t *)nimble_platform_mem_calloc(1, chan_mem_bytes);
         if (ble_l2cap_chan_mem == NULL) {
             nimble_platform_mem_free(ble_l2cap_ctx);
