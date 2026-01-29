@@ -197,11 +197,24 @@ ble_hs_periodic_sync_init(void)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_hs_periodic_sync_ensure_ctx();
-    if (rc != 0)
-    {
+    if (rc != 0) {
         return rc;
     }
+#endif
 
+    if (MYNEWT_VAL(BLE_MAX_PERIODIC_SYNCS) == 0) {
+        memset(&ble_hs_periodic_sync_pool, 0, sizeof(ble_hs_periodic_sync_pool));
+        rc = os_mempool_init(&ble_hs_periodic_sync_pool, 0,
+                             sizeof(struct ble_hs_periodic_sync), NULL,
+                             "ble_hs_periodic_disc_pool");
+        if (rc != 0) {
+            return BLE_HS_EOS;
+        }
+        SLIST_INIT(&g_ble_hs_periodic_sync_handles);
+        return 0;
+    }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (!ble_hs_psync_elem_mem)
     {
