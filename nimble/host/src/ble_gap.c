@@ -1459,7 +1459,7 @@ int ble_gap_slave_adv_reattempt(void)
 
 	    rc = ble_gap_adv_start(ble_adv_reattempt.own_addr_type,
 		    (ble_adv_reattempt.direct_addr_present == 1 ? &ble_adv_reattempt.direct_addr: NULL),
-		    ble_adv_reattempt.duration_ms, NULL,
+		    ble_adv_reattempt.duration_ms, &ble_adv_reattempt.adv_params,
 		    ble_adv_reattempt.cb, ble_adv_reattempt.cb_arg);
 	    if (rc != 0) {
 		return rc;
@@ -4147,6 +4147,7 @@ ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
     }
 
     ble_adv_reattempt.duration_ms = duration_ms;
+    memcpy(&ble_adv_reattempt.adv_params , adv_params, sizeof(struct ble_gap_adv_params));
     ble_adv_reattempt.cb = cb;
     ble_adv_reattempt.cb_arg = cb_arg;
 #endif
@@ -4625,13 +4626,6 @@ ble_gap_ext_adv_configure(uint8_t instance,
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
     ble_adv_reattempt.instance = instance;
-
-    if (selected_tx_power) {
-        ble_adv_reattempt.selected_tx_power = *selected_tx_power;
-        ble_adv_reattempt.selected_tx_power_present = 1 ;
-    } else {
-        ble_adv_reattempt.selected_tx_power_present = 0 ;
-    }
 
     ble_adv_reattempt.cb = cb;
 
