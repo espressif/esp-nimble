@@ -174,7 +174,6 @@ struct ble_gap_adv_reattempt_ctxt {
 struct ble_gap_adv_reattempt_ctxt ble_adv_reattempt;
 #endif
 
-
 #endif
 
 /**
@@ -2142,6 +2141,22 @@ ble_gap_rx_scan_req_rcvd(const struct ble_hci_ev_le_subev_scan_req_rcvd *ev)
 
 /* Periodic adv events */
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
+
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+static void
+ble_gap_periodic_sync_reattempt_clear(bool clear_sync_reattempt)
+{
+    memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
+    ble_conn_reattempt.adv_sid = 0;
+    ble_conn_reattempt.count = 0;
+    if (clear_sync_reattempt) {
+        ble_conn_reattempt.sync_reattempt = 0;
+    }
+    memset(&ble_conn_reattempt.periodic_params, 0,
+           sizeof(struct ble_gap_periodic_sync_params));
+}
+#endif
+
 void
 ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv_sync_estab *ev)
 {
@@ -2151,6 +2166,7 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
     void *cb_arg;
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
     int rc;
+    bool reattempt_triggered = false;
 #endif
     memset(&event, 0, sizeof event);
 
@@ -2170,9 +2186,7 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
         sync_handle = le16toh(ev->sync_handle);
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
-        if (ble_conn_reattempt.sync_reattempt) {
-            ble_conn_reattempt.sync_reattempt = 0;
-        }
+        ble_conn_reattempt.sync_reattempt = 0;
 #endif
         ble_gap_sync.psync->sync_handle = sync_handle;
         ble_gap_sync.psync->adv_sid = ev->sid;
@@ -2198,27 +2212,43 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
         ble_hs_periodic_sync_insert(ble_gap_sync.psync);
     } else {
         ble_hs_periodic_sync_free(ble_gap_sync.psync);
+        /* Set psync to NULL immediately after free to avoid dangling pointer */
+        ble_gap_sync.psync = NULL;
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
         if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
             if (ble_conn_reattempt.count < MAX_REATTEMPT_ALLOWED) {
                 ble_conn_reattempt.count += 1;
                 ble_conn_reattempt.sync_reattempt = 1;
+                reattempt_triggered = true;
+
+                ble_gap_sync.op = BLE_GAP_OP_NULL;
 
                 ble_hs_unlock();
 
-		/*Make application aware of the try */
-		ble_gap_reattempt_count(ev->sync_handle, ble_conn_reattempt.count);
+                /* Make application aware of the reattempt */
+                ble_gap_reattempt_count(ev->sync_handle, ble_conn_reattempt.count);
 
-		/*Cancel ongoing sync , if any */
-		ble_gap_periodic_adv_sync_create_cancel();
-               if (ble_gap_sync.op == BLE_GAP_OP_SYNC) {
-                   memset(&ble_gap_sync, 0, sizeof(ble_gap_sync));
-               }
+		rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr,
+                                              ble_conn_reattempt.adv_sid,
+                                              &ble_conn_reattempt.periodic_params,
+                                              ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
 
-		rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr, ble_conn_reattempt.adv_sid,
-                                                     &ble_conn_reattempt.periodic_params,
-                                                     ble_conn_reattempt.cb, ble_conn_reattempt.cb_arg);
                 if (rc != 0) {
+                    /* Create sync failed - must clean up reattempt state and notify app */
+                    ble_hs_lock();
+                    ble_gap_periodic_sync_reattempt_clear(true);
+
+                    cb = ble_gap_sync.cb;
+                    cb_arg = ble_gap_sync.cb_arg;
+                    ble_gap_sync.cb = NULL;
+                    ble_gap_sync.cb_arg = NULL;
+                    ble_hs_unlock();
+
+                    /* Notify application of final failure */
+                    ble_gap_event_listener_call(&event);
+                    if (cb) {
+                        cb(&event, cb_arg);
+                    }
                     return;
                 }
 
@@ -2238,16 +2268,11 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
      *
      * This suppresses intermediate sync callbacks during retry attempts.
      */
-    if (ble_conn_reattempt.count >= MAX_REATTEMPT_ALLOWED || !ev->status ||
-       (ble_conn_reattempt.count == 0 &&
-        ev->status != BLE_ERR_CONN_ESTABLISHMENT) ||
-        (ble_conn_reattempt.count > 0 &&
+    if (!reattempt_triggered &&
+       (ble_conn_reattempt.count >= MAX_REATTEMPT_ALLOWED || !ev->status ||
         ev->status != BLE_ERR_CONN_ESTABLISHMENT)) {
 
-        memset(&ble_conn_reattempt.periodic_addr, 0, sizeof(ble_addr_t));
-        ble_conn_reattempt.adv_sid = 0;
-        ble_conn_reattempt.count = 0;
-        memset(&ble_conn_reattempt.periodic_params, 0x0, sizeof(struct ble_gap_periodic_sync_params));
+        ble_gap_periodic_sync_reattempt_clear(false);
 #endif
         cb = ble_gap_sync.cb;
         cb_arg = ble_gap_sync.cb_arg;
