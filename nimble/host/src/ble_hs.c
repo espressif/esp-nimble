@@ -1129,7 +1129,6 @@ ble_hs_deinit(void)
 #if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
     ble_hs_resolv_deinit();
 #endif
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx) {
         ble_hs_ctx->parent_task = NULL;
@@ -1137,6 +1136,8 @@ ble_hs_deinit(void)
             nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
             ble_hs_ctx->hci_os_event_buf = NULL;
         }
+        os_mempool_unregister(&ble_hs_hci_ev_pool);
+        
         nimble_platform_mem_free(ble_hs_ctx);
         ble_hs_ctx = NULL;
     }

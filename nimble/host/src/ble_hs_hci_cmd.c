@@ -102,7 +102,11 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     if (rc == 0) {
         STATS_INC(ble_hs_stats, hci_cmd);
     } else {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_CMD, buf);
+#else
         ble_transport_free(buf);
+#endif
         BLE_HS_LOG(DEBUG, "ble_hs_hci_cmd_send failure; rc=%d\n", rc);
     }
 

@@ -3345,6 +3345,7 @@ ble_sm_deinit(void)
             ble_sm_proc_mem = NULL;
         }
 #endif
+        os_mempool_unregister(&ble_sm_proc_pool);
         nimble_platform_mem_free(ble_sm_ctx);
         ble_sm_ctx = NULL;
     }

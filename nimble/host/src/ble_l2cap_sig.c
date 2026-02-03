@@ -2196,6 +2196,7 @@ ble_l2cap_sig_init(void)
         if (!ble_l2cap_sig_proc_mem) {
             // free the allocated memory
             nimble_platform_mem_free(ble_l2cap_sig_ctx);
+            ble_l2cap_sig_ctx = NULL;
             return BLE_HS_ENOMEM;
         }
     }
@@ -2215,6 +2216,7 @@ ble_l2cap_sig_init(void)
         nimble_platform_mem_free(ble_l2cap_sig_proc_mem);
         ble_l2cap_sig_proc_mem = NULL;
 #endif
+        os_mempool_unregister(&ble_l2cap_sig_proc_pool);
         nimble_platform_mem_free(ble_l2cap_sig_ctx);
         ble_l2cap_sig_ctx = NULL;
 #endif
@@ -2228,13 +2230,14 @@ ble_l2cap_sig_init(void)
 void
 ble_l2cap_sig_deinit(void)
 {
-#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    if (ble_l2cap_sig_proc_mem) {
-        nimble_platform_mem_free(ble_l2cap_sig_proc_mem);
-        ble_l2cap_sig_proc_mem = NULL;
-    }
-#endif
     if (ble_l2cap_sig_ctx) {
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        if (ble_l2cap_sig_proc_mem) {
+            nimble_platform_mem_free(ble_l2cap_sig_proc_mem);
+            ble_l2cap_sig_proc_mem = NULL;
+        }
+#endif
+        os_mempool_unregister(&ble_l2cap_sig_proc_pool);
         nimble_platform_mem_free(ble_l2cap_sig_ctx);
         ble_l2cap_sig_ctx = NULL;
     }

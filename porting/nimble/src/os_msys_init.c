@@ -264,12 +264,14 @@ os_msys_buf_free(void)
             nimble_platform_mem_free(os_msys_ctx->init_1_data);
             os_msys_ctx->init_1_data = NULL;
         }
+        os_mempool_unregister(&os_msys_ctx->init_1_mempool);
 #endif
 #if OS_MSYS_2_BLOCK_COUNT > 0
         if (os_msys_ctx->init_2_data) {
             nimble_platform_mem_free(os_msys_ctx->init_2_data);
             os_msys_ctx->init_2_data = NULL;
         }
+        os_mempool_unregister(&os_msys_ctx->init_2_mempool);
 #endif
         nimble_platform_mem_free(os_msys_ctx);
         os_msys_ctx = NULL;
@@ -280,11 +282,13 @@ os_msys_buf_free(void)
 
     nimble_platform_mem_free(os_msys_init_1_data);
     os_msys_init_1_data = NULL;
+    os_mempool_unregister(&os_msys_init_1_mempool);
 #endif
 
 #if OS_MSYS_2_BLOCK_COUNT > 0
     nimble_platform_mem_free(os_msys_init_2_data);
     os_msys_init_2_data = NULL;
+    os_mempool_unregister(&os_msys_init_2_mempool);
 #endif
 #endif
 }

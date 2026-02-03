@@ -6540,6 +6540,7 @@ ble_gattc_init(void)
             nimble_platform_mem_free(ble_gattc_proc_mem);
             ble_gattc_proc_mem = NULL;
 #endif
+            os_mempool_unregister(&ble_gattc_proc_pool);
             memset(&ble_gattc_proc_pool, 0, sizeof(ble_gattc_proc_pool));
             return rc;
         }
@@ -6600,6 +6601,7 @@ ble_gattc_deinit(void)
         ble_gattc_proc_mem = NULL;
     }
 #endif
+    os_mempool_unregister(&ble_gattc_proc_pool);
     memset(&ble_gattc_proc_pool, 0, sizeof(ble_gattc_proc_pool));
     STAILQ_INIT(&ble_gattc_procs);
 #if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)

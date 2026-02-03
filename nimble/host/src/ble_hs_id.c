@@ -64,7 +64,7 @@ void ble_hs_id_ctx_free(void)
 {
     if (ble_hs_id_ctx) {
         nimble_platform_mem_free(ble_hs_id_ctx);
-	ble_hs_id_ctx = NULL;
+        ble_hs_id_ctx = NULL;
     }
 }
 #endif
