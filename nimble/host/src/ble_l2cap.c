@@ -623,6 +623,7 @@ ble_l2cap_init(void)
         nimble_platform_mem_free(ble_l2cap_chan_mem);
         ble_l2cap_chan_mem = NULL;
 #endif
+        os_mempool_unregister(&ble_l2cap_chan_pool);
         memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
 
         nimble_platform_mem_free(ble_l2cap_ctx);
@@ -662,6 +663,7 @@ done:
     nimble_platform_mem_free(ble_l2cap_chan_mem);
     ble_l2cap_chan_mem = NULL;
 #endif
+    os_mempool_unregister(&ble_l2cap_chan_pool);
     nimble_platform_mem_free(ble_l2cap_ctx);
     ble_l2cap_ctx = NULL;
 #endif
@@ -679,6 +681,7 @@ ble_l2cap_deinit(void)
             ble_l2cap_chan_mem = NULL;
         }
 #endif
+        os_mempool_unregister(&ble_l2cap_chan_pool);
         memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
 
         ble_l2cap_sig_deinit();

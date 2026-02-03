@@ -2365,28 +2365,33 @@ ble_gattc_cache_conn_free_mem(void)
         nimble_platform_mem_free(ble_gattc_cache_conn_mem);
         ble_gattc_cache_conn_mem = NULL;
     }
+    os_mempool_unregister(&ble_gattc_cache_conn_pool);
 
     if (ble_gattc_cache_conn_svc_mem) {
         nimble_platform_mem_free(ble_gattc_cache_conn_svc_mem);
         ble_gattc_cache_conn_svc_mem = NULL;
     }
+    os_mempool_unregister(&ble_gattc_cache_conn_svc_pool);
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
     if (ble_gattc_cache_conn_incl_svc_mem) {
         nimble_platform_mem_free(ble_gattc_cache_conn_incl_svc_mem);
         ble_gattc_cache_conn_incl_svc_mem = NULL;
     }
+    os_mempool_unregister(&ble_gattc_cache_conn_incl_svc_pool);
 #endif
 
     if (ble_gattc_cache_conn_chr_mem) {
         nimble_platform_mem_free(ble_gattc_cache_conn_chr_mem);
         ble_gattc_cache_conn_chr_mem = NULL;
     }
+    os_mempool_unregister(&ble_gattc_cache_conn_chr_pool);
 
     if (ble_gattc_cache_conn_dsc_mem) {
         nimble_platform_mem_free(ble_gattc_cache_conn_dsc_mem);
         ble_gattc_cache_conn_dsc_mem = NULL;
     }
+    os_mempool_unregister(&ble_gattc_cache_conn_dsc_pool);
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     }
