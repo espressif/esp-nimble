@@ -381,8 +381,14 @@ void ble_buf_free(void)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_trans_ctx) {
+        os_mempool_unregister(&pool_cmd);
+        os_mempool_unregister(&pool_evt);
+        os_mempool_unregister(&pool_evt_lo);
+#if POOL_ACL_COUNT > 0
+        os_mempool_unregister(&pool_acl.mpe_mp);
+#endif // POOL_ACL_COUNT > 0
         nimble_platform_mem_free(ble_trans_ctx);
-	ble_trans_ctx = NULL;
+        ble_trans_ctx = NULL;
     }
 #endif
 }

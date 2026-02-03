@@ -675,6 +675,8 @@ void ble_eatt_deinit(void)
         ble_eatt_conn_mem = NULL;
     }
 #endif
+    os_mempool_unregister(&ble_eatt_sdu_mbuf_mempool);
+    os_mempool_unregister(&ble_eatt_conn_pool);
     nimble_platform_mem_free(ble_eatt_ctx);
     ble_eatt_ctx = NULL;
 }

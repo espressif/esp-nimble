@@ -66,8 +66,16 @@ ble_transport_alloc_cmd(void)
     return r_ble_hci_trans_buf_alloc(ESP_HCI_INTERNAL_BUF_CMD);
 }
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+void
+ble_transport_free(uint8_t type, void *buf)
+{
+    r_ble_hci_trans_buf_free(buf);
+}
+#else
 void
 ble_transport_free(void *buf)
 {
     r_ble_hci_trans_buf_free(buf);
 }
+#endif // MYNEWT_VAL(MP_RUNTIME_ALLOC)

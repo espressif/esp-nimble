@@ -685,16 +685,17 @@ ble_hs_conn_init(void)
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-       nimble_platform_mem_free(ble_hs_conn_elem_mem);
-       ble_hs_conn_elem_mem = NULL;
+        nimble_platform_mem_free(ble_hs_conn_elem_mem);
+        ble_hs_conn_elem_mem = NULL;
 #endif
-       if (ble_hs_conn_ctx) {
-           nimble_platform_mem_free(ble_hs_conn_ctx);
-           ble_hs_conn_ctx = NULL;
-       }
-       memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
+        os_mempool_unregister(&ble_hs_conn_pool);
+        if (ble_hs_conn_ctx) {
+            nimble_platform_mem_free(ble_hs_conn_ctx);
+            ble_hs_conn_ctx = NULL;
+        }
+        memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
 #endif
-       return BLE_HS_EOS;
+        return BLE_HS_EOS;
     }
 
     SLIST_INIT(&ble_hs_conns);
@@ -716,6 +717,7 @@ ble_hs_conn_deinit(void)
         ble_hs_conn_elem_mem = NULL;
     }
 #endif
+    os_mempool_unregister(&ble_hs_conn_pool);
     memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
     nimble_platform_mem_free(ble_hs_conn_ctx);
     ble_hs_conn_ctx = NULL;

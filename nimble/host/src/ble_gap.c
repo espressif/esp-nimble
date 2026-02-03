@@ -9614,6 +9614,7 @@ err:
             ble_gap_update_entry_mem = NULL;
         }
 #endif
+        os_mempool_unregister(&ble_gap_update_entry_pool);
         nimble_platform_mem_free(ble_gap_vars);
         ble_gap_vars = NULL;
     }
@@ -10059,6 +10060,7 @@ ble_gap_deinit(void)
             ble_gap_update_entry_mem = NULL;
         }
 #endif
+        os_mempool_unregister(&ble_gap_update_entry_pool);
         nimble_platform_mem_free(ble_gap_vars);
         ble_gap_vars = NULL;
     }

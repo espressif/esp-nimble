@@ -1332,6 +1332,11 @@ _error:
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_freertos_ctx) {
+        os_mempool_unregister(&ble_freertos_mutex_pool);
+        os_mempool_unregister(&ble_freertos_sem_pool);
+        os_mempool_unregister(&ble_freertos_co_pool);
+        os_mempool_unregister(&ble_freertos_evq_pool);
+        os_mempool_unregister(&ble_freertos_ev_pool);
         nimble_platform_mem_free(ble_freertos_ctx);
         ble_freertos_ctx = NULL;
     }
@@ -1370,6 +1375,11 @@ void npl_freertos_mempool_deinit(void)
 #endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_freertos_ctx) {
+        os_mempool_unregister(&ble_freertos_mutex_pool);
+        os_mempool_unregister(&ble_freertos_sem_pool);
+        os_mempool_unregister(&ble_freertos_co_pool);
+        os_mempool_unregister(&ble_freertos_evq_pool);
+        os_mempool_unregister(&ble_freertos_ev_pool);
         nimble_platform_mem_free(ble_freertos_ctx);
 	    ble_freertos_ctx = NULL;
     }

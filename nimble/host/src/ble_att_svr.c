@@ -3409,6 +3409,11 @@ ble_att_svr_reset(void)
 {
     struct ble_att_svr_entry *entry;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_att_svr_ctx == NULL) {
+        return;
+    }
+#endif
     while ((entry = STAILQ_FIRST(&ble_att_svr_list)) != NULL) {
         STAILQ_REMOVE_HEAD(&ble_att_svr_list, ha_next);
         ble_att_svr_entry_free(entry);
@@ -3438,6 +3443,7 @@ ble_att_svr_free_start_mem(void)
         nimble_platform_mem_free(ble_att_svr_entry_mem);
         ble_att_svr_entry_mem = NULL;
     }
+    os_mempool_unregister(&ble_att_svr_entry_pool);
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     memset(&ble_att_svr_entry_pool, 0, sizeof(ble_att_svr_entry_pool));
 #endif
@@ -3458,7 +3464,7 @@ ble_att_svr_start(void)
     ble_att_svr_free_start_mem();
 
     if (ble_hs_max_attrs > 0) {
-        #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_att_svr_entry_mem = nimble_platform_mem_calloc(1,
             OS_MEMPOOL_BYTES(ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry)));
@@ -3466,8 +3472,7 @@ ble_att_svr_start(void)
             rc = BLE_HS_ENOMEM;
             goto err;
         }
-        #endif
-
+#endif
         rc = os_mempool_init(&ble_att_svr_entry_pool, ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry),
                              ble_att_svr_entry_mem, "ble_att_svr_entry_pool");
@@ -3499,6 +3504,7 @@ ble_att_svr_deinit(void)
         nimble_platform_mem_free(ble_att_svr_prep_entry_mem);
         ble_att_svr_prep_entry_mem = NULL;
     }
+    os_mempool_unregister(&ble_att_svr_prep_entry_pool);
     memset(&ble_att_svr_prep_entry_pool, 0, sizeof(ble_att_svr_prep_entry_pool));
     ble_att_svr_free_start_mem();
 
@@ -3534,7 +3540,7 @@ ble_att_svr_init(void)
      if (!ble_att_svr_prep_entry_mem) {
          return BLE_HS_ENOMEM;
      }
-#endif
+#endif // !MYNEWT_VAL(MP_RUNTIME_ALLOC)
 #endif
         rc = os_mempool_init(&ble_att_svr_prep_entry_pool,
                              MYNEWT_VAL(BLE_ATT_SVR_MAX_PREP_ENTRIES),
@@ -3547,6 +3553,7 @@ ble_att_svr_init(void)
             nimble_platform_mem_free(ble_att_svr_prep_entry_mem);
             ble_att_svr_prep_entry_mem = NULL;
 #endif
+            os_mempool_unregister(&ble_att_svr_prep_entry_pool);
             memset(&ble_att_svr_prep_entry_pool, 0,
                    sizeof(ble_att_svr_prep_entry_pool));
 #endif

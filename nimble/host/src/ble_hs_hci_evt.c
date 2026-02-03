@@ -361,7 +361,7 @@ void ble_hs_hci_ctx_free(void)
 {
     if (ble_hci_ctx) {
         nimble_platform_mem_free(ble_hci_ctx);
-	ble_hci_ctx = NULL;
+        ble_hci_ctx = NULL;
     }
 }
 #else
@@ -1655,6 +1655,7 @@ done:
 #else
     ble_transport_free((uint8_t *)ev);
 #endif
+// #endif // CONFIG_SOC_ESP_NIMBLE_CONTROLLER
 
     return rc;
 }

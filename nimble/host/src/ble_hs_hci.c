@@ -1044,7 +1044,7 @@ void ble_hs_hci_deinit(void)
 #endif
 
     /* Clean up mempool first to ensure blocks are free */
-    os_mempool_clear(&ble_hs_hci_frag_mempool);
+    os_mempool_unregister(&ble_hs_hci_frag_mempool);
 
     rc = ble_npl_mutex_deinit(&ble_hs_hci_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
