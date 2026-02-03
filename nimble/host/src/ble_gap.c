@@ -4295,9 +4295,18 @@ ble_gap_ext_adv_start(uint8_t instance, int duration, int max_events)
         return BLE_HS_EINVAL;
     }
 
-    if (ble_gap_slave[instance].op != BLE_GAP_OP_NULL) {
+    /*
+     * If extended advertising is already enabled for this instance, allow
+     * sending HCI_LE_Set_Extended_Advertising_Enable again. Per Core Spec
+     * (Vol 4, Part E, 7.8.56), re-sending enable while enabled resets the
+     * duration timer and event counter, and applies any random address changes.
+     *
+     * If some other GAP procedure is in progress, still reject with EALREADY.
+     */
+    if (ble_gap_slave[instance].op != BLE_GAP_OP_NULL &&
+        ble_gap_slave[instance].op != BLE_GAP_OP_S_ADV) {
         ble_hs_unlock();
-        return  BLE_HS_EALREADY;
+        return BLE_HS_EALREADY;
     }
 
     /* HD directed duration shall not be 0 or larger than >1.28s */
