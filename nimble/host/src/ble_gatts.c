@@ -1920,6 +1920,7 @@ ble_gatts_free_mem(void)
 #endif
         nimble_platform_mem_free(ble_gatts_clt_cfg_mem);
         ble_gatts_clt_cfg_mem = NULL;
+        os_mempool_unregister(&ble_gatts_clt_cfg_pool);
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     }
 #endif
@@ -1937,6 +1938,7 @@ ble_gatts_free_mem(void)
         nimble_platform_mem_free(ble_gatts_svc_entry_mem);
         ble_gatts_svc_entry_mem = NULL;
     }
+    os_mempool_unregister(&ble_gatts_svc_entry_pool);
 #else
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
    if (ble_hs_max_services > 0) {
@@ -2035,6 +2037,10 @@ ble_gatts_start(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_gatts_conn_aware_states == NULL) {
         ble_gatts_conn_aware_states = nimble_platform_mem_calloc(1, sizeof(struct ble_gatts_aware_state) * MYNEWT_VAL(BLE_STORE_MAX_BONDS));
+        if (ble_gatts_conn_aware_states == NULL) {
+            rc = BLE_HS_ENOMEM;
+            goto done;
+        }
     }
 #else
     memset(ble_gatts_conn_aware_states, 0, sizeof ble_gatts_conn_aware_states);
@@ -2098,6 +2104,7 @@ ble_gatts_start(void)
             goto done;
         }
     }
+
     ble_gatts_free_svc_defs();
 
     if (ble_gatts_num_cfgable_chrs == 0) {
@@ -3528,7 +3535,7 @@ ble_gatts_add_svcs(const struct ble_gatt_svc_def *svcs)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_gatts_ensure_ctx()) {
-	rc = BLE_HS_ENOMEM;
+        rc = BLE_HS_ENOMEM;
         goto done;
     }
 #endif

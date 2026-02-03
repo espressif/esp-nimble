@@ -239,6 +239,7 @@ ble_hs_periodic_sync_deinit(void)
         ble_hs_psync_elem_mem = NULL;
     }
 #endif
+    os_mempool_unregister(&ble_hs_periodic_sync_pool);
     memset(&ble_hs_periodic_sync_pool, 0, sizeof(ble_hs_periodic_sync_pool));
     nimble_platform_mem_free(ble_hs_periodic_ctx);
     ble_hs_periodic_ctx = NULL;
@@ -322,15 +323,16 @@ ble_hs_periodic_sync_init(void)
                          ble_hs_psync_elem_mem, "ble_hs_periodic_disc_pool");
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-        if (ble_hs_psync_elem_mem)
-        {
-            nimble_platform_mem_free(ble_hs_psync_elem_mem);
-            ble_hs_psync_elem_mem = NULL;
-        }
-#endif
         if (ble_hs_periodic_ctx)
         {
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
+            if (ble_hs_psync_elem_mem)
+            {
+                nimble_platform_mem_free(ble_hs_psync_elem_mem);
+                ble_hs_psync_elem_mem = NULL;
+            }
+#endif
+            os_mempool_unregister(&ble_hs_periodic_sync_pool);
             nimble_platform_mem_free(ble_hs_periodic_ctx);
             ble_hs_periodic_ctx = NULL;
         }

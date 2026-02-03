@@ -824,6 +824,7 @@ ble_l2cap_coc_init(void)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         nimble_platform_mem_free(ble_l2cap_coc_srv_mem);
 #endif
+        os_mempool_unregister(&ble_l2cap_coc_srv_pool);
         memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
         nimble_platform_mem_free(ble_l2cap_coc_ctx);
         ble_l2cap_coc_ctx = NULL;
@@ -843,6 +844,7 @@ void ble_l2cap_coc_deinit(void)
              ble_l2cap_coc_srv_mem = NULL;
         }
 #endif
+        os_mempool_unregister(&ble_l2cap_coc_srv_pool);
         memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
         STAILQ_INIT(&ble_l2cap_coc_srvs);
         nimble_platform_mem_free(ble_l2cap_coc_ctx);
