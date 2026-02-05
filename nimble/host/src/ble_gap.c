@@ -200,6 +200,7 @@ struct ble_gap_master_state {
             uint8_t using_wl:1;
             uint8_t our_addr_type:2;
             uint8_t cancel:1;
+            ble_addr_t peer_addr;
         } conn;
 
         struct {
@@ -1082,8 +1083,67 @@ ble_gap_master_reset_state(void)
     ble_gap_master.op = BLE_GAP_OP_NULL;
     ble_gap_master.exp_set = 0;
     ble_gap_master.conn.cancel = 0;
+    memset(&ble_gap_master.conn.peer_addr, 0,
+           sizeof(ble_gap_master.conn.peer_addr));
 
     ble_hs_timer_resched();
+}
+#endif
+
+#if NIMBLE_BLE_CONNECT
+static bool
+ble_gap_addr_type_equivalent(uint8_t a, uint8_t b)
+{
+    if (a == b) {
+        return true;
+    }
+
+    if ((a == BLE_ADDR_PUBLIC && b == BLE_ADDR_PUBLIC_ID) ||
+        (a == BLE_ADDR_PUBLIC_ID && b == BLE_ADDR_PUBLIC)) {
+        return true;
+    }
+
+    if ((a == BLE_ADDR_RANDOM && b == BLE_ADDR_RANDOM_ID) ||
+        (a == BLE_ADDR_RANDOM_ID && b == BLE_ADDR_RANDOM)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool
+ble_gap_master_conn_matches_slave_complete(const struct ble_gap_conn_complete *evt)
+{
+    ble_addr_t evt_addr;
+
+    if (ble_gap_master.op != BLE_GAP_OP_M_CONN || ble_gap_master.conn.using_wl) {
+        return false;
+    }
+
+    evt_addr.type = evt->peer_addr_type;
+    memcpy(evt_addr.val, evt->peer_addr, BLE_DEV_ADDR_LEN);
+
+    if (ble_gap_addr_type_equivalent(ble_gap_master.conn.peer_addr.type,
+                                     evt_addr.type) &&
+        memcmp(ble_gap_master.conn.peer_addr.val, evt_addr.val,
+               BLE_DEV_ADDR_LEN) == 0) {
+        return true;
+    }
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    if (ble_host_rpa_enabled()) {
+        ble_addr_t master_addr = ble_gap_master.conn.peer_addr;
+
+        ble_rpa_replace_peer_params_with_rl(master_addr.val,
+                                            &master_addr.type, NULL);
+        if (ble_gap_addr_type_equivalent(master_addr.type, evt_addr.type) &&
+            memcmp(master_addr.val, evt_addr.val, BLE_DEV_ADDR_LEN) == 0) {
+            return true;
+        }
+    }
+#endif
+
+    return false;
 }
 #endif
 
@@ -2761,6 +2821,7 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 #if NIMBLE_BLE_CONNECT
     struct ble_hs_conn *conn;
     int rc;
+    bool master_match = false;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     struct ble_hs_conn_addrs addrs;
 #endif
@@ -2821,6 +2882,11 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
             break;
         }
         return 0;
+    }
+
+    /* Simultaneous connect: accept matching slave connection as master success. */
+    if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
+        master_match = ble_gap_master_conn_matches_slave_complete(evt);
     }
 
     /* Apply the event to the existing connection if it exists. */
@@ -2885,7 +2951,13 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 #endif
         ble_gap_slave_reset_state(instance);
 #endif
-}
+
+        if (master_match) {
+            conn->bhc_cb = ble_gap_master.cb;
+            conn->bhc_cb_arg = ble_gap_master.cb_arg;
+            ble_gap_master_reset_state();
+        }
+    }
 
     conn->bhc_peer_addr.type = evt->peer_addr_type;
     memcpy(conn->bhc_peer_addr.val, evt->peer_addr, 6);
@@ -6992,6 +7064,12 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
     ble_gap_master.conn.our_addr_type = own_addr_type;
+    if (peer_addr != NULL) {
+        ble_gap_master.conn.peer_addr = *peer_addr;
+    } else {
+        memset(&ble_gap_master.conn.peer_addr, 0,
+               sizeof(ble_gap_master.conn.peer_addr));
+    }
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
@@ -7343,6 +7421,12 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
     ble_gap_master.conn.our_addr_type = own_addr_type;
+    if (peer_addr != NULL) {
+        ble_gap_master.conn.peer_addr = *peer_addr;
+    } else {
+        memset(&ble_gap_master.conn.peer_addr, 0,
+               sizeof(ble_gap_master.conn.peer_addr));
+    }
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
@@ -7514,6 +7598,12 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
     ble_gap_master.conn.our_addr_type = own_addr_type;
+    if (peer_addr != NULL) {
+        ble_gap_master.conn.peer_addr = *peer_addr;
+    } else {
+        memset(&ble_gap_master.conn.peer_addr, 0,
+               sizeof(ble_gap_master.conn.peer_addr));
+    }
 
     ble_gap_master.op = BLE_GAP_OP_M_CONN;
 
