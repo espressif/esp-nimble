@@ -353,12 +353,15 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         /* Read the power level from the controller if requested; otherwise use
          * the explicitly specified value.
          */
+#if !SOC_ESP_NIMBLE_CONTROLLER
         if (adv_fields->tx_pwr_lvl == BLE_HS_ADV_TX_PWR_LVL_AUTO) {
             rc = ble_hs_hci_util_read_adv_tx_pwr(&tx_pwr_lvl);
             if (rc != 0) {
                 return rc;
             }
-        } else {
+        } else
+#endif
+	{
             tx_pwr_lvl = adv_fields->tx_pwr_lvl;
         }
 
