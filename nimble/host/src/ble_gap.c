@@ -1693,8 +1693,6 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
         ble_gap_event_connect_call(conn_handle, BLE_HS_EAGAIN);
     }
 
-    ble_hs_atomic_conn_delete(conn_handle);
-
     ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
     if (conn != NULL) {
@@ -1704,6 +1702,8 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
         conn->bhc_max_rx_octets = 0;
     }
     ble_hs_unlock();
+
+    ble_hs_atomic_conn_delete(conn_handle);
 
     event.type = BLE_GAP_EVENT_DISCONNECT;
     event.disconnect.reason = reason;
