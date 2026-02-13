@@ -41,8 +41,6 @@ static uint8_t ble_hs_id_pub[6];
 static uint8_t ble_hs_id_rnd[6];
 #endif
 
-static const uint8_t ble_hs_misc_null_addr[6];
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 int
 ble_hs_id_ensure_ctx(void)
