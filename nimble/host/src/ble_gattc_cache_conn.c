@@ -185,9 +185,6 @@ ble_gattc_cache_conn_disc_dscs(struct ble_gattc_cache_conn *peer);
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-void
-ble_gattc_cache_conn_free_mem(void);
-
 static ble_gattc_cache_conn_static_vars_t *
 ble_gattc_cache_conn_static_vars_init(void)
 {
@@ -1466,10 +1463,6 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
 
     }
     os_memblock_put(&ble_gattc_cache_conn_pool, conn);
-
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ble_gattc_cache_conn_free_mem();
-#endif
 }
 
 void
@@ -2244,7 +2237,14 @@ ble_gattc_cache_conn_free_mem(void)
         nimble_platform_mem_free(ble_gattc_cache_conn_static_vars);
         ble_gattc_cache_conn_static_vars = NULL;
     }
+#endif
+}
 
+void
+ble_gattc_cache_conn_free_all_mem(void)
+{
+    ble_gattc_cache_conn_free_mem();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     ble_gattc_cache_free_mem();
 #endif
 }
@@ -2274,7 +2274,7 @@ ble_gattc_cache_conn_init()
     max_dscs = (MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) *
                (MYNEWT_VAL(BLE_GATT_CACHING_MAX_DSCS));
     /* Free memory first in case this function gets called more than once. */
-    ble_gattc_cache_conn_free_mem();
+    ble_gattc_cache_conn_free_all_mem();
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_gattc_cache_conn_static_vars == NULL) {
@@ -2377,7 +2377,7 @@ ble_gattc_cache_conn_init()
     return 0;
 
 err:
-    ble_gattc_cache_conn_free_mem();
+    ble_gattc_cache_conn_free_all_mem();
     return rc;
 }
 

@@ -253,6 +253,8 @@ int ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn);
 int ble_gatts_init(void);
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 int ble_gattc_cache_conn_init();
+void ble_gattc_cache_conn_free_mem();
+void ble_gattc_cache_conn_free_all_mem();
 #endif
 
 #ifdef __cplusplus
