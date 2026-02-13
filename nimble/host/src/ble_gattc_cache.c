@@ -879,6 +879,26 @@ ble_gattc_cache_free_mem(void)
 {
     if (ble_gattc_cache_static_vars) {
         if (cache_env) {
+            uint8_t num_addr = cache_env->num_addr;
+            if (num_addr > MAX_DEVICE_IN_CACHE) {
+                num_addr = MAX_DEVICE_IN_CACHE;
+            }
+
+            /* Close any open per-peer cache handles before releasing cache_env. */
+            if (cache_fn.close) {
+                for (uint8_t i = 0; i < num_addr; i++) {
+                    if (cache_env->cache_addr[i].is_open) {
+                        cache_fn.close(cache_env->cache_addr[i].cache_fp);
+                        cache_env->cache_addr[i].is_open = false;
+                    }
+                }
+
+                if (cache_env->is_open) {
+                    cache_fn.close(cache_env->addr_fp);
+                    cache_env->is_open = false;
+                }
+            }
+
             nimble_platform_mem_free(cache_env);
             cache_env = NULL;
         }
@@ -898,6 +918,7 @@ ble_gattc_cache_init(void *storage_cb)
     uint8_t *p_buf = NULL;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+   int no_cached_blob = 0;
    rc = ble_gattc_cache_static_vars_init();
    if (rc != 0) {
     return rc;
@@ -936,6 +957,17 @@ ble_gattc_cache_init(void *storage_cb)
                     BLE_HS_LOG(DEBUG, "%s, Line = %d, storage flash get blob data fail, err_code = 0x%x",
                                __func__, __LINE__, rc);
                 }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+                /*
+                 * rc == 0x1102 indicates NVS key not found.
+                 * This is expected scenario during first boot or
+                 * when no GATT cache exists yet and should not
+                 * be treated as a fatal error.
+                 */
+                if (rc == 0x1102){
+                    no_cached_blob = 1;
+                }
+#endif
                 goto error;
             }
 
@@ -971,12 +1003,17 @@ error:
         p_buf = NULL;
     }
     if (cache_env) {
+        /* Close NVS handle if it was opened before freeing cache_env */
+        if (cache_env->is_open && cache_fn.close) {
+            cache_fn.close(cache_env->addr_fp);
+            cache_env->is_open = false;
+        }
         nimble_platform_mem_free(cache_env);
         cache_env = NULL;
     }
 
- #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_gattc_cache_static_vars) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_static_vars && !no_cached_blob) {
         nimble_platform_mem_free(ble_gattc_cache_static_vars);
         ble_gattc_cache_static_vars = NULL;
     }
