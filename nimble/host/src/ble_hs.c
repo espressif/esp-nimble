@@ -1100,6 +1100,9 @@ ble_hs_deinit(void)
 #if MYNEWT_VAL(BLE_GATTC) || MYNEWT_VAL(BLE_GATTS)
     ble_gattc_deinit();
 #endif
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    ble_gattc_cache_conn_free_all_mem();
+#endif
 
     ble_l2cap_deinit();
 
