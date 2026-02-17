@@ -208,6 +208,14 @@ void ble_gap_rx_rd_all_remote_feat(const struct ble_hci_ev_le_subev_rd_all_rem_f
 void ble_gap_rx_rd_monitor_adv_report(const struct ble_hci_ev_le_subev_monitor_adv_report *ev);
 #endif
 
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+void ble_gap_rx_frame_space_update_complete(const struct ble_hci_ev_le_subev_frame_space_update_complete *ev);
+#endif
+
+#if MYNEWT_VAL(BLE_UTP_OTA)
+void ble_gap_rx_utp_receive(const struct ble_hci_ev_le_subev_utp_receive *ev, uint8_t len);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

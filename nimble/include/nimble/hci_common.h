@@ -1583,6 +1583,25 @@ struct ble_hci_le_enable_monitor_adv_cp {
     uint8_t enable;
 } __attribute__((packed));
 
+#define BLE_HCI_OCF_LE_FRAME_SPACE_UPDATE             (0x009D)
+struct ble_hci_le_frame_space_update_cp {
+    uint16_t conn_handle;
+    uint16_t frame_space_min;
+    uint16_t frame_space_max;
+    uint8_t  phys;
+    uint16_t spacing_types;
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_LE_ENABLE_UTP_OTA_MODE                (0x009F)
+struct ble_hci_le_enable_utp_ota_mode_cp {
+    uint8_t enable;
+} __attribute__((packed));
+
+#define BLE_HCI_OCF_LE_UTP_SEND                           (0x00A0)
+struct ble_hci_le_utp_send_cp {
+    uint8_t len;
+} __attribute__((packed));
+
 /* --- Vendor specific commands (OGF 0x003F) */
 /* Read Random Static Address */
 #define BLE_HCI_OCF_VS_RD_STATIC_ADDR                   (MYNEWT_VAL(BLE_HCI_VS_OCF_OFFSET) + (0x0001))
@@ -2606,6 +2625,23 @@ struct ble_hci_ev_le_subev_monitor_adv_report {
     uint8_t addr_type;
     uint8_t address[6];
     uint8_t condition;
+} __attribute__((packed));
+
+#define BLE_HCI_LE_SUBEV_FRAME_SPACE_UPDATE_COMPLETE      (0x35)
+struct ble_hci_ev_le_subev_frame_space_update_complete {
+    uint8_t  subev_code;
+    uint8_t  status;
+    uint16_t conn_handle;
+    uint8_t  initiator;
+    uint16_t frame_space;
+    uint8_t  phys;
+    uint16_t spacing_types;
+} __attribute__((packed));
+
+#define BLE_HCI_LE_SUBEV_UTP_RECEIVE                      (0x36)
+struct ble_hci_ev_le_subev_utp_receive {
+    uint8_t subev_code;
+    uint8_t len;
 } __attribute__((packed));
 
 #if (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)
