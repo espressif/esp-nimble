@@ -215,6 +215,12 @@ static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_cis_estab_v2;
 #if NIMBLE_BLE_CONNECT
 static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_rd_all_rem_feat;
 #endif
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_frame_space_update;
+#endif
+#if MYNEWT_VAL(BLE_UTP_OTA)
+static ble_hs_hci_evt_le_fn ble_hs_hci_evt_le_utp_receive;
+#endif
 #if MYNEWT_VAL(BLE_MONITOR_ADV)
 static ble_hs_hci_evt_le_fn ble_hci_ev_le_subev_monitor_adv_report;
 #endif
@@ -363,6 +369,12 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
 #endif
 #if MYNEWT_VAL(BLE_MONITOR_ADV)
     [BLE_HCI_LE_SUBEV_MONITOR_ADV_REPORT] = ble_hci_ev_le_subev_monitor_adv_report,
+#endif
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+    [BLE_HCI_LE_SUBEV_FRAME_SPACE_UPDATE_COMPLETE] = ble_hs_hci_evt_le_frame_space_update,
+#endif
+#if MYNEWT_VAL(BLE_UTP_OTA)
+    [BLE_HCI_LE_SUBEV_UTP_RECEIVE] = ble_hs_hci_evt_le_utp_receive,
 #endif
 };
 
@@ -1856,6 +1868,39 @@ ble_hs_hci_evt_le_rd_all_rem_feat(uint8_t subevent, const void *data,
     return 0;
 }
 
+#endif
+
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+static int
+ble_hs_hci_evt_le_frame_space_update(uint8_t subevent, const void *data, unsigned int len)
+{
+    /* FSU is strictly a connection-oriented feature.
+     * If connections are disabled, ignore the event or return error.
+     */
+#if NIMBLE_BLE_CONNECT
+    if (len != sizeof(struct ble_hci_ev_le_subev_frame_space_update_complete)) {
+        return BLE_HS_EBADDATA;
+    }
+    ble_gap_rx_frame_space_update_complete(data);
+    return 0;
+#else
+    return BLE_HS_ENOTSUP;
+#endif
+}
+#endif
+
+#if MYNEWT_VAL(BLE_UTP_OTA)
+static int
+ble_hs_hci_evt_le_utp_receive(uint8_t subevent, const void *data, unsigned int len)
+{
+    const struct ble_hci_ev_le_subev_utp_receive *ev = data;
+
+    if (len < sizeof(*ev) || len != (sizeof(*ev) + ev->len)) {
+        return BLE_HS_EBADDATA;
+    }
+    ble_gap_rx_utp_receive(data, (uint8_t)len);
+    return 0;
+}
 #endif
 
 #if MYNEWT_VAL(BLE_MONITOR_ADV)

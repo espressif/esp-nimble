@@ -186,6 +186,8 @@ struct hci_conn_update;
 #define BLE_GAP_EVENT_MONITOR_ADV_REPORT    52
 
 #define BLE_GAP_EVENT_CACHE_ASSOC           53
+#define BLE_GAP_EVENT_FRAME_SPACE_UPDATE    54
+#define BLE_GAP_EVENT_UTP_RECEIVE           55
 
 /* DTM events */
 #define BLE_GAP_DTM_TX_START_EVT            0
@@ -2037,6 +2039,54 @@ struct ble_gap_event {
             uint8_t condition;
 
         } monitor_adv_report;
+#endif
+
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+        /*
+         * Represents a change in the Inter-Frame Space (IFS).
+         */
+        struct {
+            /* The status of the frame space update attempt (0 on success). */
+            int status;
+
+            /* The handle of the connection where the update occurred. */
+            uint16_t conn_handle;
+
+            /*
+             * Indicates whether the local Host initiated the update.
+             * 0: Controller initiated
+             * 1: Local Host initiated
+             */
+            uint8_t initiator;
+
+            /* The new frame space value in microseconds. */
+            uint16_t frame_space;
+
+            /* Bitmask indicating the PHYs to which the frame space applies. */
+            uint8_t phys;
+
+            /* Bitmask indicating the spacing types. */
+            uint16_t spacing_types;
+        } frame_space_update;
+#endif
+
+#if MYNEWT_VAL(BLE_UTP_OTA)
+        /*
+         * Represents a received Unified Test Protocol (UTP) packet.
+         */
+        struct {
+            /* The connection handle associated with the packet.
+             * Note: Currently set to BLE_HS_CONN_HANDLE_NONE as the
+             * controller event does not provide a handle.
+             */
+            uint16_t conn_handle;
+
+            /* The length of the UTP data payload. */
+            uint8_t len;
+
+            /* Pointer to the UTP data payload. */
+            const uint8_t *data;
+        } utp_receive;
 #endif
     };
 };
@@ -4173,6 +4223,24 @@ int ble_gap_read_local_irk(uint8_t * out_irk);
  * return                0 on success; nonzero on failure
  */
 int ble_gap_set_host_feat(uint8_t bit_num,uint8_t bit_val);
+#endif
+
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+/* * Request a Frame Space Update.
+ * phys: Bitmask of PHYs (0=1M, 1=2M, 2=Coded)
+ * spacing_types: Bitmask of spacing types to update
+ */
+int ble_gap_frame_space_update(uint16_t conn_handle,
+                               uint16_t frame_space_min,
+                               uint16_t frame_space_max,
+                               uint8_t phys,
+                               uint16_t spacing_types);
+#endif
+
+#if MYNEWT_VAL(BLE_UTP_OTA)
+int ble_gap_enable_utp_ota_mode(uint8_t enable);
+
+int ble_gap_utp_send(uint8_t len, const uint8_t *data);
 #endif
 
 #ifdef __cplusplus

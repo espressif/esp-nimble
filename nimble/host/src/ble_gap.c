@@ -2501,6 +2501,59 @@ ble_gap_rx_rd_monitor_adv_report(const struct ble_hci_ev_le_subev_monitor_adv_re
 }
 #endif
 
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+void
+ble_gap_rx_frame_space_update_complete(const struct ble_hci_ev_le_subev_frame_space_update_complete *ev)
+{
+#if NIMBLE_BLE_CONNECT
+    struct ble_gap_event event;
+    uint16_t conn_handle;
+
+    conn_handle = le16toh(ev->conn_handle);
+
+    memset(&event, 0, sizeof(event));
+    event.type = BLE_GAP_EVENT_FRAME_SPACE_UPDATE;
+
+    event.frame_space_update.status = ev->status;
+    event.frame_space_update.conn_handle = conn_handle;
+    event.frame_space_update.initiator = ev->initiator;
+    event.frame_space_update.frame_space = le16toh(ev->frame_space);
+    event.frame_space_update.phys = ev->phys;
+    event.frame_space_update.spacing_types = le16toh(ev->spacing_types);
+
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
+}
+#endif
+
+#if MYNEWT_VAL(BLE_UTP_OTA)
+void
+ble_gap_rx_utp_receive(const struct ble_hci_ev_le_subev_utp_receive *ev, uint8_t len)
+{
+    struct ble_gap_event event;
+    const uint8_t *data_ptr;
+
+    if (len < sizeof(*ev)) {
+        return;
+    }
+
+    if (len < (sizeof(*ev) + ev->len)) {
+        return;
+    }
+
+    data_ptr = (const uint8_t *)ev + sizeof(*ev);
+
+    memset(&event, 0, sizeof(event));
+    event.type = BLE_GAP_EVENT_UTP_RECEIVE;
+    event.utp_receive.conn_handle = BLE_HS_CONN_HANDLE_NONE;
+    event.utp_receive.len = ev->len;
+    event.utp_receive.data = data_ptr;
+
+    ble_gap_event_listener_call(&event);
+}
+#endif
+
 void
 ble_gap_rx_adv_report(struct ble_gap_disc_desc *desc)
 {
@@ -10952,3 +11005,92 @@ bool ble_gap_rpa_resolve(uint8_t *rpa, uint8_t *ida, uint8_t *addr_type)
 
     return false; /* No match */
 }
+
+#if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
+int
+ble_gap_frame_space_update(uint16_t conn_handle,
+                           uint16_t frame_space_min,
+                           uint16_t frame_space_max,
+                           uint8_t phys,
+                           uint16_t spacing_types)
+{
+#if NIMBLE_BLE_CONNECT
+    struct ble_hci_le_frame_space_update_cp cmd;
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    ble_hs_unlock();
+
+    if (conn == NULL) {
+        return BLE_HS_ENOTCONN;
+    }
+
+    if (frame_space_min > 10000 || frame_space_max > 10000) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (frame_space_min > frame_space_max) {
+        return BLE_HS_EINVAL;
+    }
+
+    if ((phys & ~0x07) || (phys == 0)) {
+        return BLE_HS_EINVAL;
+    }
+
+    if ((spacing_types & ~0x1F) || (spacing_types == 0)) {
+        return BLE_HS_EINVAL;
+    }
+
+    cmd.conn_handle = htole16(conn_handle);
+    cmd.frame_space_min = htole16(frame_space_min);
+    cmd.frame_space_max = htole16(frame_space_max);
+    cmd.phys = phys;
+    cmd.spacing_types = htole16(spacing_types);
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_FRAME_SPACE_UPDATE), &cmd, sizeof(cmd), NULL, 0);
+#else
+    return BLE_HS_ENOTSUP;
+#endif
+}
+#endif
+
+#if MYNEWT_VAL(BLE_UTP_OTA)
+int
+ble_gap_enable_utp_ota_mode(uint8_t enable)
+{
+    struct ble_hci_le_enable_utp_ota_mode_cp cmd;
+
+    if (enable > 1) {
+        return BLE_HS_EINVAL;
+    }
+
+    cmd.enable = enable;
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_ENABLE_UTP_OTA_MODE), &cmd, sizeof(cmd), NULL, 0);
+}
+
+int
+ble_gap_utp_send(uint8_t len, const uint8_t *data)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_utp_send_cp) + 254];
+    struct ble_hci_le_utp_send_cp *cmd = (void *)buf;
+
+    if (len == 0 || len > 254) {
+        return BLE_HS_EINVAL;
+    }
+
+    cmd->len = len;
+
+    if (data == NULL)
+    {
+        return BLE_HS_EINVAL;
+    }
+    memcpy(buf + sizeof(*cmd), data, len);
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                             BLE_HCI_OCF_LE_UTP_SEND), cmd, sizeof(*cmd) + len, NULL, 0);
+}
+#endif
