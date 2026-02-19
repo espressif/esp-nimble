@@ -2493,6 +2493,10 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     ble_gattc_cache_conn_broken(conn_handle);
 #endif
+
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    ble_cs_connection_broken(conn_handle);
+#endif
     ble_hs_flow_connection_broken(conn_handle);
 
     ble_hs_lock();

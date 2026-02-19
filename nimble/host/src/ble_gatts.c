@@ -85,6 +85,17 @@ static const ble_uuid_t *uuid_caf =
 
 static const struct ble_gatt_svc_def **ble_gatts_svc_defs;
 
+#if MYNEWT_VAL(BLE_RAS_SERVICE)
+/* Optional CCCD write filter; NULL (default) keeps legacy behavior. */
+static ble_gatts_cccd_filter_fn *ble_gatts_cccd_filter_cb;
+
+void
+ble_gatts_cccd_filter_register(ble_gatts_cccd_filter_fn *fn)
+{
+    ble_gatts_cccd_filter_cb = fn;
+}
+#endif
+
 struct ble_gatts_svc_entry {
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     STAILQ_ENTRY(ble_gatts_svc_entry) next;
@@ -1070,6 +1081,9 @@ ble_gatts_clt_cfg_access_locked(struct ble_hs_conn *conn, uint16_t attr_handle,
     uint16_t flags;
     uint8_t gatt_op;
     uint8_t *buf;
+#if MYNEWT_VAL(BLE_RAS_SERVICE)
+    int rc;
+#endif
 
     /* Assume nothing needs to be persisted. */
     out_cccd->chr_val_handle = 0;
@@ -1131,6 +1145,17 @@ ble_gatts_clt_cfg_access_locked(struct ble_hs_conn *conn, uint16_t attr_handle,
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_REQ_NOT_SUPPORTED);
             return BLE_ATT_ERR_REQ_NOT_SUPPORTED;
         }
+
+#if MYNEWT_VAL(BLE_RAS_SERVICE)
+        if (ble_gatts_cccd_filter_cb != NULL) {
+            rc = ble_gatts_cccd_filter_cb(conn->bhc_handle, chr_val_handle,
+                                          flags);
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+                return rc;
+            }
+        }
+#endif
 
         if (clt_cfg->flags != flags) {
             clt_cfg->flags = flags;

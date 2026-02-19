@@ -74,7 +74,7 @@ static void hci_uart_rx_task(void *pvParameters)
             bzero(dtmp, RD_BUF_SIZE);
             ESP_LOGD(TAG, "uart[%d] event:", hci_uart.port);
             switch(event.type) {
-                //Event of UART receving data
+                //Event of UART receiving data
                 /*We'd better handler data event fast, there would be much more data events than
                 other types of events. If we take too much time on data event, the queue might
                 be full.*/
@@ -97,7 +97,7 @@ static void hci_uart_rx_task(void *pvParameters)
                 //Event of UART ring buffer full
                 case UART_BUFFER_FULL:
                     ESP_LOGI(TAG, "ring buffer full");
-                    // If buffer full happened, you should consider encreasing your buffer size
+                    // If buffer full happened, you should consider increasing your buffer size
                     // As an example, we directly flush the rx buffer here in order to read more data.
                     uart_flush_input(hci_uart.port);
                     xQueueReset(hci_uart.evt_queue);
@@ -158,12 +158,29 @@ int hal_uart_config(int uart, int32_t speed, uint8_t data_bits, uint8_t stop_bit
         return -1;
     }
 
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    /* Route the RTS/CTS GPIOs: uart_set_pin() with -1 leaves the peripheral's
+     * flow-control signals unconnected, so the Kconfig RTS/CTS pins would
+     * otherwise never be driven/sampled.  Channel Sounding needs the flow
+     * control to survive its HCI burst rate; builds without it keep the
+     * previous unconnected behaviour.
+     */
+    bool hwfc = (flow_ctl == HAL_UART_FLOW_CTL_RTS_CTS);
+    int rts_pin = hwfc ? CONFIG_BT_NIMBLE_HCI_UART_RTS_PIN : -1;
+    int cts_pin = hwfc ? CONFIG_BT_NIMBLE_HCI_UART_CTS_PIN : -1;
+#else
+    int rts_pin = -1;
+    int cts_pin = -1;
+#endif
     uart_config_t uart_cfg = {
         .baud_rate = speed,
         .data_bits = data_bits,
         .parity    = uart_parity,
         .stop_bits = stop_bits,
         .flow_ctrl = uart_flow_ctrl,
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+        .rx_flow_ctrl_thresh = UART_HW_FIFO_LEN(uart) - 1,
+#endif
         .source_clk = UART_SCLK_DEFAULT,
     };
     hci_uart.port = uart;
@@ -176,13 +193,16 @@ int hal_uart_config(int uart, int32_t speed, uint8_t data_bits, uint8_t stop_bit
 
     ESP_ERROR_CHECK(uart_driver_install(uart, BUF_SIZE * 2, BUF_SIZE * 2, 20, &hci_uart.evt_queue, intr_alloc_flags));
     ESP_ERROR_CHECK(uart_param_config(uart, &hci_uart.cfg));
-    ESP_ERROR_CHECK(uart_set_pin(uart, CONFIG_BT_NIMBLE_UART_TX_PIN, CONFIG_BT_NIMBLE_UART_RX_PIN, -1, -1));
+    ESP_ERROR_CHECK(uart_set_pin(uart, CONFIG_BT_NIMBLE_UART_TX_PIN, CONFIG_BT_NIMBLE_UART_RX_PIN, rts_pin, cts_pin));
 
     hci_uart.uart_opened=true;
     ESP_LOGI(TAG, "set uart pin tx:%d, rx:%d.\n", CONFIG_BT_NIMBLE_UART_TX_PIN, CONFIG_BT_NIMBLE_UART_RX_PIN);
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    ESP_LOGI(TAG, "set uart pin rts:%d, cts:%d, flow_ctrl:%d.\n", rts_pin, cts_pin, uart_cfg.flow_ctrl);
+#endif
     ESP_LOGI(TAG, "set baud_rate:%d.\n", speed);
 
-    //Create a task to handler UART event from ISR
+    //Create a task to handler UART event from ISR 
     if (xTaskCreate(hci_uart_rx_task, "hci_uart_rx_task", 2048, NULL, 12,
                     &hci_uart.rx_task_handler) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create UART RX task");
@@ -199,17 +219,52 @@ IRAM_ATTR
 #endif
 void hal_uart_start_tx(int uart_no)
 {
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    /* tx_char() consumes the byte it returns, so a byte the driver does not
+     * accept is lost and leaves a hole in the H4 packet.  uart_tx_chars() only
+     * fills the hardware FIFO and returns short once that is full, so write
+     * into the driver's TX ring buffer instead, batched to keep the call count
+     * down.
+     *
+     * The batch is filled straight from tx_char() and written in order, so it
+     * carries a contiguous run of one H4 stream.  Which stream that is belongs
+     * to the drain, not to the caller, and that holds whether the bytes leave
+     * one at a time or in batches: tx_char() returns the next byte of whatever
+     * packet heads the transport's queue and advances that packet's cursor
+     * outside the queue's own critical section, so draining this port is a
+     * single-threaded walk of one shared byte stream. */
+    uint8_t buf[64];
+    unsigned n = 0;
     int data;
-    uint8_t u8_data=0;
-    while(1){
+
+    while (1) {
+        data = hci_uart.tx_char(hci_uart.u_func_arg);
+        if (data < 0) {
+            break;
+        }
+        buf[n++] = (uint8_t)data;
+        if (n == sizeof(buf)) {
+            uart_write_bytes(uart_no, (const char *)buf, n);
+            n = 0;
+        }
+    }
+    if (n > 0) {
+        uart_write_bytes(uart_no, (const char *)buf, n);
+    }
+#else
+    int data;
+    uint8_t u8_data = 0;
+    while(1) {
         data = hci_uart.tx_char(hci_uart.u_func_arg);
         if (data >= 0) {
             u8_data = data;
-            uart_tx_chars(uart_no,(char*)&u8_data,1);
-        }else{
+            uart_tx_chars(uart_no, (char *)&u8_data, 1);
+        } else {
             break;
         }
     }
+#endif
+
     if(hci_uart.tx_done) {
         hci_uart.tx_done(hci_uart.u_func_arg);
     }

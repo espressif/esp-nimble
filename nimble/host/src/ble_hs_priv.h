@@ -49,6 +49,9 @@
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 #include "ble_gattc_cache_priv.h"
 #endif
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+#include "ble_cs_priv.h"
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -491,6 +491,27 @@ ble_hs_startup_set_evmask_tx(void)
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+/* Core 6.0 Vol 6, Part B, Section 4.6.33.4: the peer only starts the CS Security
+ * Start procedure once the Channel Sounding (Host Support) bit is set in the
+ * local FeatureSet.  The bit is set here, before any connection exists, so that
+ * every application does not have to remember to do it. */
+#define BLE_HS_STARTUP_HOST_FEAT_CS_BIT     (47)
+
+static int
+ble_hs_startup_set_cs_host_feat_tx(void)
+{
+    struct ble_hci_le_set_host_feature_cp cmd;
+
+    cmd.bit_num = BLE_HS_STARTUP_HOST_FEAT_CS_BIT;
+    cmd.bit_val = 1;
+
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_SET_HOST_FEATURE),
+                             &cmd, sizeof(cmd), NULL, 0);
+}
+#endif
+
 static int
 ble_hs_startup_reset_tx(void)
 {
@@ -597,6 +618,17 @@ ble_hs_startup_go(void)
         memset(&gen_key, 0, sizeof(gen_key));
         (void)ble_hs_cfg.store_gen_key_cb(BLE_STORE_GEN_KEY_IRK, &gen_key,
                                           BLE_HS_CONN_HANDLE_NONE);
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    /* Non-fatal on purpose: a controller that predates Channel Sounding
+     * rejects the bit, and the rest of the host is perfectly usable without
+     * it.  Only CS itself needs it. */
+    rc = ble_hs_startup_set_cs_host_feat_tx();
+    if (rc != 0) {
+        BLE_HS_LOG(WARN, "Failed to set CS host support feature bit rc=%d\n",
+                   rc);
     }
 #endif
 

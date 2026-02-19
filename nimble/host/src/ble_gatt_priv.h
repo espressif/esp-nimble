@@ -261,6 +261,36 @@ extern struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_S
 #endif
 
 
+#if MYNEWT_VAL(BLE_RAS_SERVICE)
+/**
+ * Callback invoked before a peer's CCCD write is committed, allowing a
+ * service to veto it (e.g. RAS returns 0xFD when the client tries to
+ * enable both On-Demand and Real-Time Ranging Data notifications).
+ *
+ * Called with the GATT server lock held - the callback must not call
+ * back into locked GATT server APIs (e.g. ble_gatts_read_cccd).
+ *
+ * @param conn_handle           Connection performing the write.
+ * @param chr_val_handle        Value handle of the characteristic whose
+ *                                  CCCD is being written.
+ * @param new_flags             The CCCD value being written.
+ *
+ * @return                      0 to accept the write; an ATT error code
+ *                                  (e.g. BLE_ATT_ERR_CCCD_IMPROPER_CONF)
+ *                                  to reject it, sent as the ATT response.
+ */
+typedef int ble_gatts_cccd_filter_fn(uint16_t conn_handle,
+                                     uint16_t chr_val_handle,
+                                     uint16_t new_flags);
+
+/**
+ * Registers the (single, optional) CCCD write filter.  Pass NULL to
+ * unregister.  When no filter is registered CCCD writes behave exactly
+ * as before.
+ */
+void ble_gatts_cccd_filter_register(ble_gatts_cccd_filter_fn *fn);
+#endif
+
 /*** @misc. */
 int ble_gatts_conn_can_alloc(void);
 int ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn);

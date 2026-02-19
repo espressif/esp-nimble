@@ -1521,7 +1521,7 @@ struct ble_hci_le_cs_create_config_cp {
     uint8_t channel_selection_type;
     uint8_t ch3c_shape;
     uint8_t ch3c_jump;
-    uint8_t companion_signal_enable;  /* Reserved/Companion_Signal_Enable field required by BT 6.0 spec */
+    uint8_t reserved; /* BT Core Spec v6.2: HCI_LE_CS_Create_Config octet 27, Reserved */
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_CS_REMOVE_CONFIG                  (0x0091)
@@ -1575,6 +1575,7 @@ struct ble_hci_le_cs_test_cp {
     uint8_t cs_sync_antenna_selection;
     uint8_t subevent_len[3];
     uint16_t subevent_interval;
+    uint8_t max_num_subevents;
     uint8_t transmit_power_level;
     uint8_t t_ip1_time;
     uint8_t t_ip2_time;
@@ -1582,8 +1583,11 @@ struct ble_hci_le_cs_test_cp {
     uint8_t t_pm_time;
     uint8_t t_sw_time;
     uint8_t tone_antenna_config_selection;
-    uint8_t companion_signal_enable;
+    uint8_t reserved;
+    uint8_t snr_control_initiator;
+    uint8_t snr_control_reflector;
     uint16_t drbg_nonce;
+    uint8_t channel_map_repetition;
     uint16_t override_config;
     uint8_t override_parameters_length;
     uint8_t override_parameters_data[];
@@ -2780,7 +2784,7 @@ struct ble_hci_ev_le_subev_cs_config_complete {
     uint8_t channel_selection_type;
     uint8_t ch3c_shape;
     uint8_t ch3c_jump;
-    uint8_t companion_signal_enable;
+    uint8_t reserved; /* RFU as of Core Spec v6.2 */
     uint8_t t_ip1_time;
     uint8_t t_ip2_time;
     uint8_t t_fcs_time;
