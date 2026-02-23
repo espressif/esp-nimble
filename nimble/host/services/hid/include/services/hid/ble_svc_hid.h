@@ -99,7 +99,7 @@ struct ble_svc_hid_params{
     uint8_t report_map[REPORT_MAP_SIZE];
     uint16_t report_map_handle;
     uint16_t external_rpt_ref;
-    uint8_t report_map_len;
+    uint16_t report_map_len;
 
     /* hid info char */
     uint32_t hid_info;

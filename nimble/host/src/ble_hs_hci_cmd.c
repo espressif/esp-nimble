@@ -20,7 +20,6 @@
 #include <assert.h>
 #include <string.h>
 #include <errno.h>
-#include <stdio.h>
 #include "os/os.h"
 #include "nimble/hci_common.h"
 #include "ble_hs_priv.h"
@@ -67,6 +66,9 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     int rc;
 
     cmd = (struct ble_hci_cmd *)ble_transport_alloc_cmd();
+    if (cmd == NULL) {
+        return BLE_HS_ENOMEM_EVT;
+    }
     BLE_HS_DBG_ASSERT(cmd != NULL);
 
     buf = (uint8_t *)cmd;
@@ -106,6 +108,7 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     if (rc == 0) {
         STATS_INC(ble_hs_stats, hci_cmd);
     } else {
+        ble_transport_free(buf);
         BLE_HS_LOG(DEBUG, "ble_hs_hci_cmd_send failure; rc=%d\n", rc);
     }
 

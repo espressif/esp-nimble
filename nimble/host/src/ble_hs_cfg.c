@@ -24,14 +24,26 @@ struct ble_hs_cfg ble_hs_cfg = {
     /** Security manager settings. */
     .sm_io_cap = MYNEWT_VAL(BLE_SM_IO_CAP),
     .sm_oob_data_flag = MYNEWT_VAL(BLE_SM_OOB_DATA_FLAG),
+    /* Note: If bonding is enabled, ensure key distribution is also enabled (BLE_SM_OUR/THEIR_KEY_DIST) */
     .sm_bonding = MYNEWT_VAL(BLE_SM_BONDING),
     .sm_mitm = MYNEWT_VAL(BLE_SM_MITM),
     .sm_sc = MYNEWT_VAL(BLE_SM_SC),
     .sm_sc_only = MYNEWT_VAL(BLE_SM_SC_ONLY),
     .sm_sec_lvl = MYNEWT_VAL(BLE_SM_SC_LVL),
     .sm_keypress = MYNEWT_VAL(BLE_SM_KEYPRESS),
+
+    /** EATT settings. */
+    .eatt = MYNEWT_VAL(BLE_EATT_CHAN_NUM),
+
+    /** Security manager settings (continued). */
     .sm_our_key_dist = MYNEWT_VAL(BLE_SM_OUR_KEY_DIST),
     .sm_their_key_dist = MYNEWT_VAL(BLE_SM_THEIR_KEY_DIST),
-    .eatt = MYNEWT_VAL(BLE_EATT_CHAN_NUM),
+
+    /** GATT caching settings. */
     .gatt_use_cache = MYNEWT_VAL(BLE_GATT_CACHING),
+
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    .sm_static_passkey = 0,
+    .sm_static_passkey_val = 0,
+#endif
 };

@@ -75,7 +75,7 @@ struct ble_hs_adv_fields;
  *                              Other nonzero on failure.
  */
 int ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
-                                   void *uid, int8_t measured_power);
+                                   const void *uid, int8_t measured_power);
 
 /**
  * Configures the device to advertise Eddystone URL beacons.
@@ -102,7 +102,7 @@ int ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
  *                              Other nonzero on failure.
  */
 int ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
-                                   uint8_t url_scheme, char *url_body,
+                                   uint8_t url_scheme, const char *url_body,
                                    uint8_t url_body_len, uint8_t suffix,
                                    int8_t measured_power);
 

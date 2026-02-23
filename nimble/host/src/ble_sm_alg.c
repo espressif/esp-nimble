@@ -288,6 +288,9 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
 
 exit:
     mbedtls_cipher_free(&ctx);
+    if (rc != 0) {
+        rc = BLE_HS_EUNKNOWN;
+    }
     return rc;
 }
 
@@ -402,7 +405,8 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(salt, ws, 32, t);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("t", t, 16);
@@ -416,7 +420,8 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(t, m, sizeof(m), mackey);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("mackey", mackey, 16);
@@ -428,14 +433,23 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(t, m, sizeof(m), ltk);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("ltk", ltk, 16);
 
     swap_in_place(ltk, 16);
+    rc = 0;
 
-    return 0;
+exit:
+    /* Zero sensitive key material from stack */
+    memset(ws, 0, sizeof(ws));
+    memset(t, 0, sizeof(t));
+    /* Use a memory barrier to prevent compiler from optimizing out the memsets */
+    __asm__ volatile("" : : "r"(ws), "r"(t) : "memory");
+
+    return rc;
 }
 
 int
@@ -465,16 +479,18 @@ ble_sm_alg_f6(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
     swap_buf(m + 48, iocap, 3);
 
     m[51] = a1t;
-    memcpy(m + 52, a1, 6);
     swap_buf(m + 52, a1, 6);
 
     m[58] = a2t;
-    memcpy(m + 59, a2, 6);
     swap_buf(m + 59, a2, 6);
 
     swap_buf(ws, w, 16);
 
     rc = ble_sm_alg_aes_cmac(ws, m, sizeof(m), check);
+
+    /* Zero sensitive key material from stack */
+    memset(ws, 0, sizeof(ws));
+
     if (rc != 0) {
         return BLE_HS_EUNKNOWN;
     }
@@ -604,22 +620,34 @@ exit:
             keypair_ptr = NULL;
         }
 #endif
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+	goto exit_cleanup;
     }
 
 #else
     if (uECC_valid_public_key(pk, uECC_secp256r1()) < 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+	goto exit_cleanup;
     }
 
     rc = uECC_shared_secret(pk, priv, dh, uECC_secp256r1());
     if (rc == TC_CRYPTO_FAIL) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+	goto exit_cleanup;
     }
 #endif
 
     swap_buf(out_dhkey, dh, 32);
-    return 0;
+    rc = 0;
+
+exit_cleanup:
+    /* Zero sensitive key material from stack */
+    memset(dh, 0, sizeof(dh));
+    memset(priv, 0, sizeof(priv));
+    /* Use a memory barrier to prevent compiler from optimizing out the memsets */
+    __asm__ __volatile__("" : : "r"(dh), "r"(priv) : "memory");
+
+    return rc;
 }
 
 /* based on Core Specification 4.2 Vol 3. Part H 2.3.5.6.1 */
@@ -653,6 +681,9 @@ mbedtls_gen_keypair(uint8_t *public_key, uint8_t *private_key)
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!keypair_ptr) {
         keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
+        if (!keypair_ptr) {
+            return BLE_HS_ENOMEM;
+        }
     }
 #endif
 

@@ -51,16 +51,34 @@ uint8_t ble_hs_pvcy_default_irk[16];
 uint16_t l_rpa_timeout;
 #endif
 
+#define BLE_MAX_RPA_TIMEOUT_VAL 0xA1B8
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_store_config_init(void);
+#endif
+
+const uint8_t *
+ble_hs_pvcy_get_default_irk(void)
+{
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx) {
+        return ble_hs_pvcy_ctx->pvcy_default_irk;
+    }
+    return NULL;
+#else
+    return ble_hs_pvcy_default_irk;
+#endif
+}
+
 static int
 ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
 {
-    struct ble_hci_le_set_rpa_tmo_cp cmd;
-
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     return ble_hs_resolv_set_rpa_tmo(timeout);
-#endif
+#else
+    struct ble_hci_le_set_rpa_tmo_cp cmd;
 
-    if (timeout == 0 || timeout > 0xA1B8) {
+    if (timeout == 0 || timeout > BLE_MAX_RPA_TIMEOUT_VAL) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -69,10 +87,16 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SET_RPA_TMO),
                              &cmd, sizeof(cmd), NULL, 0);
+#endif
 }
 
-int ble_hs_set_rpa_timeout (uint16_t timeout)
+int ble_hs_set_rpa_timeout(uint16_t timeout)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
     l_rpa_timeout = timeout;
 
     return ble_hs_pvcy_set_addr_timeout(l_rpa_timeout);
@@ -80,12 +104,22 @@ int ble_hs_set_rpa_timeout (uint16_t timeout)
 
 uint16_t ble_hs_get_rpa_timeout(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return 0;
+    }
+#endif
     return l_rpa_timeout;
 }
 
 void ble_hs_reset_rpa_timeout(void)
 {
-    l_rpa_timeout = 0 ;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return;
+    }
+#endif
+    l_rpa_timeout = 0;
 }
 
 #if (!MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
@@ -108,14 +142,18 @@ ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
     struct ble_hci_le_rmv_resolve_list_cp cmd;
     int rc;
 
+    BLE_HS_DBG_ASSERT(addr != NULL);
+
     if (addr_type > BLE_ADDR_RANDOM) {
-        addr_type = addr_type % 2;
+        addr_type %= 2;
     }
 
     cmd.peer_addr_type = addr_type;
     memcpy(cmd.peer_id_addr, addr, BLE_DEV_ADDR_LEN);
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_hs_lock();
     rc = ble_hs_resolv_list_rmv(addr_type, &cmd.peer_id_addr[0]);
+    ble_hs_unlock();
 #else
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
@@ -140,6 +178,9 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
 {
     struct ble_hci_le_add_resolv_list_cp cmd;
     int rc;
+
+    BLE_HS_DBG_ASSERT(addr != NULL);
+    BLE_HS_DBG_ASSERT(irk != NULL);
 
     if (addr_type > BLE_ADDR_RANDOM) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
@@ -218,6 +259,12 @@ ble_hs_pvcy_ensure_started(void)
 {
     int rc;
     uint16_t rpa_timeout;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     if (ble_hs_pvcy_started) {
         return 0;
@@ -309,7 +356,10 @@ void ble_hs_pvcy_set_default_irk(void)
 
         value_local_irk.addr.type = BLE_ADDR_PUBLIC;
 
-        ble_store_write_local_irk(&value_local_irk);
+        rc = ble_store_write_local_irk(&value_local_irk);
+        if (rc != 0) {
+            BLE_HS_LOG(WARN, "Failed to persist local IRK (rc=%d)", rc);
+        }
     }
 }
 
@@ -330,6 +380,12 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
     uint8_t tmp_addr[6];
     uint8_t new_irk[16];
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     if (irk != NULL) {
         memcpy(new_irk, irk, 16);
@@ -379,9 +435,9 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
       * such case. Peer IRK should be left all-zero since this is not for an
       * actual peer.
       */
+    uint8_t zero_irk[16] = {0};
     memset(tmp_addr, 0, 6);
-    memset(new_irk, 0, 16);
-    rc = ble_hs_pvcy_add_entry(tmp_addr, 0, new_irk);
+    rc = ble_hs_pvcy_add_entry(tmp_addr, 0, zero_irk);
     if (rc != 0) {
         return rc;
     }
@@ -395,6 +451,16 @@ ble_hs_pvcy_our_irk(const uint8_t **out_irk)
 {
     /* XXX: Return error if privacy not supported. */
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
+
+    if (out_irk == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
     *out_irk = ble_hs_pvcy_irk;
     return 0;
 }
@@ -403,6 +469,10 @@ int
 ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
 {
     struct ble_hci_le_set_privacy_mode_cp cmd;
+
+    if (addr == NULL) {
+        return BLE_HS_EINVAL;
+    }
 
     if (addr->type > BLE_ADDR_RANDOM) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
@@ -421,6 +491,11 @@ ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
 bool
 ble_hs_pvcy_enabled(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        return false;
+    }
+#endif
     return ble_hs_pvcy_started;
 }
 

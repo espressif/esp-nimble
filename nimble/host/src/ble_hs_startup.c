@@ -40,7 +40,7 @@ ble_hs_startup_read_sup_f_tx(void)
     /* for now we don't use it outside of init sequence so check this here
      * LE Supported (Controller) byte 4, bit 6
      */
-    if (!(le64toh(rsp.features) & 0x0000006000000000)) {
+    if (!(le64toh(rsp.features) & 0x0000004000000000)) {
         BLE_HS_LOG(ERROR, "Controller doesn't support LE\n");
         return BLE_HS_ECONTROLLER;
     }
@@ -76,7 +76,7 @@ ble_hs_startup_le_read_sup_f_tx(void)
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_RD_LOC_SUPP_FEAT),
-                           NULL,0, &rsp, sizeof(rsp));
+                           NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
         return rc;
     }
@@ -171,7 +171,10 @@ ble_hs_startup_read_bd_addr(void)
         return rc;
     }
 
-    ble_hs_id_set_pub(rsp.addr);
+    rc = ble_hs_id_set_pub(rsp.addr);
+    if (rc != 0) {
+        return rc;
+    }
     return 0;
 }
 
@@ -316,15 +319,15 @@ ble_hs_startup_le_set_evmask_tx(void)
 
     if (version >= BLE_HCI_VER_BCS_6_0) {
         /**
-	 * Enable following LE events:
-	 * 0x0000040000000000 LE Read All Remote Features Complete event
-	 * 0x0008000000000000 LE Monitored Advertisers Report event
-	 */
+         * Enable following LE events:
+         * 0x0000040000000000 LE Read All Remote Features Complete event
+         * 0x0008000000000000 LE Monitored Advertisers Report event
+         */
 #if MYNEWT_VAL(BLE_MONITOR_ADV)
         mask |= 0x0008000000000000;
 #endif
 
-	mask |= 0x0000040000000000;
+        mask |= 0x0000040000000000;
     }
 
     cmd.event_mask = htole64(mask);
@@ -456,7 +459,9 @@ ble_hs_startup_go(void)
     ble_hs_pvcy_set_our_irk(NULL);
 #endif
 
-    /* If flow control is enabled, configure the controller to use it. */
+    /* If flow control is enabled, configure the controller to use it.
+     * Ignore return code (flow control failure is non-fatal).
+     */
     ble_hs_flow_startup();
 
     return 0;

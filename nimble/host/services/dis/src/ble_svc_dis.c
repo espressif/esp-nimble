@@ -200,7 +200,7 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
 #if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM) >= 0)
     case BLE_SVC_DIS_CHR_UUID16_MODEL_NUMBER:
         info = ble_svc_dis_data.model_number;
-#ifdef MYNEWT_VAL_BLE_SVC_DIS_MODEL_NUMBER_NAME_DEFAULT
+#ifdef MYNEWT_VAL_BLE_SVC_DIS_MODEL_NUMBER_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_DEFAULT);
         }
@@ -265,19 +265,43 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
             info = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT);
         }
 #endif
-        break;
+        {
+            if (info == NULL) {
+                uint8_t zeroed_sysid[8] = {0};
+                int rc = os_mbuf_append(ctxt->om, zeroed_sysid, 8);
+                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            }
+            /* Ensure we don't over-read if the provided data is shorter than 8 bytes */
+            uint8_t sysid[8] = {0};
+            size_t len = strlen(info);
+            if (len > 8) len = 8;
+            memcpy(sysid, info, len);
+            int rc = os_mbuf_append(ctxt->om, sysid, 8);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
 #endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
     case BLE_SVC_DIS_CHR_UUID16_PNP_ID:
         info = ble_svc_dis_data.pnp_id;
-#ifdef MYNEWT_VAL_BLE_SVC_PNP_SYSTEM_ID_DEFAULT
+#ifdef MYNEWT_VAL_BLE_SVC_DIS_PNP_ID_DEFAULT
         if (info == NULL) {
-            info = MYNEWT_VAL(BLE_SVC_PNP_SYSTEM_ID_DEFAULT);
+            info = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT);
         }
 #endif
-        uint8_t flag = 0x01;
-        os_mbuf_append(ctxt->om, &flag, sizeof flag);
-        break;
+        {
+            if (info == NULL) {
+                uint8_t zeroed_pnpid[7] = {0};
+                int rc = os_mbuf_append(ctxt->om, zeroed_pnpid, 7);
+                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            }
+            /* Ensure we don't over-read if the provided data is shorter than 7 bytes */
+            uint8_t pnpid[7] = {0};
+            size_t len = strlen(info);
+            if (len > 7) len = 7;
+            memcpy(pnpid, info, len);
+            int rc = os_mbuf_append(ctxt->om, pnpid, 7);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
 #endif
     case BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST:
         info = ble_svc_dis_data.ieee;
@@ -287,12 +311,12 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
         info = ble_svc_dis_data.udi;
         if (info == NULL) {
             uint8_t flag = 0x00;
-            os_mbuf_append(ctxt->om, &flag, sizeof(flag));
+            int rc = os_mbuf_append(ctxt->om, &flag, sizeof(flag));
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
         break;
 
     default:
-        assert(0);
         return BLE_ATT_ERR_UNLIKELY;
     }
 
@@ -453,6 +477,12 @@ void
 ble_svc_dis_deinit(void)
 {
     ble_gatts_free_svcs();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr != NULL) {
+        nimble_platform_mem_free(ble_svc_dis_data_ptr);
+        ble_svc_dis_data_ptr = NULL;
+    }
+#endif
 }
 
 /**
@@ -466,7 +496,7 @@ ble_svc_dis_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_dis_data_ptr != NULL) {
         nimble_platform_mem_free(ble_svc_dis_data_ptr);
-	ble_svc_dis_data_ptr = NULL;
+        ble_svc_dis_data_ptr = NULL;
     }
 
     rc = ble_svc_dis_init_dynamic();

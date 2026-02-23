@@ -19,7 +19,7 @@
 
 /**
  * This file implements a simple in-RAM key database for BLE host security
- * material and CCCDs.  As this database is only ble_store_ramd in RAM, its
+ * material and CCCDs.  As this database is only stored in RAM, its
  * contents are lost when the application terminates.
  */
 
@@ -211,14 +211,15 @@ ble_store_ram_write_our_sec(const struct ble_store_value_sec *value_sec)
 
 }
 
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) || MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) || MYNEWT_VAL(BLE_STORE_MAX_CCCDS) || \
+    MYNEWT_VAL(BLE_STORE_MAX_CSFCS) || MYNEWT_VAL(ENC_ADV_DATA)
 static int
 ble_store_ram_delete_obj(void *values, int value_size, int idx,
                          int *num_values)
 {
     uint8_t *dst;
     uint8_t *src;
-    uint8_t move_count;
+    int move_count;
 
     (*num_values)--;
     if (idx < *num_values) {
@@ -227,7 +228,7 @@ ble_store_ram_delete_obj(void *values, int value_size, int idx,
         src = dst + value_size;
 
         move_count = *num_values - idx;
-        memmove(dst, src, move_count);
+        memmove(dst, src, (size_t)move_count * value_size);
     }
 
     return 0;

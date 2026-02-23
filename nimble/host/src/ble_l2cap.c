@@ -631,7 +631,8 @@ ble_l2cap_init(void)
         STATS_HDR(ble_l2cap_stats), STATS_SIZE_INIT_PARMS(ble_l2cap_stats,
         STATS_SIZE_32), STATS_NAME_INIT_PARMS(ble_l2cap_stats), "ble_l2cap");
     if (rc != 0) {
-        return BLE_HS_EOS;
+        rc = BLE_HS_EOS;
+        goto done;
     }
 
     return 0;
@@ -659,13 +660,14 @@ ble_l2cap_deinit(void)
         }
 #endif
         memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
-    }
-    ble_l2cap_sig_deinit();
-    ble_l2cap_coc_deinit();
-    ble_sm_deinit();
 
-    nimble_platform_mem_free(ble_l2cap_ctx);
-    ble_l2cap_ctx = NULL;
+        ble_l2cap_sig_deinit();
+        ble_l2cap_coc_deinit();
+        ble_sm_deinit();
+
+        nimble_platform_mem_free(ble_l2cap_ctx);
+        ble_l2cap_ctx = NULL;
+    }
 }
 #endif
 

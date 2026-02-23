@@ -40,7 +40,12 @@ void os_msys_buf_free(void);
 #else
 #define POOL_CMD_COUNT      (1)
 #endif
+
+#if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
+#define POOL_CMD_SIZE       (259)
+#else
 #define POOL_CMD_SIZE       (258)
+#endif
 
 #define POOL_EVT_COUNT      (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT))
 #define POOL_EVT_LO_COUNT   (MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))

@@ -1432,9 +1432,8 @@ ble_gattc_ticks_until_resume(void)
     }
 
     now = ble_npl_time_get();
-    diff = ble_gattc_resume_at - now;
+    diff = (int32_t)(ble_gattc_resume_at - now);
     if (diff <= 0) {
-        /* Timer already expired; resume immediately. */
         return 0;
     }
 
@@ -1575,7 +1574,7 @@ ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status)
                                          proc->write_long.attr.offset, om,
                                          proc->write_long.cb, proc->write_long.cb_arg);
                     break;
-		case BLE_GATT_OP_WRITE_RELIABLE:
+                case BLE_GATT_OP_WRITE_RELIABLE:
                     for (int i = 0; i < proc->write_reliable.num_attrs; i++) {
                         attrs[i].handle = proc->write_reliable.attrs[i].handle;
                         attrs[i].offset = 0;
@@ -2348,6 +2347,9 @@ ble_gattc_find_inc_svcs_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     /* Report discovered service to application. */
     service.start_handle = proc->find_inc_svcs.cur_start;
     service.end_handle = proc->find_inc_svcs.cur_end;
+#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+    service.handle = proc->find_inc_svcs.prev_handle;
+#endif
 
     rc = ble_gattc_find_inc_svcs_cb(proc, 0, 0, &service);
     if (rc != 0) {
@@ -3240,13 +3242,19 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
     }
 
 done:
-    if (rc != 0) {
-        STATS_INC(ble_gattc_stats, disc_all_dscs_fail);
+    /* One ble_gattc_proc cannot be part of multiple linked lists.
+     * Hence it needs to be removed before going into ble_gattc_process_status.
+     */
 #if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    if (proc != NULL) {
         ble_hs_lock();
         STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
         ble_hs_unlock();
+    }
 #endif
+
+    if (rc != 0) {
+        STATS_INC(ble_gattc_stats, disc_all_dscs_fail);
     }
 
     ble_gattc_process_status(proc, rc);
@@ -5362,28 +5370,37 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
 
     int rc = 0;
     int i = 0;
+    int last_appended_idx = 0;
     uint16_t cur_chr_cnt = 0;
     /* mtu = MTU - 1 octet (OP code) */
     uint16_t mtu = ble_att_mtu(conn_handle) - 1;
     struct os_mbuf *txom;
     struct ble_hs_conn *conn;
+    bool free_unused_tuples = false;
 
     txom = ble_hs_mbuf_att_pkt();
     if (txom == NULL) {
         return BLE_HS_ENOMEM;
     }
 
+    ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
     if (conn == NULL) {
-        return ENOTCONN;
+        ble_hs_unlock();
+        os_mbuf_free_chain(txom);
+        return BLE_HS_ENOTCONN;
     }
+
+    /* Read peer client supported features under lock */
+    uint8_t peer_supports_multi_notify = (conn->bhc_gatt_svr.peer_cl_sup_feat[0] & 0x04);
+    ble_hs_unlock();
 
     STATS_INC(ble_gattc_stats, multi_notify);
     ble_gattc_log_multi_notify(tuples, chr_count);
 
     /* Read missing values */
     for (i = 0; i < chr_count; i++) {
-        if (tuples->handle == 0) {
+        if (tuples[i].handle == 0) {
             rc = BLE_HS_EINVAL;
             goto done;
         }
@@ -5393,7 +5410,8 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
              */
             rc = ble_att_svr_read_local(tuples[i].handle, &tuples[i].value);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "Attribute read failed (err=0x%02x), rc");
+                BLE_HS_LOG(ERROR, "Attribute read failed (err=0x%02x)", rc);
+                free_unused_tuples = true;
                 goto done;
             }
         }
@@ -5401,7 +5419,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
 
     /* If peer does not support fall back to multiple single value
      * Notifications */
-    if ((conn->bhc_gatt_svr.peer_cl_sup_feat[0] & 0x04) == 0) {
+    if (peer_supports_multi_notify == 0) {
         for (i = 0; i < chr_count; i++) {
             rc = ble_att_clt_tx_notify(conn_handle, tuples[i].handle, tuples[i].value);
             if (rc != 0) {
@@ -5428,7 +5446,8 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
             /* buffer was consumed, allocate new one */
             txom = ble_hs_mbuf_att_pkt();
             if (txom == NULL) {
-                return BLE_HS_ENOMEM;
+                rc = BLE_HS_ENOMEM;
+                goto done;
             }
         }
 
@@ -5442,20 +5461,35 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
         /* Value */
         os_mbuf_concat(txom, tuples[i].value);
         cur_chr_cnt++;
+        last_appended_idx = i;  /* Track the last appended index */
     }
 
     if (cur_chr_cnt == 1) {
-        rc = ble_att_clt_tx_notify(conn_handle, tuples[chr_count].handle,
-                                   tuples[chr_count].value);
+        /* Use the last appended index, not chr_count which may be out of bounds */
+        rc = ble_att_clt_tx_notify(conn_handle, tuples[last_appended_idx].handle,
+                                   tuples[last_appended_idx].value);
     } else {
         rc = ble_att_clt_tx_notify_mult(conn_handle, txom);
     }
 
 done:
     if (rc != 0) {
+        /* Free any mbufs that were allocated by ble_att_svr_read_local */
+        for (i = 0; i < chr_count; i++) {
+            os_mbuf_free_chain(tuples[i].value);
+            tuples[i].value = NULL;
+        }
         STATS_INC(ble_gattc_stats, multi_notify_fail);
+        if (free_unused_tuples) {
+            for (i = 0; i < chr_count; i++) {
+                if (tuples[i].value != NULL) {
+                    os_mbuf_free_chain(tuples[i].value);
+                }
+            }
+        }
     }
 
+    os_mbuf_free_chain(txom);
     /* Tell the application that multiple notification transmissions were attempted. */
     for (i = 0; i < chr_count; i++) {
         ble_gap_notify_tx_event(rc, conn_handle, tuples[i].handle, 0);
@@ -5878,14 +5912,16 @@ ble_gattc_rx_err(uint16_t conn_handle, uint16_t cid, uint16_t handle, uint16_t s
 
     proc = ble_gattc_extract_first_by_conn_cid_op(conn_handle, cid, BLE_GATT_OP_NONE);
 #if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
-    ble_gap_conn_find(conn_handle, &desc);
-    proc->error.att_handle = handle;
-    proc->error.status = status;
+    if (proc != NULL) {
+        ble_gap_conn_find(conn_handle, &desc);
+        proc->error.att_handle = handle;
+        proc->error.status = status;
+    }
 #endif
 
     if (proc != NULL) {
 #if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
-        if (desc.sec_state.encrypted == 0 &&
+        if (proc != NULL && desc.sec_state.encrypted == 0 &&
             (status == BLE_ATT_ERR_INSUFFICIENT_ENC ||
              status == BLE_ATT_ERR_INSUFFICIENT_AUTHEN)) {
             rc = ble_gap_security_initiate(conn_handle);
@@ -6293,12 +6329,13 @@ ble_gattc_connection_broken(uint16_t conn_handle)
 
     ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
-    ble_hs_unlock();
-
-    while ((omp = STAILQ_FIRST(&conn->att_tx_q)) != NULL) {
-        STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
-        os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
+    if (conn != NULL) {
+        while ((omp = STAILQ_FIRST(&conn->att_tx_q)) != NULL) {
+            STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
+            os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
+        }
     }
+    ble_hs_unlock();
 }
 
 /**

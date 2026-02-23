@@ -28,7 +28,9 @@
 #include "nimble/hci_common.h"
 #include "esp_nimble_mem.h"
 
+#ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
 
 static uint16_t ble_svc_ras_feat_val_handle;
 static uint32_t ble_svc_ras_feat_val;
@@ -45,6 +47,7 @@ static uint8_t  ble_svc_ras_cp_val[RASCP_CMD_OPCODE_LEN + sizeof(uint16_t)] ;
 
 static uint16_t ble_svc_ras_od_rd_val_handle;
 static struct segment *ble_svc_ras_od_rd_val;
+static uint16_t ble_svc_ras_od_rd_seg_len;
 
 static uint16_t ble_svc_ras_rt_rd_val_handle;
 static uint16_t ble_svc_ras_rt_rd_val;
@@ -61,7 +64,7 @@ void ble_gatts_indicate_ranging_data_ready(uint16_t ranging_counter)
 
 void ble_gatts_indicate_control_point_response(uint16_t attr_handle , uint16_t ranging_counter)
 {
-    /* Indication control point reponse only when all the idication for on_demad_rd is sent for all segments;*/
+    /* Indication control point response only when all the indication for on_demand_rd is sent for all segments */
     if (attr_handle == ble_svc_ras_od_rd_val_handle) {
         MODLOG_DFLT(INFO, "Indicate control point response\n");
         ble_svc_ras_cp_val[0] = RASCP_RSP_OPCODE_COMPLETE_RD_RSP;
@@ -94,14 +97,11 @@ static void reset_ranging_buffer(void)
         ranging_buffers[i].subevent_cursor = 0;
     }
 }
-struct ranging_buffer *ranging_buffer_alloc(uint16_t conn_handle , uint16_t ranging_counter)
+struct ranging_buffer *ranging_buffer_alloc(uint16_t conn_handle, uint16_t ranging_counter)
 {
-    uint16_t conn_buffer_count = 0;
-
-    for (uint8_t i = 0; i < sizeof(ranging_buffers)/sizeof(ranging_buffers[0]) ; i++) {
+    for (uint8_t i = 0; i < sizeof(ranging_buffers)/sizeof(ranging_buffers[0]); i++) {
         if (ranging_buffers[i].conn == -1) {
-            conn_buffer_count++;
-            ranging_buffer_init(conn_handle, &ranging_buffers[i] , ranging_counter);
+            ranging_buffer_init(conn_handle, &ranging_buffers[i], ranging_counter);
             return &ranging_buffers[i];
         }
     }
@@ -221,7 +221,7 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                             attr_handle);
             }
 
-	    uuid = ble_uuid_u16(ctxt->chr->uuid);
+            uuid = ble_uuid_u16(ctxt->chr->uuid);
             if (uuid == BLE_SVC_RAS_CHR_UUID_FEATURES_VAL) {
                 ble_svc_ras_feat_val |= RETRIEVE_LST_SEG_BIT | ABORT_OP_BIT | FLTR_RANGING_DATA_BIT;
                 MODLOG_DFLT(INFO, "ble_svc_ras_feat_val = %02x\n",ble_svc_ras_feat_val);
@@ -241,13 +241,15 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                 }
             }
             else if (uuid == BLE_SVC_RAS_CHR_UUID_ONDEMAND_RD_VAL) {
-                // print the segament data
-                MODLOG_DFLT(INFO,"ble_svc_ras_od_rd_val\n");
-                MODLOG_DFLT(INFO, "ble_svc_ras_od_rd_val.data = %2x %02x %02x \n",ble_svc_ras_od_rd_val->header.first_seg,ble_svc_ras_od_rd_val->header.last_seg,ble_svc_ras_od_rd_val->header.seg_counter);
+                /* print the segment data */
+                if (ble_svc_ras_od_rd_val == NULL) {
+                    return BLE_ATT_ERR_UNLIKELY;
+                }
+                MODLOG_DFLT(INFO, "ble_svc_ras_od_rd_val\n");
                 if (attr_handle == ble_svc_ras_od_rd_val_handle) {
                     rc = os_mbuf_append(ctxt->om,
                                         ble_svc_ras_od_rd_val,
-                                        sizeof(struct segment )+100);
+                                        ble_svc_ras_od_rd_seg_len);
                     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
                 }
             } else if (uuid == BLE_SVC_RAS_CHR_UUID_REALTIME_RD_VAL) {
@@ -275,6 +277,7 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
                 }
             }
+            return 0;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
             if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
@@ -294,34 +297,50 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                 "all subscribed peers.\n");
                 return rc;
             } else if (attr_handle == ble_svc_ras_od_rd_val_handle) {
+                /* Ensure the buffer is allocated before writing to it */
+                if (ble_svc_ras_od_rd_val == NULL) {
+                    return BLE_ATT_ERR_UNLIKELY;
+                }
+
                 rc = gatt_svr_write(ctxt->om,
-                        sizeof(ble_svc_ras_od_rd_val),
-                        sizeof(ble_svc_ras_od_rd_val),
-                        ble_svc_ras_od_rd_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                                    0,
+                                    ble_svc_ras_od_rd_seg_len,
+                                    ble_svc_ras_od_rd_val, NULL);
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             } else if (attr_handle == ble_svc_ras_cp_val_handle) {
                 MODLOG_DFLT(INFO, "write for control point val ");
 
                 rc = gatt_svr_write(ctxt->om,
-                        sizeof(ble_svc_ras_cp_val),
+                        RASCP_CMD_OPCODE_LEN,
                         sizeof(ble_svc_ras_cp_val),
                         &ble_svc_ras_cp_val, NULL);
+                if (rc != 0) {
+                    return rc;
+                }
                  MODLOG_DFLT(INFO, "ble_svc_gap_cp_val = %02x %02x %02x \n",ble_svc_ras_cp_val[0],ble_svc_ras_cp_val[1],ble_svc_ras_cp_val[2]);
                 if (ble_svc_ras_cp_val[0] ==  RASCP_OPCODE_GET_RD) {
                     // n = size of (rangeing_buffer[i]) / mut -4);
                     /* Run a loop to send n segmet . for now sending only 1 segment*/
                     ble_gatts_chr_updated(ble_svc_ras_od_rd_val_handle);
                 } else if (ble_svc_ras_cp_val[0] == RASCP_OPCODE_ACK_RD) {
-                    MODLOG_DFLT(INFO, "ack revied\n");
+                    MODLOG_DFLT(INFO, "ack received\n");
+                    /* Free the acknowledged segment */
+                    if (ble_svc_ras_od_rd_val != NULL) {
+                        nimble_platform_mem_free(ble_svc_ras_od_rd_val);
+                        ble_svc_ras_od_rd_val = NULL;
+                        ble_svc_ras_od_rd_seg_len = 0;
+                    }
                     /* Reset the ranging buffers */
                     ble_svc_ras_cp_val[0]= 0x02;
                     /*Table 3.12. Response Code Values associated with Op Code 0x02*/
                     ble_svc_ras_cp_val[1]=0x01; // Success
                     ble_gatts_chr_updated(ble_svc_ras_cp_val_handle);
-                    MODLOG_DFLT(INFO, "Sucssefully completed the Ranging procedure\n");
+                    MODLOG_DFLT(INFO, "Successfully completed the Ranging procedure\n");
 
 		}
                 MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
@@ -387,30 +406,44 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     buf->ranging_data.ranging_header.config_id = ranging_subevent.subev_result.config_id;
     buf->ranging_data.ranging_header.ranging_counter = ranging_subevent.subev_result.procedure_counter;
   //  buf->ranging_data.ranging_header.selected_tx_power = ranging_subevent.subev_result.selected_tx_power;
-  /* convert antena path mask using bitmask*/
+    /* convert antenna path mask using bitmask */
     buf->ranging_data.ranging_header.antenna_paths_mask = ranging_subevent.subev_result.num_antenna_paths;
+
+    uint16_t max_subevent_data = BLE_RAS_PROCEDURE_MEM - sizeof(struct ranging_header);
+
+    if (buf->subevent_cursor + sizeof(struct subevent_header) > max_subevent_data) {
+        MODLOG_DFLT(ERROR, "Ranging buffer overflow on subevent header\n");
+        return;
+    }
 
     struct subevent_header *subevent_hdr = (struct subevent_header *)(buf->ranging_data.subevents + buf->subevent_cursor);
     buf->subevent_cursor += sizeof(struct subevent_header);
     subevent_hdr->start_acl_conn_event = ranging_subevent.subev_result.start_acl_conn_event_counter;
-    subevent_hdr->freq_compensation = ranging_subevent.subev_result.frequency_compensation;;
-    subevent_hdr->ranging_done_status = ranging_subevent.subev_result_continue.procedure_done_status;
-    subevent_hdr->subevent_done_status = ranging_subevent.subev_result_continue.subevent_done_status;
+    subevent_hdr->freq_compensation = ranging_subevent.subev_result.frequency_compensation;
+    subevent_hdr->ranging_done_status = ranging_subevent.subev_result.procedure_done_status;
+    subevent_hdr->subevent_done_status = ranging_subevent.subev_result.subevent_done_status;
     subevent_hdr->ranging_abort_reason = ranging_subevent.subev_result.abort_reason;
     subevent_hdr->subevent_abort_reason = ranging_subevent.subev_result.abort_reason;
     subevent_hdr->ref_power_level = ranging_subevent.subev_result.reference_power_level;
-    subevent_hdr->num_steps_reported = ranging_subevent.subev_result.num_steps_reported + ranging_subevent.subev_result_continue.num_steps_reported;
+    subevent_hdr->num_steps_reported = ranging_subevent.subev_result.num_steps_reported;
 
 
-    /* Add step data to buf*/
+    /* Add step data to buf using manual pointer advancement for flexible array member */
+    const uint8_t *step_ptr = (const uint8_t *)ranging_subevent.subev_result.steps;
     for (int i = 0; i < ranging_subevent.subev_result.num_steps_reported; i++) {
-        const struct cs_steps_data *step=&ranging_subevent.subev_result.steps[i];
+        const struct cs_steps_data *step = (const struct cs_steps_data *)step_ptr;
+
+        if (buf->subevent_cursor + BLE_RAS_STEP_MODE_LEN + step->data_len > max_subevent_data) {
+            MODLOG_DFLT(ERROR, "Ranging buffer overflow on step data\n");
+            return;
+        }
 
         buf->ranging_data.subevents[buf->subevent_cursor] = step->mode;
         buf->subevent_cursor += BLE_RAS_STEP_MODE_LEN;
         memcpy(&buf->ranging_data.subevents[buf->subevent_cursor], step->data, step->data_len);
         buf->subevent_cursor += step->data_len;
 
+        step_ptr += sizeof(struct cs_steps_data) + step->data_len;
     }
     /* Create RAS segment*/
     struct segment *ras_segment;
@@ -423,32 +456,19 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
         return;
     }
     ras_segment->header.first_seg = true;
-    ras_segment->header.last_seg = true;
-    ras_segment->header.seg_counter = 0; // First segment
+    ras_segment->header.seg_counter = 0; /* First segment */
     uint16_t buf_len = sizeof(struct ranging_header) + buf->subevent_cursor;
-    uint16_t remaining = buf_len - 0;
-     uint16_t pull_bytes = MIN(max_data_len, remaining);
-    if (max_data_len < remaining) {
-        // More segments to come
-        pull_bytes = max_data_len;
-    }else {
-        pull_bytes = remaining;
+    uint16_t pull_bytes = MIN(max_data_len, buf_len);
+
+    ras_segment->header.last_seg = (buf_len <= max_data_len);
+    memcpy(ras_segment->data, &buf->ranging_data.buf[0], pull_bytes);
+
+    /* Free previous segment if any */
+    if (ble_svc_ras_od_rd_val != NULL) {
+        nimble_platform_mem_free(ble_svc_ras_od_rd_val);
     }
-
-    memcpy( ras_segment->data, &buf->ranging_data.buf[0], pull_bytes);
-
-    ble_svc_ras_od_rd_val= ras_segment; // Store the segment in the global variable
-    // ble_gatts_chr_updated(ble_svc_ras_od_rd_val_handle);
-
-    // 4 bytes for header and CRC
-    // now max data len is att mtu -4
-    // count number  of egment required based on actudal  rd_buffer len
-    // noe  set buf to  data []  of segment ensuring only one segment is created
-    // if more than one segment is required then set first_seg and last_seg accordingly
-    // and set seg_counter to 0 for first segment and increment it for each segment
-    // and set the data len to actual data len
-
-    // now once cp control point command is recived we will append the segment to os_mbuf buffer and indicate it to the client
+    ble_svc_ras_od_rd_val = ras_segment;
+    ble_svc_ras_od_rd_seg_len = sizeof(struct segment_header) + pull_bytes;
 }
 
 void custom_gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
