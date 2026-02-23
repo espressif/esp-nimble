@@ -47,13 +47,13 @@ extern "C" {
  * This structure represents the parameters for a Direct Test Mode (DTM) receiver test.
  */
 struct ble_dtm_rx_params {
-    /** The channel to use for the RX test. */
+    /** The channel to use for the RX test (0x00--0x27). */
     uint8_t channel;
 
-    /** The PHY to use for the RX test. */
+    /** The PHY to use for the RX test (0x01--0x03). */
     uint8_t phy;
 
-    /** The modulation index to use for the RX test. */
+    /** The modulation index to use for the RX test (0x00: Standard, 0x01: Stable). */
     uint8_t modulation_index;
 };
 
@@ -76,16 +76,16 @@ int ble_dtm_rx_start(const struct ble_dtm_rx_params *params);
  * This structure represents the parameters for a Direct Test Mode (DTM) transmitter test.
  */
 struct ble_dtm_tx_params {
-    /** The channel to use for the TX test. */
+    /** The channel to use for the TX test (0x00--0x27). */
     uint8_t channel;
 
     /** The length of the data for the TX test. */
     uint8_t test_data_len;
 
-    /** The payload to use for the TX test. */
+    /** The payload to use for the TX test (0x00--0x07). */
     uint8_t payload;
 
-    /** The PHY to use for the TX test. */
+    /** The PHY to use for the TX test (0x01--0x04). */
     uint8_t phy;
 };
 
@@ -102,12 +102,12 @@ struct ble_dtm_tx_params {
 int ble_dtm_tx_start(const struct ble_dtm_tx_params *params);
 
 /**
- * @brief Stops a Direct Test Mode (DTM) test and retrieves the number of transmitted packets.
+ * @brief Stops a Direct Test Mode (DTM) test and retrieves the number of received packets.
  *
  * This function sends a command to the Bluetooth controller to stop the currently running DTM test.
- * It retrieves the number of packets transmitted during the test and stores it in the provided `num_packets` variable.
+ * It retrieves the number of packets received during the test and stores it in the provided `num_packets` variable.
  *
- * @param num_packets           Pointer to a `uint16_t` variable to store the number of transmitted packets.
+ * @param num_packets           Pointer to a `uint16_t` variable to store the number of received packets.
  *                              If an error occurs, the value will be set to 0.
  *
  * @return                      0 on success;

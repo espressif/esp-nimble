@@ -43,7 +43,7 @@ ble_hs_startup_read_sup_f_tx(void)
     /* for now we don't use it outside of init sequence so check this here
      * LE Supported (Controller) byte 4, bit 6
      */
-    if (!(le64toh(rsp.features) & 0x0000006000000000)) {
+    if (!(le64toh(rsp.features) & 0x0000004000000000)) {
         BLE_HS_LOG(ERROR, "Controller doesn't support LE\n");
         return BLE_HS_ECONTROLLER;
     }
@@ -85,7 +85,7 @@ ble_hs_startup_read_sup_cmd_tx(void)
         return rc;
     }
 
-    memcpy(&sup_cmd.commands, &rsp.commands, sizeof(sup_cmd));
+    memcpy(sup_cmd.commands, &rsp.commands, sizeof(sup_cmd.commands));
     ble_hs_hci_set_hci_supported_cmd(sup_cmd);
 
     return 0;
@@ -99,7 +99,7 @@ ble_hs_startup_le_read_sup_f_tx(void)
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_RD_LOC_SUPP_FEAT),
-                           NULL,0, &rsp, sizeof(rsp));
+                           NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
         return rc;
     }
@@ -237,7 +237,10 @@ ble_hs_startup_read_bd_addr(void)
         return rc;
     }
 
-    ble_hs_id_set_pub(rsp.addr);
+    rc = ble_hs_id_set_pub(rsp.addr);
+    if (rc != 0) {
+        return rc;
+    }
     return 0;
 }
 
@@ -313,17 +316,6 @@ ble_hs_startup_le_set_evmask_tx(void)
          * 0x0000000400000000 LE Subrate change event
          */
         mask |= 0x0000000400000000;
-    }
-#endif
-
-#if MYNEWT_VAL(BLE_POWER_CONTROL)
-    if (version >= BLE_HCI_VER_BCS_5_2) {
-        /**
-         * Enable the following LE events:
-         * 0x0000000080000000 LE Path Loss Threshold event
-         * 0x0000000100000000 LE Transmit Power Reporting event
-         */
-        mask |= 0x0000000180000000;
     }
 #endif
 
@@ -423,15 +415,15 @@ ble_hs_startup_le_set_evmask_tx(void)
 
     if (version >= BLE_HCI_VER_BCS_6_0) {
         /**
-	 * Enable following LE events:
-	 * 0x0000040000000000 LE Read All Remote Features Complete event
-	 * 0x0008000000000000 LE Monitored Advertisers Report event
-	 */
+         * Enable following LE events:
+         * 0x0000040000000000 LE Read All Remote Features Complete event
+         * 0x0008000000000000 LE Monitored Advertisers Report event
+         */
 #if MYNEWT_VAL(BLE_MONITOR_ADV)
         mask |= 0x0008000000000000;
 #endif
 
-	mask |= 0x0000040000000000;
+        mask |= 0x0000040000000000;
     }
 
     cmd.event_mask = htole64(mask);
@@ -506,6 +498,7 @@ int
 ble_hs_startup_go(void)
 {
     struct ble_store_gen_key gen_key;
+    int key_rc;
     int rc;
 
     rc = ble_hs_startup_reset_tx();
@@ -566,26 +559,28 @@ ble_hs_startup_go(void)
 
     if (ble_hs_cfg.store_gen_key_cb) {
         memset(&gen_key, 0, sizeof(gen_key));
-        rc = ble_hs_cfg.store_gen_key_cb(BLE_STORE_GEN_KEY_IRK, &gen_key,
+        key_rc = ble_hs_cfg.store_gen_key_cb(BLE_STORE_GEN_KEY_IRK, &gen_key,
                                          BLE_HS_CONN_HANDLE_NONE);
 #if MYNEWT_VAL(BLE_HS_PVCY)
-	if (rc == 0) {
+        if (key_rc == 0) {
             ble_hs_pvcy_set_our_irk(gen_key.irk);
         }
 #endif
     } else {
-        rc = -1;
+        key_rc = -1;
     }
 
 #if MYNEWT_VAL(BLE_HS_PVCY)
-    if (rc != 0) {
+    if (key_rc != 0) {
         ble_hs_pvcy_set_default_irk();
 
         ble_hs_pvcy_set_our_irk(NULL);
     }
 #endif
 
-    /* If flow control is enabled, configure the controller to use it. */
+    /* If flow control is enabled, configure the controller to use it.
+     * Ignore return code (flow control failure is non-fatal).
+     */
     ble_hs_flow_startup();
 
     return 0;

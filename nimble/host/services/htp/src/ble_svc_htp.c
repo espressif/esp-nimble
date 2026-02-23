@@ -38,7 +38,7 @@ ble_svc_htp_chr_write(struct os_mbuf *om, uint16_t min_len,
 
 static const struct ble_gatt_svc_def ble_svc_htp_defs[] = {
     {
-        /*** Health Thermomter Service. */
+        /*** Health Thermometer Service. */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = BLE_UUID16_DECLARE(BLE_SVC_HTP_UUID16),
         .characteristics = (struct ble_gatt_chr_def[])
@@ -49,7 +49,7 @@ static const struct ble_gatt_svc_def ble_svc_htp_defs[] = {
                 .val_handle = &ble_svc_htp_temp_measurement_val_handle,
                 .flags = BLE_GATT_CHR_F_INDICATE,
             }, {
-                /** Temparature Type Characteristic */
+                /** Temperature Type Characteristic */
                 .uuid = BLE_UUID16_DECLARE(BLE_SVC_HTP_CHR_UUID16_TEMP_TYPE),
                 .access_cb = ble_svc_htp_access,
                 .val_handle = &ble_svc_htp_temp_type_val_handle,
@@ -87,7 +87,7 @@ static const struct ble_gatt_svc_def ble_svc_htp_defs[] = {
 };
 
 /**
- * HR access function
+ * HTP access function
  */
 static int
 ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -136,6 +136,9 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_htp_on_disconnect(uint16_t conn_handle)
 {
+    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+        return;
+    }
     conn_chr_subs[conn_handle].chr_subs[TEMP_MEASUREMENT] = false;
     conn_chr_subs[conn_handle].chr_subs[INTERMEDIATE_TEMP] = false;
     conn_chr_subs[conn_handle].chr_subs[MEASUREMENT_ITVL]  = false;
@@ -147,6 +150,9 @@ ble_svc_htp_on_disconnect(uint16_t conn_handle)
 bool
 ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr)
 {
+    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+        return false;
+    }
     return conn_chr_subs[conn_handle].chr_subs[chr];
 }
 
@@ -161,6 +167,9 @@ ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr)
 void
 ble_svc_htp_subscribe(uint16_t conn_handle, uint16_t attr_handle)
 {
+    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+        return;
+    }
     if (attr_handle == ble_svc_htp_temp_measurement_val_handle) {
         conn_chr_subs[conn_handle].chr_subs[TEMP_MEASUREMENT] = true;
 
@@ -197,6 +206,7 @@ ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit)
 
     rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));
     if (rc != 0) {
+        os_mbuf_free_chain(txom);
         goto err;
     }
 
@@ -237,6 +247,7 @@ ble_svc_htp_indicate(uint16_t conn_handle, float temp, bool temp_unit)
 
     rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));
     if (rc != 0) {
+        os_mbuf_free_chain(txom);
         return rc;
     }
 

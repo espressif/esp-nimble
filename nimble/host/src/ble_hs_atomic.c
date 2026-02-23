@@ -23,22 +23,35 @@ int
 ble_hs_atomic_conn_delete(uint16_t conn_handle)
 {
     struct ble_hs_conn *conn;
+    int rc;
 
     ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
     if (conn != NULL) {
         ble_hs_conn_remove(conn);
+#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
         if (conn->psync) {
+            ble_hs_periodic_sync_remove(conn->psync);
             ble_hs_periodic_sync_free(conn->psync);
         }
 #endif
+#else
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
+        if (conn->psync) {
+            ble_hs_periodic_sync_remove(conn->psync);
+            ble_hs_periodic_sync_free(conn->psync);
+        }
+#endif
+#endif
         ble_hs_conn_free(conn);
-
+        rc = 0;
+    } else {
+        rc = BLE_HS_ENOTCONN;
     }
     ble_hs_unlock();
 
-    return conn != NULL ? 0 : BLE_HS_ENOTCONN;
+    return rc;
 }
 
 void

@@ -81,7 +81,7 @@ static const struct ble_gatt_chr_def sps_characteristics[] = {
 };
 
 static const struct ble_gatt_svc_def ble_svc_sps_defs[] = {
-    { /*** Service: Device Information Service (SPS). */
+    { /*** Service: Scan Parameters Service (SPS). */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &uuid_svc_sps.u,
         .characteristics = sps_characteristics,
@@ -122,21 +122,21 @@ ble_svc_sps_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     uint16_t uuid = ble_uuid_u16(ctxt->chr->uuid);
-    uint32_t write_val;
+    uint8_t buf[4];
     int rc;
 
     switch(uuid) {
     case BLE_SVC_SPS_CHR_UUID16_SCAN_ITVL_WINDOW:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR);
-        rc = ble_svc_sps_chr_write(ctxt->om, 0, sizeof(ble_scan_itvl) + sizeof(ble_scan_window), &write_val, NULL);
+        rc = ble_svc_sps_chr_write(ctxt->om, 4, 4, buf, NULL);
         if(rc == 0) {
-            ble_scan_itvl = (write_val & 0xffff0000) >> 16;
-            ble_scan_window = (write_val & 0x0000ffff);
+            ble_scan_itvl = get_le16(buf);
+            ble_scan_window = get_le16(buf + 2);
+            if (ble_svc_sps_cb_fn) {
+                ble_svc_sps_cb_fn(ble_scan_itvl, ble_scan_window);
+            }
         }
-        if (ble_svc_sps_cb_fn) {
-            ble_svc_sps_cb_fn(ble_scan_itvl, ble_scan_window);
-        }
-        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        return rc;
     case BLE_SVC_SPS_CHR_UUID16_SCAN_REFRESH:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR && conn_handle == BLE_HS_CONN_HANDLE_NONE);
         rc = os_mbuf_append(ctxt->om, &ble_scan_refresh,

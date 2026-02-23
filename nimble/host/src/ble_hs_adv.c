@@ -129,6 +129,10 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
     int rc;
     int i;
 
+    if (num_elems > 127) {
+        return BLE_HS_EINVAL;
+    }
+
     rc = ble_hs_adv_set_hdr(type, num_elems * 2, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
@@ -159,6 +163,10 @@ ble_hs_adv_set_array_uuid32(uint8_t type, uint8_t num_elems,
     uint32_t uuid_le;
     int rc;
     int i;
+
+    if ((uint16_t)num_elems * 4 > 255) { // Prevent truncation, actual AD field limited by BLE_HS_ADV_MAX_FIELD_SZ
+        return BLE_HS_EMSGSIZE;
+    }
 
     rc = ble_hs_adv_set_hdr(type, num_elems * 4, max_len, dst,
                             dst_len, om);
@@ -195,6 +203,10 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
     int rc;
     int i;
 
+    if (num_elems > 15) {
+        return BLE_HS_EINVAL;
+    }
+
     rc = ble_hs_adv_set_hdr(type, num_elems * 16, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
@@ -224,6 +236,10 @@ ble_hs_adv_set_array16(uint8_t type, uint8_t num_elems, const uint16_t *elems,
     uint16_t tmp;
     int rc;
     int i;
+
+    if (num_elems > 127) {
+        return BLE_HS_EINVAL;
+    }
 
     rc = ble_hs_adv_set_hdr(type, num_elems * sizeof *elems, max_len, dst,
                             dst_len, om);
@@ -572,14 +588,20 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       BLE_HS_ADV_LE_SUPP_FEAT_LEN,
                                       adv_fields->le_supp_feat, dst, &dst_len_local,
                                       max_len, om);
+        if (rc != 0) {
+            return rc;
+        }
     }
 
     /*** 0x2f - Advertising interval - long. */
-    if (adv_fields->adv_itvl_long_is_present && adv_fields->adv_itvl_long > 0xFFFF) {
+    if (adv_fields->adv_itvl_long_is_present) {
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_ADV_ITVL_LONG,
                                       BLE_HS_ADV_ADV_ITVL_LONG_LEN,
                                       &adv_fields->adv_itvl_long, dst, &dst_len_local,
                                       max_len, om);
+        if (rc != 0) {
+            return rc;
+        }
     }
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
@@ -590,6 +612,9 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->enc_adv_data_len,
                                       adv_fields->enc_adv_data, dst, &dst_len_local,
                                       max_len, om);
+        if (rc != 0) {
+            return rc;
+        }
     }
 #endif
 #endif
@@ -811,6 +836,10 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         return BLE_HS_EMSGSIZE;
     }
     *total_len = src[0] + 1;
+
+    if (*total_len < 2) {
+        return BLE_HS_EBADDATA;
+    }
 
     if (src_len < *total_len) {
         return BLE_HS_EMSGSIZE;

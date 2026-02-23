@@ -71,27 +71,29 @@ static const char * const ble_gatt_dsc_f_names[] = {
 #define BLE_CHR_FLAGS_STR_LEN 180
 
 static char *
-ble_gatts_flags_to_str(uint16_t flags, char *buf,
+ble_gatts_flags_to_str(uint32_t flags, char *buf,
                        const char * const *names)
 {
     int bit;
     bool non_empty = false;
     size_t length = 0;
 
-    buf[0] = '\0';
     strcpy(buf, "[");
     length += 1;
     for (bit = 0; names[bit]; ++bit) {
-        if (flags & (1 << bit)) {
-            length += strlen(names[bit]);
-            if (length + 1 >= BLE_CHR_FLAGS_STR_LEN) {
-                return buf;
+        if (flags & ((uint32_t)1 << bit)) {
+            size_t name_len = strlen(names[bit]);
+            size_t extra = (non_empty ? 1 : 0); /* separator */
+            /* Check if we have room for separator + name + closing bracket */
+            if (length + extra + name_len + 1 >= BLE_CHR_FLAGS_STR_LEN) {
+                break;
             }
             if (non_empty) {
                 strcat(buf, "|");
                 length += 1;
             }
             strcat(buf, names[bit]);
+            length += name_len;
             non_empty = true;
         }
     }
@@ -209,6 +211,10 @@ ble_gatt_show_local_inc_svc(const struct ble_gatt_svc_def *svc,
     const struct ble_gatt_svc_def **includes;
     int num = 0;
 
+    if (svc->includes == NULL) {
+        return 0;
+    }
+
     for (includes = &svc->includes[0]; *includes != NULL; ++includes) {
         console_printf("included service\n");
         console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
@@ -229,10 +235,17 @@ ble_gatt_show_local_svc(const struct ble_gatt_svc_def *svc,
 {
     char uuid_buf[BLE_UUID_STR_LEN];
     char flags_buf[BLE_CHR_FLAGS_STR_LEN];
+    const char *svc_type_str;
 
-    console_printf("%s service\n",
-                   svc->type == BLE_GATT_SVC_TYPE_PRIMARY ?
-                           "primary" : "secondary");
+    if (svc->type == BLE_GATT_SVC_TYPE_PRIMARY) {
+        svc_type_str = "primary";
+    } else if (svc->type == BLE_GATT_SVC_TYPE_SECONDARY) {
+        svc_type_str = "secondary";
+    } else {
+        svc_type_str = "unknown";
+    }
+
+    console_printf("%s service\n", svc_type_str);
     console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
                    "%s\n", " ", "uuid",
                    ble_uuid_to_str(svc->uuid, uuid_buf));

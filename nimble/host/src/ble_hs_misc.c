@@ -18,7 +18,6 @@
  */
 
 #include <assert.h>
-#include <stdlib.h>
 #include "os/os.h"
 #include "ble_hs_priv.h"
 
@@ -120,21 +119,22 @@ ble_hs_misc_restore_one_irk(int obj_type, union ble_store_value *val,
                             void *cookie)
 {
     const struct ble_store_value_sec *sec;
-    int rc = -1;
 
     BLE_HS_DBG_ASSERT(obj_type == BLE_STORE_OBJ_TYPE_PEER_SEC);
 
     sec = &val->sec;
     if (sec->irk_present) {
 #if MYNEWT_VAL(BLE_HS_PVCY)
+        int rc;
         rc = ble_hs_pvcy_add_entry(sec->peer_addr.val, sec->peer_addr.type,
                                    sec->irk);
-#endif
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "failed to configure restored IRK\n");
         }
+#endif
     }
 
+    /* We return 0 ("best effort") even if ble_hs_pvcy_add_entry fails. */
     return 0;
 }
 

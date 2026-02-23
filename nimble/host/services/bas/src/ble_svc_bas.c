@@ -45,17 +45,17 @@ static const ble_uuid16_t uuid_chr_bat_lvl = BLE_UUID16_INIT(BLE_SVC_BAS_CHR_UUI
 
 static const struct ble_gatt_chr_def bas_characteristics[] = {
     {
-	    /*** Battery level characteristic */
+        /*** Battery level characteristic */
             .uuid = &uuid_chr_bat_lvl.u,
             .access_cb = ble_svc_bas_access,
 #if MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_NOTIFY_ENABLE) > 0
-	    .val_handle = &ble_svc_bas_battery_handle,
+            .val_handle = &ble_svc_bas_battery_handle,
 #endif
             .flags = BLE_GATT_CHR_F_READ |
 #if MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_NOTIFY_ENABLE) > 0
-	             BLE_GATT_CHR_F_NOTIFY |
+                     BLE_GATT_CHR_F_NOTIFY |
 #endif
-	             MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_READ_PERM),
+                     MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_READ_PERM),
     },
     {
         0, /* No more characteristics in this service. */
@@ -88,22 +88,33 @@ ble_svc_bas_access(uint16_t conn_handle, uint16_t attr_handle,
     case BLE_SVC_BAS_CHR_UUID16_BATTERY_LEVEL:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
         rc = os_mbuf_append(ctxt->om, &ble_svc_bas_battery_level,
-                            sizeof ble_svc_bas_battery_level);
+                            sizeof(ble_svc_bas_battery_level));
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
     default:
-        assert(0);
         return BLE_ATT_ERR_UNLIKELY;
     }
 }
 
 
 /**
+ * Get the current battery level.
+ *
+ * @return The current battery level (0-100).
+ */
+uint8_t
+ble_svc_bas_battery_level_get(void)
+{
+    return ble_svc_bas_battery_level;
+}
+
+/**
  * Set the battery level, must be between 0 and 100.
  * If greater than 100, it will be silently set to 100.
  */
 int
-ble_svc_bas_battery_level_set(uint8_t level) {
+ble_svc_bas_battery_level_set(uint8_t level)
+{
     if (level > 100)
         level = 100;
     if (ble_svc_bas_battery_level != level) {
@@ -115,6 +126,10 @@ ble_svc_bas_battery_level_set(uint8_t level) {
     return 0;
 }
 
+/**
+ * Deinitialize the Battery Service.
+ * Note: Frees all registered GATT services as part of full BLE stack teardown.
+ */
 void
 ble_svc_bas_deinit(void)
 {
@@ -139,5 +154,7 @@ ble_svc_bas_init(void)
 
     rc = ble_gatts_add_svcs(ble_svc_bas_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
+
+    ble_svc_bas_battery_level = 0;
 }
 #endif

@@ -16,7 +16,7 @@
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_PROX_SERVICE
 /* Characteristic values */
 static uint8_t ble_svc_prox_link_loss_alert;
-static int8_t ble_svc_prox_alert;
+static uint8_t ble_svc_prox_alert;
 static uint8_t ble_svc_prox_tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
 
 /* Characteristic value handles */
@@ -55,7 +55,7 @@ static const struct ble_gatt_svc_def ble_svc_prox_defs[] = {
                 .uuid = BLE_UUID16_DECLARE(BLE_SVC_PROX_CHR_UUID16_ALERT_LVL),
                 .access_cb = ble_svc_prox_link_loss_access,
                 .val_handle = &ble_svc_prox_link_loss_val_handle,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
            }, {
                0, /* No more characteristics in this service. */
            }
@@ -71,7 +71,7 @@ static const struct ble_gatt_svc_def ble_svc_prox_defs[] = {
                 .uuid = BLE_UUID16_DECLARE(BLE_SVC_PROX_CHR_UUID16_ALERT_LVL),
                 .access_cb = ble_svc_prox_imm_alert_access,
                 .val_handle = &ble_svc_prox_immediate_alert_loc_val_handle,
-                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
+                .flags = BLE_GATT_CHR_F_WRITE_NO_RSP,
            }, {
                0, /* No more characteristics in this service. */
            }
@@ -109,7 +109,7 @@ static const struct ble_gatt_svc_def ble_svc_prox_defs[] = {
     },
 };
 
-void
+static void
 ble_prox_prph_task(void *pvParameters)
 {
     while (1) {
@@ -125,6 +125,10 @@ ble_prox_prph_task(void *pvParameters)
 static void
 ble_prox_prph_alert_unalert(uint16_t conn_handle)
 {
+    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+        MODLOG_DFLT(ERROR, "conn_handle %d exceeds max connections", conn_handle);
+        return;
+    }
     if (ble_svc_prox_alert != 0 && !ble_svc_prox_alert_conn[conn_handle]) {
         MODLOG_DFLT(INFO, "Path loss exceeded threshold, starting alert for device with "
                     "conn_handle %d", conn_handle);
@@ -153,11 +157,15 @@ ble_svc_prox_link_loss_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_ALERT_LVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            rc = ble_svc_prox_chr_write(ctxt->om, 0, sizeof(ble_svc_prox_link_loss_alert),
+            rc = ble_svc_prox_chr_write(ctxt->om, 1, sizeof(ble_svc_prox_link_loss_alert),
                                         &ble_svc_prox_link_loss_alert, NULL);
+            return rc;
+        } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+            rc = os_mbuf_append(ctxt->om, &ble_svc_prox_link_loss_alert,
+                                sizeof(ble_svc_prox_link_loss_alert));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
-        return BLE_ATT_ERR_INSUFFICIENT_RES;
+        return BLE_ATT_ERR_UNLIKELY;
 
     default:
         assert(0);
@@ -178,7 +186,10 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_ALERT_LVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            ble_svc_prox_alert = ctxt->om->om_data[0];
+            int rc = ble_svc_prox_chr_write(ctxt->om, 1, 1, &ble_svc_prox_alert, NULL);
+            if (rc != 0) {
+                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            }
             MODLOG_DFLT(INFO, "Path loss = %d", ble_svc_prox_alert);
 
             ble_prox_prph_alert_unalert(conn_handle);
@@ -205,10 +216,19 @@ ble_svc_prox_tx_pwr_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_TX_PWR_LVL:
-        assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
+        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
         rc = os_mbuf_append(ctxt->om, &ble_svc_prox_tx_pwr_lvl,
                             sizeof(ble_svc_prox_tx_pwr_lvl));
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+    case 0x2904: /* Presentation Format Descriptor UUID */
+        if (ctxt->op != BLE_GATT_ACCESS_OP_READ_DSC) {
+            return BLE_ATT_ERR_UNLIKELY;
+        }
+        /* Return empty for now */
+        return 0;
 
     default:
         assert(0);
@@ -255,7 +275,9 @@ ble_svc_prox_init(void)
     rc = ble_gatts_add_svcs(ble_svc_prox_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task", 4096, NULL, 10, NULL);
+    static TaskHandle_t ble_prox_task_handle;
+    BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task", 4096, NULL, 10, &ble_prox_task_handle);
+    SYSINIT_PANIC_ASSERT(ret == pdPASS);
 
     /* Initializing alert array */
     for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {

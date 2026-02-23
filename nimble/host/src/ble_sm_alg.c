@@ -290,7 +290,8 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(salt, ws, 32, t);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("t", t, 16);
@@ -304,7 +305,8 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(t, m, sizeof(m), mackey);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("mackey", mackey, 16);
@@ -316,14 +318,23 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(t, m, sizeof(m), ltk);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("ltk", ltk, 16);
 
     swap_in_place(ltk, 16);
+    rc = 0;
 
-    return 0;
+exit:
+    /* Zero sensitive key material from stack */
+    memset(ws, 0, sizeof(ws));
+    memset(t, 0, sizeof(t));
+    /* Use a memory barrier to prevent compiler from optimizing out the memsets */
+    __asm__ volatile("" : : "r"(ws), "r"(t) : "memory");
+
+    return rc;
 }
 
 int
@@ -353,16 +364,18 @@ ble_sm_alg_f6(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
     swap_buf(m + 48, iocap, 3);
 
     m[51] = a1t;
-    memcpy(m + 52, a1, 6);
     swap_buf(m + 52, a1, 6);
 
     m[58] = a2t;
-    memcpy(m + 59, a2, 6);
     swap_buf(m + 59, a2, 6);
 
     swap_buf(ws, w, 16);
 
     rc = ble_sm_alg_aes_cmac(ws, m, sizeof(m), check);
+
+    /* Zero sensitive key material from stack */
+    memset(ws, 0, sizeof(ws));
+
     if (rc != 0) {
         return BLE_HS_EUNKNOWN;
     }

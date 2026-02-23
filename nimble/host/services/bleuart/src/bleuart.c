@@ -32,18 +32,18 @@
 
 #if MYNEWT_VAL(BLE_GATTS)
 /* ble uart attr read handle */
-uint16_t g_bleuart_attr_read_handle;
+static uint16_t g_bleuart_attr_read_handle;
 
 /* ble uart attr write handle */
-uint16_t g_bleuart_attr_write_handle;
+static uint16_t g_bleuart_attr_write_handle;
 
 /* Pointer to a console buffer */
-char *console_buf;
+static char *console_buf;
 
-uint16_t g_console_conn_handle;
+static uint16_t g_console_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 /**
  * The vendor specific "bleuart" service consists of one write no-rsp characteristic
- * and one notification only read charateristic
+ * and one notification only read characteristic
  *     o "write no-rsp": a single-byte characteristic that can be written only
  *       over a non-encrypted connection
  *     o "read": a single-byte characteristic that can always be read only via
@@ -110,7 +110,6 @@ gatt_svr_chr_access_uart_write(uint16_t conn_handle, uint16_t attr_handle,
               console_write("\n", 1);
               return 0;
         default:
-            assert(0);
             return BLE_ATT_ERR_UNLIKELY;
     }
 }
@@ -128,15 +127,10 @@ bleuart_gatt_svr_init(void)
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
     if (rc != 0) {
-        goto err;
-    }
-
-    rc = ble_gatts_add_svcs(gatt_svr_svcs);
-    if (rc != 0) {
         return rc;
     }
 
-err:
+    rc = ble_gatts_add_svcs(gatt_svr_svcs);
     return rc;
 }
 
@@ -156,6 +150,7 @@ bleuart_uart_read(void)
         rc = console_read(console_buf + off,
                           MYNEWT_VAL(BLEUART_MAX_INPUT) - off, &full_line);
         if (rc <= 0 && !full_line) {
+            vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
         off += rc;
@@ -200,7 +195,7 @@ bleuart_init(void)
     rc = console_init(bleuart_uart_read);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    console_buf = nimble_platform_mem_calloc(1,MYNEWT_VAL(BLEUART_MAX_INPUT));
+    console_buf = nimble_platform_mem_calloc(1, MYNEWT_VAL(BLEUART_MAX_INPUT));
     SYSINIT_PANIC_ASSERT(console_buf != NULL);
 }
 #endif

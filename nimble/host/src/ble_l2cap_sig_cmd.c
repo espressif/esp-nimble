@@ -69,7 +69,7 @@ ble_l2cap_sig_hdr_parse(void *payload, uint16_t len,
 
 int
 ble_l2cap_sig_reject_tx(uint16_t conn_handle, uint8_t id, uint16_t reason,
-                        void *data, int data_len)
+                        void *data, uint16_t data_len)
 {
     struct ble_l2cap_sig_reject *cmd;
     struct os_mbuf *txom;
@@ -83,7 +83,7 @@ ble_l2cap_sig_reject_tx(uint16_t conn_handle, uint8_t id, uint16_t reason,
     cmd->reason = htole16(reason);
     memcpy(cmd->data, data, data_len);
 
-    STATS_INC(ble_l2cap_stats, sig_rx);
+    STATS_INC(ble_l2cap_stats, sig_tx);
     return ble_l2cap_sig_tx(conn_handle, txom);
 }
 
@@ -117,6 +117,7 @@ ble_l2cap_sig_cmd_get(uint8_t opcode, uint8_t id, uint16_t len,
 
     if (os_mbuf_extend(*txom, sizeof(*hdr) + len) == NULL) {
         os_mbuf_free_chain(*txom);
+        *txom = NULL;
         return NULL;
     }
 

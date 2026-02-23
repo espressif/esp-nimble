@@ -18,19 +18,19 @@
  */
 
  #include <assert.h>
- #include <stdio.h>
  #include <string.h>
  #include "host/ble_hs.h"
  #include "host/ble_uuid.h"
  #include "services/ras/ble_svc_ras.h"
 
  /* Char values */
-static int32_t ble_svc_ras_feat_val;
+static uint32_t ble_svc_ras_feat_val;
 static uint16_t ble_svc_ras_rd_val;
 static uint16_t ble_svc_ras_rd_ov_val;
-static uint16_t ble_svc_ras_cp_val
+static uint16_t ble_svc_ras_cp_val;
 
 static uint16_t ble_svc_ras_feat_val_handle;
+static uint16_t ble_svc_ras_od_val_handle;
 static uint16_t ble_svc_ras_rd_val_handle;
 static uint16_t ble_svc_ras_rd_ov_val_handle;
 static uint16_t ble_svc_ras_cp_val_handle;
@@ -39,42 +39,62 @@ static int
 gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handle,
                             struct ble_gatt_access_ctxt *ctxt, void *arg);
 
+static int
+gatt_svr_write(struct os_mbuf *om, uint16_t min_len, uint16_t max_len,
+               void *dst, uint16_t *len)
+{
+    uint16_t om_len;
+    int rc;
+
+    om_len = OS_MBUF_PKTLEN(om);
+    if (om_len < min_len || om_len > max_len) {
+        return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    }
+
+    rc = ble_hs_mbuf_to_flat(om, dst, max_len, len);
+    if (rc != 0) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+
+    return 0;
+}
+
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
 {
         /* Service: Ranging Data Service */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(BLE_UUID_RANGING_SERVICE_VAL),
+        .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_RANGING_SERVICE_VAL),
         .characteristics = (struct ble_gatt_chr_def[])
         { {
                 /* Characteristic: Feature Value */
-                .uuid = BLE_UUID16_DECLARE(BLE_UUID_RAS_FEATURES_VAL),
-                .access_cb = gatt_svr_chr_access_ras_feature,
+                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_FEATURES_VAL),
+                .access_cb = gatt_svr_chr_access_ras_val,
                 .val_handle = &ble_svc_ras_feat_val_handle,
-                .flags = BLE_GATT_CHR_F_READ|BLE_GATT_CHR_F_READ_ENC,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC,
           },{
                 /* Characteristic: On demand ranging data */
-                .uuid = BLE_UUID16_DECLARE(BLE_UUID_RAS_ONDEMAND_RD_VAL),
-                .access_cb = gatt_svr_chr_access_ras_feature,
-                .val_handle = ble_svc_ras_od_val_handle,
-                .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE |BLE_GATT_CHR_F_READ_ENC,
+                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_ONDEMAND_RD_VAL),
+                .access_cb = gatt_svr_chr_access_ras_val,
+                .val_handle = &ble_svc_ras_od_val_handle,
+                .flags = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_INDICATE,
           },{
                 /* Characteristic: RAS Control Point */
-                .uuid = BLE_UUID16_DECLARE(BLE_UUID_RAS_CP_VAL),
-                .access_cb = gatt_svr_chr_access_ras_feature,
-                .val_handle = ble_svc_ras_cp_val_handle,
-                .flags = BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_INDICATE |BLE_GATT_CHR_F_READ_ENC ,
+                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_CP_VAL),
+                .access_cb = gatt_svr_chr_access_ras_val,
+                .val_handle = &ble_svc_ras_cp_val_handle,
+                .flags = BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_INDICATE,
           },{
                 /* Characteristic: RAS Data Ready */
-                .uuid = BLE_UUID16_DECLARE(BLE_UUID_RAS_RD_READY_VAL),
-                .access_cb = gatt_svr_chr_access_ras_feature,
-                .val_handle = ble_svc_ras_rd_val_handle,
-                .flags = BLE_GATT_CHR_F_INDICATE | BLE_GATT_CHR_F_READ_ENC,
+                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_RD_READY_VAL),
+                .access_cb = gatt_svr_chr_access_ras_val,
+                .val_handle = &ble_svc_ras_rd_val_handle,
+                .flags = BLE_GATT_CHR_F_INDICATE | BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC,
           },{
                 /* Characteristic: RAS data overwritten */
-                .uuid = BLE_UUID16_DECLARE(BLE_UUID_RAS_RD_OVERWRITTEN_VAL),
-                .access_cb = gatt_svr_chr_access_ras_feature,
-                .val_handle=ble_svc_ras_rd_ov_val_handle,
-                .flags = BLE_GATT_CHR_F_INDICATE | BLE_GATT_CHR_F_READ_ENC,
+                .uuid = BLE_UUID16_DECLARE(BLE_SVC_RAS_CHR_UUID_RD_OVERWRITTEN_VAL),
+                .access_cb = gatt_svr_chr_access_ras_val,
+                .val_handle = &ble_svc_ras_rd_ov_val_handle,
+                .flags = BLE_GATT_CHR_F_INDICATE | BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC,
           },{
                  0, /* No more characteristics in this service */
           },
@@ -90,7 +110,6 @@ static int
 gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handle,
                                  struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-   const ble_uuid_t *uuid;
    int rc;
 
    switch (ctxt->op) {
@@ -102,17 +121,23 @@ gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handle,
            MODLOG_DFLT(INFO, "Characteristic read by NimBLE stack; attr_handle=%d\n",
                        attr_handle);
        }
-       uuid = ctxt->chr->uuid;
-       if(uuid == BLE_UUID_RAS_FEATURES_VAL){
-
-           if (attr_handle == ras_feat_val_handle) {
-               rc = os_mbuf_append(ctxt->om,
-                                   &ras_feat_val,
-                                   sizeof(ras_feat_val));
-               return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-           }
+       if (attr_handle == ble_svc_ras_feat_val_handle) {
+           rc = os_mbuf_append(ctxt->om,
+                               &ble_svc_ras_feat_val,
+                               sizeof(ble_svc_ras_feat_val));
+           return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+       } else if (attr_handle == ble_svc_ras_rd_val_handle) {
+           rc = os_mbuf_append(ctxt->om,
+                               &ble_svc_ras_rd_val,
+                               sizeof(ble_svc_ras_rd_val));
+           return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+       } else if (attr_handle == ble_svc_ras_rd_ov_val_handle) {
+           rc = os_mbuf_append(ctxt->om,
+                               &ble_svc_ras_rd_ov_val,
+                               sizeof(ble_svc_ras_rd_ov_val));
+           return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
        }
-       goto unknown;
+       return BLE_ATT_ERR_UNLIKELY;
 
    case BLE_GATT_ACCESS_OP_WRITE_CHR:
        if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
@@ -122,29 +147,21 @@ gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handle,
            MODLOG_DFLT(INFO, "Characteristic write by NimBLE stack; attr_handle=%d",
                        attr_handle);
        }
-       uuid = ctxt->chr->uuid;
-       if (attr_handle == ras_feat_val_handle) {
+       if (attr_handle == ble_svc_ras_cp_val_handle) {
            rc = gatt_svr_write(ctxt->om,
-                               sizeof(ras_feat_val),
-                               sizeof(ras_feat_val),
-                               &ras_feat_val, NULL);
-           ble_gatts_chr_updated(attr_handle);
-           MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                       "all subscribed peers.\n");
+                               RASCP_CMD_OPCODE_LEN,
+                               sizeof(ble_svc_ras_cp_val),
+                               &ble_svc_ras_cp_val, NULL);
            return rc;
        }
-       goto unknown;
+       return BLE_ATT_ERR_UNLIKELY;
+
    default:
-       goto unknown;
+       break;
    }
 
-unknown:
-    /* Unknown characteristic/descriptor;
-     * The NimBLE host should not have called this function;
-     */
-    assert(0);
-    return BLE_ATT_ERR_UNLIKELY;
-
+   /* Unknown characteristic/descriptor */
+   return BLE_ATT_ERR_UNLIKELY;
  }
 
 void
@@ -174,18 +191,14 @@ custom_gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
         break;
 
     default:
-        assert(0);
         break;
     }
 }
 
 int
-gatt_svr_init(void)
+ble_svc_ras_rrsp_init(void)
 {
     int rc;
-
-    ble_svc_gap_init();
-    ble_svc_gatt_init();
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
     if (rc != 0) {

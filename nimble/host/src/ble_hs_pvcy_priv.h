@@ -27,11 +27,12 @@ extern "C" {
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-extern uint8_t *ble_hs_pvcy_default_irk;
+/* Accessor for default IRK */
 #else
 extern uint8_t ble_hs_pvcy_default_irk[16];
 #endif
 
+const uint8_t *ble_hs_pvcy_get_default_irk(void);
 void ble_hs_pvcy_set_default_irk(void);
 int ble_hs_pvcy_set_our_irk(const uint8_t *irk);
 int ble_hs_pvcy_our_irk(const uint8_t **out_irk);
@@ -45,7 +46,9 @@ bool ble_hs_pvcy_enabled(void);
 #endif
 bool ble_hs_pvcy_resolve_with_irk(const uint8_t rpa[6], const uint8_t irk[16]);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_hs_pvcy_irk_deinit(void);
+#endif
 #ifdef __cplusplus
 }
 #endif

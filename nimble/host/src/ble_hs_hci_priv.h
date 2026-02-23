@@ -92,8 +92,8 @@ int ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
 void ble_hs_hci_init(void);
 void ble_hs_hci_deinit(void);
 
-void ble_hs_hci_set_le_supported_feat(uint32_t feat);
-uint32_t ble_hs_hci_get_le_supported_feat(void);
+void ble_hs_hci_set_le_supported_feat(uint64_t feat);
+uint64_t ble_hs_hci_get_le_supported_feat(void);
 void ble_hs_hci_set_hci_version(uint8_t hci_version);
 uint8_t ble_hs_hci_get_hci_version(void);
 void ble_hs_hci_set_hci_supported_cmd(struct ble_hs_hci_sup_cmd sup_cmd);

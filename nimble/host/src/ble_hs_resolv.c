@@ -73,6 +73,11 @@ ble_rpa_get_num_peer_dev_records(void)
 void
 ble_rpa_set_num_peer_dev_records(int num_rec)
 {
+    if (num_rec < 0 || num_rec > BLE_RESOLV_LIST_SIZE) {
+        ble_store_num_peer_dev_rec = 0;
+        BLE_HS_LOG(ERROR, "Invalid peer dev record count %d, resetting to 0\n", num_rec);
+        return;
+    }
     ble_store_num_peer_dev_rec = num_rec;
 }
 
@@ -80,6 +85,8 @@ int
 ble_rpa_remove_peer_dev_rec(struct ble_hs_dev_records *p_dev_rec)
 {
     int i;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
     for (i = 0; i < ble_store_num_peer_dev_rec; i++) {
         if (!(memcmp(p_dev_rec, &peer_dev_rec[i], sizeof(struct
@@ -96,9 +103,9 @@ ble_rpa_remove_peer_dev_rec(struct ble_hs_dev_records *p_dev_rec)
     ble_store_num_peer_dev_rec--;
     if ((i != ble_store_num_peer_dev_rec) && (ble_store_num_peer_dev_rec != 0)) {
         memmove(&peer_dev_rec[i], &peer_dev_rec[i + 1],
-                (ble_store_num_peer_dev_rec - i) * sizeof(struct ble_hs_dev_records ));
-        memset(&peer_dev_rec[ble_store_num_peer_dev_rec], 0, sizeof(struct ble_hs_dev_records));
+                (ble_store_num_peer_dev_rec - i) * sizeof(struct ble_hs_dev_records));
     }
+    memset(&peer_dev_rec[ble_store_num_peer_dev_rec], 0, sizeof(struct ble_hs_dev_records));
 
     BLE_HS_LOG(DEBUG, " RPA: removed device at index = %d, no. of peer records"
                " = %d\n", i, ble_store_num_peer_dev_rec);
@@ -110,28 +117,11 @@ ble_rpa_remove_peer_dev_rec(struct ble_hs_dev_records *p_dev_rec)
 static void
 ble_rpa_peer_dev_rec_clear_all(void)
 {
-    uint8_t i;
-    int num_peer_dev_rec = ble_store_num_peer_dev_rec;
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    /* As NVS record need to be deleted one by one, we loop through
-     * peer_records */
-    for (i = 0; i < num_peer_dev_rec; i++) {
-        ble_store_num_peer_dev_rec--;
-
-        if (ble_store_num_peer_dev_rec > 1) {
-            /* Copy (n-1) valid elements, only if the array can hold at least 2 */
-#if BLE_RESOLV_LIST_SIZE > 1
-            size_t move_count = (ble_store_num_peer_dev_rec - 1) * sizeof(peer_dev_rec[0]);
-            __builtin_memmove(&peer_dev_rec[0], &peer_dev_rec[1], move_count);
-#endif
-        }
-
-	memset(&peer_dev_rec[ble_store_num_peer_dev_rec], 0,
-               sizeof(struct ble_hs_dev_records));
-
-	ble_store_persist_peer_records();
-    }
-    return;
+    ble_store_num_peer_dev_rec = 0;
+    memset(peer_dev_rec, 0, sizeof(peer_dev_rec));
+    ble_store_persist_peer_records();
 }
 
 /* Find peer device record with the address value.
@@ -144,7 +134,13 @@ struct ble_hs_dev_records *
 ble_rpa_find_peer_dev_rec(uint8_t *addr)
 {
     struct ble_hs_dev_records *p_dev_rec = &peer_dev_rec[0];
-    uint8_t i;
+    int i;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    if (addr == NULL) {
+        return NULL;
+    }
 
     for (i = 0; i < ble_store_num_peer_dev_rec; i++, p_dev_rec++) {
         if (p_dev_rec->rec_used) {
@@ -162,14 +158,17 @@ ble_rpa_find_peer_dev_rec(uint8_t *addr)
 static struct ble_hs_dev_records *
 ble_rpa_find_peer_dev_by_irk(uint8_t *irk)
 {
+    if (ble_store_num_peer_dev_rec > BLE_RESOLV_LIST_SIZE || irk == NULL) {
+        return NULL;
+    }
     struct ble_hs_dev_records *p_dev_rec = &peer_dev_rec[0];
-    uint8_t i;
+    int i;  // changed to int to avoid overflow
 
     for (i = 0; i < ble_store_num_peer_dev_rec; i++, p_dev_rec++) {
         if ((p_dev_rec->rec_used) &&
                 (!memcmp(irk, p_dev_rec->peer_sec.irk, 16))) {
             return p_dev_rec;
-        }
+	}
     }
     return NULL;
 }
@@ -207,8 +206,6 @@ ble_rpa_replace_id_with_rand_addr(uint8_t *addr_type, uint8_t *peer_addr)
             p_addr.type = *addr_type;
             memcpy(&p_addr.val[0], peer_addr, BLE_DEV_ADDR_LEN);
 
-            ble_hs_lock();
-
             conn = ble_hs_conn_find_by_addr(&p_addr);
             /* Rewrite the peer address history in ble_hs_conn. Need to take
              * this step to avoid taking wrong address during re-pairing
@@ -221,8 +218,6 @@ ble_rpa_replace_id_with_rand_addr(uint8_t *addr_type, uint8_t *peer_addr)
                 BLE_HS_LOG(DEBUG, "\n Replace Identity addr with random addr received at"
                                   " start of the connection\n");
             }
-
-            ble_hs_unlock();
         }
     }
     return;
@@ -237,8 +232,14 @@ ble_rpa_replace_id_with_rand_addr(uint8_t *addr_type, uint8_t *peer_addr)
 int
 ble_rpa_resolv_add_peer_rec(uint8_t *peer_addr)
 {
-    struct ble_hs_dev_records *p_dev_rec =
-            &peer_dev_rec[ble_store_num_peer_dev_rec];
+    struct ble_hs_dev_records *p_dev_rec;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    if (ble_store_num_peer_dev_rec >= BLE_RESOLV_LIST_SIZE) {
+        return BLE_HS_ESTORE_CAP;
+    }
+    p_dev_rec = &peer_dev_rec[ble_store_num_peer_dev_rec];
 
     p_dev_rec->rec_used = 1;
     memcpy(p_dev_rec->pseudo_addr, peer_addr, BLE_DEV_ADDR_LEN);
@@ -256,6 +257,8 @@ ble_rpa_find_rl_from_peer_records(uint8_t *peer_addr, uint8_t *peer_addr_type)
     struct ble_hs_resolv_entry *rl = NULL;
     int i;
     int rc = 0;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
     for (i = (ble_store_num_peer_dev_rec - 1); i >= 0; i--) {
         p_dev_rec = &peer_dev_rec[i];
@@ -313,7 +316,11 @@ ble_rpa_replace_peer_params_with_rl(uint8_t *peer_addr, uint8_t *addr_type,
                                     struct ble_hs_resolv_entry **rl)
 {
     struct ble_hs_resolv_entry *rl_tmp = NULL;
-    bool is_rpa = ble_hs_is_rpa(peer_addr, *addr_type);
+    bool is_rpa;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    is_rpa = ble_hs_is_rpa(peer_addr, *addr_type);
 
     if (is_rpa) {
         ble_hs_log_flat_buf(peer_addr, BLE_DEV_ADDR_LEN);
@@ -355,17 +362,18 @@ ble_host_rpa_enabled(void)
     return false;
 }
 
-static void
+static int
 ble_hs_rand_prand_get(uint8_t *prand)
 {
     uint16_t sum;
-    uint8_t rc;
+    int rc;
+    int retry = 100;
 
-    while (1) {
+    while (retry--) {
         /* Get 24 bits of random data */
         rc = ble_hs_hci_util_rand(prand, 3);
         if (rc != 0) {
-            return;
+            return rc;
         }
 
         /* Prand cannot be all zeros or 1's. */
@@ -375,9 +383,33 @@ ble_hs_rand_prand_get(uint8_t *prand)
         }
     }
 
+    if (retry <= 0) {
+        BLE_HS_LOG(ERROR, "Failed to generate random prand\n");
+        return BLE_HS_ETIMEOUT;
+    }
+
     /* Upper two bits must be 01 */
     prand[2] &= ~0xc0;
     prand[2] |= 0x40;
+
+    return 0;
+}
+
+static bool
+is_irk_nonzero(uint8_t *irk)
+{
+    int i;
+    bool rc = false;
+
+    for (i = 0; i < 16; ++i) {
+        if (*irk != 0) {
+            rc = true;
+            break;
+        }
+        ++irk;
+    }
+
+    return rc;
 }
 
 /**
@@ -404,7 +436,9 @@ ble_hs_resolv_gen_priv_addr(struct ble_hs_resolv_entry *rl, int local)
 
     /* Get prand */
     prand = addr + 3;
-    ble_hs_rand_prand_get(prand);
+    if (ble_hs_rand_prand_get(prand) != 0) {
+        return;
+    }
 
     /* Calculate hash, hash = ah(local IRK, prand) */
     memcpy(ecb.key, irk, 16);
@@ -473,22 +507,6 @@ ble_hs_resolv_rpa_timer_cb(struct ble_npl_event *ev)
     return;
 }
 
-static bool
-is_irk_nonzero(uint8_t *irk)
-{
-    int i;
-    bool rc = false;
-
-    for (i = 0; i < 16; ++i) {
-        if (*irk != 0) {
-            rc = true;
-            break;
-        }
-        ++irk;
-    }
-
-    return rc;
-}
 
 /**
  * Used to determine if the device is on the resolving list.
@@ -528,6 +546,8 @@ ble_hs_is_on_resolv_list(uint8_t *addr, uint8_t addr_type)
 struct ble_hs_resolv_entry *
 ble_hs_resolv_list_find(uint8_t *addr)
 {
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int i;
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];
@@ -546,6 +566,8 @@ ble_hs_resolv_list_find(uint8_t *addr)
         }
         ++rl;
     }
+#else
+    (void)addr;
 #endif
     return NULL;
 }
@@ -558,20 +580,24 @@ ble_hs_resolv_list_find(uint8_t *addr)
 int
 ble_hs_resolv_list_add(uint8_t *cmdbuf)
 {
+    const struct ble_hci_le_add_resolv_list_cp *cmd =
+        (const struct ble_hci_le_add_resolv_list_cp *)cmdbuf;
     uint8_t addr_type;
-    uint8_t *ident_addr;
+    const uint8_t *ident_addr;
     struct ble_hs_resolv_entry *rl;
     struct ble_hs_dev_records *p_dev_rec = NULL;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
     /* Check if we have any open entries */
     if (g_ble_hs_resolv_data.rl_cnt >= BLE_RESOLV_LIST_SIZE) {
         return BLE_HS_ENOMEM;
     }
 
-    addr_type = cmdbuf[0];
-    ident_addr = cmdbuf + 1;
+    addr_type = cmd->peer_addr_type;
+    ident_addr = cmd->peer_id_addr;
 
-    if (ble_hs_is_on_resolv_list(ident_addr, addr_type)) {
+    if (ble_hs_is_on_resolv_list((uint8_t *)ident_addr, addr_type)) {
         return BLE_HS_EINVAL;
     }
 
@@ -580,8 +606,8 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
 
     rl->rl_addr_type = addr_type;
     memcpy(rl->rl_identity_addr, ident_addr, BLE_DEV_ADDR_LEN);
-    swap_buf(rl->rl_peer_irk, cmdbuf + 7, 16);
-    swap_buf(rl->rl_local_irk, cmdbuf + 23, 16);
+    swap_buf(rl->rl_peer_irk, cmd->peer_irk, 16);
+    swap_buf(rl->rl_local_irk, cmd->local_irk, 16);
 
     if (is_irk_nonzero(rl->rl_peer_irk)) {
         p_dev_rec = ble_rpa_find_peer_dev_by_irk(rl->rl_peer_irk);
@@ -612,6 +638,8 @@ int
 ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
 {
     int rc = BLE_HS_ENOENT;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int position;
@@ -644,14 +672,28 @@ ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
 void
 ble_hs_resolv_list_clear_all(void)
 {
+    struct ble_hs_resolv_entry local_entry;
+    bool restore_local = false;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    /* Preserve local device entry at index 0 if it exists */
+    if (g_ble_hs_resolv_data.rl_cnt > 0) {
+        memcpy(&local_entry, &g_ble_hs_resolv_list[0], sizeof(local_entry));
+        restore_local = true;
+    }
+
     g_ble_hs_resolv_data.rl_cnt = 0;
     memset(g_ble_hs_resolv_list, 0, BLE_RESOLV_LIST_SIZE * sizeof(struct
            ble_hs_resolv_entry));
 
+    if (restore_local) {
+        memcpy(&g_ble_hs_resolv_list[0], &local_entry, sizeof(local_entry));
+        g_ble_hs_resolv_data.rl_cnt = 1;
+    }
+
     /* Now delete peer device records as well */
     ble_rpa_peer_dev_rec_clear_all();
-
-    return;
 }
 
 /**
@@ -707,6 +749,8 @@ ble_hs_resolv_enable(bool enable)
 int
 ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
 {
+    uint32_t ticks;
+
     /* Though the check validates smaller timeout values, it is recommended to
      * set it to enough bigger value (~15 minutes). There is no point in
      * changing RPA address aggressively and ending up sacrificing normal BLE
@@ -716,7 +760,12 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
         return BLE_HS_EINVAL;
     }
 
-    g_ble_hs_resolv_data.rpa_tmo = ble_npl_time_ms_to_ticks32(tmo_secs * 1000);
+    ticks = ble_npl_time_ms_to_ticks32(tmo_secs * 1000);
+    if (ticks > INT32_MAX) {
+        return BLE_HS_EINVAL;
+    }
+
+    g_ble_hs_resolv_data.rpa_tmo = ticks;
 
     /* If resolving is not enabled, we are done here. */
     if (!is_ble_hs_resolv_enabled()) {
@@ -732,6 +781,12 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
 
 struct ble_hs_resolv_entry *
 ble_hs_resolv_rpa_addr(uint8_t *addr, uint8_t addr_type) {
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    if (!ble_hs_is_rpa(addr, addr_type)) {
+        return NULL;
+    }
+
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int i;
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];

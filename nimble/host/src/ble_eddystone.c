@@ -31,6 +31,10 @@
 #define BLE_EDDYSTONE_FRAME_TYPE_UID    0x00
 #define BLE_EDDYSTONE_FRAME_TYPE_URL    0x10
 
+#define BLE_EDDYSTONE_UID_LEN           16
+#define BLE_EDDYSTONE_UID_RFU_LEN       2
+#define BLE_EDDYSTONE_UID_SVC_DATA_LEN  (1 + BLE_EDDYSTONE_UID_LEN + BLE_EDDYSTONE_UID_RFU_LEN)
+
 static ble_uuid16_t ble_eddystone_uuids16[BLE_EDDYSTONE_MAX_UUIDS16 + 1];
 static uint8_t ble_eddystone_svc_data[BLE_EDDYSTONE_MAX_SVC_DATA_LEN];
 
@@ -88,8 +92,15 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
 
     ble_eddystone_uuids16[0] =
         (ble_uuid16_t) BLE_UUID16_INIT(BLE_EDDYSTONE_SERVICE_UUID);
-    memcpy(ble_eddystone_uuids16 + 1, adv_fields->uuids16,
-           adv_fields->num_uuids16 * sizeof(ble_uuid16_t));
+
+    /* Only copy if there are UUIDs and the pointer is valid */
+    if (adv_fields->num_uuids16 > 0) {
+        if (adv_fields->uuids16 == NULL) {
+            return BLE_HS_EINVAL;
+        }
+        memcpy(ble_eddystone_uuids16 + 1, adv_fields->uuids16,
+               adv_fields->num_uuids16 * sizeof(ble_uuid16_t));
+    }
     adv_fields->uuids16 = ble_eddystone_uuids16;
     adv_fields->num_uuids16++;
     adv_fields->uuids16_is_complete = 1;
@@ -108,28 +119,36 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
 
 int
 ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
-                               void *uid, int8_t measured_power)
+                               const void *uid, int8_t measured_power)
 {
     uint8_t *svc_data;
     int rc;
+
+    /* Validate inputs before modifying global state */
+    if (adv_fields == NULL) {
+        return BLE_HS_EINVAL;
+    }
+    if (uid == NULL) {
+        return BLE_HS_EINVAL;
+    }
+    if (measured_power < -127 || measured_power > 20) {
+        return BLE_HS_EINVAL;
+    }
 
     /* Eddystone UUID and frame type (0). */
     svc_data = ble_eddystone_set_svc_data_base(BLE_EDDYSTONE_FRAME_TYPE_UID);
 
     /* Measured Power ranging data (Calibrated tx power at 0 meters). */
-    if (measured_power < -100 || measured_power > 20) {
-        return BLE_HS_EINVAL;
-    }
     svc_data[0] = measured_power;
 
     /* UID. */
-    memcpy(svc_data + 1, uid, 16);
+    memcpy(svc_data + 1, uid, BLE_EDDYSTONE_UID_LEN);
 
     /* Reserved. */
-    svc_data[17] = 0x00;
-    svc_data[18] = 0x00;
+    svc_data[1 + BLE_EDDYSTONE_UID_LEN] = 0x00;
+    svc_data[1 + BLE_EDDYSTONE_UID_LEN + 1] = 0x00;
 
-    rc = ble_eddystone_set_adv_data_gen(adv_fields, 19);
+    rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
     if (rc != 0) {
         return rc;
     }
@@ -139,7 +158,7 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
 
 int
 ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
-                               uint8_t url_scheme, char *url_body,
+                               uint8_t url_scheme, const char *url_body,
                                uint8_t url_body_len, uint8_t url_suffix,
                                int8_t measured_power)
 {
@@ -147,24 +166,40 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
     int url_len;
     int rc;
 
+    /* Validate all inputs before modifying global state */
+    if (adv_fields == NULL) {
+        return BLE_HS_EINVAL;
+    }
+    if (url_body == NULL && url_body_len > 0) {
+        return BLE_HS_EINVAL;
+    }
+    if (measured_power < -127 || measured_power > 20) {
+        return BLE_HS_EINVAL;
+    }
+    if (url_scheme > BLE_EDDYSTONE_URL_SCHEME_HTTPS) {
+        return BLE_HS_EINVAL;
+    }
+    if (url_suffix != BLE_EDDYSTONE_URL_SUFFIX_NONE && url_suffix > BLE_EDDYSTONE_URL_SUFFIX_GOV) {
+        return BLE_HS_EINVAL;
+    }
+
     url_len = url_body_len;
     if (url_suffix != BLE_EDDYSTONE_URL_SUFFIX_NONE) {
         url_len++;
     }
-    if (url_len > BLE_EDDYSTONE_URL_MAX_LEN) {
+    if (url_len < 1 || url_len > BLE_EDDYSTONE_URL_MAX_LEN) {
         return BLE_HS_EINVAL;
     }
 
     svc_data = ble_eddystone_set_svc_data_base(BLE_EDDYSTONE_FRAME_TYPE_URL);
 
     /* Measured Power ranging data (Calibrated tx power at 0 meters). */
-    if (measured_power < -100 || measured_power > 20) {
-        return BLE_HS_EINVAL;
-    }
     svc_data[0] = measured_power;
 
     svc_data[1] = url_scheme;
-    memcpy(svc_data + 2, url_body, url_body_len);
+    if (url_body_len > 0) {
+        memcpy(svc_data + 2, url_body, url_body_len);
+    }
     if (url_suffix != BLE_EDDYSTONE_URL_SUFFIX_NONE) {
         svc_data[2 + url_body_len] = url_suffix;
     }

@@ -31,6 +31,10 @@ ble_att_cmd_prepare(uint8_t opcode, size_t len, struct os_mbuf *txom)
 {
     struct ble_att_hdr *hdr;
 
+    if (txom == NULL) {
+        return NULL;
+    }
+
     if (os_mbuf_extend(txom, sizeof(*hdr) + len) == NULL) {
         os_mbuf_free_chain(txom);
         return NULL;
@@ -46,18 +50,25 @@ ble_att_cmd_prepare(uint8_t opcode, size_t len, struct os_mbuf *txom)
 void *
 ble_att_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom)
 {
+    void *result;
+
     *txom = ble_hs_mbuf_l2cap_pkt();
     if (*txom == NULL) {
         return NULL;
     }
 
-    return ble_att_cmd_prepare(opcode, len, *txom);
+    result = ble_att_cmd_prepare(opcode, len, *txom);
+    if (result == NULL) {
+        *txom = NULL;  /* mbuf was freed inside ble_att_cmd_prepare */
+    }
+    return result;
 }
 
 int
 ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, struct os_mbuf *txom)
 {
     int rc;
+    bool is_request;
     struct os_mbuf_pkthdr *omp;
 
     if (!txom) {
@@ -75,7 +86,9 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
 
     BLE_HS_DBG_ASSERT_EVAL(txom->om_len >= 1);
 
-    if (ble_att_is_request_op(txom->om_data[0])) {
+    is_request = ble_att_is_request_op(txom->om_data[0]);
+
+    if (is_request) {
         if (conn->client_att_busy) {
             BLE_EATT_LOG_DEBUG("ATT Queue %p, client busy %d\n", txom, conn->client_att_busy);
             STAILQ_INSERT_TAIL(&conn->att_tx_q, OS_MBUF_PKTHDR(txom), omp_next);
@@ -87,9 +100,15 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
     ble_att_inc_tx_stat(txom->om_data[0]);
 
     ble_att_truncate_to_mtu(chan, txom);
+    /* Save is_request before ble_l2cap_tx, which frees txom */
     rc = ble_l2cap_tx(conn, chan, txom);
-    assert(rc == 0);
-    return rc;
+    if (rc != 0) {
+        if (is_request) {
+            conn->client_att_busy = false;
+        }
+        return rc;
+    }
+    return 0;
 }
 
 int
@@ -125,10 +144,22 @@ ble_att_init_parse(uint8_t op, const void *payload,
 {
     const uint8_t *u8ptr;
 
-    BLE_HS_DBG_ASSERT(actual_len >= min_len);
+    /* Validate payload pointer */
+    if (payload == NULL) {
+        return NULL;
+    }
+
+    /* Validate length - critical for preventing buffer over-reads from remote peers */
+    if (actual_len < min_len) {
+        return NULL;
+    }
 
     u8ptr = payload;
-    BLE_HS_DBG_ASSERT(u8ptr[0] == op);
+
+    /* Validate opcode - ensures we're parsing the correct PDU type */
+    if (u8ptr[0] != op) {
+        return NULL;
+    }
 
     return u8ptr + 1;
 }
@@ -138,7 +169,15 @@ ble_att_init_write(uint8_t op, void *payload, int min_len, int actual_len)
 {
     uint8_t *u8ptr;
 
-    BLE_HS_DBG_ASSERT(actual_len >= min_len);
+    /* Validate payload pointer */
+    if (payload == NULL) {
+        return NULL;
+    }
+
+    /* Validate buffer length - critical for preventing buffer overflows */
+    if (actual_len < min_len) {
+        return NULL;
+    }
 
     u8ptr = payload;
     u8ptr[0] = op;
@@ -154,6 +193,11 @@ ble_att_error_rsp_parse(const void *payload, int len,
 
     src = ble_att_init_parse(BLE_ATT_OP_ERROR_RSP, payload,
                              BLE_ATT_ERROR_RSP_SZ, len);
+    if (src == NULL) {
+        /* Validation failed - zero out destination to avoid using uninitialized data */
+        memset(dst, 0, sizeof(*dst));
+        return;
+    }
 
     dst->baep_req_op = src->baep_req_op;
     dst->baep_handle = le16toh(src->baep_handle);
@@ -168,6 +212,10 @@ ble_att_error_rsp_write(void *payload, int len,
 
     dst = ble_att_init_write(BLE_ATT_OP_ERROR_RSP, payload,
                              BLE_ATT_ERROR_RSP_SZ, len);
+    if (dst == NULL) {
+        /* Validation failed - cannot write */
+        return;
+    }
 
     dst->baep_req_op = src->baep_req_op;
     dst->baep_handle = htole16(src->baep_handle);

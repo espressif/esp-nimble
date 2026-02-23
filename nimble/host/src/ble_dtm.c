@@ -27,6 +27,10 @@ ble_dtm_rx_start(const struct ble_dtm_rx_params *params)
 {
     struct ble_hci_le_rx_test_v2_cp cmd;
 
+    if (params == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
     cmd.rx_chan = params->channel;
     cmd.phy = params->phy;
     cmd.index = params->modulation_index;
@@ -40,6 +44,10 @@ int
 ble_dtm_tx_start(const struct ble_dtm_tx_params *params)
 {
     struct ble_hci_le_tx_test_v2_cp cmd;
+
+    if (params == NULL) {
+        return BLE_HS_EINVAL;
+    }
 
     cmd.tx_chan = params->channel;
     cmd.test_data_len = params->test_data_len;
@@ -61,10 +69,12 @@ ble_dtm_stop(uint16_t *num_packets)
                                       BLE_HCI_OCF_LE_TEST_END),
                            NULL, 0, &rsp, sizeof(rsp));
 
-    if (rc) {
-        *num_packets = 0;
-    } else {
-        *num_packets = le16toh(rsp.num_packets);
+    if (num_packets != NULL) {
+        if (rc) {
+            *num_packets = 0;
+        } else {
+            *num_packets = le16toh(rsp.num_packets);
+        }
     }
 
     return rc;

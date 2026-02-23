@@ -39,12 +39,20 @@
  *                              Other nonzero on failure.
  */
 int
-ble_ibeacon_set_adv_data(void *uuid128, uint16_t major,
+ble_ibeacon_set_adv_data(const void *uuid128, uint16_t major,
                          uint16_t minor, int8_t measured_power)
 {
     struct ble_hs_adv_fields fields;
-    uint8_t buf[BLE_IBEACON_MFG_DATA_SIZE];
+    static uint8_t buf[BLE_IBEACON_MFG_DATA_SIZE];
     int rc;
+
+    /* Validate inputs before any buffer writes */
+    if (uuid128 == NULL) {
+        return BLE_HS_EINVAL;
+    }
+    if (measured_power < -126 || measured_power > 20) {
+        return BLE_HS_EINVAL;
+    }
 
     /** Company identifier (Apple). */
     buf[0] = 0x4c;
@@ -62,9 +70,6 @@ ble_ibeacon_set_adv_data(void *uuid128, uint16_t major,
     put_be16(buf + 22, minor);
 
     /* Measured Power ranging data (Calibrated tx power at 1 meters). */
-    if (measured_power < -126 || measured_power > 20) {
-        return BLE_HS_EINVAL;
-    }
     buf[24] = measured_power;
 
     memset(&fields, 0, sizeof fields);

@@ -354,7 +354,7 @@ ble_gattc_cache_conn_dsc_add(ble_addr_t peer_addr, uint16_t chr_val_handle,
     if (prev == NULL) {
         SLIST_INSERT_HEAD(&chr->dscs, dsc, next);
     } else {
-        SLIST_NEXT(prev, next) = dsc;
+        SLIST_INSERT_AFTER(prev, dsc, next);
     }
 
     BLE_HS_LOG(DEBUG, "Descriptor added with handle = %d", dsc->dsc.handle);
@@ -545,12 +545,12 @@ ble_gattc_cache_conn_chr_add(ble_addr_t peer_addr, uint16_t svc_start_handle,
     if (prev == NULL) {
         SLIST_INSERT_HEAD(&svc->chrs, chr, next);
     } else {
-        SLIST_NEXT(prev, next) = chr;
+        SLIST_INSERT_AFTER(prev, chr, next);
     }
 
     /* ble_gattc_db_hash_chr_present(chr->chr.uuid.u16); */
 
-    BLE_HS_LOG(DEBUG, "Characteristc added with def_handle = %d and val_handle = %d",
+    BLE_HS_LOG(DEBUG, "Characteristic added with def_handle = %d and val_handle = %d",
                chr->chr.def_handle, chr->chr.val_handle);
 
     return 0;
@@ -997,7 +997,7 @@ ble_gattc_get_db_size_with_type(struct ble_gattc_cache_conn *peer, uint8_t type,
             case BLE_GATT_DB_CHARACTERISTIC:
                 // Iterate through characteristics.
                 SLIST_FOREACH(chr, &svc->chrs, next) {
-                      if (chr->chr.val_handle >= start_handle && chr->chr.val_handle <= end_handle) {
+                      if (chr->chr.def_handle >= start_handle && chr->chr.def_handle <= end_handle) { //Updated
                           db_size++;
                       }
                 }
@@ -1006,14 +1006,11 @@ ble_gattc_get_db_size_with_type(struct ble_gattc_cache_conn *peer, uint8_t type,
             case BLE_GATT_DB_DESCRIPTOR:
                 // Iterate through characteristics and their descriptors.
                 SLIST_FOREACH(chr, &svc->chrs, next) {
-                    if (chr->chr.val_handle >= start_handle && chr->chr.val_handle <= end_handle) {
-                        if (chr->chr.val_handle == char_handle) {
-                            SLIST_FOREACH(dsc, &chr->dscs, next) {
-                                if (dsc->dsc.handle >= start_handle &&
-                                    dsc->dsc.handle <= end_handle &&
-                                    chr->chr.val_handle == char_handle) {
-                                    db_size++;
-                                }
+                    if (chr->chr.val_handle == char_handle) {
+                        SLIST_FOREACH(dsc, &chr->dscs, next) {
+                        if (dsc->dsc.handle >= start_handle &&
+                            dsc->dsc.handle <= end_handle) {
+                                db_size++;
                             }
                         }
                     }
@@ -1412,6 +1409,13 @@ void ble_gattc_get_gatt_db(uint16_t conn_handle,
 {
     struct ble_gattc_cache_conn *cache_conn;
 
+    if (db != NULL) {
+        *db = NULL;
+    }
+    if (count != NULL) {
+        *count = 0;
+    }
+
     cache_conn = ble_gattc_cache_conn_find(conn_handle);
 
     if (cache_conn == NULL) {
@@ -1538,14 +1542,19 @@ static void service_sanity_check(struct ble_gattc_cache_conn_svc_list *svcs)
     struct ble_gattc_cache_conn_chr *chr, *prev = NULL;
     struct ble_gattc_cache_conn_dsc *dsc;
     uint16_t end_handle = 0;
+
     SLIST_FOREACH(svc, svcs, next) {
         if (svc->svc.end_handle == 65535) {
+            end_handle = svc->svc.start_handle;
+            prev = NULL;
             SLIST_FOREACH(chr, &svc->chrs, next) {
                 end_handle = chr->chr.val_handle;
                 prev = chr;
             }
-            SLIST_FOREACH(dsc, &prev->dscs, next) {
-                end_handle = dsc->dsc.handle;
+            if (prev != NULL) {
+                SLIST_FOREACH(dsc, &prev->dscs, next) {
+                    end_handle = dsc->dsc.handle;
+                }
             }
             svc->svc.end_handle = end_handle;
         }
@@ -1568,10 +1577,12 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
 
         /* cache the database only if the connection
            is trusted or database hash exists */
+        ble_addr_t peer_addr;
         ble_hs_lock();
         hs_conn = ble_hs_conn_find(peer->conn_handle);
         BLE_HS_DBG_ASSERT(hs_conn != NULL);
         bonded = hs_conn->bhc_sec_state.bonded;
+        peer_addr = hs_conn->bhc_peer_addr; /* Copy address while holding lock */
         ble_hs_unlock();
 
         chr = ble_gattc_cache_conn_chr_find_uuid(peer,
@@ -1579,7 +1590,7 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
                                                  BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16));
         if (bonded || chr != NULL) {
             /* persist the cache */
-            ble_gattc_cacheReset(&hs_conn->bhc_peer_addr);
+            ble_gattc_cacheReset(&peer_addr);
             ble_gattc_cache_conn_cache_peer(peer); /* TODO */
         }
     } else {
@@ -2028,6 +2039,7 @@ ble_gattc_cache_conn_update(uint16_t conn_handle, uint16_t start_handle, uint16_
     peer = ble_gattc_cache_conn_find(conn_handle);
     if (peer == NULL) {
         BLE_HS_LOG(ERROR, "Cannot find connection with conn_handle %d", conn_handle);
+        return; //Update
     }
 
     peer->cache_state = CACHE_INVALID;
@@ -2048,15 +2060,19 @@ int ble_gattc_cache_refresh(ble_addr_t peer_addr)
     struct ble_gattc_cache_conn *conn;
     int rc;
 
+    ble_hs_lock();
     hs_conn = ble_hs_conn_find_by_addr(&peer_addr);
 
     if (hs_conn == NULL) {
-         BLE_HS_LOG(ERROR, "GATT cache refresh: connection not found for peer: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                    peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
-                    peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
+        ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "GATT cache refresh: connection not found for peer: %02x:%02x:%02x:%02x:%02x:%02x\n",
+                   peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
+                   peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
 
         return BLE_HS_ENOTCONN;
     }
+
+    ble_hs_unlock();
 
 
     /* Lookup cache connection entry */
@@ -2141,8 +2157,11 @@ int ble_gattc_cache_clean(ble_addr_t peer_addr)
     struct ble_hs_conn *hs_conn;
     struct ble_gattc_cache_conn *conn;
 
+    ble_hs_lock();
+
     // Check if the device is connected
     hs_conn = ble_hs_conn_find_by_addr(&peer_addr);
+
     if (hs_conn == NULL) {
         BLE_HS_LOG(WARN, "GATT cache clean: No active connection found for peer:"
                   " %02x:%02x:%02x:%02x:%02x:%02x, Attempting cache clean anyway.",
@@ -2150,12 +2169,14 @@ int ble_gattc_cache_clean(ble_addr_t peer_addr)
                    peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
 
         ble_gattc_cacheReset(&peer_addr);
+        ble_hs_unlock();
         return 0;
     }
 
     // Find cached GATT services for this peer
     conn = ble_gattc_cache_conn_find_by_addr(peer_addr);
     if (conn == NULL) {
+        ble_hs_unlock();
         BLE_HS_LOG(WARN, "GATT cache clean: no cache entry found for peer.");
         return BLE_HS_EUNKNOWN;
     }
@@ -2164,6 +2185,7 @@ int ble_gattc_cache_clean(ble_addr_t peer_addr)
     ble_gattc_cacheReset(&peer_addr);
 
     conn->cache_state = CACHE_INVALID;
+    ble_hs_unlock();
 
     BLE_HS_LOG(INFO, "GATT cache cleaned for peer: %02x:%02x:%02x:%02x:%02x:%02x",
                peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
@@ -2250,7 +2272,7 @@ ble_gattc_cache_conn_free_all_mem(void)
 }
 
 int
-ble_gattc_cache_conn_init()
+ble_gattc_cache_conn_init(void)
 {
     int rc;
     int max_ble_gattc_cache_conns;
@@ -2418,15 +2440,19 @@ static int ble_gattc_cache_conn_verify(struct ble_gattc_cache_conn *conn)
         return 0;
     }
 
+    int bonded = 0;
     ble_hs_lock();
     gap_conn = ble_hs_conn_find(conn->conn_handle);
+    if (gap_conn != NULL) {
+        bonded = gap_conn->bhc_sec_state.bonded;
+    }
     ble_hs_unlock();
 
     if (gap_conn == NULL) {
         return BLE_HS_ENOTCONN;
     }
     if (conn->cache_state == CACHE_LOADED) {
-        if (gap_conn->bhc_sec_state.bonded) {
+        if (bonded) {
             conn->cache_state = CACHE_VERIFIED;
             return 0;
         }
@@ -2465,13 +2491,19 @@ static void ble_gattc_cache_search_all_svcs_cb(struct ble_npl_event *ev)
 
     op = &conn->pending_op;
     dcb = op->cb;
+
+    if (SLIST_EMPTY(&conn->svcs)) {
+        dcb(conn->conn_handle, ble_gattc_cache_error(BLE_HS_EDONE, 0), NULL, op->cb_arg);
+        return;
+    }
+
     SLIST_FOREACH(svc, &conn->svcs, next) {
         if (svc->type == BLE_GATT_SVC_TYPE_PRIMARY) {
             dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
         }
     }
     status = BLE_HS_EDONE;
-    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
+    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg);
 
     return;
 }
@@ -2548,7 +2580,7 @@ ble_gattc_cache_conn_search_svc_by_uuid_cb(struct ble_npl_event *ev)
         }
     }
     status = BLE_HS_EDONE;
-    dcb(conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
+    dcb(conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg); //Updated
 
     return;
 }
@@ -2612,13 +2644,18 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
+    if (svc == NULL) {
+        status = BLE_HS_ENOENT;
+        dcb(conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg);
+        return;
+    }
 
     SLIST_FOREACH(incl_svc, &svc->incl_svc, next) {
         dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &incl_svc->svc, op->cb_arg);
 
     }
     status = BLE_HS_EDONE;
-    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &incl_svc->svc, op->cb_arg);
+    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg); //Updated
 #else
     SLIST_FOREACH(svc, &conn->svcs, next) {
         if (svc->type == BLE_GATT_SVC_TYPE_SECONDARY &&
@@ -2627,7 +2664,7 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
         }
     }
     status = BLE_HS_EDONE;
-    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), &svc->svc, op->cb_arg);
+    dcb(conn->conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg);
 #endif
     return;
 }
@@ -2692,12 +2729,18 @@ ble_gattc_cache_conn_search_all_chrs_cb(struct ble_npl_event *ev)
     op = &conn->pending_op;
     dcb = op->cb;
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
+
+    if (svc == NULL) {
+        dcb(conn_handle, ble_gattc_cache_error(BLE_HS_EDONE, 0), NULL, op->cb_arg);
+        return;
+    }
+
     /* return all chrs */
     SLIST_FOREACH(chr, &svc->chrs, next) {
         dcb(conn_handle, ble_gattc_cache_error(status, 0), &chr->chr, op->cb_arg);
     }
     status = BLE_HS_EDONE;
-    dcb(conn_handle, ble_gattc_cache_error(status, 0), &chr->chr, op->cb_arg);
+    dcb(conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg);
 
     return;
 }
@@ -2755,6 +2798,11 @@ ble_gattc_cache_conn_search_chrs_by_uuid_cb(struct ble_npl_event *ev)
     op = &conn->pending_op;
     dcb = op->cb;
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
+    if (svc == NULL) {
+        status = BLE_HS_ENOENT;
+        dcb(conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg);
+        return;
+    }
     /* return all chrs */
     SLIST_FOREACH(chr, &svc->chrs, next) {
         if (ble_uuid_cmp(&chr->chr.uuid.u, op->uuid) == 0) {
@@ -2762,7 +2810,7 @@ ble_gattc_cache_conn_search_chrs_by_uuid_cb(struct ble_npl_event *ev)
         }
     }
     status = BLE_HS_EDONE;
-    dcb(conn_handle, ble_gattc_cache_error(status, 0), &chr->chr, op->cb_arg);
+    dcb(conn_handle, ble_gattc_cache_error(status, 0), NULL, op->cb_arg);
 
     return;
 }
@@ -2820,12 +2868,22 @@ ble_gattc_cache_conn_search_all_dscs_cb(struct ble_npl_event *ev)
     op = &conn->pending_op;
     dcb = op->cb;
     svc = ble_gattc_cache_conn_svc_find_range(conn, op->start_handle);
+    if (svc == NULL) {
+        dcb(conn_handle, ble_gattc_cache_error(BLE_HS_EINVAL, 0), 0, NULL, op->cb_arg);
+        return;
+    }
+
     chr = ble_gattc_cache_conn_chr_find_range(svc, op->start_handle);
+    if (chr == NULL) {
+        dcb(conn_handle, ble_gattc_cache_error(BLE_HS_EINVAL, 0), 0, NULL, op->cb_arg);
+        return;
+    }
+
     SLIST_FOREACH(dsc, &chr->dscs, next) {
         dcb(conn_handle, ble_gattc_cache_error(status, 0), chr->chr.val_handle, &dsc->dsc, op->cb_arg);
     }
     status = BLE_HS_EDONE;
-    dcb(conn_handle, ble_gattc_cache_error(status, 0), chr->chr.val_handle, &dsc->dsc, op->cb_arg);
+    dcb(conn_handle, ble_gattc_cache_error(status, 0), 0, NULL, op->cb_arg);
 
     return;
 }

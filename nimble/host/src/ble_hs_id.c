@@ -76,24 +76,25 @@ ble_hs_is_rpa(uint8_t *addr, uint8_t addr_type)
     bool rc = 0;
     /* According to spec v4.2, Vol 6, Part B, section 1.3.2.2, the two most
      * significant bits of RPA shall be equal to 0 and 1 */
-    if (addr_type && ((addr[5] & 0xc0) == 0x40)) {
+    if (addr_type == BLE_ADDR_RANDOM && ((addr[5] & 0xc0) == 0x40)) {
         rc = 1;
     }
     return rc;
 }
 #endif
 
-void
+int
 ble_hs_id_set_pub(const uint8_t *pub_addr)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
-        return;
+        return BLE_HS_ENOMEM;
     }
 #endif
     ble_hs_lock();
     memcpy(ble_hs_id_pub, pub_addr, 6);
     ble_hs_unlock();
+    return 0;
 }
 
 int
@@ -126,13 +127,22 @@ ble_hs_id_gen_rnd(int nrpa, ble_addr_t *out_addr)
  *                              Appropriate error code if failure.
  */
 int
-ble_hs_id_set_nrpa_rnd()
+ble_hs_id_set_nrpa_rnd(void)
 {
 
     ble_addr_t nrpa_addr;
     int rc;
 
-    ble_hs_id_gen_rnd(1, &nrpa_addr);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
+
+    rc = ble_hs_id_gen_rnd(1, &nrpa_addr);
+    if (rc != 0) {
+        return rc;
+    }
 
     ble_hs_lock();
 
@@ -166,22 +176,27 @@ ble_hs_id_set_pseudo_rnd(const uint8_t *rnd_addr)
 {
     uint8_t addr_type_byte;
     int rc;
-    int i, rnd_part_sum = 0;
+    int ones;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     ble_hs_lock();
 
-    /* Make sure all bits of rnd_addr are neither one nor zero (3rd, 4th and
-     * 5th bytes of rnd_addr(RPA) are prand) Vol 6, Part B, section 1.3.2.2
-     * The two most significant bits of RPA shall be equal to 0 and 1 */
+    /* Make sure random part of rnd_addr is not all ones or zeros. Reference:
+     * Core v5.0, Vol 6, Part B, section 1.3.2.1 */
     addr_type_byte = rnd_addr[5] & 0xc0;
-    for (i = 3; i < BLE_DEV_ADDR_LEN; i++) {
-        rnd_part_sum += *(rnd_addr + i);
-    }
-    rnd_part_sum -= addr_type_byte;
 
-    /* All ones in random part: 3*(0xFF) - 0x40 = 0x2BD  */
+    /* count bits set to 1 in random part of prand (22 bits) */
+    ones = __builtin_popcount(rnd_addr[3]);
+    ones += __builtin_popcount(rnd_addr[4]);
+    ones += __builtin_popcount(rnd_addr[5] & 0x3f);
+
     if ((addr_type_byte != 0x40) ||
-        (rnd_part_sum == 0) || (rnd_part_sum == 0x2BD)) {
+        (ones == 0 || ones == 22)) {
         rc = BLE_HS_EINVAL;
         goto done;
     }
@@ -276,6 +291,8 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
 {
     const uint8_t *id_addr;
     int nrpa;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
     switch (id_addr_type) {
     case BLE_ADDR_PUBLIC:
@@ -451,8 +468,10 @@ ble_hs_id_reset(void)
         return;
     }
 #endif
+    ble_hs_lock();
     memset(ble_hs_id_pub, 0, sizeof ble_hs_id_pub);
     memset(ble_hs_id_rnd, 0, sizeof ble_hs_id_rnd);
+    ble_hs_unlock();
 }
 
 /**
@@ -462,12 +481,14 @@ ble_hs_id_reset(void)
 void
 ble_hs_id_rnd_reset(void)
 {
-
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        ble_hs_unlock();
         return;
     }
 #endif
 
     memset(ble_hs_id_rnd, 0, sizeof ble_hs_id_rnd);
+    ble_hs_unlock();
 }

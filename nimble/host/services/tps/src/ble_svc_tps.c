@@ -18,7 +18,6 @@
  */
 
 #include <assert.h>
-#include <string.h>
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
 #include "host/ble_hs.h"
@@ -31,8 +30,6 @@
 #include "../src/ble_hs_hci_priv.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_TPS_SERVICE
-int8_t ble_svc_tps_tx_power_level;
-
 /* Access function */
 static int
 ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -48,7 +45,7 @@ static const struct ble_gatt_chr_def tps_characteristics[] = {
         .access_cb = ble_svc_tps_access,
         .flags = BLE_GATT_CHR_F_READ,
     }, {
-	0, /* No more characeteristics in this service */
+	0, /* No more characteristics in this service */
     },
 };
 
@@ -72,27 +69,26 @@ static int
 ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
+    int8_t tx_power_level;
     int rc;
 
     assert(ctxt->chr == &ble_svc_tps_defs[0].characteristics[0]);
 
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-        rc = ble_hs_hci_util_read_adv_tx_pwr(&ble_svc_tps_tx_power_level);
+        rc = ble_hs_hci_util_read_adv_tx_pwr(&tx_power_level);
         if (rc != 0) {
             return BLE_ATT_ERR_UNLIKELY;
         }
 
-        rc = os_mbuf_append(ctxt->om, &ble_svc_tps_tx_power_level,
-                            sizeof ble_svc_tps_tx_power_level);
+        rc = os_mbuf_append(ctxt->om, &tx_power_level,
+                            sizeof tx_power_level);
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
     default:
         assert(0);
         return BLE_ATT_ERR_UNLIKELY;
     }
-
-    return 0;
 }
 
 /**
