@@ -119,7 +119,7 @@ void ble_l2cap_sig_hdr_parse(void *payload, uint16_t len,
                              struct ble_l2cap_sig_hdr *hdr);
 int ble_l2cap_sig_reject_tx(uint16_t conn_handle,
                             uint8_t id, uint16_t reason,
-                            void *data, int data_len);
+                            void *data, uint16_t data_len);
 int ble_l2cap_sig_reject_invalid_cid_tx(uint16_t conn_handle, uint8_t id,
                                         uint16_t src_cid, uint16_t dst_cid);
 int ble_l2cap_sig_tx(uint16_t conn_handle, struct os_mbuf *txom);

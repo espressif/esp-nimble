@@ -387,9 +387,9 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
 
         /* Append fragment to rx buffer */
 #if MYNEWT_VAL(BLE_L2CAP_JOIN_RX_FRAGS)
-        os_mbuf_pack_chains(conn->rx_frags, om);
+        conn->rx_frags = os_mbuf_pack_chains(conn->rx_frags, om);
 #else
-        os_mbuf_concat(conn->rx_frag, om);
+        os_mbuf_concat(conn->rx_frags, om);
 #endif
         break;
     default:
@@ -426,7 +426,8 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
     rx_cid = conn->rx_cid;
 
     conn->rx_frags = NULL;
-    ble_l2cap_rx_free(conn);
+    conn->rx_len = 0;
+    conn->rx_cid = 0;
 
     chan = ble_hs_conn_chan_find_by_scid(conn, rx_cid);
 
@@ -434,17 +435,20 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
 
     if (!chan) {
         ble_l2cap_sig_reject_invalid_cid_tx(conn_handle, 0, 0, rx_cid);
+        os_mbuf_free_chain(rx_frags);
         return BLE_HS_ENOENT;
     }
 
     if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
         chan->dcid <= BLE_L2CAP_COC_CID_END && rx_len > chan->my_coc_mps) {
         ble_l2cap_disconnect(chan);
+        os_mbuf_free_chain(rx_frags);
         return BLE_HS_EBADDATA;
     }
 
     if (rx_len > ble_l2cap_get_mtu(chan)) {
         ble_l2cap_disconnect(chan);
+        os_mbuf_free_chain(rx_frags);
         return BLE_HS_EBADDATA;
     }
 
@@ -516,7 +520,7 @@ ble_l2cap_init(void)
         if (ble_l2cap_chan_mem == NULL) {
             nimble_platform_mem_free(ble_l2cap_ctx);
             ble_l2cap_ctx = NULL;
-	    return BLE_HS_ENOMEM;
+            return BLE_HS_ENOMEM;
         }
     }
 #endif
@@ -537,10 +541,10 @@ ble_l2cap_init(void)
 #endif
         memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
 
-	nimble_platform_mem_free(ble_l2cap_ctx);
-	ble_l2cap_ctx = NULL;
+        nimble_platform_mem_free(ble_l2cap_ctx);
+        ble_l2cap_ctx = NULL;
 #endif
-       return BLE_HS_EOS;
+        return BLE_HS_EOS;
     }
 
     rc = ble_l2cap_sig_init();
@@ -562,7 +566,8 @@ ble_l2cap_init(void)
         STATS_HDR(ble_l2cap_stats), STATS_SIZE_INIT_PARMS(ble_l2cap_stats,
         STATS_SIZE_32), STATS_NAME_INIT_PARMS(ble_l2cap_stats), "ble_l2cap");
     if (rc != 0) {
-        return BLE_HS_EOS;
+        rc = BLE_HS_EOS;
+        goto done;
     }
 
     return 0;
@@ -590,13 +595,14 @@ ble_l2cap_deinit(void)
         }
 #endif
         memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
-    }
-    ble_l2cap_sig_deinit();
-    ble_l2cap_coc_deinit();
-    ble_sm_deinit();
 
-    nimble_platform_mem_free(ble_l2cap_ctx);
-    ble_l2cap_ctx = NULL;
+        ble_l2cap_sig_deinit();
+        ble_l2cap_coc_deinit();
+        ble_sm_deinit();
+
+        nimble_platform_mem_free(ble_l2cap_ctx);
+        ble_l2cap_ctx = NULL;
+    }
 }
 #endif
 

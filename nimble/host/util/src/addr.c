@@ -44,9 +44,14 @@ ble_hs_util_load_rand_addr(ble_addr_t *addr)
 #endif
 
 #if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
-    rc = esp_ble_hw_get_static_addr((esp_ble_addr_t *)addr);
-    if (rc == 0) {
-        return 0;
+    {
+        esp_ble_addr_t esp_addr;
+        rc = esp_ble_hw_get_static_addr(&esp_addr);
+        if (rc == 0) {
+            addr->type = BLE_ADDR_RANDOM;
+            memcpy(addr->val, esp_addr.val, sizeof(addr->val));
+            return 0;
+        }
     }
 #endif
     return rc;
@@ -55,7 +60,7 @@ ble_hs_util_load_rand_addr(ble_addr_t *addr)
 static int
 ble_hs_util_ensure_rand_addr(void)
 {
-    ble_addr_t addr;
+    ble_addr_t addr = {0};
     int rc;
 
     /* If we already have a random address, then we are done. */

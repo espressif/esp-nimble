@@ -45,9 +45,27 @@ ble_store_util_iter_unique_peer(int obj_type,
 
     set = arg;
 
-    /* Do nothing if this peer is a duplicate. */
+    ble_addr_t peer_addr;
+    switch (obj_type) {
+    case BLE_STORE_OBJ_TYPE_OUR_SEC:
+    case BLE_STORE_OBJ_TYPE_PEER_SEC:
+        peer_addr = val->sec.peer_addr;
+        break;
+#if MYNEWT_VAL(ENC_ADV_DATA)
+    case BLE_STORE_OBJ_TYPE_ENC_ADV_DATA:
+        peer_addr = val->ead.peer_addr;
+        break;
+#endif
+    case BLE_STORE_OBJ_TYPE_LOCAL_IRK:
+        peer_addr = val->local_irk.addr;
+        break;
+    default:
+        BLE_HS_DBG_ASSERT(0);
+        return BLE_HS_EINVAL;
+    }
+    /* Use peer_addr in loop and assignment */
     for (i = 0; i < set->num_peers; i++) {
-        if (ble_addr_cmp(set->peer_id_addrs + i, &val->sec.peer_addr) == 0) {
+        if (ble_addr_cmp(set->peer_id_addrs + i, &peer_addr) == 0) {
             return 0;
         }
     }
@@ -55,10 +73,10 @@ ble_store_util_iter_unique_peer(int obj_type,
     if (set->num_peers >= set->max_peers) {
         /* Overflow; abort the iterate procedure. */
         set->status = BLE_HS_ENOMEM;
-        return 1;
+        return BLE_HS_ENOMEM;
     }
 
-    set->peer_id_addrs[set->num_peers] = val->sec.peer_addr;
+    set->peer_id_addrs[set->num_peers] = peer_addr;
     set->num_peers++;
 
     return 0;
@@ -84,6 +102,7 @@ ble_store_util_bonded_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
                             int max_peers)
 {
 #if NIMBLE_BLE_CONNECT
+    BLE_HS_DBG_ASSERT(out_num_peers != NULL);
 
     struct ble_store_util_peer_set set = {
         .peer_id_addrs = out_peer_id_addrs,
@@ -101,6 +120,12 @@ ble_store_util_bonded_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
     }
 
     *out_num_peers = set.num_peers;
+
+    /* This holds the status of the operation */
+    if (set.status != 0) {
+        return set.status;
+    }
+
     return 0;
 #else
     return BLE_HS_ENOTSUP;
@@ -248,6 +273,8 @@ ble_store_util_count(int type, int *out_count)
 
     int rc;
 
+    BLE_HS_DBG_ASSERT(out_count != NULL);
+
     *out_count = 0;
     rc = ble_store_iterate(type,
                            ble_store_util_iter_count,
@@ -314,6 +341,8 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
 {
 #if NIMBLE_BLE_CONNECT
 
+   BLE_HS_DBG_ASSERT(out_num_peers != NULL);
+
    struct ble_store_util_peer_set set = {
        .peer_id_addrs = out_peer_id_addrs,
        .num_peers = 0,
@@ -327,6 +356,10 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
                           &set);
    if (rc != 0) {
        return rc;
+   }
+
+   if (set.status != 0 && set.status != BLE_HS_ENOMEM) {
+       return set.status;
    }
 
    *out_num_peers = set.num_peers;
@@ -392,9 +425,10 @@ ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
         case BLE_STORE_OBJ_TYPE_PEER_ADDR:
             return ble_gap_unpair_oldest_peer();
         case BLE_STORE_OBJ_TYPE_CCCD:
-        case BLE_STORE_OBJ_TYPE_CSFC:
             /* Try unpairing oldest peer except current peer */
             return ble_gap_unpair_oldest_except(&event->overflow.value->cccd.peer_addr);
+        case BLE_STORE_OBJ_TYPE_CSFC:
+            return ble_gap_unpair_oldest_except(&event->overflow.value->csfc.peer_addr);
 #if MYNEWT_VAL(ENC_ADV_DATA)
         case BLE_STORE_OBJ_TYPE_ENC_ADV_DATA:
             return ble_store_util_delete_ead_oldest_peer();

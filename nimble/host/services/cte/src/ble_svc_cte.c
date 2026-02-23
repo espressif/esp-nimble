@@ -86,14 +86,14 @@ typedef struct {
     uint8_t cte_transmit_duration;
     uint16_t cte_interval;
     uint8_t cte_phy;
-}cte_instance_config_t;
+} cte_instance_config_t;
 
 /* Structure to store CTE settings per client */
 static cte_instance_config_t cte_config[MYNEWT_VAL(BLE_MAX_CONNECTIONS)];
 
 
 /**
- * @brief Constant Tone Extensio Service UUID
+ * @brief Constant Tone Extension Service UUID
  */
 static const ble_uuid128_t cte_svc_uuid =
     BLE_UUID128_INIT(0xFB, 0x34, 0x9B, 0x5F, 0x80, 0x00, 0x00, 0x80,
@@ -117,7 +117,7 @@ static int ble_svc_cte_adv_cte_interval_access(uint16_t conn_handle, uint16_t at
 static int ble_svc_cte_adv_cte_phy_access(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg);
 /**
- * @brief Constant Tone Extensio Service definition
+ * @brief Constant Tone Extension Service definition
  */
 
 static const ble_uuid16_t uuid_svc_cte = BLE_UUID16_INIT(BLE_SVC_CTE_UUID16);
@@ -172,7 +172,7 @@ static const struct ble_gatt_chr_def cte_characteristics[] = {
 
 static const struct ble_gatt_svc_def ble_svc_cte_defs[] = {
     {
-        /*** Service: Asset Tracking Service. */
+        /*** Service: Constant Tone Extension Service. */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &uuid_svc_cte.u,
         .characteristics = cte_characteristics,
@@ -319,9 +319,9 @@ ble_svc_cte_two_octet_chr_write(struct os_mbuf *om,
 
 
 /**
- * @brief Access callback for Constant Tone Extensio Service cte enable
+ * @brief Access callback for Constant Tone Extension Service cte enable
  *
- * This function is called when a read or write operation is performed on the Constant Tone Extensio
+ * This function is called when a read or write operation is performed on the Constant Tone Extension
  * characteristic. It handles the read and write requests.
  *
  * @param conn_handle   The connection handle
@@ -352,26 +352,38 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
             // Handle write characteristic request
-            rc = ble_svc_cte_one_octet_chr_write(ctxt->om,
-                                    CTE_ENABLE_MIN_VALUE,
-                                    CTE_ENABLE_MAX_VALUE,
-                                    &config->cte_enable, NULL);
+            {
+                uint8_t old_enable = config->cte_enable;
+                rc = ble_svc_cte_one_octet_chr_write(ctxt->om,
+                                        CTE_ENABLE_MIN_VALUE,
+                                        CTE_ENABLE_MAX_VALUE,
+                                        &config->cte_enable, NULL);
 
-            if (rc == 0) {
-                if((config->cte_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) {
-                    if(ble_gap_set_conn_cte_transmit_param(conn_handle, BLE_GAP_CTE_RSP_ALLOW_AOA_MASK, 0, NULL) != 0)
-                    {
-                        rc = 0xFC;
-                        break;
+                if (rc == 0) {
+                    if(((config->cte_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) &&
+                       ((old_enable & CTE_ENABLE_AOA_CONNECTION) != CTE_ENABLE_AOA_CONNECTION)) {
+                        if(ble_gap_set_conn_cte_transmit_param(conn_handle, BLE_GAP_CTE_RSP_ALLOW_AOA_MASK, 0, NULL) != 0)
+                        {
+                            config->cte_enable = old_enable;
+                            rc = 0xFC;
+                            break;
+                        }
+                        if(ble_gap_conn_cte_rsp_enable(conn_handle, true) != 0) {
+                            config->cte_enable = old_enable;
+                            rc = 0xFC;
+                            break;
+                        }
+                    } else if ((old_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) {
+                        if(ble_gap_conn_cte_rsp_enable(conn_handle, false) != 0) {
+                            config->cte_enable = old_enable;
+                            rc = 0xFC;
+                            break;
+                        }
                     }
-                    if(ble_gap_conn_cte_rsp_enable(conn_handle, true) != 0) {
-                        rc = 0xFC;
-                        break;
+                    if((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) {
+                        // TODO: Add Start advertising with CTE
                     }
-                } 
-                if((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) {
-                    // TODO: Add Start advertising with CTE 
-                } 
+                }
             }
             break;
 
@@ -551,9 +563,47 @@ static int ble_svc_cte_adv_cte_phy_access(uint16_t conn_handle, uint16_t attr_ha
     return rc;
 }
 
+static struct ble_gap_event_listener cte_gap_listener;
+
+static int
+cte_gap_event(struct ble_gap_event *event, void *arg)
+{
+    int i;
+
+    switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+        if (event->connect.status == 0) {
+            for (i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+                if (cte_config[i].conn_handle == 0xffff) {
+                    cte_config[i].conn_handle = event->connect.conn_handle;
+                    break;
+                }
+            }
+        }
+        break;
+
+    case BLE_GAP_EVENT_DISCONNECT:
+        for (i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+            if (cte_config[i].conn_handle == event->disconnect.conn.conn_handle) {
+                cte_config[i].conn_handle = 0xffff;
+                cte_config[i].cte_enable = 0;
+                cte_config[i].cte_min_length = CTE_MIN_LEN_MIN_VALUE;
+                cte_config[i].cte_min_transmit_count = CTE_MIN_TX_COUNT_MIN_VALUE;
+                cte_config[i].cte_transmit_duration = CTE_TX_DURATION_MIN_VALUE;
+                cte_config[i].cte_interval = CTE_INTERVAL_MIN_VALUE;
+                cte_config[i].cte_phy = CTE_PHY_MIN_VALUE;
+                break;
+            }
+        }
+        break;
+    }
+
+    return 0;
+}
+
 static void cte_init_config(void) {
     for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
-        cte_config[i].conn_handle = i; 
+        cte_config[i].conn_handle = 0xffff;
         cte_config[i].cte_enable = 0;
         cte_config[i].cte_min_length = CTE_MIN_LEN_MIN_VALUE;
         cte_config[i].cte_min_transmit_count = CTE_MIN_TX_COUNT_MIN_VALUE;
@@ -564,13 +614,14 @@ static void cte_init_config(void) {
 }
 
 /**
- * @brief Initialize the Constant Tone Extensio Service
+ * @brief Initialize the Constant Tone Extension Service
  */
 void
 ble_svc_cte_init(void)
 {
     int rc;
     cte_init_config();
+    ble_gap_event_listener_register(&cte_gap_listener, cte_gap_event, NULL);
 
     rc = ble_gatts_count_cfg(ble_svc_cte_defs);
     assert(rc == 0);

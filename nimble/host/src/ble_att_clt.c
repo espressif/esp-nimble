@@ -51,7 +51,7 @@ ble_att_clt_rx_error(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     rsp = (struct ble_att_error_rsp *)(*rxom)->om_data;
 
     ble_gattc_rx_err(conn_handle, cid, le16toh(rsp->baep_handle),
-                     le16toh(rsp->baep_error_code));
+                     rsp->baep_error_code);
 
     return 0;
 }
@@ -81,6 +81,7 @@ ble_att_clt_tx_mtu(uint16_t conn_handle, uint16_t mtu)
     } else if (chan->flags & BLE_L2CAP_CHAN_F_TXED_MTU) {
         rc = BLE_HS_EALREADY;
     } else {
+        chan->flags |= BLE_L2CAP_CHAN_F_TXED_MTU;
         rc = 0;
     }
     ble_hs_unlock();
@@ -98,17 +99,14 @@ ble_att_clt_tx_mtu(uint16_t conn_handle, uint16_t mtu)
 
     rc = ble_att_tx(conn_handle, BLE_L2CAP_CID_ATT, txom);
     if (rc != 0) {
-        return rc;
+        /* Rollback the flag so future MTU exchanges are not blocked */
+        ble_hs_lock();
+        if (ble_att_conn_chan_find(conn_handle, BLE_L2CAP_CID_ATT,
+                                   &conn, &chan) == 0) {
+            chan->flags &= ~BLE_L2CAP_CHAN_F_TXED_MTU;
+        }
+        ble_hs_unlock();
     }
-
-    ble_hs_lock();
-
-    rc = ble_att_conn_chan_find(conn_handle, BLE_L2CAP_CID_ATT, &conn, &chan);
-    if (rc == 0) {
-        chan->flags |= BLE_L2CAP_CHAN_F_TXED_MTU;
-    }
-
-    ble_hs_unlock();
 
     return rc;
 }
@@ -144,11 +142,11 @@ ble_att_clt_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
         ble_hs_unlock();
 
         if (rc == 0) {
-            ble_gap_mtu_event(conn_handle, BLE_L2CAP_CID_ATT, mtu);
+            ble_gap_mtu_event(conn_handle, cid, mtu);
         }
     }
 
-    ble_gattc_rx_mtu(conn_handle, BLE_L2CAP_CID_ATT, rc, mtu);
+    ble_gattc_rx_mtu(conn_handle, cid, rc, mtu);
     return rc;
 }
 
@@ -251,11 +249,13 @@ ble_att_clt_rx_find_info(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om
 
     rsp = (struct ble_att_find_info_rsp *)(*om)->om_data;
 
+    uint8_t format = rsp->bafp_format;
+
     /* Strip the response base from the front of the mbuf. */
     os_mbuf_adj((*om), sizeof(*rsp));
 
     while (OS_MBUF_PKTLEN(*om) > 0) {
-        rc = ble_att_clt_parse_find_info_entry(om, rsp->bafp_format, &idata);
+        rc = ble_att_clt_parse_find_info_entry(om, format, &idata);
         if (rc != 0) {
             goto done;
         }
@@ -297,6 +297,10 @@ ble_att_clt_tx_find_type_value(uint16_t conn_handle, uint16_t cid,
         return BLE_HS_EINVAL;
     }
 
+    if (value_len < 0 || (value_len > 0 && attribute_value == NULL)) {
+        return BLE_HS_EINVAL;
+    }
+
     req = ble_att_cmd_get(BLE_ATT_OP_FIND_TYPE_VALUE_REQ, sizeof(*req) + value_len,
                           &txom);
     if (req == NULL) {
@@ -306,7 +310,9 @@ ble_att_clt_tx_find_type_value(uint16_t conn_handle, uint16_t cid,
     req->bavq_start_handle = htole16(start_handle);
     req->bavq_end_handle = htole16(end_handle);
     req->bavq_attr_type = htole16(attribute_type);
-    memcpy(req->bavq_value, attribute_value, value_len);
+    if (value_len > 0) {
+        memcpy(req->bavq_value, attribute_value, value_len);
+    }
 
     return ble_att_tx(conn_handle, cid, txom);
 }
@@ -460,7 +466,6 @@ ble_att_clt_tx_read(uint16_t conn_handle, uint16_t cid, uint16_t handle)
 
     struct ble_att_read_req *req;
     struct os_mbuf *txom;
-    int rc;
 
     if (handle == 0) {
         return BLE_HS_EINVAL;
@@ -473,12 +478,7 @@ ble_att_clt_tx_read(uint16_t conn_handle, uint16_t cid, uint16_t handle)
 
     req->barq_handle = htole16(handle);
 
-    rc = ble_att_tx(conn_handle, cid, txom);
-    if (rc != 0) {
-        return rc;
-    }
-
-    return 0;
+    return ble_att_tx(conn_handle, cid, txom);
 }
 
 int
@@ -506,7 +506,6 @@ ble_att_clt_tx_read_blob(uint16_t conn_handle, uint16_t cid, uint16_t handle, ui
 
     struct ble_att_read_blob_req *req;
     struct os_mbuf *txom;
-    int rc;
 
     if (handle == 0) {
         return BLE_HS_EINVAL;
@@ -520,12 +519,7 @@ ble_att_clt_tx_read_blob(uint16_t conn_handle, uint16_t cid, uint16_t handle, ui
     req->babq_handle = htole16(handle);
     req->babq_offset = htole16(offset);
 
-    rc = ble_att_tx(conn_handle, cid, txom);
-    if (rc != 0) {
-        return rc;
-    }
-
-    return 0;
+    return ble_att_tx(conn_handle, cid, txom);
 }
 
 int
@@ -738,8 +732,7 @@ ble_att_clt_tx_write_cmd(uint16_t conn_handle, uint16_t cid,
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     uint8_t b;
-    int rc;
-    int i;
+    int i, rc;
 
     BLE_HS_LOG(DEBUG, "ble_att_clt_tx_write_cmd(): ");
     for (i = 0; i < OS_MBUF_PKTLEN(txom); i++) {
@@ -787,13 +780,31 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
     struct os_mbuf *txom2;
     uint8_t cmac[16];
     uint8_t *message = NULL;
-    uint8_t len;
+    uint16_t len;
+    uint16_t payload_len;
     int rc;
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    uint8_t b;
     int i;
 
     BLE_HS_LOG(DEBUG, "ble_att_clt_tx_signed_write_cmd(): ");
     for (i = 0; i < OS_MBUF_PKTLEN(txom); i++) {
-        BLE_HS_LOG(DEBUG, "0x%02x", (OS_MBUF_DATA(txom, uint8_t *))[i]);
+        if (i != 0) {
+            BLE_HS_LOG(DEBUG, ":");
+        }
+        rc = os_mbuf_copydata(txom, i, 1, &b);
+        assert(rc == 0);
+        BLE_HS_LOG(DEBUG, "0x%02x", b);
+    }
+#endif
+
+    payload_len = OS_MBUF_PKTLEN(txom);
+
+    /* Validate payload length to prevent overflow */
+    if (payload_len > (UINT16_MAX - BLE_ATT_SIGNED_WRITE_DATA_OFFSET - sizeof(counter))) {
+        rc = BLE_HS_EINVAL;
+        goto err;
     }
 
     cmd = ble_att_cmd_get(BLE_ATT_OP_SIGNED_WRITE_CMD,
@@ -807,8 +818,12 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
     /* Message to be signed is opcode||handle||message||sign_counter,
      * where || represents concatenation
      */
-    len = BLE_ATT_SIGNED_WRITE_DATA_OFFSET + OS_MBUF_PKTLEN(txom) + sizeof(counter);
-    message = nimble_platform_mem_calloc(1,len);
+    len = BLE_ATT_SIGNED_WRITE_DATA_OFFSET + payload_len + sizeof(counter);
+    message = nimble_platform_mem_calloc(1, len);
+    if (message == NULL) {
+        rc = BLE_HS_ENOMEM;
+        goto err;
+    }
 
     /** Copying opcode and handle */
     rc = os_mbuf_copydata(txom2, 0, BLE_ATT_SIGNED_WRITE_DATA_OFFSET, message);
@@ -817,13 +832,13 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
     }
 
     /** Copying message */
-    rc = os_mbuf_copydata(txom, 0, OS_MBUF_PKTLEN(txom), &message[BLE_ATT_SIGNED_WRITE_DATA_OFFSET]);
+    rc = os_mbuf_copydata(txom, 0, payload_len, &message[BLE_ATT_SIGNED_WRITE_DATA_OFFSET]);
     if (rc != 0) {
         goto err;
     }
 
     /** Copying sign counter */
-    memcpy(&message[BLE_ATT_SIGNED_WRITE_DATA_OFFSET + OS_MBUF_PKTLEN(txom)], &counter, sizeof(counter));
+    memcpy(&message[BLE_ATT_SIGNED_WRITE_DATA_OFFSET + payload_len], &counter, sizeof(counter));
     
     /* ble_sm_alg_aes_cmac takes data in little-endian format,
      * so converting it to LE.
@@ -863,15 +878,16 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
 
     if (message != NULL) {
         nimble_platform_mem_free(message);
-	message = NULL;
+        message = NULL;
     }
     os_mbuf_concat(txom2, txom);
     return ble_att_tx(conn_handle, cid, txom2);
 err:
     if (message != NULL) {
         nimble_platform_mem_free(message);
-	message = NULL;
+        message = NULL;
     }
+    /* Do not free txom here; the caller ble_gattc_signed_write is responsible for it on error. */
     os_mbuf_free_chain(txom2);
     return rc;
 }
@@ -980,7 +996,6 @@ ble_att_clt_tx_exec_write(uint16_t conn_handle, uint16_t cid, uint8_t flags)
 
     struct ble_att_exec_write_req *req;
     struct os_mbuf *txom;
-    int rc;
 
     req = ble_att_cmd_get(BLE_ATT_OP_EXEC_WRITE_REQ, sizeof(*req), &txom);
     if (req == NULL) {
@@ -989,12 +1004,7 @@ ble_att_clt_tx_exec_write(uint16_t conn_handle, uint16_t cid, uint8_t flags)
 
     req->baeq_flags = flags;
 
-    rc = ble_att_tx(conn_handle, cid, txom);
-    if (rc != 0) {
-        return rc;
-    }
-
-    return 0;
+    return ble_att_tx(conn_handle, cid, txom);
 }
 
 int

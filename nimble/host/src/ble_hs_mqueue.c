@@ -32,6 +32,12 @@ ble_mqueue_init(struct ble_mqueue *mq, ble_npl_event_fn *ev_fn, void *ev_arg)
 void
 ble_mqueue_deinit(struct ble_mqueue *mq)
 {
+    struct os_mbuf *om;
+
+    while ((om = ble_mqueue_get(mq)) != NULL) {
+        os_mbuf_free_chain(om);
+    }
+
     ble_npl_event_deinit(&mq->ev);
 }
 
@@ -66,7 +72,7 @@ ble_mqueue_put(struct ble_mqueue *mq, struct ble_npl_eventq *evq, struct os_mbuf
     int rc;
 
     /* Can only place the head of a chained mbuf on the queue. */
-    if (!OS_MBUF_IS_PKTHDR(om)) {
+    if (om == NULL || !OS_MBUF_IS_PKTHDR(om)) {
         rc = OS_EINVAL;
         goto err;
     }
@@ -77,7 +83,7 @@ ble_mqueue_put(struct ble_mqueue *mq, struct ble_npl_eventq *evq, struct os_mbuf
     STAILQ_INSERT_TAIL(&mq->head, mp, omp_next);
     OS_EXIT_CRITICAL(sr);
 
-    /* Only post an event to the queue if its specified */
+    /* Only post an event to the queue if it's specified */
     if (evq) {
         ble_npl_eventq_put(evq, &mq->ev);
     }

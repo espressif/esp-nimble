@@ -39,7 +39,7 @@ ble_hs_mbuf_gen_pkt(uint16_t leading_space)
         return NULL;
     }
 
-    if (om->om_omp->omp_databuf_len < leading_space) {
+    if (OS_MBUF_TRAILINGSPACE(om) < leading_space) {
         rc = os_mbuf_free_chain(om);
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
         return NULL;
@@ -72,8 +72,10 @@ struct os_mbuf *
 ble_hs_mbuf_acl_pkt(void)
 {
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
+    /* +1 for HCI packet type indicator byte */
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ + 1);
 #else
+    /* +1 for HCI packet type indicator byte */
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ + BLE_HS_CTRL_DATA_HDR_SZ + 1);
 #endif
 }
@@ -91,8 +93,10 @@ struct os_mbuf *
 ble_hs_mbuf_l2cap_pkt(void)
 {
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
+    /* +1 for HCI packet type indicator byte */
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ + BLE_L2CAP_HDR_SZ + 1);
 #else
+    /* +1 for HCI packet type indicator byte */
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ + BLE_L2CAP_HDR_SZ + BLE_HS_CTRL_DATA_HDR_SZ + 1);
 #endif
 }
@@ -103,9 +107,16 @@ ble_hs_mbuf_att_pkt(void)
     /* Prepare write request and response are the largest ATT commands which
      * contain attribute data.
      */
+#if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ +
                                BLE_L2CAP_HDR_SZ +
-                               BLE_ATT_PREP_WRITE_CMD_BASE_SZ);
+                               BLE_ATT_PREP_WRITE_CMD_BASE_SZ + 1);
+#else
+    return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ +
+                               BLE_L2CAP_HDR_SZ +
+                               BLE_HS_CTRL_DATA_HDR_SZ +
+                               BLE_ATT_PREP_WRITE_CMD_BASE_SZ + 1);
+#endif
 }
 
 struct os_mbuf *
@@ -113,6 +124,10 @@ ble_hs_mbuf_from_flat(const void *buf, uint16_t len)
 {
     struct os_mbuf *om;
     int rc;
+
+    if (buf == NULL && len > 0) {
+        return NULL;
+    }
 
     om = ble_hs_mbuf_att_pkt();
     if (om == NULL) {
@@ -135,6 +150,10 @@ ble_hs_mbuf_to_flat(const struct os_mbuf *om, void *flat, uint16_t max_len,
     uint16_t copy_len;
     int rc;
 
+    if (om == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
     if (OS_MBUF_PKTLEN(om) <= max_len) {
         copy_len = OS_MBUF_PKTLEN(om);
     } else {
@@ -146,7 +165,7 @@ ble_hs_mbuf_to_flat(const struct os_mbuf *om, void *flat, uint16_t max_len,
         return BLE_HS_EUNKNOWN;
     }
 
-    if (copy_len > max_len) {
+    if (OS_MBUF_PKTLEN(om) > max_len) {
         rc = BLE_HS_EMSGSIZE;
     } else {
         rc = 0;
@@ -161,6 +180,10 @@ ble_hs_mbuf_to_flat(const struct os_mbuf *om, void *flat, uint16_t max_len,
 int
 ble_hs_mbuf_pullup_base(struct os_mbuf **om, int base_len)
 {
+    if (base_len <= 0) {
+        return BLE_HS_EINVAL;
+    }
+
     if (OS_MBUF_PKTLEN(*om) < base_len) {
         return BLE_HS_EBADDATA;
     }

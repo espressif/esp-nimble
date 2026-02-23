@@ -157,6 +157,7 @@ struct ble_mqueue {
 };
 
 int ble_mqueue_init(struct ble_mqueue *mq, ble_npl_event_fn *ev_fn, void *ev_arg);
+void ble_mqueue_deinit(struct ble_mqueue *mq);
 struct os_mbuf *ble_mqueue_get(struct ble_mqueue *mq);
 int ble_mqueue_put(struct ble_mqueue *mq, struct ble_npl_eventq *evq, struct os_mbuf *om);
 

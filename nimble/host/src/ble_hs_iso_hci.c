@@ -67,8 +67,9 @@ ble_hs_hci_read_local_supp_controller_delay(uint8_t coding_fmt, uint16_t company
                                             uint32_t *min_controller_delay,
                                             uint32_t *max_controller_delay)
 {
-    struct ble_hci_ip_rd_local_supp_controller_delay_cp cmd;
+    struct ble_hci_ip_rd_local_supp_controller_delay_cp *cmd;
     struct ble_hci_ip_rd_local_supp_controller_delay_rp rsp;
+    uint8_t cmd_buf[sizeof(*cmd) + codec_cfg_len];
     int rc;
 
     if ((codec_cfg_len && codec_cfg == NULL) ||
@@ -77,23 +78,32 @@ ble_hs_hci_read_local_supp_controller_delay(uint8_t coding_fmt, uint16_t company
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-    cmd.coding_fmt = coding_fmt;
-    cmd.company_id = company_id;
-    cmd.vs_codec_id = vs_codec_id;
-    cmd.logical_tpt_type = logical_transport_type;
-    cmd.direction = direction;
-    cmd.codec_cfg_len = codec_cfg_len;
-    /* TODO: Use Codec Configuration */
+    if (sizeof(*cmd) + codec_cfg_len > 255) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    cmd = (void *)cmd_buf;
+
+    cmd->coding_fmt = coding_fmt;
+    put_le16(&cmd->company_id, company_id);
+    put_le16(&cmd->vs_codec_id, vs_codec_id);
+    cmd->logical_tpt_type = logical_transport_type;
+    cmd->direction = direction;
+    cmd->codec_cfg_len = codec_cfg_len;
+
+    if (codec_cfg_len > 0) {
+         memcpy(cmd->codec_cfg, codec_cfg, codec_cfg_len);
+    }
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_INFO_PARAMS,
                                       BLE_HCI_OCF_IP_RD_LOCAL_SUPP_CONTROLLER_DELAY),
-                           &cmd, sizeof(cmd), &rsp, sizeof(rsp));
+                           cmd_buf, sizeof(cmd_buf), &rsp, sizeof(rsp));
     if (rc) {
         return rc;
     }
 
-    memcpy(min_controller_delay, rsp.min_controller_delay, sizeof(rsp.min_controller_delay));
-    memcpy(max_controller_delay, rsp.max_controller_delay, sizeof(rsp.max_controller_delay));
+    *min_controller_delay = get_le24(rsp.min_controller_delay);
+    *max_controller_delay = get_le24(rsp.max_controller_delay);
 
     return 0;
 }
@@ -102,20 +112,25 @@ int
 ble_hs_hci_cfg_data_path(uint8_t data_path_direction, uint8_t data_path_id,
                          uint8_t vs_cfg_len, uint8_t *vs_cfg)
 {
-    struct ble_hci_cb_cfg_data_path_cp cmd;
+     struct ble_hci_cb_cfg_data_path_cp *cmd;
+     uint8_t cmd_buf[255]; /* Max HCI parameter size */
+     uint8_t cmd_len = sizeof(*cmd) + vs_cfg_len;
 
-    if (vs_cfg_len && vs_cfg == NULL) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
+     if (vs_cfg_len > 252 || (vs_cfg_len && vs_cfg == NULL)) {
+         return BLE_ERR_INV_HCI_CMD_PARMS;
+     }
 
-    cmd.data_path_dir = data_path_direction;
-    cmd.data_path_id = data_path_id;
-    cmd.vs_cfg_len = vs_cfg_len;
-    /* TODO: Use Vendor-Specific Configuration */
+     cmd = (void *)cmd_buf;
+     cmd->data_path_dir = data_path_direction;
+     cmd->data_path_id = data_path_id;
+     cmd->vs_cfg_len = vs_cfg_len;
+     if (vs_cfg_len) {
+         memcpy(cmd->vs_cfg, vs_cfg, vs_cfg_len);
+     }
 
-    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND,
-                                        BLE_HCI_OCF_CB_CFG_DATA_PATH),
-                             &cmd, sizeof(cmd), NULL, 0);
+     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND,
+                                         BLE_HCI_OCF_CB_CFG_DATA_PATH),
+                              cmd_buf, cmd_len, NULL, 0);
 }
 
 int
@@ -137,9 +152,9 @@ ble_hs_hci_read_buf_sz_v2(uint16_t *data_len, uint8_t *data_packets,
         return rc;
     }
 
-    *data_len = rsp.data_len;
+    *data_len = le16toh(rsp.data_len);
     *data_packets = rsp.data_packets;
-    *iso_data_len = rsp.iso_data_len;
+    *iso_data_len = le16toh(rsp.iso_data_len);
     *iso_data_packets = rsp.iso_data_packets;
 
     return 0;
@@ -170,9 +185,16 @@ ble_hs_hci_read_iso_tx_sync(uint16_t conn_handle, uint16_t *packet_seq_num,
         return BLE_HS_ECONTROLLER;
     }
 
-    *packet_seq_num = rsp.packet_seq_num;
-    *timestamp = rsp.tx_timestamp;
-    memcpy(timeoffset, rsp.time_offset, sizeof(rsp.time_offset));
+    *packet_seq_num = le16toh(rsp.packet_seq_num);
+    *timestamp = le32toh(rsp.tx_timestamp);
+    /* Extract 24-bit signed Time_Offset and sign-extend to 32-bit */
+    {
+        int32_t val = rsp.time_offset[0] | (rsp.time_offset[1] << 8) | (rsp.time_offset[2] << 16);
+        if (val & 0x800000) {
+            val |= 0xFF000000;
+        }
+        *timeoffset = (uint32_t)val;
+    }
 
     return 0;
 }
@@ -186,10 +208,9 @@ ble_hs_hci_set_cig_params(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uint32_t
 {
     struct ble_hci_le_set_cig_params_cp *cmd;
     struct ble_hci_le_cis_params *cis_param;
-    uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*cis_params)];
-    uint8_t cmd_len = sizeof(*cmd);
+    uint8_t cmd_len;
 
-    if (cis_cnt == 0 || cis_params == NULL) {
+    if (sizeof(*cmd) + (cis_cnt * sizeof(*cis_params)) > 255 || cis_cnt == 0 || cis_params == NULL) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -197,6 +218,9 @@ ble_hs_hci_set_cig_params(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uint32_t
         rsp_len < sizeof(struct ble_hci_le_set_cig_params_rp) + cis_cnt * 2) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
+
+    uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*cis_params)];
+    cmd_len = sizeof(*cmd);
 
     cmd = (void *)cmd_buf;
     cis_param = cmd->cis;
@@ -207,14 +231,14 @@ ble_hs_hci_set_cig_params(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uint32_t
     cmd->worst_sca = slaves_clock_accuracy;
     cmd->packing = packing;
     cmd->framing = framing;
-    cmd->max_latency_c_to_p = max_transport_latency_c_to_p;
-    cmd->max_latency_p_to_c = max_transport_latency_p_to_c;
+    cmd->max_latency_c_to_p = htole16(max_transport_latency_c_to_p);
+    cmd->max_latency_p_to_c = htole16(max_transport_latency_p_to_c);
     cmd->cis_count = cis_cnt;
 
     for (size_t i = 0; i < cis_cnt; i++) {
         cis_param->cis_id = cis_params[i].cis_id;
-        cis_param->max_sdu_c_to_p = cis_params[i].max_sdu_c_to_p;
-        cis_param->max_sdu_p_to_c = cis_params[i].max_sdu_p_to_c;
+        cis_param->max_sdu_c_to_p = htole16(cis_params[i].max_sdu_c_to_p);
+        cis_param->max_sdu_p_to_c = htole16(cis_params[i].max_sdu_p_to_c);
         cis_param->phy_c_to_p = cis_params[i].phy_c_to_p;
         cis_param->phy_p_to_c = cis_params[i].phy_p_to_c;
         cis_param->rtn_c_to_p = cis_params[i].rtn_c_to_p;
@@ -226,7 +250,7 @@ ble_hs_hci_set_cig_params(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uint32_t
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SET_CIG_PARAMS),
-                             cmd, cmd_len, rsp_buf, rsp_len);
+                             cmd_buf, cmd_len, rsp_buf, rsp_len);
 }
 
 #if MYNEWT_VAL(BLE_ISO_TEST)
@@ -239,10 +263,9 @@ ble_hs_hci_set_cig_params_test(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uin
 {
     struct ble_hci_le_set_cig_params_test_cp *cmd;
     struct ble_hci_le_cis_params_test *cis_param;
-    uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*cis_params)];
-    uint8_t cmd_len = sizeof(*cmd);
+    uint16_t cmd_len;
 
-    if (cis_cnt == 0 || cis_params == NULL) {
+    if (cis_cnt == 0 || cis_cnt > 17 || cis_params == NULL) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -250,6 +273,9 @@ ble_hs_hci_set_cig_params_test(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uin
         rsp_len < sizeof(struct ble_hci_le_set_cig_params_rp) + cis_cnt * 2) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
+
+    uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*cis_params)];
+    cmd_len = sizeof(*cmd);
 
     cmd = (void *)cmd_buf;
     cis_param = cmd->cis;
@@ -259,7 +285,7 @@ ble_hs_hci_set_cig_params_test(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uin
     memcpy(cmd->sdu_interval_p_to_c, &sdu_interval_p_to_c, sizeof(cmd->sdu_interval_p_to_c));
     cmd->ft_c_to_p = ft_c_to_p;
     cmd->ft_p_to_c = ft_p_to_c;
-    cmd->iso_interval = iso_interval;
+    cmd->iso_interval = htole16(iso_interval);
     cmd->worst_sca = slaves_clock_accuracy;
     cmd->packing = packing;
     cmd->framing = framing;
@@ -268,10 +294,10 @@ ble_hs_hci_set_cig_params_test(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uin
     for (size_t i = 0; i < cis_cnt; i++) {
         cis_param->cis_id = cis_params[i].cis_id;
         cis_param->nse = cis_params[i].nse;
-        cis_param->max_sdu_c_to_p = cis_params[i].max_sdu_c_to_p;
-        cis_param->max_sdu_p_to_c = cis_params[i].max_sdu_p_to_c;
-        cis_param->max_pdu_c_to_p = cis_params[i].max_pdu_c_to_p;
-        cis_param->max_pdu_p_to_c = cis_params[i].max_pdu_p_to_c;
+        cis_param->max_sdu_c_to_p = htole16(cis_params[i].max_sdu_c_to_p);
+        cis_param->max_sdu_p_to_c = htole16(cis_params[i].max_sdu_p_to_c);
+        cis_param->max_pdu_c_to_p = htole16(cis_params[i].max_pdu_c_to_p);
+        cis_param->max_pdu_p_to_c = htole16(cis_params[i].max_pdu_p_to_c);
         cis_param->phy_c_to_p = cis_params[i].phy_c_to_p;
         cis_param->phy_p_to_c = cis_params[i].phy_p_to_c;
         cis_param->bn_c_to_p = cis_params[i].bn_c_to_p;
@@ -292,12 +318,14 @@ ble_hs_hci_create_cis(uint8_t cis_cnt, const struct ble_hci_le_create_cis_params
 {
     struct ble_hci_le_create_cis_cp *cmd;
     struct ble_hci_le_create_cis_params *param;
-    uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*params)];
-    uint8_t cmd_len = sizeof(*cmd);
+    uint16_t cmd_len;
 
     if (cis_cnt == 0 || params == NULL) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
+
+    uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*params)];
+    cmd_len = sizeof(*cmd);
 
     cmd = (void *)cmd_buf;
     param = cmd->cis;
@@ -305,8 +333,8 @@ ble_hs_hci_create_cis(uint8_t cis_cnt, const struct ble_hci_le_create_cis_params
     cmd->cis_count = cis_cnt;
 
     for (size_t i = 0; i < cis_cnt; i++) {
-        param->cis_handle = params[i].cis_handle;
-        param->conn_handle = params[i].conn_handle;
+        param->cis_handle = htole16(params[i].cis_handle);
+        param->conn_handle = htole16(params[i].conn_handle);
 
         cmd_len += sizeof(*param);
         param++;
@@ -335,7 +363,7 @@ ble_hs_hci_accept_cis_request(uint16_t cis_handle)
 {
     struct ble_hci_le_accept_cis_request_cp cmd;
 
-    cmd.conn_handle = cis_handle;
+    cmd.conn_handle = htole16(cis_handle);
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_ACCEPT_CIS_REQ),
@@ -347,7 +375,7 @@ ble_hs_hci_reject_cis_request(uint16_t cis_handle, uint8_t reason)
 {
     struct ble_hci_le_reject_cis_request_cp cmd;
 
-    cmd.conn_handle = cis_handle;
+    cmd.conn_handle = htole16(cis_handle);
     cmd.reason = reason;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
@@ -367,6 +395,8 @@ ble_hs_hci_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
     if (num_bis == 0 || (encryption && broadcast_code == NULL)) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
+
+    memset(&cmd, 0, sizeof(cmd));
 
     cmd.big_handle = big_handle;
     cmd.adv_handle = adv_handle;
@@ -401,6 +431,8 @@ ble_hs_hci_create_big_test(uint8_t big_handle, uint8_t adv_handle, uint8_t num_b
     if (num_bis == 0 || (encryption && broadcast_code == NULL)) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
+
+    memset(&cmd, 0, sizeof(cmd));
 
     cmd.big_handle = big_handle;
     cmd.adv_handle = adv_handle;
@@ -449,20 +481,23 @@ ble_hs_hci_big_create_sync(uint8_t big_handle, uint16_t sync_handle,
     struct ble_hci_le_big_create_sync_cp *cmd;
     uint8_t cmd_buf[sizeof(*cmd) + MYNEWT_VAL(BLE_ISO_BIS_PER_BIG)];
 
-    if ((encryption && broadcast_code == NULL) || num_bis == 0 || bis_index == NULL) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+    if ((encryption && broadcast_code == NULL) ||
+         num_bis == 0 || num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG) ||
+         bis_index == NULL) {
+         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     cmd = (void *)cmd_buf;
+    memset(cmd_buf, 0, sizeof(cmd_buf));
 
     cmd->big_handle = big_handle;
-    cmd->sync_handle = sync_handle;
+    cmd->sync_handle = htole16(sync_handle);
     cmd->encryption = encryption;
     if (encryption) {
         memcpy(cmd->broadcast_code, broadcast_code, 16);
     }
     cmd->mse = mse;
-    cmd->sync_timeout = sync_timeout;
+    cmd->sync_timeout = htole16(sync_timeout);
     cmd->num_bis = num_bis;
     memcpy(cmd->bis, bis_index, num_bis);
 
@@ -490,25 +525,34 @@ ble_hs_hci_setup_iso_data_path(uint16_t conn_handle, uint8_t data_path_direction
                                uint32_t controller_delay, uint8_t codec_cfg_len,
                                uint8_t *codec_cfg)
 {
-    struct ble_hci_le_setup_iso_data_path_cp cmd;
+    struct ble_hci_le_setup_iso_data_path_cp *cmd;
+    uint8_t cmd_buf[sizeof(*cmd) + codec_cfg_len];
 
     if (codec_cfg_len && codec_cfg == NULL) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-    cmd.conn_handle = conn_handle;
-    cmd.data_path_dir = data_path_direction;
-    cmd.data_path_id = data_path_id;
-    cmd.codec_id[0] = coding_fmt;
-    put_le16(cmd.codec_id + 1, company_id);
-    put_le16(cmd.codec_id + 3, vs_codec_id);
-    memcpy(cmd.controller_delay, &controller_delay, sizeof(cmd.controller_delay));
-    cmd.codec_config_len = codec_cfg_len;
-    /* TODO: Codec Configuration */
+    if (sizeof(struct ble_hci_le_setup_iso_data_path_cp) + codec_cfg_len > 255) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    cmd = (void *)cmd_buf;
+
+    cmd->conn_handle = htole16(conn_handle);
+    cmd->data_path_dir = data_path_direction;
+    cmd->data_path_id = data_path_id;
+    cmd->codec_id[0] = coding_fmt;
+    put_le16(cmd->codec_id + 1, company_id);
+    put_le16(cmd->codec_id + 3, vs_codec_id);
+    memcpy(cmd->controller_delay, &controller_delay, sizeof(cmd->controller_delay));
+    cmd->codec_config_len = codec_cfg_len;
+    if (codec_cfg_len) {
+         memcpy(cmd->codec_config, codec_cfg, codec_cfg_len);
+    }
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SETUP_ISO_DATA_PATH),
-                             &cmd, sizeof(cmd), NULL, 0);
+                             cmd_buf, sizeof(cmd_buf), NULL, 0);
 }
 
 int
@@ -516,7 +560,7 @@ ble_hs_hci_remove_iso_data_path(uint16_t conn_handle, uint8_t data_path_directio
 {
     struct ble_hci_le_remove_iso_data_path_cp cmd;
 
-    cmd.conn_handle = conn_handle;
+    cmd.conn_handle = htole16(conn_handle);
     cmd.data_path_dir = data_path_direction;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
@@ -530,7 +574,7 @@ ble_hs_hci_iso_transmit_test(uint16_t conn_handle, uint8_t payload_type)
 {
     struct ble_hci_le_iso_transmit_test_cp cmd;
 
-    cmd.conn_handle = conn_handle;
+    cmd.conn_handle = htole16(conn_handle);
     cmd.payload_type = payload_type;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
@@ -543,7 +587,7 @@ ble_hs_hci_iso_receive_test(uint16_t conn_handle, uint8_t payload_type)
 {
     struct ble_hci_le_iso_receive_test_cp cmd;
 
-    cmd.conn_handle = conn_handle;
+    cmd.conn_handle = htole16(conn_handle);
     cmd.payload_type = payload_type;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
@@ -559,7 +603,11 @@ ble_hs_hci_iso_read_test_counters(uint16_t conn_handle, uint32_t *received_sdu_c
     struct ble_hci_le_iso_read_test_counters_rp rsp;
     int rc;
 
-    cmd.conn_handle = conn_handle;
+    if (!received_sdu_count || !missed_sdu_count || !failed_sdu_count) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    cmd.conn_handle = htole16(conn_handle);
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_ISO_READ_TEST_COUNTERS),
@@ -568,9 +616,9 @@ ble_hs_hci_iso_read_test_counters(uint16_t conn_handle, uint32_t *received_sdu_c
         return rc;
     }
 
-    *received_sdu_count = rsp.received_sdu_count;
-    *missed_sdu_count = rsp.missed_sdu_count;
-    *failed_sdu_count = rsp.failed_sdu_count;
+    *received_sdu_count = le32toh(rsp.received_sdu_count);
+    *missed_sdu_count = le32toh(rsp.missed_sdu_count);
+    *failed_sdu_count = le32toh(rsp.failed_sdu_count);
 
     return 0;
 }
@@ -583,7 +631,11 @@ ble_hs_hci_iso_test_end(uint16_t conn_handle, uint32_t *received_sdu_count,
     struct ble_hci_le_iso_test_end_rp rsp;
     int rc;
 
-    cmd.conn_handle = conn_handle;
+    if (!received_sdu_count || !missed_sdu_count || !failed_sdu_count) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    cmd.conn_handle = htole16(conn_handle);
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_ISO_TEST_END),
@@ -592,9 +644,9 @@ ble_hs_hci_iso_test_end(uint16_t conn_handle, uint32_t *received_sdu_count,
         return rc;
     }
 
-    *received_sdu_count = rsp.received_sdu_count;
-    *missed_sdu_count = rsp.missed_sdu_count;
-    *failed_sdu_count = rsp.failed_sdu_count;
+    *received_sdu_count = le32toh(rsp.received_sdu_count);
+    *missed_sdu_count = le32toh(rsp.missed_sdu_count);
+    *failed_sdu_count = le32toh(rsp.failed_sdu_count);
 
     return 0;
 }
@@ -617,7 +669,7 @@ ble_hs_hci_read_iso_link_quality(uint16_t conn_handle, uint32_t *tx_unacked_pkts
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-    cmd.conn_handle = conn_handle;
+    cmd.conn_handle = htole16(conn_handle);
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_READ_ISO_LINK_QUALITY),
@@ -626,13 +678,13 @@ ble_hs_hci_read_iso_link_quality(uint16_t conn_handle, uint32_t *tx_unacked_pkts
         return rc;
     }
 
-    *tx_unacked_pkts = rsp.tx_unacked_pkts;
-    *tx_flushed_pkts = rsp.tx_flushed_pkts;
-    *tx_last_subev_pkts = rsp.tx_last_subevent_pkts;
-    *retransmitted_pkts = rsp.retransmitted_pkts;
-    *crc_error_pkts = rsp.crc_error_pkts;
-    *rx_unreceived_pkts = rsp.rx_unreceived_pkts;
-    *duplicate_pkts = rsp.duplicate_pkts;
+    *tx_unacked_pkts = le32toh(rsp.tx_unacked_pkts);
+    *tx_flushed_pkts = le32toh(rsp.tx_flushed_pkts);
+    *tx_last_subev_pkts = le32toh(rsp.tx_last_subevent_pkts);
+    *retransmitted_pkts = le32toh(rsp.retransmitted_pkts);
+    *crc_error_pkts = le32toh(rsp.crc_error_pkts);
+    *rx_unreceived_pkts = le32toh(rsp.rx_unreceived_pkts);
+    *duplicate_pkts = le32toh(rsp.duplicate_pkts);
 
     return 0;
 }
