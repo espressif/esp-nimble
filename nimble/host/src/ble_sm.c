@@ -573,6 +573,8 @@ ble_sm_ia_ra(struct ble_sm_proc *proc,
     struct ble_hs_conn_addrs addrs;
     struct ble_hs_conn *conn;
 
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
     conn = ble_hs_conn_find_assert(proc->conn_handle);
 
     ble_hs_conn_addrs(conn, &addrs);
@@ -607,6 +609,10 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
 
     conn = ble_hs_conn_find(proc->conn_handle);
     BLE_HS_DBG_ASSERT(conn != NULL);
+    if (conn == NULL) {
+        ble_hs_unlock();
+        return;
+    }
 
     /* If we got an identity address, use that for key storage. */
     if (proc->peer_keys.addr_valid) {
@@ -668,6 +674,8 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
             ble_hs_misc_peer_addr_type_to_id(conn->bhc_peer_addr.type);
     }
 
+    ble_addr_t peer_rpa_addr = conn->bhc_peer_rpa_addr;
+
     ble_hs_unlock();
 
     if (identity_ev) {
@@ -689,8 +697,8 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
     value_rpa_rec.peer_addr.type = peer_addr.type;
     memcpy(value_rpa_rec.peer_addr.val, peer_addr.val, sizeof peer_addr.val);
 
-    value_rpa_rec.peer_rpa_addr.type = conn->bhc_peer_rpa_addr.type;
-    memcpy(value_rpa_rec.peer_rpa_addr.val, conn->bhc_peer_rpa_addr.val, sizeof conn->bhc_peer_rpa_addr.val);
+    value_rpa_rec.peer_rpa_addr.type = peer_rpa_addr.type;
+    memcpy(value_rpa_rec.peer_rpa_addr.val, peer_rpa_addr.val, sizeof peer_rpa_addr.val);
 
     ble_store_write_rpa_rec(&value_rpa_rec);
 }
@@ -807,9 +815,9 @@ ble_sm_extract_expired(struct ble_sm_proc_list *dst_list)
             if (time_diff < next_exp_in) {
                 next_exp_in = time_diff;
             }
+            prev = proc;
         }
 
-        prev = proc;
         proc = next;
     }
 
@@ -1053,7 +1061,7 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
                 ble_sm_exec(proc, res, res->state_arg);
             }
 
-            if (res->app_status != 0) {
+            if (res && res->app_status != 0) {
                 rm = 1;
             }
 
@@ -1079,10 +1087,16 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
         }
 
 #if MYNEWT_VAL(BLE_RESTART_PAIR)
-        if (res->app_status == 518 ) {
+        if (res->app_status == BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING)) {
+            ble_hs_lock();
             conn = ble_hs_conn_find(conn_handle);
-
+            if (conn == NULL) {
+                ble_hs_unlock();
+                ble_sm_proc_free(proc);
+                break;
+            }
             conn_flags = conn->bhc_flags;
+            ble_hs_unlock();
 
             ble_sm_proc_free(proc);
 
@@ -1102,7 +1116,7 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
         /* Persist keys if bonding has successfully completed. */
         if (res->app_status == 0    &&
             rm                      &&
-            proc->flags & BLE_SM_PROC_F_BONDING) {
+            (proc->flags & BLE_SM_PROC_F_BONDING)) {
 
             ble_sm_persist_keys(proc);
         }
@@ -1391,6 +1405,9 @@ ble_sm_retrieve_ltk(uint16_t ediv, uint64_t rand, uint8_t peer_addr_type,
     memcpy(key_sec.peer_addr.val, peer_addr, 6);
 
     rc = ble_store_read_our_sec(&key_sec, value_sec);
+    if (rc != 0) {
+        return rc;
+    }
     if (value_sec->ediv != ediv || value_sec->rand_num != rand) {
         return BLE_HS_ENOENT;
     }
@@ -1485,12 +1502,20 @@ ble_sm_ltk_restore_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
         /* Application does not have the requested key in its database.  Send a
          * negative reply to the controller.
          */
-        ble_sm_ltk_req_neg_reply_tx(proc->conn_handle);
-        res->app_status = BLE_HS_ENOENT;
+        int rc;
+        rc = ble_sm_ltk_req_neg_reply_tx(proc->conn_handle);
+        if (rc != 0) {
+            res->app_status = rc;
+            res->enc_cb = 1;  /* Notify application of failure, similar to reply branch */
+        } else {
+            res->app_status = 0;
+        }
     }
 
     if (res->app_status == 0) {
+        /* Slave LTK restore complete, only wait for enc change event, no further exec needed */
         proc->state = BLE_SM_PROC_STATE_ENC_RESTORE;
+        res->restore = 1;
     }
 }
 
@@ -1881,6 +1906,7 @@ ble_sm_pair_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
     }
 
     rc = ble_sm_tx(proc->conn_handle, txom);
+    txom = NULL;
     if (rc != 0) {
         goto err;
     }
@@ -2410,10 +2436,13 @@ ble_sm_key_exch_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
         if (ble_host_rpa_enabled())
         {
             uint8_t *local_id_rpa = NULL;
+            int rc_id;
 
-            ble_hs_id_addr(BLE_ADDR_PUBLIC, (void *) &local_id_rpa, NULL);
-            memcpy(addrs.our_id_addr.val, local_id_rpa, 6);
-            addrs.our_id_addr.type = BLE_ADDR_PUBLIC;
+            rc_id = ble_hs_id_addr(BLE_ADDR_PUBLIC, (void *) &local_id_rpa, NULL);
+            if (rc_id == 0 && local_id_rpa != NULL) {
+                memcpy(addrs.our_id_addr.val, local_id_rpa, 6);
+                addrs.our_id_addr.type = BLE_ADDR_PUBLIC;
+            }
         }
 #endif
         addr_info->addr_type = addrs.our_id_addr.type;
@@ -2829,8 +2858,9 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 #if MYNEWT_VAL(BLE_HS_PVCY)
     if (value_sec.irk_present == 1) {
         ble_hs_pvcy_remove_entry(value_sec.peer_addr.type, value_sec.peer_addr.val);
-        // No need to check if the above command fails or passes
-        // Proceed with trying to write the new sign counter
+        /* No need to check if the above command fails or passes.
+         * Proceed with trying to write the new sign counter.
+         */
     }
 #endif
 
@@ -3241,7 +3271,7 @@ static void ble_sm_state_dispatch_deinit(void)
 {
     if (ble_sm_state_dispatch) {
         nimble_platform_mem_free(ble_sm_state_dispatch);
-	ble_sm_state_dispatch = NULL;
+        ble_sm_state_dispatch = NULL;
     }
 }
 #endif
@@ -3265,9 +3295,9 @@ ble_sm_init(void)
     if (!ble_sm_proc_mem) {
         ble_sm_proc_mem = nimble_platform_mem_calloc(1,proc_mem_size  * sizeof(os_membuf_t));
         if (!ble_sm_proc_mem) {
-            // free the allocated memory
+            /* free the allocated memory */
             nimble_platform_mem_free(ble_sm_ctx);
-	    ble_sm_ctx = NULL;
+            ble_sm_ctx = NULL;
             return BLE_HS_ENOMEM;
         }
     }
@@ -3284,7 +3314,7 @@ ble_sm_init(void)
 
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-	    ble_sm_deinit();
+        ble_sm_deinit();
 #endif
         return rc;
     }
@@ -3293,7 +3323,7 @@ ble_sm_init(void)
     rc = ble_sm_state_dispatch_init();
 
     if (rc != 0) {
-	    ble_sm_deinit();
+        ble_sm_deinit();
         return rc;
     }
 

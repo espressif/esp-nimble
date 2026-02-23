@@ -7,7 +7,6 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include "host/ble_aes_ccm.h"
-#include "../src/ble_hs_conn_priv.h"
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
 #if CONFIG_MBEDTLS_VER_4_X_SUPPORT
@@ -16,21 +15,14 @@
 #include "mbedtls/aes.h"
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
-#include "tinycrypt/constants.h"
+#include <tinycrypt/constants.h>
+#include <tinycrypt/aes.h>
 #endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
-#ifndef max
-#define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
 #define sys_put_be16(a,b) put_be16(b, a)
@@ -74,12 +66,10 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
     psa_set_key_bits(&attributes, 128);
     psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_ENCRYPT);
 
-    ESP_LOGI("ble_aes_ccm_encrypt_be", "encrypting data");
-
     status = psa_import_key(&attributes, key, 16, &key_id);
     if (status != PSA_SUCCESS) {
         ESP_LOGE("ble_aes_ccm_encrypt_be", "psa_import_key failed with status %d", status);
-        return -BLE_HS_EINVAL;
+        return BLE_HS_EINVAL;
     }
 
     size_t output_len = 0;
@@ -87,7 +77,7 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
     if (status != PSA_SUCCESS || output_len != 16) {
         ESP_LOGE("ble_aes_ccm_encrypt_be", "psa_cipher_encrypt failed with status %d", status);
         psa_destroy_key(key_id);
-        return -BLE_HS_EINVAL;
+        return BLE_HS_EINVAL;
     }
 
     psa_destroy_key(key_id);
@@ -151,8 +141,8 @@ static inline void xor16(uint8_t *dst, const uint8_t *a, const uint8_t *b)
 }
 
 /* pmsg is assumed to have the nonce already present in bytes 1-13 */
-static int ble_aes_ccm_calculate_X0(const uint8_t key[16], const uint8_t *aad, uint8_t aad_len,
-                                    size_t mic_size, uint8_t msg_len, uint8_t b[16],
+static int ble_aes_ccm_calculate_X0(const uint8_t key[16], const uint8_t *aad, uint16_t aad_len,
+                                    size_t mic_size, uint16_t msg_len, uint8_t b[16],
                                     uint8_t X0[16])
 {
     int i, j, err;
@@ -233,8 +223,14 @@ static int ble_aes_ccm_auth(const uint8_t key[16], uint8_t nonce[13],
     if (err) {
         return err;
     }
+    if (msg_len > 0xffff) {
+        return BLE_HS_EINVAL;
+    }
 
-    ble_aes_ccm_calculate_X0(key, aad, aad_len, mic_size, msg_len, b, Xn);
+    err = ble_aes_ccm_calculate_X0(key, aad, aad_len, mic_size, msg_len, b, Xn);
+    if (err) {
+        return err;
+    }
 
     for (j = 0; j < blk_cnt; j++) {
         /* X_1 = e(AppKey, X_0 ^ Payload[0-15]) */
@@ -307,8 +303,14 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
 {
     uint8_t mic[16];
     uint8_t key_reversed[16];
+    int rc;
 
     if (aad_len >= 0xff00 || mic_size > sizeof(mic)) {
+        return BLE_HS_EINVAL;
+    }
+
+    /* Validate MIC size per RFC 3610 */
+    if (mic_size < 4 || mic_size > 16 || (mic_size % 2) != 0) {
         return BLE_HS_EINVAL;
     }
 
@@ -317,14 +319,15 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
         key_reversed[i] = key[15 - i];
     }
 
-    ble_aes_ccm_crypt(key_reversed, nonce, enc_msg, out_msg, msg_len);
+    rc = ble_aes_ccm_crypt(key_reversed, nonce, enc_msg, out_msg, msg_len);
+    if (rc != 0) {
+        return rc;
+    }
 
-    ble_aes_ccm_auth(key_reversed, nonce, out_msg, msg_len, aad, aad_len, mic, mic_size);
-
-    /*if (memcmp(mic, enc_msg + msg_len, mic_size)) {
-        printf("\n%s return here", __func__);
-        return -EBADMSG;
-    }*/
+    rc = ble_aes_ccm_auth(key_reversed, nonce, out_msg, msg_len, aad, aad_len, mic, mic_size);
+    if (rc != 0) {
+        return rc;
+    }
 
     return 0;
 }
@@ -342,22 +345,29 @@ int ble_aes_ccm_encrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
         return BLE_HS_EINVAL;
     }
 
+    /* Validate MIC size per RFC 3610 */
+    if (mic_size < 4 || mic_size > 16 || (mic_size % 2) != 0) {
+        return BLE_HS_EINVAL;
+    }
+
     /* Correcting the endian-ness of the key */
     for (int i = 0; i < 16; i++) {
         key_reversed[i] = key[15 - i];
     }
 
     /** Calculating MIC */
-    ble_aes_ccm_auth(key_reversed, nonce, msg, msg_len, aad, aad_len, mic, mic_size);
+    int rc = ble_aes_ccm_auth(key_reversed, nonce, msg, msg_len, aad, aad_len, mic, mic_size);
+    if (rc != 0) {
+        return rc;
+    }
 
-    /** Encrypting advertisment */
-    ble_aes_ccm_crypt(key_reversed, nonce, msg, out_msg, msg_len);
+    /** Encrypting advertisement */
+    rc = ble_aes_ccm_crypt(key_reversed, nonce, msg, out_msg, msg_len);
+    if (rc != 0) {
+        return rc;
+    }
 
     return 0;
 }
 
 #endif /* ENC_ADV_DATA */
-
-#ifdef __cplusplus
-}
-#endif

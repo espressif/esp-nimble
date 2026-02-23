@@ -73,7 +73,7 @@ static struct trng_dev *g_trng;
 
 #if CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #define BLE_PUB_KEY_LEN 65
-const char *TAG = "ble_sm_alg";
+static const char * const TAG = "ble_sm_alg";
 #else
 #define BLE_PUB_KEY_LEN 64
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
@@ -367,6 +367,9 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
 
 exit:
     mbedtls_cipher_free(&ctx);
+    if (rc != 0) {
+        rc = BLE_HS_EUNKNOWN;
+    }
     return rc;
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     return 0;
@@ -483,7 +486,8 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(salt, ws, 32, t);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("t", t, 16);
@@ -497,7 +501,8 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(t, m, sizeof(m), mackey);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("mackey", mackey, 16);
@@ -509,14 +514,23 @@ ble_sm_alg_f5(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
 
     rc = ble_sm_alg_aes_cmac(t, m, sizeof(m), ltk);
     if (rc != 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto exit;
     }
 
     ble_sm_alg_log_buf("ltk", ltk, 16);
 
     swap_in_place(ltk, 16);
+    rc = 0;
 
-    return 0;
+exit:
+    /* Zero sensitive key material from stack */
+    memset(ws, 0, sizeof(ws));
+    memset(t, 0, sizeof(t));
+    /* Use a memory barrier to prevent compiler from optimizing out the memsets */
+    __asm__ volatile("" : : "r"(ws), "r"(t) : "memory");
+
+    return rc;
 }
 
 int
@@ -546,16 +560,18 @@ ble_sm_alg_f6(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
     swap_buf(m + 48, iocap, 3);
 
     m[51] = a1t;
-    memcpy(m + 52, a1, 6);
     swap_buf(m + 52, a1, 6);
 
     m[58] = a2t;
-    memcpy(m + 59, a2, 6);
     swap_buf(m + 59, a2, 6);
 
     swap_buf(ws, w, 16);
 
     rc = ble_sm_alg_aes_cmac(ws, m, sizeof(m), check);
+
+    /* Zero sensitive key material from stack */
+    memset(ws, 0, sizeof(ws));
+
     if (rc != 0) {
         return BLE_HS_EUNKNOWN;
     }
@@ -778,7 +794,9 @@ ble_sm_alg_gen_dhkey(const uint8_t *peer_pub_key_x, const uint8_t *peer_pub_key_
     rc = 0;
 
 exit:
-    psa_destroy_key(key_id);
+    if (key_id != 0) {
+        psa_destroy_key(key_id);
+    }
 #else
     swap_buf(pk, peer_pub_key_x, 32);
     swap_buf(&pk[32], peer_pub_key_y, 32);
@@ -786,6 +804,10 @@ exit:
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!keypair_ptr) {
         keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
+        if (!keypair_ptr) {
+            rc = BLE_HS_ENOMEM;
+	    goto exit;
+        }
     }
 #endif
 
@@ -849,7 +871,8 @@ exit:
             keypair_ptr = NULL;
         }
 #endif
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+	goto exit_cleanup;
     }
 #else
     // TinyCrypt/uECC expects 64 bytes: X (32 bytes) + Y (32 bytes), no prefix
@@ -857,17 +880,28 @@ exit:
     swap_buf(&pk[32], peer_pub_key_y, 32);
 
     if (uECC_valid_public_key(pk, uECC_secp256r1()) < 0) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+	goto exit_cleanup;
     }
 
     rc = uECC_shared_secret(pk, priv, dh, uECC_secp256r1());
     if (rc == TC_CRYPTO_FAIL) {
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+	goto exit_cleanup;
     }
 #endif
 
     swap_buf(out_dhkey, dh, 32);
-    return 0;
+    rc = 0;
+
+exit_cleanup:
+    /* Zero sensitive key material from stack */
+    memset(dh, 0, sizeof(dh));
+    memset(priv, 0, sizeof(priv));
+    /* Use a memory barrier to prevent compiler from optimizing out the memsets */
+    __asm__ __volatile__("" : : "r"(dh), "r"(priv) : "memory");
+
+    return rc;
 }
 
 /* based on Core Specification 4.2 Vol 3. Part H 2.3.5.6.1 */
@@ -941,6 +975,9 @@ exit:
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!keypair_ptr) {
         keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
+        if (!keypair_ptr) {
+            return BLE_HS_ENOMEM;
+        }
     }
 #endif
 
@@ -981,7 +1018,7 @@ exit:
         rc = BLE_HS_EUNKNOWN;
     }
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
-    return 0;
+    return rc;
 }
 
 void mbedtls_free_keypair(void)

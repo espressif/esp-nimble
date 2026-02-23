@@ -76,15 +76,22 @@ ble_hs_conn_can_alloc(void)
     return 0;
 #endif
 
-#if MYNEWT_VAL(BLE_GATTS) 
-   return ble_hs_conn_pool.mp_num_free >= 1 &&
-          ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS &&
-          ble_gatts_conn_can_alloc();
+    int result;
 
+    ble_hs_lock();
+
+#if MYNEWT_VAL(BLE_GATTS)
+    result = ble_hs_conn_pool.mp_num_free >= 1 &&
+             ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS &&
+             ble_gatts_conn_can_alloc();
 #else
-   return ble_hs_conn_pool.mp_num_free >= 1 &&
-          ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS;
+    result = ble_hs_conn_pool.mp_num_free >= 1 &&
+             ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS;
 #endif
+
+    ble_hs_unlock();
+
+    return result;
 }
 
 struct ble_l2cap_chan *
@@ -130,7 +137,7 @@ bool
 ble_hs_conn_chan_exist(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 {
 #if !NIMBLE_BLE_CONNECT
-    return NULL;
+    return false;
 #endif
 
     struct ble_l2cap_chan *tmp;
@@ -206,6 +213,7 @@ ble_hs_conn_alloc(uint16_t conn_handle)
     }
     rc = ble_hs_conn_chan_insert(conn, chan);
     if (rc != 0) {
+        ble_l2cap_chan_free(conn, chan);
         goto err;
     }
 
@@ -215,6 +223,7 @@ ble_hs_conn_alloc(uint16_t conn_handle)
     }
     rc = ble_hs_conn_chan_insert(conn, chan);
     if (rc != 0) {
+        ble_l2cap_chan_free(conn, chan);
         goto err;
     }
 
@@ -227,6 +236,7 @@ ble_hs_conn_alloc(uint16_t conn_handle)
     }
     rc = ble_hs_conn_chan_insert(conn, chan);
     if (rc != 0) {
+        ble_l2cap_chan_free(conn, chan);
         goto err;
     }
 #if MYNEWT_VAL(BLE_GATTS)
@@ -252,6 +262,10 @@ err:
 void
 ble_hs_conn_delete_chan(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 {
+    if (chan == NULL) {
+        return;
+    }
+
     SLIST_REMOVE(&conn->bhc_channels, chan, ble_l2cap_chan, next);
     ble_l2cap_chan_free(conn, chan);
 }
@@ -288,7 +302,6 @@ ble_hs_conn_free(struct ble_hs_conn *conn)
     os_mbuf_free_chain(conn->rx_frags);
     conn->rx_frags = NULL;
 
-
 #if MYNEWT_VAL(BLE_GATTS)
     ble_att_svr_prep_clear(&conn->bhc_att_svr.basc_prep_list);
 #endif
@@ -299,6 +312,12 @@ ble_hs_conn_free(struct ble_hs_conn *conn)
 
     while ((omp = STAILQ_FIRST(&conn->bhc_tx_q)) != NULL) {
         STAILQ_REMOVE_HEAD(&conn->bhc_tx_q, omp_next);
+        os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
+    }
+
+    /* Clear ATT TX queue */
+    while ((omp = STAILQ_FIRST(&conn->att_tx_q)) != NULL) {
+        STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
         os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
     }
 
@@ -480,11 +499,15 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
         our_id_addr_val = conn->bhc_our_rnd_addr;
     } else {
         rc = ble_hs_id_addr(addrs->our_id_addr.type, &our_id_addr_val, NULL);
-        assert(rc == 0);
+        if (rc != 0) {
+            return;
+        }
     }
 #else
     rc = ble_hs_id_addr(addrs->our_id_addr.type, &our_id_addr_val, NULL);
-    assert(rc == 0);
+    if (rc != 0) {
+        return;
+    }
 #endif
 
     memcpy(addrs->our_id_addr.val, our_id_addr_val, 6);
@@ -513,14 +536,16 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
 
         if (ble_host_rpa_enabled()) {
             uint8_t *local_id = NULL;
-            ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+            rc = ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
 
             /* RL is present: populate our id addr with public ID */
-            memcpy(addrs->our_id_addr.val, local_id, BLE_DEV_ADDR_LEN);
-            addrs->our_id_addr.type = BLE_ADDR_PUBLIC;
-            BLE_HS_LOG(DEBUG, "Revised our id addr:\n");
-            ble_hs_log_flat_buf(our_id_addr_val, BLE_DEV_ADDR_LEN);
-            BLE_HS_LOG(DEBUG, "\n");
+            if (rc == 0 && local_id != NULL) {
+                memcpy(addrs->our_id_addr.val, local_id, BLE_DEV_ADDR_LEN);
+                addrs->our_id_addr.type = BLE_ADDR_PUBLIC;
+                BLE_HS_LOG(DEBUG, "Revised our id addr:\n");
+                ble_hs_log_flat_buf(local_id, BLE_DEV_ADDR_LEN);
+                BLE_HS_LOG(DEBUG, "\n");
+            }
         }
     }
 #endif
@@ -556,10 +581,9 @@ ble_hs_conn_timer(void)
 #endif
 
     struct ble_hs_conn *conn;
+    struct ble_hs_conn *tmp;
     ble_npl_time_t now = ble_npl_time_get();
     int32_t next_exp_in = BLE_HS_FOREVER;
-    int32_t next_exp_in_new;
-    bool next_exp_in_updated;
     int32_t time_diff;
 
     ble_hs_lock();
@@ -569,9 +593,8 @@ ble_hs_conn_timer(void)
      *    so connection is disconnected.
      * 2. Otherwise, determine when the next timeout will occur.
      */
-    SLIST_FOREACH(conn, &ble_hs_conns, bhc_next) {
+    SLIST_FOREACH_SAFE(conn, &ble_hs_conns, bhc_next, tmp) {
         if (!(conn->bhc_flags & BLE_HS_CONN_F_TERMINATING)) {
-            next_exp_in_updated = false;
 
 #if MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT) != 0
             /* Check each connection's rx fragment timer.  If too much time
@@ -589,8 +612,7 @@ ble_hs_conn_timer(void)
 
                 /* Determine if this connection is the soonest to time out. */
                 if (time_diff < next_exp_in) {
-                    next_exp_in_new = time_diff;
-                    next_exp_in_updated = true;
+                    next_exp_in = time_diff;
                 }
             }
 #endif
@@ -609,14 +631,9 @@ ble_hs_conn_timer(void)
 
             /* Determine if this connection is the soonest to time out. */
             if (time_diff < next_exp_in) {
-                next_exp_in_new = time_diff;
-                next_exp_in_updated = true;
+                next_exp_in = time_diff;
             }
 #endif
-
-            if (next_exp_in_updated) {
-                next_exp_in = next_exp_in_new;
-            }
         }
     }
 

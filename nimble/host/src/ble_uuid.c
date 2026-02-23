@@ -132,9 +132,15 @@ ble_uuid_cmp(const ble_uuid_t *uuid1, const ble_uuid_t *uuid2)
     case BLE_UUID_TYPE_16:
         return (int) BLE_UUID16(uuid1)->value - (int) BLE_UUID16(uuid2)->value;
     case BLE_UUID_TYPE_32:
-        return (int) BLE_UUID32(uuid1)->value - (int) BLE_UUID32(uuid2)->value;
+        if (BLE_UUID32(uuid1)->value < BLE_UUID32(uuid2)->value) {
+            return -1;
+        }
+        if (BLE_UUID32(uuid1)->value > BLE_UUID32(uuid2)->value) {
+            return 1;
+        }
+        return 0;
     case BLE_UUID_TYPE_128:
-        return memcmp(BLE_UUID128(uuid1)->value, BLE_UUID128(uuid2)->value, 16);
+        return memcmp(&BLE_UUID128(uuid1)->value, &BLE_UUID128(uuid2)->value, 16);
     }
 
     BLE_HS_DBG_ASSERT(0);
@@ -252,25 +258,30 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
 
     switch (uuid->u.type) {
     case BLE_UUID_TYPE_128:
-        uuid->u.type = BLE_UUID_TYPE_128;
         u8p = uuid->u128.value;
+        int bytes_parsed = 0;
         for (int i = 0; i < 16; i++) {
             if (hex2bin(str_ptr, u8p, 1) != 1) {
                 return BLE_HS_EINVAL;
             }
+            bytes_parsed++;
 
-            /* Check if string end */
             if (str_ptr == str) {
                 break;
             }
 
-            /* Remove '-' */
             if (*(str_ptr - 1) == '-') {
                 str_ptr--;
             }
 
+            if (str_ptr - str < 2) {
+                break;
+            }
             str_ptr -= 2;
             u8p++;
+        }
+        if (bytes_parsed != 16 || str_ptr != str) {
+            return BLE_HS_EINVAL;
         }
 
         if (memcmp(ble_uuid_base, uuid->u128.value, 12) == 0) {
@@ -405,6 +416,11 @@ ble_uuid_to_mbuf(const ble_uuid_t *uuid, struct os_mbuf *om)
 
     len = ble_uuid_length(uuid);
 
+    /* ble_uuid_flat expands 32-bit UUIDs to full 128-bit base UUID */
+    if (uuid->type == BLE_UUID_TYPE_32) {
+        len = 16;
+    }
+
     buf = os_mbuf_extend(om, len);
     if (buf == NULL) {
         return BLE_HS_ENOMEM;
@@ -433,7 +449,7 @@ ble_uuid_flat(const ble_uuid_t *uuid, void *dst)
         break;
     case BLE_UUID_TYPE_32:
         memcpy(dst, ble_uuid_base, 16);
-        put_le32(dst + 12, BLE_UUID32(uuid)->value);
+        put_le32((uint8_t *)dst + 12, BLE_UUID32(uuid)->value);
         break;
     case BLE_UUID_TYPE_128:
         memcpy(dst, BLE_UUID128(uuid)->value, 16);
@@ -449,6 +465,10 @@ int
 ble_uuid_length(const ble_uuid_t *uuid)
 {
     VERIFY_UUID(uuid);
+
+    if (uuid->type == BLE_UUID_TYPE_32) {
+        return 16;
+    }
 
     return uuid->type >> 3;
 }

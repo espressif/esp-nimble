@@ -28,7 +28,7 @@ static const ble_uuid16_t uuid_svc_ipss = BLE_UUID16_INIT(BLE_SVC_IPSS_UUID16);
 
 static const struct ble_gatt_svc_def ble_svc_ipss_defs[] = {
     {
-        /*** Service: GATT */
+        /*** Service: IPSS */
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &uuid_svc_ipss.u,
         .characteristics = NULL,

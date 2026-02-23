@@ -105,15 +105,24 @@ ble_svc_ias_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
-        rc = ble_svc_ias_chr_write(ctxt->om,
-                                   sizeof ble_svc_ias_alert_level,
-                                   sizeof ble_svc_ias_alert_level,
-                                   &ble_svc_ias_alert_level, NULL);
-	/* Call the IAS event function */
-	if (ble_svc_ias_cb_fn) {
-		ble_svc_ias_cb_fn(ble_svc_ias_alert_level);
-	}
-        return rc;
+        {
+            uint8_t alert_level;
+            rc = ble_svc_ias_chr_write(ctxt->om,
+                                       sizeof alert_level,
+                                       sizeof alert_level,
+                                       &alert_level, NULL);
+            if (rc != 0) {
+                return rc;
+            }
+            if (alert_level > BLE_SVC_IAS_ALERT_LEVEL_HIGH_ALERT) {
+                return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+            }
+            ble_svc_ias_alert_level = alert_level;
+            if (ble_svc_ias_cb_fn) {
+                ble_svc_ias_cb_fn(ble_svc_ias_alert_level);
+            }
+        }
+        return 0;
 
     default:
         assert(0);

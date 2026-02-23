@@ -18,7 +18,6 @@
  */
 
 #include <string.h>
-#include <errno.h>
 #include "nimble/ble.h"
 #include "nimble/nimble_opt.h"
 #include "host/ble_sm.h"
@@ -26,7 +25,7 @@
 
 #if NIMBLE_BLE_CONNECT
 void *
-ble_sm_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom)
+ble_sm_cmd_get(uint8_t opcode, uint16_t len, struct os_mbuf **txom)
 {
 #if NIMBLE_BLE_SM
     struct ble_sm_hdr *hdr;
@@ -40,6 +39,7 @@ ble_sm_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom)
     data = os_mbuf_extend(*txom, sizeof(*hdr) + len);
     if (data == NULL) {
         os_mbuf_free_chain(*txom);
+        *txom = NULL;
         return NULL;
     }
 
@@ -62,6 +62,7 @@ ble_sm_tx(uint16_t conn_handle, struct os_mbuf *txom)
     int rc;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+    BLE_HS_DBG_ASSERT(txom != NULL);
 
     STATS_INC(ble_l2cap_stats, sm_tx);
 

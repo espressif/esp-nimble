@@ -17,8 +17,8 @@
  * under the License.
  */
 
-#ifndef H_BLE_IAS_TPS_
-#define H_BLE_IAS_TPS_
+#ifndef H_BLE_SVC_IAS_
+#define H_BLE_SVC_IAS_
 
 #ifdef __cplusplus
 extern "C" {

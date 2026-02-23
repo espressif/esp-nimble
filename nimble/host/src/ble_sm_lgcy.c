@@ -36,8 +36,8 @@
 #define IOACT_INPUT BLE_SM_IOACT_INPUT
 #define IOACT_DISP  BLE_SM_IOACT_DISP
 
-/* This is the initiator passkey action action depending on the io
- * capabilties of both parties
+/* This is the initiator passkey action depending on the io
+ * capabilities of both parties
  */
 static const uint8_t ble_sm_lgcy_init_ioa[5 /*resp*/ ][5 /*init*/ ] =
 {
@@ -48,7 +48,7 @@ static const uint8_t ble_sm_lgcy_init_ioa[5 /*resp*/ ][5 /*init*/ ] =
     {IOACT_DISP,    IOACT_DISP,   IOACT_INPUT, IOACT_NONE, IOACT_DISP},
 };
 
-/* This is the responder passkey action action depending on the io
+/* This is the responder passkey action depending on the io
  * capabilities of both parties
  */
 static const uint8_t ble_sm_lgcy_resp_ioa[5 /*resp*/ ][5 /*init*/ ] =
@@ -68,20 +68,17 @@ ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
     pair_req = (struct ble_sm_pair_cmd *) &proc->pair_req[1];
     pair_rsp = (struct ble_sm_pair_cmd *) &proc->pair_rsp[1];
 
+    if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES &&
+        pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
+        /* OOB takes precedence over static passkey per BLE spec */
+        *action = BLE_SM_IOACT_OOB;
 #if MYNEWT_VAL(STATIC_PASSKEY)
-    /* Check if static passkey is enabled - if so, use static passkey action */
-    if (ble_hs_cfg.sm_static_passkey)
-    {
+    } else if (ble_hs_cfg.sm_static_passkey) {
         *action = BLE_SM_IOACT_STATIC;
         proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
         proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
         return 0;
-    }
 #endif
-
-    if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES &&
-        pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
-        *action = BLE_SM_IOACT_OOB;
     } else if (!(pair_req->authreq & BLE_SM_PAIR_AUTHREQ_MITM) &&
                !(pair_rsp->authreq & BLE_SM_PAIR_AUTHREQ_MITM)) {
 
@@ -152,6 +149,7 @@ ble_sm_lgcy_confirm_exec(struct ble_sm_proc *proc, struct ble_sm_result *res)
     }
 
     rc = ble_sm_tx(proc->conn_handle, txom);
+    txom = NULL; /* ble_sm_tx consumes txom on all paths */
     if (rc != 0) {
         goto err;
     }
@@ -178,6 +176,9 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
     uint8_t key[16];
     int rc;
 
+    BLE_HS_DBG_ASSERT(proc->key_size >= BLE_SM_PAIR_KEY_SZ_MIN &&
+                      proc->key_size <= BLE_SM_PAIR_KEY_SZ_MAX);
+
     rc = ble_sm_alg_s1(proc->tk, proc->rands, proc->randm, key);
     if (rc != 0) {
         return rc;
@@ -187,6 +188,9 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
 
     /* Ensure proper key size */
     memset(proc->ltk + proc->key_size, 0, sizeof key - proc->key_size);
+
+    /* Zero sensitive key material from stack */
+    memset(key, 0, sizeof(key));
 
     return 0;
 }
@@ -242,8 +246,13 @@ ble_sm_lgcy_random_rx(struct ble_sm_proc *proc, struct ble_sm_result *res)
         return;
     }
 
-    if (memcmp(proc->confirm_peer, confirm_val, 16) != 0) {
-        /* Random number mismatch. */
+    /* Use constant-time comparison to avoid timing side-channel leaks */
+    uint8_t diff = 0;
+    for (int i = 0; i < 16; i++) {
+        diff |= proc->confirm_peer[i] ^ confirm_val[i];
+    }
+    if (diff != 0) {
+        /* Confirm value mismatch. */
         res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CONFIRM_MISMATCH);
         res->sm_err = BLE_SM_ERR_CONFIRM_MISMATCH;
         res->enc_cb = 1;

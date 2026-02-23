@@ -79,6 +79,9 @@ ble_l2cap_coc_dbg_assert_srv_not_inserted(struct ble_l2cap_coc_srv *srv)
 }
 
 static struct ble_l2cap_coc_srv *
+ble_l2cap_coc_srv_find(uint16_t psm);
+
+static struct ble_l2cap_coc_srv *
 ble_l2cap_coc_srv_alloc(void)
 {
     struct ble_l2cap_coc_srv *srv;
@@ -102,8 +105,20 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
 {
     struct ble_l2cap_coc_srv *srv;
 
+    if (cb == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    ble_hs_lock();
+
+    if (ble_l2cap_coc_srv_find(psm) != NULL) {
+        ble_hs_unlock();
+        return BLE_HS_EALREADY;
+    }
+
     srv = ble_l2cap_coc_srv_alloc();
     if (!srv) {
+        ble_hs_unlock();
         return BLE_HS_ENOMEM;
     }
 
@@ -115,6 +130,8 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
     ble_l2cap_coc_dbg_assert_srv_not_inserted(srv);
 
     STAILQ_INSERT_HEAD(&ble_l2cap_coc_srvs, srv, next);
+
+    ble_hs_unlock();
 
     return 0;
 }
@@ -176,6 +193,12 @@ ble_l2cap_coc_srv_find(uint16_t psm)
 {
     struct ble_l2cap_coc_srv *cur, *srv;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_l2cap_coc_ctx == NULL) {
+        return NULL;
+    }
+#endif
+
     srv = NULL;
     STAILQ_FOREACH(cur, &ble_l2cap_coc_srvs, next) {
         if (cur->psm == psm) {
@@ -198,7 +221,11 @@ ble_l2cap_event_coc_received_data(struct ble_l2cap_chan *chan,
     event.receive.chan = chan;
     event.receive.sdu_rx = om;
 
-    chan->cb(&event, chan->cb_arg);
+    if (chan->cb) {
+        chan->cb(&event, chan->cb_arg);
+    } else {
+        os_mbuf_free_chain(om);
+    }
 }
 
 static int
@@ -233,11 +260,10 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
                    om_total, sdu_len + 2);
 
         /* We should receive payload of size sdu_len + 2 bytes of sdu_len field */
-        if (om_total > sdu_len + 2) {
+        if ((uint32_t)om_total > (uint32_t)sdu_len + 2) {
             BLE_HS_LOG(ERROR, "Payload larger than expected (%d>%d)\n",
                        om_total, sdu_len + 2);
             /* Disconnect peer with invalid behaviour */
-            rx_sdu = NULL;
             rx->data_offset = 0;
             ble_l2cap_disconnect(chan);
             return BLE_HS_EBADDATA;
@@ -259,36 +285,40 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
         rc = os_mbuf_appendfrom(rx_sdu, *om, 0, om_total - BLE_L2CAP_SDU_SIZE);
         if (rc != 0) {
-            /* FIXME: User shall give us big enough buffer.
-             * need to handle it better
-             */
-            BLE_HS_LOG(INFO, "Could not append data rc=%d\n", rc);
-            assert(0);
+            BLE_HS_LOG(ERROR, "Could not append data rc=%d\n", rc);
+            ble_l2cap_disconnect(chan);
+            return rc;
         }
 
         /* In RX case data_offset keeps incoming SDU len */
         rx->data_offset = sdu_len;
 
     } else {
-        BLE_HS_LOG(DEBUG, "Continuation...received %d\n", (*om)->om_len);
+        BLE_HS_LOG(DEBUG, "Continuation...received %d\n", om_total);
 
-        if (OS_MBUF_PKTLEN(rx_sdu) + (*om)->om_len > rx->data_offset) {
+        if (OS_MBUF_PKTLEN(rx_sdu) + om_total > rx->data_offset) {
             /* Disconnect peer with invalid behaviour */
             BLE_HS_LOG(ERROR, "Payload larger than expected (%d>%d)\n",
-                       OS_MBUF_PKTLEN(rx_sdu) + (*om)->om_len, rx->data_offset);
-            rx_sdu = NULL;
+                       OS_MBUF_PKTLEN(rx_sdu) + om_total, rx->data_offset);
+            os_mbuf_free_chain(rx_sdu);
+            rx->sdus[chan->coc_rx.current_sdu_idx] = NULL;
             rx->data_offset = 0;
             ble_l2cap_disconnect(chan);
             return BLE_HS_EBADDATA;
         }
         rc = os_mbuf_appendfrom(rx_sdu, *om, 0, om_total);
         if (rc != 0) {
-            /* FIXME: need to handle it better */
-            BLE_HS_LOG(DEBUG, "Could not append data rc=%d\n", rc);
-            assert(0);
+            BLE_HS_LOG(ERROR, "Could not append data rc=%d\n", rc);
+            ble_l2cap_disconnect(chan);
+            return rc;
         }
     }
 
+    if (rx->credits == 0) {
+        BLE_HS_LOG(ERROR, "RX credits underflow, disconnecting\n");
+	ble_l2cap_disconnect(chan);
+        return BLE_HS_EBADDATA;
+    }
     rx->credits--;
 
     if (OS_MBUF_PKTLEN(rx_sdu) == rx->data_offset) {
@@ -301,7 +331,7 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
          * Since it this callback application might want to set new sdu
          * we need to prepare space for this. Therefore we need sdu_rx
          */
-        rx_sdu = NULL;
+        rx->sdus[chan->coc_rx.current_sdu_idx] = NULL;
         chan->coc_rx.current_sdu_idx =
             (chan->coc_rx.current_sdu_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
         rx->data_offset = 0;
@@ -335,6 +365,14 @@ void
 ble_l2cap_coc_set_new_mtu_mps(struct ble_l2cap_chan *chan, uint16_t mtu,
                               uint16_t mps)
 {
+    if (chan == NULL) {
+        BLE_HS_LOG(WARN, "chan NULL in set_new_mtu_mps");
+        return;
+    }
+    if (mps == 0) {
+        BLE_HS_LOG(ERROR, "mps cannot be 0\n");
+        return;
+    }
     chan->my_coc_mps = mps;
     chan->coc_rx.mtu = mtu;
     chan->initial_credits = mtu / chan->my_coc_mps;
@@ -352,21 +390,30 @@ ble_l2cap_coc_chan_alloc(struct ble_hs_conn *conn, uint16_t psm, uint16_t mtu,
 
     chan = ble_l2cap_chan_alloc(conn->bhc_handle);
     if (!chan) {
+        os_mbuf_free_chain(sdu_rx);
         return NULL;
     }
 
     chan->psm = psm;
     chan->cb = cb;
     chan->cb_arg = cb_arg;
-    chan->scid = ble_l2cap_coc_get_cid(conn->l2cap_coc_cid_mask);
-    chan->my_coc_mps = MYNEWT_VAL(BLE_L2CAP_COC_MPS);
-    chan->rx_fn = ble_l2cap_coc_rx_fn;
-    chan->coc_rx.mtu = mtu;
     chan->coc_rx.sdus[0] = sdu_rx;
     for (int i = 1; i < BLE_L2CAP_SDU_BUFF_CNT; i++) {
         chan->coc_rx.sdus[i] = NULL;
     }
     chan->coc_rx.current_sdu_idx = 0;
+
+    int cid = ble_l2cap_coc_get_cid(conn->l2cap_coc_cid_mask);
+    if (cid < 0) {
+        chan->cb = NULL; /* Prevent unexpected callback during cleanup */
+        ble_l2cap_chan_free(conn, chan);
+        return NULL;
+    }
+    chan->scid = cid;
+
+    chan->my_coc_mps = MYNEWT_VAL(BLE_L2CAP_COC_MPS);
+    chan->rx_fn = ble_l2cap_coc_rx_fn;
+    chan->coc_rx.mtu = mtu;
 
     if (BLE_L2CAP_SDU_BUFF_CNT == 1) {
         chan->coc_rx.next_sdu_alloc_idx = 0;
@@ -442,7 +489,9 @@ ble_l2cap_coc_cleanup_chan(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan
     for (int i = 0; i < BLE_L2CAP_SDU_BUFF_CNT; i++) {
         os_mbuf_free_chain(chan->coc_rx.sdus[i]);
     }
-    os_mbuf_free_chain(chan->coc_tx.sdus[0]);
+    for (int i = 0; i < BLE_L2CAP_SDU_BUFF_CNT; i++) {
+        os_mbuf_free_chain(chan->coc_tx.sdus[i]);
+    }
 }
 
 static void
@@ -634,17 +683,18 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
+
     if (chan->coc_rx.sdus[0] != NULL &&
         chan->coc_rx.next_sdu_alloc_idx == chan->coc_rx.current_sdu_idx &&
         BLE_L2CAP_SDU_BUFF_CNT != 1) {
+        ble_hs_unlock();
         return BLE_HS_EBUSY;
     }
 
     chan->coc_rx.sdus[chan->coc_rx.next_sdu_alloc_idx] = sdu_rx;
     chan->coc_rx.next_sdu_alloc_idx =
         (chan->coc_rx.next_sdu_alloc_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
-
-    ble_hs_lock();
     conn = ble_hs_conn_find_assert(chan->conn_handle);
     c = ble_hs_conn_chan_find_by_scid(conn, chan->scid);
     if (!c) {
@@ -656,11 +706,26 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
      * to be able to send complete SDU.
      */
     if (chan->disable_auto_credit_update == false && chan->coc_rx.credits < c->initial_credits) {
-        ble_hs_unlock();
-        ble_l2cap_sig_le_credits(chan->conn_handle, chan->scid,
-                                 c->initial_credits - chan->coc_rx.credits);
-        ble_hs_lock();
+        uint16_t credits_to_send = c->initial_credits - chan->coc_rx.credits;
+        uint16_t cached_conn_handle = chan->conn_handle;
+        uint16_t cached_scid = chan->scid;
+
+        /* Updating state before unlocking. */
         chan->coc_rx.credits = c->initial_credits;
+
+        ble_hs_unlock();
+        ble_l2cap_sig_le_credits(cached_conn_handle, cached_scid,
+                                 credits_to_send);
+        ble_hs_lock();
+        /* Re-validate connection and channel after relock — they could have
+         * been freed while the lock was released. */
+        /* Re-validate connection and channel after relock — they could have
+         * been freed while the lock was released. Credits were already updated
+         * at line 714 before unlocking; no further update needed here. */
+        conn = ble_hs_conn_find(cached_conn_handle);
+        if (conn != NULL) {
+            c = ble_hs_conn_chan_find_by_scid(conn, cached_scid);
+        }
     }
 
     ble_hs_unlock();
@@ -708,7 +773,7 @@ ble_l2cap_coc_init(void)
             return BLE_HS_ENOMEM;
         }
     }
-#if !MYNEWT_VAL(MP_RUNTIME_ALLOC) // Doubt
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     size_t srv_mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                            sizeof (struct ble_l2cap_coc_srv)) * sizeof(os_membuf_t);
 
@@ -733,10 +798,12 @@ ble_l2cap_coc_init(void)
                            "ble_l2cap_coc_srv_pool");
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-#if !MYNEWT_VAL(MP_RUNTIME_ALLOC) // Doubt
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         nimble_platform_mem_free(ble_l2cap_coc_srv_mem);
 #endif
         memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
+        nimble_platform_mem_free(ble_l2cap_coc_ctx);
+        ble_l2cap_coc_ctx = NULL;
 #endif
     }
 
@@ -747,13 +814,14 @@ void ble_l2cap_coc_deinit(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
      if (ble_l2cap_coc_ctx) {
-#if !MYNEWT_VAL(MP_RUNTIME_ALLOC) // Doubt
+#if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         if (ble_l2cap_coc_srv_mem) {
              nimble_platform_mem_free(ble_l2cap_coc_srv_mem);
              ble_l2cap_coc_srv_mem = NULL;
         }
 #endif
         memset(&ble_l2cap_coc_srv_pool, 0, sizeof(ble_l2cap_coc_srv_pool));
+        STAILQ_INIT(&ble_l2cap_coc_srvs);
         nimble_platform_mem_free(ble_l2cap_coc_ctx);
         ble_l2cap_coc_ctx = NULL;
 
