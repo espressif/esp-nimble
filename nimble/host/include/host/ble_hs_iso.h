@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-int ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint16_t max_pkts);
+int ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts);
 
 void ble_hs_hci_add_iso_avail_pkts(uint16_t conn_handle, uint16_t delta);
 
@@ -25,7 +25,7 @@ int ble_hs_hci_iso_tx(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
 
 typedef int (*ble_hs_iso_pkt_rx_fn)(const uint8_t *data, uint16_t len, void *arg);
 
-int ble_hs_iso_pkt_rx_cb_set(void *cb);
+int ble_hs_iso_pkt_rx_cb_set(ble_hs_iso_pkt_rx_fn cb);
 
 int ble_hs_rx_iso_data(const uint8_t *data, uint16_t len, void *arg);
 
