@@ -85,12 +85,11 @@ ble_hs_hci_read_local_supp_controller_delay(uint8_t coding_fmt, uint16_t company
     cmd = (void *)cmd_buf;
 
     cmd->coding_fmt = coding_fmt;
-    put_le16(&cmd->company_id, company_id);
-    put_le16(&cmd->vs_codec_id, vs_codec_id);
+    cmd->company_id = company_id;
+    cmd->vs_codec_id = vs_codec_id;
     cmd->logical_tpt_type = logical_transport_type;
     cmd->direction = direction;
     cmd->codec_cfg_len = codec_cfg_len;
-
     if (codec_cfg_len > 0) {
          memcpy(cmd->codec_cfg, codec_cfg, codec_cfg_len);
     }
@@ -187,14 +186,7 @@ ble_hs_hci_read_iso_tx_sync(uint16_t conn_handle, uint16_t *packet_seq_num,
 
     *packet_seq_num = le16toh(rsp.packet_seq_num);
     *timestamp = le32toh(rsp.tx_timestamp);
-    /* Extract 24-bit signed Time_Offset and sign-extend to 32-bit */
-    {
-        int32_t val = rsp.time_offset[0] | (rsp.time_offset[1] << 8) | (rsp.time_offset[2] << 16);
-        if (val & 0x800000) {
-            val |= 0xFF000000;
-        }
-        *timeoffset = (uint32_t)val;
-    }
+    *timeoffset = get_le24(rsp.time_offset);
 
     return 0;
 }

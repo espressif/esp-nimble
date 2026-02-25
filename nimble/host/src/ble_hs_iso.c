@@ -13,6 +13,9 @@
 #include "ble_hs_priv.h"
 #include "bt_osi_mem.h"
 #include "host/ble_hs_iso.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 extern int ble_hci_trans_hs_iso_tx(const uint8_t *data, uint16_t length, void *arg);
 #if MYNEWT_VAL(BLE_ISO_NON_STD_FLOW_CTRL)
@@ -39,7 +42,7 @@ _Static_assert((MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) &&
 #endif
 
 static uint16_t ble_hs_iso_buf_sz;
-static uint16_t ble_hs_iso_max_pkts;
+static uint8_t ble_hs_iso_max_pkts;
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
 /* Number of available ISO transmit buffers on the controller.
@@ -49,7 +52,7 @@ static uint16_t ble_hs_iso_avail_pkts;
 #endif /* MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) */
 
 int
-ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint16_t max_pkts)
+ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
@@ -190,10 +193,12 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
 
     dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) + BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
 
-    if (sdu_len + dlh_len > ble_hs_iso_buf_sz) {
-        return BLE_HS_EMSGSIZE;
-    }
-
+    /* Note:
+     * Here we allocate memory to hold the whole SDU, and in the BLE Controller,
+     * the SDU will be checked. If it's too large, error will be returned.
+     * If the SDU is fine, it will be splitted into one or more PDUs based on
+     * the corresponding ISO parameters.
+     */
     frag = nimble_platform_mem_calloc(1,BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len);
     if (frag == NULL) {
         return BLE_HS_ENOMEM;
@@ -204,8 +209,10 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
 
     memcpy(frag + BLE_HCI_ISO_DATA_HDR_SZ + dlh_len, sdu, sdu_len);
 
+    /* Note:
+     * The allocated frag will be freed in the BLE Controller!
+     */
     rc = ble_hci_trans_hs_iso_tx(frag, BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len, NULL);
-    nimble_platform_mem_free(frag);
     if (rc) {
         return BLE_HS_EDONE;
     }
