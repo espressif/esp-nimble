@@ -1721,6 +1721,9 @@ ble_gatts_free_svc_defs(void)
 static void
 ble_gatts_free_mem(void)
 {
+#if !MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    int rc;
+#endif
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_svc_entry *entry;
     struct ble_gatts_clt_cfg *clt_cfg;
@@ -1731,6 +1734,12 @@ ble_gatts_free_mem(void)
             STAILQ_REMOVE_HEAD(&ble_gatts_clt_cfgs, next);
             ble_gatts_clt_cfg_free(clt_cfg);
         }
+    }
+#else
+    if (ble_gatts_clt_cfgs != NULL) {
+        rc = os_memblock_put(&ble_gatts_clt_cfg_pool, ble_gatts_clt_cfgs);
+        BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+        ble_gatts_clt_cfgs = NULL;
     }
 #endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
