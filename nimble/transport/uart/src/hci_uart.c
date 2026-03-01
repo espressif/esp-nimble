@@ -26,6 +26,7 @@
 #include "os/os_mbuf.h"
 #include "os/os_mempool.h"
 #include "hal/hal_uart.h"
+#include "nimble/nimble_opt.h"
 #include "nimble/transport.h"
 #include "nimble/transport/hci_h4.h"
 
