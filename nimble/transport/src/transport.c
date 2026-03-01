@@ -24,6 +24,7 @@
 #include <os/os_mempool.h>
 #include <nimble/ble.h>
 #include <nimble/hci_common.h>
+#include <nimble/nimble_opt.h>
 #include <nimble/transport.h>
 #if BLE_TRANSPORT_IPC
 #include <nimble/transport/hci_ipc.h>
