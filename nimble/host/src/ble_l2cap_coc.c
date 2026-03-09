@@ -28,6 +28,14 @@
 
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) != 0 && NIMBLE_BLE_CONNECT
 
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
 #define BLE_L2CAP_SDU_SIZE              2
 
 STAILQ_HEAD(ble_l2cap_coc_srv_list, ble_l2cap_coc_srv);
@@ -67,18 +75,6 @@ static struct ble_l2cap_coc_srv_list ble_l2cap_coc_srvs;
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
-static void
-ble_l2cap_coc_dbg_assert_srv_not_inserted(struct ble_l2cap_coc_srv *srv)
-{
-#if MYNEWT_VAL(BLE_HS_DEBUG)
-    struct ble_l2cap_coc_srv *cur;
-
-    STAILQ_FOREACH(cur, &ble_l2cap_coc_srvs, next) {
-        BLE_HS_DBG_ASSERT(cur != srv);
-    }
-#endif
-}
-
 static struct ble_l2cap_coc_srv *
 ble_l2cap_coc_srv_find(uint16_t psm);
 
@@ -100,9 +96,29 @@ ble_l2cap_coc_srv_alloc(void)
     return srv;
 }
 
+static struct ble_l2cap_coc_srv *
+ble_l2cap_coc_srv_find(uint16_t psm)
+{
+    struct ble_l2cap_coc_srv *srv;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_l2cap_coc_ctx == NULL) {
+        return NULL;
+    }
+#endif
+
+    STAILQ_FOREACH(srv, &ble_l2cap_coc_srvs, next) {
+        if (srv->psm == psm) {
+            return srv;
+        }
+    }
+
+    return NULL;
+}
+
 int
-ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
-                            ble_l2cap_event_fn *cb, void *cb_arg)
+ble_l2cap_coc_create_server_nolock(uint16_t psm, uint16_t mtu,
+                                   ble_l2cap_event_fn *cb, void *cb_arg)
 {
     struct ble_l2cap_coc_srv *srv;
 
@@ -111,17 +127,13 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
         return BLE_HS_EINVAL;
     }
 
-    ble_hs_lock();
-
-    if (ble_l2cap_coc_srv_find(psm) != NULL) {
-        ble_hs_unlock();
+    srv = ble_l2cap_coc_srv_find(psm);
+    if (srv) {
         return BLE_HS_EALREADY;
     }
 
     srv = ble_l2cap_coc_srv_alloc();
     if (!srv) {
-        ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -130,12 +142,24 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
     srv->cb = cb;
     srv->cb_arg = cb_arg;
 
-    ble_l2cap_coc_dbg_assert_srv_not_inserted(srv);
-
     STAILQ_INSERT_HEAD(&ble_l2cap_coc_srvs, srv, next);
 
-    ble_hs_unlock();
+    return 0;
+}
 
+int
+ble_l2cap_coc_remove_server_nolock(uint16_t psm)
+{
+    struct ble_l2cap_coc_srv *srv;
+
+    srv = ble_l2cap_coc_srv_find(psm);
+    if (!srv) {
+        return BLE_HS_ENOENT;
+    }
+
+    STAILQ_REMOVE(&ble_l2cap_coc_srvs, srv, ble_l2cap_coc_srv, next);
+
+    os_memblock_put(&ble_l2cap_coc_srv_pool, srv);
     return 0;
 }
 
@@ -191,28 +215,6 @@ ble_l2cap_coc_get_cid(uint32_t *cid_mask)
     return BLE_L2CAP_COC_CID_START + bit;
 }
 
-static struct ble_l2cap_coc_srv *
-ble_l2cap_coc_srv_find(uint16_t psm)
-{
-    struct ble_l2cap_coc_srv *cur, *srv;
-
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_l2cap_coc_ctx == NULL) {
-        return NULL;
-    }
-#endif
-
-    srv = NULL;
-    STAILQ_FOREACH(cur, &ble_l2cap_coc_srvs, next) {
-        if (cur->psm == psm) {
-            srv = cur;
-            break;
-        }
-    }
-
-    return srv;
-}
-
 static void
 ble_l2cap_event_coc_received_data(struct ble_l2cap_chan *chan,
                                   struct os_mbuf *om)
@@ -234,22 +236,19 @@ ble_l2cap_event_coc_received_data(struct ble_l2cap_chan *chan,
 static int
 ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 {
-    int rc;
+    struct ble_l2cap_coc_endpoint *rx = &chan->coc_rx;
     struct os_mbuf *rx_sdu;
-    struct ble_l2cap_coc_endpoint *rx;
+    uint16_t sdu_idx;
     uint16_t om_total;
+    int rc;
 
-    /* Create a shortcut to rx endpoint */
-    rx = &chan->coc_rx;
-    BLE_HS_DBG_ASSERT(rx != NULL);
-
-    rx_sdu = rx->sdus[chan->coc_rx.current_sdu_idx];
-    BLE_HS_DBG_ASSERT(rx_sdu != NULL);
+    sdu_idx = chan->coc_rx.current_sdu_idx;
+    BLE_HS_DBG_ASSERT(rx->sdus[sdu_idx] != NULL);
 
     om_total = OS_MBUF_PKTLEN(*om);
 
     /* First LE frame */
-    if (OS_MBUF_PKTLEN(rx_sdu) == 0) {
+    if (OS_MBUF_PKTLEN(rx->sdus[sdu_idx]) == 0) {
         uint16_t sdu_len;
 
         rc = ble_hs_mbuf_pullup_base(om, BLE_L2CAP_SDU_SIZE);
@@ -286,7 +285,8 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
         os_mbuf_adj(*om, BLE_L2CAP_SDU_SIZE);
 
-        rc = os_mbuf_appendfrom(rx_sdu, *om, 0, om_total - BLE_L2CAP_SDU_SIZE);
+        rc = os_mbuf_appendfrom(rx->sdus[sdu_idx], *om, 0,
+                                om_total - BLE_L2CAP_SDU_SIZE);
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "Could not append data rc=%d\n", rc);
             ble_l2cap_disconnect(chan);
@@ -299,17 +299,18 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     } else {
         BLE_HS_LOG(DEBUG, "Continuation...received %d\n", om_total);
 
-        if (OS_MBUF_PKTLEN(rx_sdu) + om_total > rx->data_offset) {
+        if (OS_MBUF_PKTLEN(rx->sdus[sdu_idx]) + om_total > rx->data_offset) {
             /* Disconnect peer with invalid behaviour */
             BLE_HS_LOG(ERROR, "Payload larger than expected (%d>%d)\n",
-                       OS_MBUF_PKTLEN(rx_sdu) + om_total, rx->data_offset);
-            os_mbuf_free_chain(rx_sdu);
-            rx->sdus[chan->coc_rx.current_sdu_idx] = NULL;
+                       OS_MBUF_PKTLEN(rx->sdus[sdu_idx]) + om_total,
+                       rx->data_offset);
+            os_mbuf_free_chain(rx->sdus[sdu_idx]);
+            rx->sdus[sdu_idx] = NULL;
             rx->data_offset = 0;
             ble_l2cap_disconnect(chan);
             return BLE_HS_EBADDATA;
         }
-        rc = os_mbuf_appendfrom(rx_sdu, *om, 0, om_total);
+        rc = os_mbuf_appendfrom(rx->sdus[sdu_idx], *om, 0, om_total);
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "Could not append data rc=%d\n", rc);
             ble_l2cap_disconnect(chan);
@@ -324,22 +325,23 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     }
     rx->credits--;
 
-    if (OS_MBUF_PKTLEN(rx_sdu) == rx->data_offset) {
-        struct os_mbuf *sdu_rx = rx_sdu;
-
+    if (OS_MBUF_PKTLEN(rx->sdus[sdu_idx]) == rx->data_offset) {
         BLE_HS_LOG(DEBUG, "Received sdu_len=%d, credits left=%d\n",
-                   OS_MBUF_PKTLEN(rx_sdu), rx->credits);
+                   OS_MBUF_PKTLEN(rx->sdus[sdu_idx]), rx->credits);
 
-        /* Lets get back control to os_mbuf to application.
-         * Since it this callback application might want to set new sdu
-         * we need to prepare space for this. Therefore we need sdu_rx
-         */
-        rx->sdus[chan->coc_rx.current_sdu_idx] = NULL;
+        rx->sdus[sdu_idx] = NULL;
         chan->coc_rx.current_sdu_idx =
             (chan->coc_rx.current_sdu_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
         rx->data_offset = 0;
 
-        ble_l2cap_event_coc_received_data(chan, sdu_rx);
+        /* Lets give os_mbuf control to back application.
+         * Since it this callback application might want to set new sdu
+         * we need to prepare space for this.
+         */
+        rx_sdu = rx->sdus[sdu_idx];
+        rx->sdus[sdu_idx] = NULL;
+
+        ble_l2cap_event_coc_received_data(chan, rx_sdu);
 
         return 0;
     }
@@ -357,9 +359,9 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
         ble_l2cap_sig_le_credits(chan->conn_handle, chan->scid, rx->credits);
     }
 
-    BLE_HS_LOG(DEBUG,
-               "Received partial sdu_len=%d, credits left=%d, current_sdu_idx=%d\n",
-               OS_MBUF_PKTLEN(rx_sdu), rx->credits, chan->coc_rx.current_sdu_idx);
+    BLE_HS_LOG(DEBUG, "Received partial sdu_len=%d, credits left=%d, current_sdu_idx=%d\n",
+               OS_MBUF_PKTLEN(rx->sdus[sdu_idx]), rx->credits,
+               chan->coc_rx.current_sdu_idx);
 
     return 0;
 }
@@ -585,7 +587,12 @@ ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
             goto failed;
         }
 
-        conn = ble_hs_conn_find_assert(chan->conn_handle);
+        conn = ble_hs_conn_find(chan->conn_handle);
+        if (!conn) {
+            rc = BLE_HS_ENOTCONN;
+            BLE_HS_LOG(DEBUG, "Connection does not exist");
+            goto failed;
+        }
         rc = ble_l2cap_tx(conn, chan, txom);
 
         if (rc) {
@@ -666,8 +673,8 @@ ble_l2cap_coc_le_credits_update(uint16_t conn_handle, uint16_t dcid,
 
     if (chan->coc_tx.credits + credits > 0xFFFF) {
         BLE_HS_LOG(INFO, "LE CoC credits overflow...disconnecting\n");
+        ble_l2cap_sig_disconnect_nolock(chan);
         ble_hs_unlock();
-        ble_l2cap_sig_disconnect(chan);
         return;
     }
 
@@ -701,7 +708,14 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
     chan->coc_rx.sdus[chan->coc_rx.next_sdu_alloc_idx] = sdu_rx;
     chan->coc_rx.next_sdu_alloc_idx =
         (chan->coc_rx.next_sdu_alloc_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
-    conn = ble_hs_conn_find_assert(chan->conn_handle);
+
+    conn = ble_hs_conn_find(chan->conn_handle);
+    if (!conn) {
+        BLE_HS_LOG(DEBUG, "Connection does not exist");
+        ble_hs_unlock();
+        return BLE_HS_ENOTCONN;
+    }
+
     c = ble_hs_conn_chan_find_by_scid(conn, chan->scid);
     if (!c) {
         ble_hs_unlock();
@@ -723,11 +737,9 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
         ble_l2cap_sig_le_credits(cached_conn_handle, cached_scid,
                                  credits_to_send);
         ble_hs_lock();
-        /* Re-validate connection and channel after relock — they could have
-         * been freed while the lock was released. */
-        /* Re-validate connection and channel after relock — they could have
+        /* Re-validate connection and channel after relock -- they could have
          * been freed while the lock was released. Credits were already updated
-         * at line 714 before unlocking; no further update needed here. */
+         * before unlocking; no further update needed here. */
         conn = ble_hs_conn_find(cached_conn_handle);
         if (conn != NULL) {
             c = ble_hs_conn_chan_find_by_scid(conn, cached_scid);

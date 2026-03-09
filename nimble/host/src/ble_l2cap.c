@@ -38,6 +38,7 @@ ble_l2cap_ctx_t *ble_l2cap_ctx;
 #define ble_l2cap_chan_mem (ble_l2cap_ctx->chan_mem)
 #else
 struct os_mempool ble_l2cap_chan_pool;
+
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 static os_membuf_t *ble_l2cap_chan_mem = NULL;
 #else
@@ -127,7 +128,6 @@ ble_l2cap_chan_free(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
     }
 #endif
     rc = os_memblock_put(&ble_l2cap_chan_pool, chan);
-
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
 
     STATS_INC(ble_l2cap_stats, chan_delete);
@@ -187,14 +187,38 @@ int
 ble_l2cap_create_server(uint16_t psm, uint16_t mtu,
                         ble_l2cap_event_fn *cb, void *cb_arg)
 {
-    return ble_l2cap_coc_create_server(psm, mtu, cb, cb_arg);
+    int rc;
+
+    ble_hs_lock();
+    rc = ble_l2cap_coc_create_server_nolock(psm, mtu, cb, cb_arg);
+    ble_hs_unlock();
+
+    return rc;
+}
+
+int
+ble_l2cap_remove_server(uint16_t psm)
+{
+    int rc;
+
+    ble_hs_lock();
+    rc = ble_l2cap_coc_remove_server_nolock(psm);
+    ble_hs_unlock();
+
+    return rc;
 }
 
 int
 ble_l2cap_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
                   struct os_mbuf *sdu_rx, ble_l2cap_event_fn *cb, void *cb_arg)
 {
-    return ble_l2cap_sig_coc_connect(conn_handle, psm, mtu, sdu_rx, cb, cb_arg);
+    int rc;
+
+    ble_hs_lock();
+    rc = ble_l2cap_sig_connect_nolock(conn_handle, psm, mtu, sdu_rx, cb, cb_arg);
+    ble_hs_unlock();
+
+    return rc;
 }
 
 int
@@ -226,8 +250,14 @@ ble_l2cap_enhanced_connect(uint16_t conn_handle,
                                uint8_t num, struct os_mbuf *sdu_rx[],
                                ble_l2cap_event_fn *cb, void *cb_arg)
 {
-    return ble_l2cap_sig_ecoc_connect(conn_handle, psm, mtu,
-                                      num, sdu_rx, cb, cb_arg);
+    int rc;
+
+    ble_hs_lock();
+    rc = ble_l2cap_sig_ecoc_connect_nolock(conn_handle, psm, mtu, num, sdu_rx,
+                                           cb, cb_arg);
+    ble_hs_unlock();
+
+    return rc;
 }
 
 int
@@ -254,7 +284,8 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
 }
 #if MYNEWT_VAL(BLE_RECONFIG_MTU)
 int
-ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu, uint16_t new_mps)
+ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num,
+                           uint16_t new_mtu, uint16_t new_mps)
 {
     int i;
     uint16_t conn_handle;
@@ -280,7 +311,13 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t
 int
 ble_l2cap_disconnect(struct ble_l2cap_chan *chan)
 {
-    return ble_l2cap_sig_disconnect(chan);
+    int rc;
+
+    ble_hs_lock();
+    rc = ble_l2cap_sig_disconnect_nolock(chan);
+    ble_hs_unlock();
+
+    return rc;
 }
 
 /**
@@ -431,8 +468,7 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
     rx_cid = conn->rx_cid;
 
     conn->rx_frags = NULL;
-    conn->rx_len = 0;
-    conn->rx_cid = 0;
+    ble_l2cap_rx_free(conn);
 
     chan = ble_hs_conn_chan_find_by_scid(conn, rx_cid);
 
@@ -442,6 +478,12 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         ble_l2cap_sig_reject_invalid_cid_tx(conn_handle, 0, 0, rx_cid);
         os_mbuf_free_chain(rx_frags);
         return BLE_HS_ENOENT;
+    }
+
+    /* disconnect pending, drop data */
+    if (chan->flags & BLE_L2CAP_CHAN_F_DISCONNECTING) {
+        os_mbuf_free_chain(rx_frags);
+        return 0;
     }
 
     if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
@@ -521,7 +563,7 @@ ble_l2cap_init(void)
     size_t chan_mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_MAX_CHANS) +
                          MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                          sizeof (struct ble_l2cap_chan)) * sizeof(os_membuf_t);
-    if (ble_l2cap_chan_mem == NULL && chan_mem_bytes != 0) {
+    if (ble_l2cap_chan_mem == NULL) {
         ble_l2cap_chan_mem = (os_membuf_t *)nimble_platform_mem_calloc(1, chan_mem_bytes);
         if (ble_l2cap_chan_mem == NULL) {
             nimble_platform_mem_free(ble_l2cap_ctx);
@@ -538,8 +580,6 @@ ble_l2cap_init(void)
                          MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                          sizeof (struct ble_l2cap_chan),
                          ble_l2cap_chan_mem, "ble_l2cap_chan_pool");
-
-
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)

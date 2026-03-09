@@ -22,7 +22,7 @@
 #include "nimble/ble.h"
 #include "host/ble_hs_adv.h"
 #include "ble_hs_priv.h"
-#include "host/ble_hs_log.h"
+#include "modlog/modlog.h"
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #include "host/ble_ead.h"
 #endif

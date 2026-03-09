@@ -43,11 +43,12 @@ extern "C" {
 
 /* generate logging functions for modules, can be macro or function  */
 #ifdef BLE_NPL_LOG_IMPL
-BLE_NPL_LOG_IMPL(DEBUG);
-BLE_NPL_LOG_IMPL(INFO);
-BLE_NPL_LOG_IMPL(WARN);
-BLE_NPL_LOG_IMPL(ERROR);
-BLE_NPL_LOG_IMPL(CRITICAL);
+BLE_NPL_LOG_IMPL(DEBUG,0);
+BLE_NPL_LOG_IMPL(INFO,1);
+BLE_NPL_LOG_IMPL(WARN,2);
+BLE_NPL_LOG_IMPL(ERROR,3);
+BLE_NPL_LOG_IMPL(CRITICAL,4);
+
 #endif
 
 #ifdef __cplusplus

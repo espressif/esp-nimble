@@ -452,13 +452,20 @@ ble_att_clt_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
         adata.value_len = data_len - sizeof(*data);
         adata.value = data->value;
 
-        ble_gattc_rx_read_type_adata(conn_handle, cid, &adata);
+        rc = ble_gattc_rx_read_type_adata(conn_handle, cid, &adata);
+        if (rc != 0) {
+            /* We should not call complete callback if this returned an error
+             * since proc is not added to the proc list.
+             */
+            return 0;
+        }
         os_mbuf_adj(*rxom, data_len);
     }
 
 done:
     /* Notify GATT that the response is done being parsed. */
     ble_gattc_rx_read_type_complete(conn_handle, cid, rc);
+
     return rc;
 
 }
@@ -1083,6 +1090,34 @@ err:
 }
 
 /*****************************************************************************
+* $multi handle value notification                                           *
+*****************************************************************************/
+
+int
+ble_att_clt_tx_multi_notify(uint16_t conn_handle, struct os_mbuf * om)
+{
+#if !NIMBLE_BLE_ATT_CLT_NOTIFY_MULT
+    return BLE_HS_ENOTSUP;
+#endif
+
+    struct os_mbuf *txom;
+    uint16_t cid;
+    int rc;
+
+    if (ble_att_cmd_get(BLE_ATT_OP_NOTIFY_MULTI_REQ, 0, &txom) == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
+    os_mbuf_concat(txom, om);
+    cid = ble_eatt_get_available_chan_cid(conn_handle, BLE_GATT_OP_DUMMY);
+    rc = ble_att_tx(conn_handle, cid, txom);
+    if (cid != BLE_L2CAP_CID_ATT) {
+        ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
+    }
+    return rc;
+}
+
+/*****************************************************************************
  * $handle value indication                                                  *
  *****************************************************************************/
 
@@ -1130,37 +1165,6 @@ ble_att_clt_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxo
     /* No payload. */
     ble_gatts_rx_indicate_rsp(conn_handle, cid);
     return 0;
-}
-
-/*****************************************************************************
-* $multiple handle value notification                                        *
-*****************************************************************************/
-
-int
-ble_att_clt_tx_notify_mult(uint16_t conn_handle, struct os_mbuf *txom)
-{
-#if !NIMBLE_BLE_ATT_CLT_NOTIFY_MULT
-    return BLE_HS_ENOTSUP;
-#endif
-
-    struct os_mbuf *txom2;
-    uint16_t cid;
-    int rc;
-
-    if (ble_att_cmd_get(BLE_ATT_OP_NOTIFY_MULTI_REQ, 0, &txom2) == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-        return BLE_HS_ENOMEM;
-    }
-
-    os_mbuf_concat(txom2, txom);
-
-    cid = ble_eatt_get_available_chan_cid(conn_handle, BLE_GATT_OP_DUMMY);
-    rc = ble_att_tx(conn_handle, cid, txom2);
-    if (cid != BLE_L2CAP_CID_ATT) {
-        ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
-    }
-
-    return rc;
 }
 
 #endif

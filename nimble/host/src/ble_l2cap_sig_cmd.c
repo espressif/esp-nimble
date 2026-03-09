@@ -30,8 +30,6 @@ ble_l2cap_sig_tx_nolock(uint16_t conn_handle, struct os_mbuf *txom)
     struct ble_hs_conn *conn;
     int rc;
 
-    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
-
     rc = ble_hs_misc_conn_chan_find_reqd(conn_handle, BLE_L2CAP_CID_SIG,
                                          &conn, &chan);
     if (rc == 0) {

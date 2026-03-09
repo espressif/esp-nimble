@@ -90,7 +90,11 @@ extern "C" {
 #define BLE_SM_IOACT_DISP                       3
 #define BLE_SM_IOACT_NUMCMP                     4
 #define BLE_SM_IOACT_OOB_SC                     5
+
+/** SM IO Action: Static Passkey */
 #define BLE_SM_IOACT_STATIC                     6
+
+/** SM IO Action: Out Of Boundary Code Value */
 #define BLE_SM_IOACT_MAX_PLUS_ONE               7
 
 struct ble_sm_sc_oob_data {

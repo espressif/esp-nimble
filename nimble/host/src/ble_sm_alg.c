@@ -22,7 +22,9 @@
 #include <string.h>
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_opt.h"
-#include "host/ble_hs_log.h"
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#endif
 
 #if NIMBLE_BLE_CONNECT
 #if NIMBLE_BLE_SM
@@ -127,7 +129,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
         return BLE_HS_EUNKNOWN;
     }
     psa_reset_key_attributes(&key_attributes);
-    
+
     swap_buf(tmp, plaintext, 16);
 
     size_t output_len = 0;
@@ -342,8 +344,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         ESP_LOGE(TAG, "Failed to finish MAC sign operation: %d", status);
         psa_mac_abort(&operation);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN; 
+        return BLE_HS_EUNKNOWN;
     }
 
     psa_destroy_key(key_id);

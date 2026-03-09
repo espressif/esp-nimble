@@ -22,7 +22,7 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "services/gatt/ble_svc_gatt.h"
-#include "host/ble_hs_log.h"
+#include "../src/ble_gatt_priv.h"
 
 #if MYNEWT_VAL(BLE_GATTS)
 #if MYNEWT_VAL(BLE_GATT_CACHING)

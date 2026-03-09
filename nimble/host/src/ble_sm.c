@@ -56,7 +56,8 @@
 
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
+#endif /* NIMBLE_BLE_SM */
+#endif /* NIMBLE_BLE_CONNECT */
 
 #ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -2039,7 +2040,7 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
         } else if (req->max_enc_key_size > BLE_SM_PAIR_KEY_SZ_MAX) {
             res->sm_err = BLE_SM_ERR_INVAL;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_INVAL);
-        } else if (ble_hs_cfg.sm_sc_only  && !(req->authreq & BLE_SM_PAIR_AUTHREQ_SC)) {
+        } else if (ble_hs_cfg.sm_sc_only && !(req->authreq & BLE_SM_PAIR_AUTHREQ_SC)) {
             /* Fail if Secure Connections Only mode is on and SC is not supported by peer
              */
             res->sm_err = BLE_SM_ERR_AUTHREQ;
@@ -3402,8 +3403,7 @@ ble_sm_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     int rc;
 
     handle = ble_l2cap_get_conn_handle(chan);
-    if (!handle) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
+    if (handle == BLE_HS_CONN_HANDLE_NONE) {
         return BLE_HS_ENOTCONN;
     }
 
@@ -3479,4 +3479,106 @@ ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled)
     return 0;
 }
 #endif
+
+#if MYNEWT_VAL(BLE_SM_CSIS_SIRK)
+int
+ble_sm_csis_decrypt_sirk(const uint8_t *ltk, const uint8_t *enc_sirk, uint8_t *out)
+{
+    int rc;
+
+    /* Decrypt SIRK with sdf(K, EncSIRK)  */
+    rc = ble_sm_alg_csis_sdf(ltk, enc_sirk, out);
+
+    return rc;
+}
+
+int
+ble_sm_csis_resolve_rsi(const uint8_t *rsi, const uint8_t *sirk,
+                        const ble_addr_t *ltk_peer_addr)
+{
+    struct ble_store_key_sec key_sec;
+    struct ble_store_value_sec value_sec;
+    uint8_t plaintext_sirk[16] = {0};
+    uint8_t local_hash[3] = {0};
+    uint8_t prand[3] = {0};
+    uint8_t hash[3] = {0};
+    int rc;
+
+    memcpy(hash, rsi, 3);
+    memcpy(prand, rsi + 3, 3);
+
+    if (ltk_peer_addr) {
+        memset(&key_sec, 0, sizeof(key_sec));
+        key_sec.peer_addr = *ltk_peer_addr;
+
+        rc = ble_store_read_peer_sec(&key_sec, &value_sec);
+        if (rc != 0) {
+            return rc;
+        } else if (!value_sec.ltk_present) {
+            return BLE_HS_ENOENT;
+        }
+
+        rc = ble_sm_csis_decrypt_sirk(value_sec.ltk, sirk, plaintext_sirk);
+        if (rc != 0) {
+            return rc;
+        }
+    } else {
+        memcpy(plaintext_sirk, sirk, 16);
+    }
+
+    rc = ble_sm_alg_csis_sih(plaintext_sirk, prand, local_hash);
+    if (rc != 0) {
+        return rc;
+    }
+
+    if (memcmp(local_hash, hash, 3)) {
+        return BLE_HS_EAUTHEN;
+    }
+
+    return 0;
+}
+
+int
+ble_sm_csis_encrypt_sirk(const uint8_t *ltk, const uint8_t *plaintext_sirk, uint8_t *out)
+{
+    int rc;
+
+    /* Encrypt SIRK with sef(K, SIRK) */
+    rc = ble_sm_alg_csis_sef(ltk, plaintext_sirk, out);
+
+    return rc;
+}
+
+int
+ble_sm_csis_generate_rsi(const uint8_t *sirk, uint8_t *out)
+{
+    const uint8_t prand_check_all_set[3] = {0xff, 0xff, 0xef};
+    const uint8_t prand_check_all_reset[3] = {0x0, 0x0, 0x40};
+    uint8_t prand[3] = {0};
+    uint8_t hash[3] = {0};
+    int rc;
+
+    do {
+        rc = ble_hs_hci_rand(prand, 3);
+        if (rc != 0) {
+            return rc;
+        }
+        /* Two MSBs of prand shall be equal to 0 and 1 */
+        prand[2] &= ~0xc0;
+        prand[2] |= 0x40;
+
+        /* prand's random part shall not be all 0s nor all 1s */
+    } while (memcmp(prand, prand_check_all_set, 3) ||
+             memcmp(prand, prand_check_all_reset, 3));
+
+    rc = ble_sm_alg_csis_sih(sirk, prand, hash);
+    if (rc != 0) {
+        return rc;
+    }
+
+    memcpy(out, hash, 3);
+    memcpy(out + 3, prand, 3);
+
+    return 0;
+}
 #endif

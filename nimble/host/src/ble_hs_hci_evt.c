@@ -343,6 +343,16 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_PERIODIC_ADV_RESP_REPORT] = ble_hs_hci_evt_le_periodic_adv_subev_resp_rep,
     [BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2] = ble_hs_hci_evt_le_enh_conn_complete,
 #endif
+#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
+    [BLE_HCI_LE_SUBEV_CS_RD_REM_SUPP_CAP_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete,
+    [BLE_HCI_LE_SUBEV_CS_RD_REM_FAE_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_fae_complete,
+    [BLE_HCI_LE_SUBEV_CS_SEC_ENABLE_COMPLETE] = ble_hs_hci_evt_le_cs_sec_enable_complete,
+    [BLE_HCI_LE_SUBEV_CS_CONFIG_COMPLETE] = ble_hs_hci_evt_le_cs_config_complete,
+    [BLE_HCI_LE_SUBEV_CS_PROC_ENABLE_COMPLETE] = ble_hs_hci_evt_le_cs_proc_enable_complete,
+    [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT] = ble_hs_hci_evt_le_cs_subevent_result,
+    [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT_CONTINUE] = ble_hs_hci_evt_le_cs_subevent_result_continue,
+    [BLE_HCI_LE_SUBEV_CS_TEST_END_COMPLETE] = ble_hs_hci_evt_le_cs_test_end_complete,
+#endif
 #if MYNEWT_VAL(BLE_ISO)
     [BLE_HCI_LE_SUBEV_CIS_ESTABLISHED] = ble_hs_hci_evt_le_cis_estab,
     [BLE_HCI_LE_SUBEV_CIS_REQUEST] = ble_hs_hci_evt_le_cis_request,
@@ -355,16 +365,6 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
     [BLE_HCI_LE_SUBEV_CIS_ESTABLISHED_V2] = ble_hs_hci_evt_le_cis_estab_v2,
 #endif /* MYNEWT_VAL(BLE_ISO_CIS_ESTAB_V2) */
 #endif /* MYNEWT_VAL(BLE_ISO) */
-#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
-    [BLE_HCI_LE_SUBEV_CS_RD_REM_SUPP_CAP_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete,
-    [BLE_HCI_LE_SUBEV_CS_RD_REM_FAE_COMPLETE] = ble_hs_hci_evt_le_cs_rd_rem_fae_complete,
-    [BLE_HCI_LE_SUBEV_CS_SEC_ENABLE_COMPLETE] = ble_hs_hci_evt_le_cs_sec_enable_complete,
-    [BLE_HCI_LE_SUBEV_CS_CONFIG_COMPLETE] = ble_hs_hci_evt_le_cs_config_complete,
-    [BLE_HCI_LE_SUBEV_CS_PROC_ENABLE_COMPLETE] = ble_hs_hci_evt_le_cs_proc_enable_complete,
-    [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT] = ble_hs_hci_evt_le_cs_subevent_result,
-    [BLE_HCI_LE_SUBEV_CS_SUBEVENT_RESULT_CONTINUE] = ble_hs_hci_evt_le_cs_subevent_result_continue,
-    [BLE_HCI_LE_SUBEV_CS_TEST_END_COMPLETE] = ble_hs_hci_evt_le_cs_test_end_complete,
-#endif
 #if NIMBLE_BLE_CONNECT
     [BLE_HCI_LE_SUBEV_RD_ALL_REM_FEAT] = ble_hs_hci_evt_le_rd_all_rem_feat,
 #endif
@@ -705,7 +705,9 @@ ble_hs_hci_evt_vs(uint8_t event_code, const void *data, unsigned int len)
         return BLE_HS_ECONTROLLER;
     }
 
-    ble_gap_vs_hci_event(data, len);
+#if MYNEWT_VAL(BLE_HS_GAP_UNHANDLED_HCI_EVENT)
+    ble_gap_unhandled_hci_event(false, true, data, len);
+#endif
 
     return 0;
 }
@@ -1428,7 +1430,8 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
                 desc.data_status = BLE_GAP_EXT_ADV_DATA_STATUS_TRUNCATED;
                 break;
             default:
-                assert(false);
+                report = (const void *) &report->data[report->data_len];
+                continue;
             }
         }
         desc.addr.type = report->addr_type;
@@ -2033,6 +2036,7 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
         rc = BLE_HS_ENOTSUP;
     } else {
 #if !BLE_MONITOR
+#if MYNEWT_VAL(BLE_HS_LOG_LVL) == 0
 	/* Ignore NOCP for debug */
        if(ev->opcode != 0x13) {
            BLE_HS_LOG(DEBUG, "ble_hs_event_rx_hci_ev; opcode=0x%x ", ev->opcode);
@@ -2044,6 +2048,7 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
 
            BLE_HS_LOG(DEBUG, "\n");
         }
+#endif
 #endif
         rc = entry->cb(ev->opcode, ev->data, ev->length);
     }
@@ -2084,6 +2089,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
 
 #if (BLETEST_THROUGHPUT_TEST == 0)
 #if !BLE_MONITOR
+#if MYNEWT_VAL(BLE_HS_LOG_LVL) == 0
     BLE_HS_LOG(DEBUG, "ble_hs_hci_evt_acl_process(): conn_handle=%u pb=%x "
                       "len=%u data=",
                BLE_HCI_DATA_HANDLE(hci_hdr.hdh_handle_pb_bc),
@@ -2091,6 +2097,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
                hci_hdr.hdh_len);
     ble_hs_log_mbuf(om);
     BLE_HS_LOG(DEBUG, "\n");
+#endif
 #endif
 #endif
 
@@ -2187,7 +2194,7 @@ void ble_adv_list_refresh(void)
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 
     if (SLIST_EMPTY(&ble_adv_list)) {
-        BLE_HS_LOG(DEBUG, "%s: ble_adv_list empty — reinitializing", __func__);
+        BLE_HS_LOG(DEBUG, "%s: ble_adv_list empty -- reinitializing", __func__);
         SLIST_INIT(&ble_adv_list);
     } else {
         SLIST_FOREACH_SAFE(device, &ble_adv_list, next, temp) {

@@ -24,6 +24,7 @@
 #include "host/ble_gatt.h"
 #include "host/ble_uuid.h"
 #include "host/ble_store.h"
+#include "os/util.h"
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
 #include "host/ble_hs_log.h"
@@ -73,6 +74,8 @@ static const ble_uuid_t *uuid_chr =
 static const ble_uuid_t *uuid_ccc =
     BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16);
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
+static const ble_uuid_t *uuid_cep =
+    BLE_UUID16_DECLARE(BLE_GATT_DSC_EXT_PROP_UUID16);
 static const ble_uuid_t *uuid_cpf =
     BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_PRE_FMT16);
 static const ble_uuid_t *uuid_caf =
@@ -362,6 +365,24 @@ ble_gatts_chr_clt_cfg_allowed(const struct ble_gatt_chr_def *chr)
 
     return flags;
 }
+
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
+static uint16_t
+ble_gatts_chr_ext_prop_allowed(const struct ble_gatt_chr_def *chr)
+{
+    uint16_t flags;
+
+    flags = 0;
+    if (chr->flags & BLE_GATT_CHR_F_RELIABLE_WRITE) {
+        flags |= BLE_GATTS_CEP_F_RELIABLE_WRITE;
+    }
+    if (chr->flags & BLE_GATT_CHR_F_AUX_WRITE) {
+        flags |= BLE_GATTS_CEP_F_AUX_WRITE;
+    }
+
+    return flags;
+}
+#endif
 
 static uint8_t
 ble_gatts_chr_clt_cfg_flags_from_chr_flags(ble_gatt_chr_flags chr_flags)
@@ -1098,6 +1119,39 @@ ble_gatts_clt_cfg_access_locked(struct ble_hs_conn *conn, uint16_t attr_handle,
 }
 
 int
+ble_gatts_read_cccd(uint16_t conn_handle, uint16_t chr_val_handle, uint8_t *cccd_value)
+{
+    struct ble_gatts_clt_cfg *clt_cfg;
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn == NULL) {
+        ble_hs_unlock();
+        return BLE_HS_ENOTCONN;
+    }
+
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    clt_cfg = ble_gatts_clt_cfg_find(&conn->bhc_gatt_svr.clt_cfgs,
+                                     chr_val_handle);
+#else
+    clt_cfg = ble_gatts_clt_cfg_find(conn->bhc_gatt_svr.clt_cfgs,
+                                     chr_val_handle);
+#endif
+    if (clt_cfg == NULL) {
+        ble_hs_unlock();
+        return BLE_HS_ENOENT;
+    }
+
+    *cccd_value = clt_cfg->flags & ~BLE_GATTS_CLT_CFG_F_RESERVED;
+
+    ble_hs_unlock();
+
+    return 0;
+}
+
+int
 ble_gatts_clt_cfg_access(uint16_t conn_handle, uint16_t attr_handle,
                          uint8_t op, uint16_t offset, struct os_mbuf **om,
                          void *arg)
@@ -1165,6 +1219,54 @@ ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle, uint8_t cccd_flags)
 
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
 static int
+ble_gatts_cep_access(uint16_t conn_handle, uint16_t attr_handle, uint8_t att_op,
+                     uint16_t offset, struct os_mbuf **om, void *arg)
+{
+    uint16_t prop = POINTER_TO_UINT(arg);
+    uint8_t *buf;
+
+    ble_gatts_dsc_inc_stat(ble_gatts_dsc_op(att_op));
+
+    if (att_op != BLE_ATT_ACCESS_OP_READ) {
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+
+    buf = os_mbuf_extend(*om, sizeof(prop));
+    if (buf == NULL) {
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    put_le16(buf, prop);
+
+    return 0;
+}
+
+static int
+ble_gatts_register_cep_dsc(uint16_t *att_handle, ble_gatt_chr_flags flags)
+{
+    struct ble_gatt_cep_dsc cep;
+    int rc;
+
+    cep.properties = 0x0000;
+    if (flags & BLE_GATT_CHR_F_RELIABLE_WRITE) {
+        cep.properties |= BLE_GATTS_CEP_F_RELIABLE_WRITE;
+    }
+    if (flags & BLE_GATT_CHR_F_AUX_WRITE) {
+        /* TODO: Implement Characteristic User Description
+         * (Core specification 6.0, vol 3, part G, section 3.3.3.2)*/
+        cep.properties |= BLE_GATTS_CEP_F_AUX_WRITE;
+    }
+
+    rc = ble_att_svr_register(uuid_cep, BLE_ATT_F_READ, 0, att_handle,
+                              ble_gatts_cep_access, UINT_TO_POINTER(cep.properties));
+    if (rc != 0) {
+        return rc;
+    }
+
+    STATS_INC(ble_gatts_stats, dscs);
+    return 0;
+}
+
+static int
 ble_gatts_cafd_access(uint16_t conn_handle, uint16_t attr_handle,
                       uint8_t op, uint16_t offset, struct os_mbuf **om,
                       void *arg)
@@ -1201,11 +1303,11 @@ ble_gatts_cpfd_access(uint16_t conn_handle, uint16_t attr_handle,
     int rc;
 
     BLE_HS_DBG_ASSERT(op == BLE_ATT_ACCESS_OP_READ);
-    
+
     STATS_INC(ble_gatts_stats, dsc_reads);
 
     cpfd = arg;
-    
+
     rc = 0;
     rc += os_mbuf_append(*om, &(cpfd->format), sizeof(cpfd->format));
     rc += os_mbuf_append(*om, &(cpfd->exponent), sizeof(cpfd->exponent));
@@ -1222,10 +1324,10 @@ ble_gatts_register_cpfds(const struct ble_gatt_cpfd *cpfds)
     int idx;
     int rc;
     uint16_t first_cpfd_handle;
-    struct ble_att_svr_entry * first_cpfd_entry;
+    struct ble_att_svr_entry *first_cpfd_entry;
 
     if (cpfds == NULL) {
-        /** No Client Presentation Format Descriptors to add */
+        /* No client presentation format descriptors to add. */
         return 0;
     }
 
@@ -1249,7 +1351,7 @@ ble_gatts_register_cpfds(const struct ble_gatt_cpfd *cpfds)
         if (first_cpfd_entry == NULL) {
             return BLE_HS_ENOENT;
         }
-        
+
         /**
          * The First CPFD entry will contain it's handle,
          * Using that and the handle of this descriptor we can
@@ -1278,6 +1380,8 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     uint16_t def_handle;
     uint16_t val_handle;
     uint16_t dsc_handle;
+    uint16_t cep_handle;
+    uint16_t expected_handle;
     uint8_t att_flags;
     int rc;
 
@@ -1305,6 +1409,9 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
         return rc;
     }
 
+    expected_handle = def_handle;
+    (void)expected_handle;
+
     /* Register characteristic value attribute (cast away const on callback
      * arg).
      */
@@ -1315,7 +1422,7 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     if (rc != 0) {
         return rc;
     }
-    BLE_HS_DBG_ASSERT(val_handle == def_handle + 1);
+    BLE_HS_DBG_ASSERT(val_handle == ++expected_handle);
 
     if (chr->val_handle != NULL) {
         *chr->val_handle = val_handle;
@@ -1336,9 +1443,17 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
         if (rc != 0) {
             return rc;
         }
-        BLE_HS_DBG_ASSERT(dsc_handle == def_handle + 2);
+        BLE_HS_DBG_ASSERT(dsc_handle == ++expected_handle);
     }
+
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
+    if (ble_gatts_chr_ext_prop_allowed(chr) != 0) {
+        rc = ble_gatts_register_cep_dsc(&cep_handle, chr->flags);
+        if (rc != 0) {
+            return rc;
+        }
+        BLE_HS_DBG_ASSERT(cep_handle == ++expected_handle);
+    }
     /* Register each Client Presentation Format Descriptor. */
     rc = ble_gatts_register_cpfds(chr->cpfd);
     if (rc != 0) {
@@ -1673,20 +1788,20 @@ ble_gatts_connection_broken(uint16_t conn_handle)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
             if (ble_gatts_conn_aware_states != NULL) {
 #endif
-            for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
-                if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
-                          addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) { //Check Thoroughly
-                    if(conn->bhc_gatt_svr.half_aware) {
-                        ble_gatts_conn_aware_states[i].aware = false;
-                        ble_gatts_conn_aware_states[i].half_aware = 0;
-                    } else {
-                        ble_gatts_conn_aware_states[i].aware = conn->bhc_gatt_svr.aware_state;
-                        ble_gatts_conn_aware_states[i].half_aware = conn->bhc_gatt_svr.half_aware;
+                for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
+                    if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
+                              addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) { //Check Thoroughly
+                        if(conn->bhc_gatt_svr.half_aware) {
+                            ble_gatts_conn_aware_states[i].aware = false;
+                            ble_gatts_conn_aware_states[i].half_aware = 0;
+                        } else {
+                            ble_gatts_conn_aware_states[i].aware = conn->bhc_gatt_svr.aware_state;
+                            ble_gatts_conn_aware_states[i].half_aware = conn->bhc_gatt_svr.half_aware;
+                        }
                     }
                 }
-            }
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-        }
+            }
 #endif
         }
 #endif
@@ -2787,13 +2902,13 @@ ble_gatts_bonding_restored(uint16_t conn_handle)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_gatts_conn_aware_states != NULL) {
 #endif
-    for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
-        if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
-                          addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) { // Check Thoroughly
-            conn->bhc_gatt_svr.half_aware = ble_gatts_conn_aware_states[i].half_aware;
-            conn->bhc_gatt_svr.aware_state = ble_gatts_conn_aware_states[i].aware;
+        for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
+            if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
+                              addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) { // Check Thoroughly
+                conn->bhc_gatt_svr.half_aware = ble_gatts_conn_aware_states[i].half_aware;
+                conn->bhc_gatt_svr.aware_state = ble_gatts_conn_aware_states[i].aware;
+            }
         }
-    }
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     }
 #endif
@@ -3215,17 +3330,11 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
     end_handle = entry->end_group_handle;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     /* make all bonded connections unaware */
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_gatts_conn_aware_states != NULL) {
-#endif
     for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
         ble_gatts_conn_aware_states[i].half_aware = 0;
         ble_gatts_conn_aware_states[i].aware = false;
     }
     ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    }
-#endif
 #endif
 
     /* send service change indication */
@@ -3322,17 +3431,11 @@ done:
         rc = ble_gatts_remove_svc_entry(uuid);
 #if MYNEWT_VAL(BLE_GATT_CACHING)
         /* make all bonded connections them unaware */
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-        if (ble_gatts_conn_aware_states != NULL) {
-#endif
         for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             ble_gatts_conn_aware_states[i].aware = false;
             ble_gatts_conn_aware_states[i].half_aware = 0;
         }
         ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-        }
-#endif
 #endif
 
         /* send service change indication */
@@ -3509,6 +3612,23 @@ ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
                      */
                     res->dscs++;
                     res->cccds++;
+                    res->attrs++;
+                }
+
+                /* If the characteristic permits reliable writes or auxiliary
+                 * writes, it has an Extended Properties descriptor.
+                 */
+                if (chr->flags & BLE_GATT_CHR_F_AUX_WRITE ||
+                    chr->flags & BLE_GATT_CHR_F_RELIABLE_WRITE) {
+
+                    /* Each CEP requires:
+                     *     o 1 descriptor
+                     *     o 1 attribute
+                     */
+                    res->dscs++;
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
+                    res->ceps++;
+#endif
                     res->attrs++;
                 }
 

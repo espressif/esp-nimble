@@ -33,13 +33,25 @@
 #include "os/os_mempool.h"
 
 #include "esp_log.h"
-
 #include "soc/soc_caps.h"
 
 #include "esp_nimble_mem.h"
 #include "host/ble_hs.h"
 
 portMUX_TYPE ble_port_mutex = portMUX_INITIALIZER_UNLOCKED;
+
+#if defined(__riscv)
+#if (configNUM_CORES > 1)
+#define BLE_NPL_ENTER_CRITICAL() vPortEnterCriticalMultiCore(&ble_port_mutex)
+#define BLE_NPL_EXIT_CRITICAL()  vPortExitCriticalMultiCore(&ble_port_mutex)
+#else
+#define BLE_NPL_ENTER_CRITICAL() vPortEnterCritical()
+#define BLE_NPL_EXIT_CRITICAL()  vPortExitCritical()
+#endif
+#else
+#define BLE_NPL_ENTER_CRITICAL() vPortEnterCritical(&ble_port_mutex)
+#define BLE_NPL_EXIT_CRITICAL()  vPortExitCritical(&ble_port_mutex)
+#endif
 
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
 static const char *TAG = "Timer";
@@ -270,11 +282,9 @@ npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
 void
 npl_freertos_event_deinit(struct ble_npl_event *ev)
 {
-    if (!ev->event) {
-        return;
-    }
-    
+    BLE_LL_ASSERT(ev->event);
 #if OS_MEM_ALLOC
+
     os_memblock_put(&ble_freertos_ev_pool,ev->event);
 #else
     nimble_platform_mem_free(ev->event);
@@ -347,7 +357,6 @@ npl_freertos_callout_mem_reset(struct ble_npl_callout *co)
 static inline bool
 in_isr(void)
 {
-    /* XXX hw specific! */
     return xPortInIsrContext() != 0;
 }
 
@@ -362,7 +371,7 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
     if (in_isr()) {
         BLE_LL_ASSERT(tmo == 0);
         ret = xQueueReceiveFromISR(eventq->q, &ev, &woken);
-        if( woken == pdTRUE ) {
+        if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
     } else {
@@ -396,7 +405,7 @@ npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
 
     if (in_isr()) {
         ret = xQueueSendToBackFromISR(eventq->q, &ev, &woken);
-        if( woken == pdTRUE ) {
+        if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
     } else {
@@ -447,12 +456,9 @@ npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
             woken |= woken2;
         }
 
-        if( woken == pdTRUE ) {
-            portYIELD_FROM_ISR();
-        }
+        portYIELD_FROM_ISR(woken);
     } else {
-        portMUX_TYPE ble_npl_mut = portMUX_INITIALIZER_UNLOCKED;
-        portENTER_CRITICAL(&ble_npl_mut);
+        BLE_NPL_ENTER_CRITICAL();
 
         count = uxQueueMessagesWaiting(eventq->q);
         for (i = 0; i < count; i++) {
@@ -467,7 +473,7 @@ npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
             BLE_LL_ASSERT(ret == pdPASS);
         }
 
-        portEXIT_CRITICAL(&ble_npl_mut);
+        BLE_NPL_EXIT_CRITICAL();
     }
 
     event->queued = 0;
@@ -693,7 +699,7 @@ npl_freertos_sem_pend(struct ble_npl_sem *sem, ble_npl_time_t timeout)
     if (in_isr()) {
         BLE_LL_ASSERT(timeout == 0);
         ret = xSemaphoreTakeFromISR(semaphor->handle, &woken);
-        if( woken == pdTRUE ) {
+        if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
     } else {
@@ -718,7 +724,7 @@ npl_freertos_sem_release(struct ble_npl_sem *sem)
 
     if (in_isr()) {
         ret = xSemaphoreGiveFromISR(semaphor->handle, &woken);
-        if( woken == pdTRUE ) {
+        if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
     } else {
@@ -921,6 +927,10 @@ ble_npl_error_t
 npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout || !callout->handle) {
+        return BLE_NPL_EINVAL;
+    }
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     esp_timer_stop(callout->handle);
 
@@ -937,9 +947,7 @@ npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
         xTimerChangePeriodFromISR(callout->handle, ticks, &woken2);
         xTimerResetFromISR(callout->handle, &woken3);
 
-        if( woken1 == pdTRUE || woken2 == pdTRUE || woken3 == pdTRUE) {
-            portYIELD_FROM_ISR();
-        }
+        portYIELD_FROM_ISR(woken1 || woken2 || woken3);
     } else {
         xTimerStop(callout->handle, portMAX_DELAY);
         xTimerChangePeriod(callout->handle, ticks, portMAX_DELAY);
@@ -970,6 +978,10 @@ bool
 npl_freertos_callout_is_active(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout || !callout->handle) {
+        return false;
+    }
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     return esp_timer_is_active(callout->handle);
 #else
@@ -980,6 +992,12 @@ npl_freertos_callout_is_active(struct ble_npl_callout *co)
 ble_npl_time_t
 npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
 {
+    struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout || !callout->handle) {
+        return 0;
+    }
+
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
    /* Currently, esp_timer does not support an API which gets the expiry time for
     * current timer.
@@ -991,7 +1009,6 @@ npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
 
     return 0;
 #else
-    struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
     return xTimerGetExpiryTime(callout->handle);
 #endif
 }
@@ -1004,6 +1021,10 @@ npl_freertos_callout_remaining_ticks(struct ble_npl_callout *co,
     uint32_t exp = 0;
 
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout || !callout->handle) {
+        return 0;
+    }
 
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)

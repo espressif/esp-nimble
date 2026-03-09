@@ -24,7 +24,7 @@
 #include "mem/mem.h"
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
-
+#include "modlog/modlog.h"
 #include "nimble/transport.h"
 #include "bt_common.h"
 #include "host/ble_hs_log.h"
@@ -241,6 +241,10 @@ static void esp_hci_err_to_name(int error_code, uint16_t *opcode)
     else if (error_code <  0x20) {
        esp_core_err_to_name(error_code, opcode);
        return;
+    }
+    else if (error_code - 0x200 < 0) {
+        /* Converts error code to HCI base */
+        error_code = BLE_HS_HCI_ERR(error_code);
     }
 
     for (int i = 0; i<sizeof(err_code_list) / sizeof(err_code_list[0]); i++) {

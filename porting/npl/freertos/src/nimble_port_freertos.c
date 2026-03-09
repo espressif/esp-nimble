@@ -48,8 +48,8 @@ esp_err_t esp_nimble_enable(void *host_task)
 
 /**
  * @brief esp_nimble_disable - Disable the NimBLE host
- * 
- * @return esp_err_t 
+ *
+ * @return esp_err_t
  */
 esp_err_t esp_nimble_disable(void)
 {
@@ -63,8 +63,8 @@ esp_err_t esp_nimble_disable(void)
 
 /**
  * @brief nimble_port_freertos_init - Adapt to native nimble api
- * 
- * @param host_task_fn 
+ *
+ * @param host_task_fn
  */
 void
 nimble_port_freertos_init(TaskFunction_t host_task_fn)
@@ -74,7 +74,7 @@ nimble_port_freertos_init(TaskFunction_t host_task_fn)
 
 /**
  * @brief nimble_port_freertos_deinit - Adapt to native nimble api
- * 
+ *
  */
 void
 nimble_port_freertos_deinit(void)

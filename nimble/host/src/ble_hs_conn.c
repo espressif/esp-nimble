@@ -333,7 +333,6 @@ ble_hs_conn_free(struct ble_hs_conn *conn)
     }
 #endif
     rc = os_memblock_put(&ble_hs_conn_pool, conn);
-
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
 
     STATS_INC(ble_hs_stats, conn_delete);
@@ -609,7 +608,7 @@ ble_hs_conn_timer(void)
              * passes after a partial packet is received, the connection is
              * terminated.
              */
-            if (conn->rx_len) {
+            if (conn->rx_frags != NULL) {
                 time_diff = conn->rx_frag_tmo - now;
 
                 if (time_diff <= 0) {
@@ -664,7 +663,7 @@ ble_hs_conn_init(void)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     size_t elem_mem_size = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_MAX_CONNECTIONS), sizeof(struct ble_hs_conn));
 
-    if (!ble_hs_conn_elem_mem && elem_mem_size != 0) {
+    if (!ble_hs_conn_elem_mem) {
         ble_hs_conn_elem_mem = (os_membuf_t *)nimble_platform_mem_calloc(1,elem_mem_size * sizeof(os_membuf_t));
 
         if (!ble_hs_conn_elem_mem) {
