@@ -22,7 +22,9 @@
 #include <string.h>
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_opt.h"
-#include "host/ble_hs_log.h"
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#endif
 
 #if NIMBLE_BLE_CONNECT
 #if NIMBLE_BLE_SM

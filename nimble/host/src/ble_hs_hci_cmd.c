@@ -29,6 +29,16 @@
 #include "hci_log/bt_hci_log.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
+/*
+ * HCI Command Header
+ *
+ * Comprises the following fields
+ *  -> Opcode group field & Opcode command field (2)
+ *  -> Parameter Length                          (1)
+ *      Length of all the parameters (does not include any part of the hci
+ *      command header
+ */
+#define BLE_HCI_CMD_HDR_LEN                 (3)
 
 /*
  * HCI Command Header

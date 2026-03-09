@@ -28,6 +28,7 @@
 #include "host/ble_hs_log.h"
 #include "nimble/hci_common.h"
 #include "esp_nimble_mem.h"
+#include "modlog/modlog.h"
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

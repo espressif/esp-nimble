@@ -327,6 +327,8 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
 
 }
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) || MYNEWT_VAL(ENC_ADV_DATA) \
+    || MYNEWT_VAL(BLE_STORE_MAX_CCCDS) || MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 static int
 ble_store_config_delete_obj(void *values, int value_size, int idx,
                             int *num_values)
@@ -349,6 +351,7 @@ ble_store_config_delete_obj(void *values, int value_size, int idx,
 
     return 0;
 }
+#endif
 
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 static int

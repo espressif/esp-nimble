@@ -11,7 +11,7 @@
 #include "syscfg/syscfg.h"
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
-#include "host/ble_hs_log.h"
+#include "modlog/modlog.h"
 #include "services/prox/ble_svc_prox.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_PROX_SERVICE

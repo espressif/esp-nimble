@@ -21,8 +21,12 @@
 
 #if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
 
+#define BLE_NPL_LOG_MODULE BLE_EATT_LOG
+#include <nimble/nimble_npl_log.h>
+
 #include <stddef.h>
 #include <errno.h>
+#include "os/util.h"
 #include "host/ble_hs_log.h"
 #include "ble_att_cmd_priv.h"
 #include "ble_hs_priv.h"

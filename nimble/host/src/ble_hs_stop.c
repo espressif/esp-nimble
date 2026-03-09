@@ -20,6 +20,7 @@
 #include <assert.h>
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
+#include "modlog/modlog.h"
 #include "ble_hs_priv.h"
 #include "host/ble_hs_stop.h"
 #include "nimble/nimble_npl.h"
@@ -67,6 +68,13 @@ static uint8_t ble_hs_stop_conn_cnt;
 static struct ble_npl_callout ble_hs_stop_terminate_tmo;
 #endif
 
+static int
+ble_hs_stop_hci_reset(void)
+{
+    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND, BLE_HCI_OCF_CB_RESET),
+                             NULL, 0, NULL, 0);
+}
+
 /**
  * Called when a stop procedure has completed.
  */
@@ -89,6 +97,14 @@ ble_hs_stop_done(int status)
 
     slist = ble_hs_stop_listeners;
     SLIST_INIT(&ble_hs_stop_listeners);
+
+    ble_hs_stop_hci_reset();
+
+    /* Clear advertising, scanning and connection states. */
+    ble_gap_reset_state(0);
+
+    /* After LL reset the controller loses its random address */
+    ble_hs_id_reset();
 
     ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
 
@@ -294,6 +310,8 @@ ble_hs_stop(struct ble_hs_stop_listener *listener,
         ble_hs_stop_done(rc);
         return rc;
     }
+
+    ble_hs_stop_conn_cnt = 0;
 
     ble_hs_lock();
     ble_hs_stop_conn_cnt = 0;

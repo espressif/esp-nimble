@@ -112,6 +112,21 @@ struct os_mbuf;
 #define BLE_ATT_ERR_DB_OUT_OF_SYNC          0x12
 #define BLE_ATT_ERR_VALUE_NOT_ALLOWED       0x13
 
+/**Requested value is not allowed. */
+#define BLE_ATT_ERR_VALUE_NOT_ALLOWED       0x13
+
+/**Write Request Rejected. */
+#define BLE_ATT_ERR_WRITE_REQ_REJECTED      0xFC
+
+/**Client Characteristic Configuration Descriptor Improperly Configured. */
+#define BLE_ATT_ERR_CCCD_IMPORER_CONF       0xFD
+
+/**Procedure Already in Progress. */
+#define BLE_ATT_ERR_PROC_IN_PROGRESS        0xFE
+
+/**Out of Range. */
+#define BLE_ATT_ERR_OUT_OF_RANGE            0xFF
+
 /** @} */
 
 /**
@@ -204,7 +219,7 @@ struct os_mbuf;
 /** Indicate Response. */
 #define BLE_ATT_OP_INDICATE_RSP             0x1e
 
-/** Multiple Handle Value Length Notification Request */
+/** Notify Multiple Request */
 #define BLE_ATT_OP_NOTIFY_MULTI_REQ         0x23
 
 /** Write Command. */
@@ -347,7 +362,23 @@ uint16_t ble_att_preferred_mtu(void);
  */
 int ble_att_set_preferred_mtu(uint16_t mtu);
 
+/**
+ * Sets the default bearer CID for the specified connection.
+ *
+ * @param conn_handle           The handle of the connection to update.
+ * @param cid                   The CID to set as the default bearer.
+ *
+ * @return                      0 on success; nonzero on error.
+ */
 int ble_att_set_default_bearer_using_cid(uint16_t conn_handle, uint16_t cid);
+
+/**
+ * Retrieves the default bearer CID for the specified connection.
+ *
+ * @param conn_handle           The handle of the connection to query.
+ *
+ * @return                      The default bearer CID, or 0 if invalid.
+ */
 uint16_t ble_att_get_default_bearer_cid(uint16_t conn_handle);
 
 #ifdef __cplusplus

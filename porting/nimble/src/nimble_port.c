@@ -175,13 +175,17 @@ esp_err_t esp_nimble_init(void)
         return ESP_FAIL;
     }
 #else
-    esp_err_t ret;
+    esp_err_t ret = ESP_OK;
+
     ret = ble_buf_alloc();
     if (ret != ESP_OK) {
         ble_buf_free();
         return ESP_FAIL;
     }
     ble_transport_init();
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+    ble_adv_list_init();
+#endif
 #endif
 
     /* Initialize default event queue */
@@ -192,10 +196,6 @@ esp_err_t esp_nimble_init(void)
     ble_npl_eventq_init(&g_eventq_dflt);
 #endif // !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 
-
-#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
-    ble_adv_list_init();
-#endif
 
     /* Initialize the host */
     ble_transport_hs_init();
@@ -224,14 +224,6 @@ esp_err_t esp_nimble_deinit(void)
 
     ble_transport_ll_deinit();
 
-#if (BT_HCI_LOG_INCLUDED == TRUE)
-    bt_hci_log_deinit();
-#endif
-
-#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
-    ble_adv_list_deinit();
-#endif
-
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_deinit() != ESP_OK) {
@@ -242,6 +234,9 @@ esp_err_t esp_nimble_deinit(void)
         return ESP_FAIL;
     }
 #else
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+    ble_adv_list_deinit();
+#endif
     ble_transport_deinit();
     ble_buf_free();
 #endif

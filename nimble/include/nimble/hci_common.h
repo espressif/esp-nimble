@@ -1559,8 +1559,8 @@ struct ble_hci_le_cs_test_cp {
 struct ble_hci_le_add_monitor_adv_list_cp {
     uint8_t addr_type;
     uint8_t address[6];
-    uint8_t rssi_low_threshold;
-    uint8_t rssi_high_threshold;
+    int8_t rssi_low_threshold;
+    int8_t rssi_high_threshold;
     uint8_t timeout;
 } __attribute__((packed));
 
