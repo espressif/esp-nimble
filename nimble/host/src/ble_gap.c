@@ -3429,6 +3429,13 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         conn->bhc_gatt_svr.half_aware = 0;
         /* This is also done when bonding is restored, so `conn` and `ble_gatts_conn_aware_states` need to be kept in sync */
         ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states == NULL) {
+            /* GATTS was stopped; GATT database may have changed,
+             * so treat all reconnecting bonded peers as unaware */
+            conn->bhc_gatt_svr.aware_state = false;
+        } else {
+#endif
         for (int i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             if (memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                               addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -3436,6 +3443,9 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
                 conn->bhc_gatt_svr.aware_state = ble_gatts_conn_aware_states[i].aware;
             }
         }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        }
+#endif
     }
 #endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
