@@ -1404,6 +1404,9 @@ static void ble_att_svr_make_conn_aware(uint16_t conn_handle) {
     conn->bhc_gatt_svr.half_aware = 1;
 
     ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_conn_aware_states != NULL) {
+#endif
     for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
 	if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                     addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1411,6 +1414,9 @@ static void ble_att_svr_make_conn_aware(uint16_t conn_handle) {
             ble_gatts_conn_aware_states[i].half_aware = 1;
         }
     }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 }
 
@@ -1426,6 +1432,9 @@ static bool ble_att_svr_check_conn_aware(uint16_t conn_handle) {
         conn->bhc_gatt_svr.aware_state = true;
 
         ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states != NULL) {
+#endif
         for(int i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                       addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1433,6 +1442,9 @@ static bool ble_att_svr_check_conn_aware(uint16_t conn_handle) {
                 ble_gatts_conn_aware_states[i].aware = true;
             }
         }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+       }
+#endif
     }
     return conn->bhc_gatt_svr.aware_state;
 }
@@ -1630,6 +1642,9 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
         conn->bhc_gatt_svr.half_aware = 0;
 
         ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states != NULL) {
+#endif
         for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                         addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1637,6 +1652,9 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
                 ble_gatts_conn_aware_states[i].half_aware = 0;
             }
         }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        }
+#endif
     } else {
         if((ble_att_svr_get_csfs(conn_handle)[0] & 1)
             && ble_svc_gatt_csf_handle() != err_handle ) {
