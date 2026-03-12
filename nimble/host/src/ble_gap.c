@@ -1099,6 +1099,8 @@ ble_gap_master_reset_state(void)
 #endif
 
 #if NIMBLE_BLE_CONNECT
+static int ble_gap_conn_cancel_no_lock(void);
+
 static bool
 ble_gap_addr_type_equivalent(uint8_t a, uint8_t b)
 {
@@ -1120,6 +1122,28 @@ ble_gap_addr_type_equivalent(uint8_t a, uint8_t b)
 }
 
 static bool
+ble_gap_master_cancel_pending_conn(void)
+{
+    int rc;
+
+    if (ble_gap_master.op != BLE_GAP_OP_M_CONN) {
+        return false;
+    }
+
+    if (ble_gap_master.conn.cancel) {
+        return true;
+    }
+
+    rc = ble_gap_conn_cancel_no_lock();
+    if (rc == 0 || rc == BLE_HS_EALREADY) {
+        return true;
+    }
+
+    BLE_HS_LOG(INFO, "simul-conn: connect cancel failed; rc=%d\n", rc);
+    return false;
+}
+
+static bool
 ble_gap_master_conn_matches_slave_complete(const struct ble_gap_conn_complete *evt)
 {
     ble_addr_t evt_addr;
@@ -1135,7 +1159,7 @@ ble_gap_master_conn_matches_slave_complete(const struct ble_gap_conn_complete *e
                                      evt_addr.type) &&
         memcmp(ble_gap_master.conn.peer_addr.val, evt_addr.val,
                BLE_DEV_ADDR_LEN) == 0) {
-        return true;
+        return ble_gap_master_cancel_pending_conn();
     }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -1146,7 +1170,7 @@ ble_gap_master_conn_matches_slave_complete(const struct ble_gap_conn_complete *e
                                             &master_addr.type, NULL);
         if (ble_gap_addr_type_equivalent(master_addr.type, evt_addr.type) &&
             memcmp(master_addr.val, evt_addr.val, BLE_DEV_ADDR_LEN) == 0) {
-            return true;
+            return ble_gap_master_cancel_pending_conn();
         }
     }
 #endif
