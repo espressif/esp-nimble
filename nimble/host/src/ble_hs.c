@@ -839,6 +839,9 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
         data[0] = 0x02;
         os_mbuf_copydata(om, 0, len, &data[1]);
         bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len);
+#if BT_HCI_INSIGHTS_INCLUDED
+        bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len);
+#endif
     }
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
@@ -874,7 +877,10 @@ ble_hs_tx_data(struct os_mbuf *om)
         uint8_t data[BLE_HS_HCI_LOG_BUF_SIZE];
         data[0] = 0x02;
         os_mbuf_copydata(om, 0, pkt_len, &data[1]);
-        bt_hci_log_record_hci_data(data[0], &data[1], pkt_len);
+        bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_H2C_ACL, &data[1], pkt_len);
+#if BT_HCI_INSIGHTS_INCLUDED
+        bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_H2C_ACL, &data[1], pkt_len);
+#endif
     }
 #endif
 
