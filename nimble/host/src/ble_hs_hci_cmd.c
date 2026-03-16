@@ -27,8 +27,6 @@
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
-
-
 /*
  * HCI Command Header
  *
@@ -39,7 +37,6 @@
  *      command header
  */
 #define BLE_HCI_CMD_HDR_LEN                 (3)
-
 static int
 ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
 {
@@ -96,14 +93,11 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     buf--;
 #endif
 
-#if ((BT_HCI_LOG_INCLUDED == TRUE))
-    uint8_t *data;
-#if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
-    data = (uint8_t *)buf + 1;
-#else
-    data = (uint8_t *)buf;
+#if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+    bt_hci_log_record_hci_data(0x01, (uint8_t *)buf, len + BLE_HCI_CMD_HDR_LEN);
+#if BT_HCI_INSIGHTS_INCLUDED
+    bt_hci_log_record_insights(0x01, (uint8_t *)buf, len + BLE_HCI_CMD_HDR_LEN);
 #endif
-    bt_hci_log_record_hci_data(0x01, data, len + BLE_HCI_CMD_HDR_LEN);
 #endif
 
     rc = ble_hs_hci_cmd_transport((void *) buf);
