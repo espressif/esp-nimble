@@ -706,8 +706,14 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
     uint16_t len = hci_ev[1] + 3;
     if (host_recv_adv_packet(hci_ev)) {
         bt_hci_log_record_hci_adv(HCI_LOG_DATA_TYPE_ADV, &hci_ev[1], len - 2);
+#if BT_HCI_INSIGHTS_INCLUDED
+        bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_ADV, &hci_ev[1], len - 2);
+#endif
     } else {
         bt_hci_log_record_hci_data(0x04, &hci_ev[0], len - 1);
+#if BT_HCI_INSIGHTS_INCLUDED
+        bt_hci_log_record_insights(0x04, &hci_ev[0], len - 1);
+#endif
     }
 #endif // #if (BT_HCI_LOG_INCLUDED == TRUE)
 
