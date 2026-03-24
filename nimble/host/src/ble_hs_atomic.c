@@ -18,6 +18,7 @@
  */
 
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 int
 ble_hs_atomic_conn_delete(uint16_t conn_handle)

@@ -12,6 +12,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "services/hr/ble_svc_hr.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_HR_SERVICE
 /* Characteristic values */
@@ -179,12 +180,14 @@ ble_svc_hr_notify_measurement(void)
             txom = ble_hs_mbuf_from_flat(&ble_svc_hr_measurement,
                                          sizeof(ble_svc_hr_measurement));
             if (!txom) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
                 return BLE_HS_ENOMEM;
             }
 
             rc = ble_gatts_notify_custom(ble_svc_hr_conn_handle[i],
                                          ble_svc_hr_measurement_val_handle, txom);
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         }

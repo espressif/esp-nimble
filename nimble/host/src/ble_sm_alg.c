@@ -22,6 +22,7 @@
 #include <string.h>
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_opt.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 #if NIMBLE_BLE_SM
@@ -97,6 +98,7 @@ ble_sm_alg_s1(const uint8_t *k, const uint8_t *r1, const uint8_t *r2,
     /* s1(k, r1 , r2) = e(k, r') */
     rc = ble_sm_alg_encrypt(k, out, out);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -246,6 +248,7 @@ ble_sm_alg_f4(const uint8_t *u, const uint8_t *v, const uint8_t *x,
 
     rc = ble_sm_alg_aes_cmac(xs, m, sizeof(m), out_enc_data);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -377,6 +380,7 @@ ble_sm_alg_f6(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
     memset(ws, 0, sizeof(ws));
 
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -409,6 +413,7 @@ ble_sm_alg_g2(const uint8_t *u, const uint8_t *v, const uint8_t *x,
     /* reuse xs (key) as buffer for result */
     rc = ble_sm_alg_aes_cmac(xs, m, sizeof(m), xs);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 

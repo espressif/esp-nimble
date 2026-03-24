@@ -22,6 +22,7 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "services/lls/ble_svc_lls.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_LLS_SERVICE
 /* Callback function */
@@ -176,6 +177,7 @@ int
 ble_svc_lls_alert_level_set(uint8_t alert_level)
 {
     if (alert_level > BLE_SVC_LLS_ALERT_LEVEL_HIGH_ALERT) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 

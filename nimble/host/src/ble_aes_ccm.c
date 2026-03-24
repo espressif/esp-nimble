@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include "host/ble_aes_ccm.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
 #if CONFIG_MBEDTLS_VER_4_X_SUPPORT
@@ -69,6 +70,7 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
     status = psa_import_key(&attributes, key, 16, &key_id);
     if (status != PSA_SUCCESS) {
         ESP_LOGE("ble_aes_ccm_encrypt_be", "psa_import_key failed with status %d", status);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -77,6 +79,7 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
     if (status != PSA_SUCCESS || output_len != 16) {
         ESP_LOGE("ble_aes_ccm_encrypt_be", "psa_cipher_encrypt failed with status %d", status);
         psa_destroy_key(key_id);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -87,11 +90,13 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
 
     if (mbedtls_aes_setkey_enc(&s, key, 128) != 0) {
         mbedtls_aes_free(&s);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
     if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, plaintext, enc_data) != 0) {
         mbedtls_aes_free(&s);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -109,10 +114,12 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
     struct tc_aes_key_sched_struct s = {0};
 
     if (tc_aes128_set_encrypt_key(&s, key) == TC_CRYPTO_FAIL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
     if (tc_aes_encrypt(enc_data, plaintext, &s) == TC_CRYPTO_FAIL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -224,6 +231,7 @@ static int ble_aes_ccm_auth(const uint8_t key[16], uint8_t nonce[13],
         return err;
     }
     if (msg_len > 0xffff) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -306,11 +314,13 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
     int rc;
 
     if (aad_len >= 0xff00 || mic_size > sizeof(mic)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     /* Validate MIC size per RFC 3610 */
     if (mic_size < 4 || mic_size > 16 || (mic_size % 2) != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -321,11 +331,13 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
 
     rc = ble_aes_ccm_crypt(key_reversed, nonce, enc_msg, out_msg, msg_len);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_aes_ccm_auth(key_reversed, nonce, out_msg, msg_len, aad, aad_len, mic, mic_size);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -342,11 +354,13 @@ int ble_aes_ccm_encrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
 
     /* Unsupported AAD size */
     if (aad_len >= 0xff00 || mic_size > 16) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     /* Validate MIC size per RFC 3610 */
     if (mic_size < 4 || mic_size > 16 || (mic_size % 2) != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -358,12 +372,14 @@ int ble_aes_ccm_encrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
     /** Calculating MIC */
     int rc = ble_aes_ccm_auth(key_reversed, nonce, msg, msg_len, aad, aad_len, mic, mic_size);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     /** Encrypting advertisement */
     rc = ble_aes_ccm_crypt(key_reversed, nonce, msg, out_msg, msg_len);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

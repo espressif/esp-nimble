@@ -21,6 +21,7 @@
 
 #include "os/mynewt.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 static struct ble_hs_stop_listener ble_hs_shutdown_stop_listener;
 

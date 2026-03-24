@@ -20,6 +20,7 @@
 #include "host/ble_store.h"
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
+#include "host/ble_hs_log.h"
 
 struct ble_store_util_peer_set {
     ble_addr_t *peer_id_addrs;
@@ -73,6 +74,7 @@ ble_store_util_iter_unique_peer(int obj_type,
         break;
     default:
         BLE_HS_DBG_ASSERT(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     /* Use peer_addr in loop and assignment */
@@ -85,6 +87,7 @@ ble_store_util_iter_unique_peer(int obj_type,
     if (set->num_peers >= set->max_peers) {
         /* Overflow; abort the iterate procedure. */
         set->status = BLE_HS_ENOMEM;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -128,6 +131,7 @@ ble_store_util_bonded_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
                            ble_store_util_iter_unique_peer,
                            &set);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -140,6 +144,7 @@ ble_store_util_bonded_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -166,11 +171,13 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_OUR_SEC, &key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_SEC, &key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -179,6 +186,7 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CCCD, &key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -188,6 +196,7 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -197,6 +206,7 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_ADDR, &key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -205,6 +215,7 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CSFC, &key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -231,6 +242,7 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
             if (needs_unlock) {
                 ble_hs_unlock();
             }
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -241,6 +253,7 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -266,11 +279,15 @@ ble_store_util_delete_all(int type, const union ble_store_key *key)
     } while (rc == 0);
 
     if (rc != BLE_HS_ENOENT) {
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -304,11 +321,13 @@ ble_store_util_count(int type, int *out_count)
                            ble_store_util_iter_count,
                            out_count);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -326,6 +345,7 @@ ble_store_util_delete_oldest_peer(void)
             peer_id_addrs, &num_peers,
             sizeof peer_id_addrs / sizeof peer_id_addrs[0]);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -335,11 +355,13 @@ ble_store_util_delete_oldest_peer(void)
 
     rc = ble_store_util_delete_peer(&peer_id_addrs[0]);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -379,6 +401,7 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
                           ble_store_util_iter_unique_peer,
                           &set);
    if (rc != 0) {
+       BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
        return rc;
    }
 
@@ -389,6 +412,7 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
    *out_num_peers = set.num_peers;
    return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -409,6 +433,7 @@ ble_store_util_delete_ead_oldest_peer(void)
            peer_id_addrs, &num_peers,
            sizeof peer_id_addrs / sizeof peer_id_addrs[0]);
    if (rc != 0) {
+       BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
        return rc;
    }
 
@@ -419,11 +444,13 @@ ble_store_util_delete_ead_oldest_peer(void)
    key.ead.peer_addr = peer_id_addrs[0];
    rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &key);
    if (rc != 0) {
+       BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
        return rc;
    }
 
    return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -458,6 +485,7 @@ ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
             return ble_store_util_delete_ead_oldest_peer();
 #endif
         default:
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
             return BLE_HS_EUNKNOWN;
         }
 
@@ -468,6 +496,7 @@ ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
         return 0;
 
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 }

@@ -25,6 +25,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "services/bas/ble_svc_bas.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_BAS_SERVICE
 /* Characteristic value handles */

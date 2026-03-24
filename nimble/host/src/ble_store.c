@@ -21,6 +21,7 @@
 
 #include "host/ble_store.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 int
 ble_store_read(int obj_type, const union ble_store_key *key,
@@ -42,6 +43,7 @@ ble_store_read(int obj_type, const union ble_store_key *key,
 
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -57,6 +59,7 @@ ble_store_write(int obj_type, const union ble_store_value *val)
 
         if (ble_hs_cfg.store_write_cb == NULL) {
             ble_hs_unlock();
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
             return BLE_HS_ENOTSUP;
         }
 
@@ -72,6 +75,7 @@ ble_store_write(int obj_type, const union ble_store_value *val)
              */
             rc = ble_store_overflow_event(obj_type, val);
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -79,10 +83,14 @@ ble_store_write(int obj_type, const union ble_store_value *val)
             break;
 
         default:
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
     }
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -106,6 +114,7 @@ ble_store_delete(int obj_type, const union ble_store_key *key)
 
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -141,6 +150,7 @@ ble_store_overflow_event(int obj_type, const union ble_store_value *value)
 
     return ble_store_status(&event);
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -159,6 +169,7 @@ ble_store_full_event(int obj_type, uint16_t conn_handle)
     return ble_store_status(&event);
 
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -182,6 +193,7 @@ ble_store_read_our_sec(const struct ble_store_key_sec *key_sec,
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_OUR_SEC, store_key, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -218,6 +230,7 @@ ble_store_write_our_sec(const struct ble_store_value_sec *value_sec)
     rc = ble_store_persist_sec(BLE_STORE_OBJ_TYPE_OUR_SEC, value_sec);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -234,6 +247,7 @@ ble_store_delete_our_sec(const struct ble_store_key_sec *key_sec)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_OUR_SEC, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -249,6 +263,7 @@ ble_store_delete_peer_sec(const struct ble_store_key_sec *key_sec)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_PEER_SEC, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -272,6 +287,7 @@ ble_store_read_peer_sec(const struct ble_store_key_sec *key_sec,
 
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -285,6 +301,7 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
 
     rc = ble_store_persist_sec(BLE_STORE_OBJ_TYPE_PEER_SEC, value_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -297,6 +314,7 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
                                           value_sec->peer_addr.type,
                                           value_sec->irk);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 #endif
@@ -304,6 +322,7 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -323,6 +342,7 @@ ble_store_read_cccd(const struct ble_store_key_cccd *key,
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_CCCD, store_key, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -339,6 +359,7 @@ ble_store_write_cccd(const struct ble_store_value_cccd *value)
     rc = ble_store_write(BLE_STORE_OBJ_TYPE_CCCD, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -355,6 +376,7 @@ ble_store_delete_cccd(const struct ble_store_key_cccd *key)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_CCCD, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -374,6 +396,7 @@ ble_store_read_csfc(const struct ble_store_key_csfc *key,
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_CSFC, store_key, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -390,6 +413,7 @@ ble_store_write_csfc(const struct ble_store_value_csfc *value)
     rc = ble_store_write(BLE_STORE_OBJ_TYPE_CSFC, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -406,6 +430,7 @@ ble_store_delete_csfc(const struct ble_store_key_csfc *key)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_CSFC, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -451,6 +476,7 @@ ble_store_read_ead(const struct ble_store_key_ead *key,
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, store_key, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -467,6 +493,7 @@ ble_store_write_ead(const struct ble_store_value_ead *value)
     rc = ble_store_write(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -483,6 +510,7 @@ ble_store_delete_ead(const struct ble_store_key_ead *key)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -514,6 +542,7 @@ ble_store_read_local_irk(const struct ble_store_key_local_irk *key,
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_LOCAL_IRK, store_key, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -532,6 +561,7 @@ ble_store_write_local_irk(const struct ble_store_value_local_irk *value)
     rc = ble_store_write(BLE_STORE_OBJ_TYPE_LOCAL_IRK, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -549,6 +579,7 @@ ble_store_delete_local_irk(const struct ble_store_key_local_irk *key)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_LOCAL_IRK, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -579,6 +610,7 @@ ble_store_read_rpa_rec(const struct ble_store_key_rpa_rec *key,
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_key, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -595,6 +627,7 @@ ble_store_write_rpa_rec(const struct ble_store_value_rpa_rec *value)
     rc = ble_store_write(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_value);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -611,6 +644,7 @@ ble_store_delete_rpa_rec(const struct ble_store_key_rpa_rec *key)
     rc = ble_store_delete(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_key);
     return rc;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -723,6 +757,7 @@ ble_store_iterate(int obj_type,
         break;
     default:
         BLE_HS_DBG_ASSERT(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -749,12 +784,16 @@ ble_store_iterate(int obj_type,
 
         default:
             /* Read error. */
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
 
         idx++;
     }
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -797,12 +836,16 @@ ble_store_clear(void)
 
         /* BLE_HS_ENOENT means we deleted everything. */
         if (rc != BLE_HS_ENOENT) {
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
     }
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }

@@ -24,6 +24,7 @@
 #include "console/console.h"
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 static const ble_uuid_t *uuid_ccc =

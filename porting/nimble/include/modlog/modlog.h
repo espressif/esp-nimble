@@ -26,6 +26,14 @@
 #include "log/log.h"
 #include "log_common/log_common.h"
 
+#if CONFIG_BLE_HOST_NIMBLE_COMPRESSED_LOG_ENABLE
+#include "nimble_log_index.h"
+#endif
+
+#if CONFIG_BLE_LOG_ENABLED
+#include "ble_log.h"
+#endif
+
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include <stdio.h>

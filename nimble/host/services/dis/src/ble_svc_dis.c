@@ -22,6 +22,7 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "services/dis/ble_svc_dis.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_DIS_SERVICE
 
@@ -453,6 +454,7 @@ ble_svc_dis_init_dynamic(void)
 {
     ble_svc_dis_data_ptr = nimble_platform_mem_calloc(1, sizeof(*ble_svc_dis_data_ptr));
     if (!ble_svc_dis_data_ptr) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 

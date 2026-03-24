@@ -26,6 +26,7 @@
 #include "host/ble_uuid.h"
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_GATTS)
@@ -103,6 +104,7 @@ ble_att_svr_ensure_ctx(void)
 
     ble_att_svr_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_att_svr_ctx));
     if (ble_att_svr_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -177,6 +179,7 @@ ble_att_svr_register(const ble_uuid_t *uuid, uint8_t flags,
 
     entry = ble_att_svr_entry_alloc();
     if (entry == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -362,6 +365,7 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
                        "conn_handle=0x%04x attr_handle=0x%04x\n",
                        conn_handle, entry->ha_handle_id);
             *out_att_err = BLE_ATT_ERR_READ_NOT_PERMITTED;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
             return BLE_HS_EREJECT;
         }
 
@@ -374,6 +378,7 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
                        "conn_handle=0x%04x attr_handle=0x%04x\n",
                        conn_handle, entry->ha_handle_id);
             *out_att_err = BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
             return BLE_HS_EREJECT;
         }
 
@@ -512,6 +517,7 @@ ble_att_svr_pkt(struct os_mbuf **rxom, struct os_mbuf **out_txom,
     *out_txom = *rxom;
     *rxom = NULL;
     *out_att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
     return BLE_HS_ENOMEM;
 }
 
@@ -610,11 +616,13 @@ ble_att_svr_read_handle(uint16_t conn_handle, uint16_t attr_handle,
         if (out_att_err != NULL) {
             *out_att_err = BLE_ATT_ERR_INVALID_HANDLE;
         }
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     rc = ble_att_svr_read(conn_handle, entry, offset, om, out_att_err);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -695,11 +703,13 @@ ble_att_svr_write_handle(uint16_t conn_handle, uint16_t attr_handle,
         if (out_att_err != NULL) {
             *out_att_err = BLE_ATT_ERR_INVALID_HANDLE;
         }
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     rc = ble_att_svr_write(conn_handle, entry, offset, om, out_att_err);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -718,6 +728,7 @@ ble_att_svr_tx_error_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txo
 
     rsp = ble_att_cmd_prepare(BLE_ATT_OP_ERROR_RSP, sizeof(*rsp), txom);
     if (rsp == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -858,6 +869,7 @@ ble_att_svr_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     mtu = 0;
 
     if (cid != BLE_L2CAP_CID_ATT) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 
@@ -975,6 +987,7 @@ ble_att_svr_fill_info(uint16_t start_handle, uint16_t end_handle,
 
 done:
     if (rc == 0 && num_entries == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     } else {
         return rc;
@@ -1031,6 +1044,7 @@ int
 ble_att_svr_rx_find_info(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_FIND_INFO)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1122,11 +1136,13 @@ ble_att_svr_fill_type_value_entry(struct os_mbuf *om, uint16_t first,
         goto fail;
     }
 
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
     return BLE_HS_EAGAIN;
 
 fail:
     os_mbuf_adj(om, orig_len - OS_MBUF_PKTLEN(om));
     *out_att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
     return BLE_HS_ENOMEM;
 }
 
@@ -1312,6 +1328,7 @@ done:
                   BLE_ATT_FIND_TYPE_VALUE_RSP_BASE_SZ;
     if (rc == 0 && !any_entries) {
         *out_att_err = BLE_ATT_ERR_ATTR_NOT_FOUND;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     } else {
         return rc;
@@ -1366,6 +1383,7 @@ int
 ble_att_svr_rx_find_type_value(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_FIND_TYPE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1625,6 +1643,7 @@ int
 ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_TYPE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1737,6 +1756,7 @@ int
 ble_att_svr_rx_read(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1800,6 +1820,7 @@ int
 ble_att_svr_rx_read_blob(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_BLOB)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1930,6 +1951,7 @@ int
 ble_att_svr_rx_read_mult(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_MULT)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2083,6 +2105,7 @@ int
 ble_att_svr_rx_read_mult_var(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_MULT)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2144,6 +2167,7 @@ ble_att_svr_service_uuid(struct ble_att_svr_entry *entry,
     rc = ble_att_svr_read_flat(BLE_HS_CONN_HANDLE_NONE, entry, 0, sizeof(val), val,
                                &attr_len, out_att_err);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2180,11 +2204,13 @@ ble_att_svr_read_group_type_entry_write(struct os_mbuf *om, uint16_t mtu,
         len = BLE_ATT_READ_GROUP_TYPE_ADATA_SZ_128;
     }
     if (OS_MBUF_PKTLEN(om) + len > mtu) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
     buf = os_mbuf_extend(om, len);
     if (buf == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -2373,6 +2399,7 @@ int
 ble_att_svr_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_READ_GROUP_TYPE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2489,6 +2516,7 @@ int
 ble_att_svr_rx_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_WRITE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2556,6 +2584,7 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_WRITE_NO_RSP)
     os_mbuf_free_chain(*rxom);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2565,6 +2594,7 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
         !ble_att_svr_check_conn_aware(conn_handle)) {
         ble_hs_unlock();
         os_mbuf_free_chain(*rxom);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
         return BLE_HS_EREJECT;
     }
     ble_hs_unlock();
@@ -2577,6 +2607,7 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 
     rc = ble_att_svr_pullup_req_base(rxom, sizeof(*req), &att_err);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2595,6 +2626,7 @@ int
 ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
     if (MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0 && ble_hs_cfg.eatt) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 
@@ -2631,6 +2663,7 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 
     rc = ble_att_svr_pullup_req_base(rxom, sizeof(*req), &att_err);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2812,6 +2845,7 @@ ble_att_svr_prep_validate(struct ble_att_prep_entry_list *prep_list,
             /* Ensure attribute write starts at offset 0. */
             if (entry->bape_offset != 0) {
                 *err_handle = entry->bape_handle;
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INVALID_OFFSET);
                 return BLE_ATT_ERR_INVALID_OFFSET;
             }
         } else {
@@ -2820,6 +2854,7 @@ ble_att_svr_prep_validate(struct ble_att_prep_entry_list *prep_list,
                 entry->bape_offset) {
 
                 *err_handle = entry->bape_handle;
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INVALID_OFFSET);
                 return BLE_ATT_ERR_INVALID_OFFSET;
             }
         }
@@ -2828,6 +2863,7 @@ ble_att_svr_prep_validate(struct ble_att_prep_entry_list *prep_list,
         cur_len = entry->bape_offset + OS_MBUF_PKTLEN(entry->bape_value);
         if (cur_len > BLE_ATT_ATTR_MAX_LEN) {
             *err_handle = entry->bape_handle;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN);
             return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
         }
 #endif
@@ -2892,6 +2928,7 @@ ble_att_svr_prep_write(uint16_t conn_handle,
     /* First, validate the contents of the prepare queue. */
     rc = ble_att_svr_prep_validate(prep_list, err_handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2931,6 +2968,7 @@ ble_att_svr_insert_prep_entry(uint16_t conn_handle,
 
     prep_entry = ble_att_svr_prep_alloc(out_att_err);
     if (prep_entry == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     prep_entry->bape_handle = handle;
@@ -2977,6 +3015,7 @@ int
 ble_att_svr_rx_prep_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_QUEUED_WRITE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3078,6 +3117,7 @@ int
 ble_att_svr_rx_exec_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_QUEUED_WRITE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3169,6 +3209,7 @@ int
 ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_NOTIFY)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3179,6 +3220,7 @@ ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 
     rc = ble_att_svr_pullup_req_base(rxom, sizeof(*req), NULL);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -3187,6 +3229,7 @@ ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     handle = le16toh(req->banq_handle);
 
     if (handle == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -3214,6 +3257,7 @@ int
 ble_att_svr_rx_notify_multi(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_NOTIFY_MULTI)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3286,6 +3330,7 @@ ble_att_clt_pkt(struct os_mbuf **rxom, struct os_mbuf **out_txom,
     *out_txom = *rxom;
     *rxom = NULL;
     *out_att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
     return BLE_HS_ENOMEM;
 }
 
@@ -3347,6 +3392,7 @@ int
 ble_att_svr_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_INDICATE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3539,6 +3585,7 @@ ble_att_svr_start(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_att_svr_ensure_ctx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -3609,6 +3656,7 @@ ble_att_svr_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_att_svr_ensure_ctx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -3620,6 +3668,7 @@ ble_att_svr_init(void)
                                           sizeof(struct ble_att_prep_entry)) * sizeof(os_membuf_t);
      ble_att_svr_prep_entry_mem = (os_membuf_t *)nimble_platform_mem_calloc(1, mem_size);
      if (!ble_att_svr_prep_entry_mem) {
+         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
          return BLE_HS_ENOMEM;
      }
 #endif
@@ -3639,6 +3688,7 @@ ble_att_svr_init(void)
                    sizeof(ble_att_svr_prep_entry_pool));
 #endif
 
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
             return BLE_HS_EOS;
         }
     }
@@ -3677,6 +3727,7 @@ int ble_att_get_database_size(int *out_size)
            uuid->value == BLE_ATT_UUID_SECONDARY_SERVICE) {
            rc = ble_att_svr_service_uuid(entry, &service_uuid, &att_error);
            if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
            }
            /* handle (2 bytes) + type(2 bytes) + uuid (variable) */
@@ -3685,6 +3736,7 @@ int ble_att_get_database_size(int *out_size)
         else if(uuid->value == BLE_ATT_UUID_INCLUDE) {
             rc = ble_att_svr_service_uuid(entry, &service_uuid, &att_error);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -3745,6 +3797,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
            uuid->value == BLE_ATT_UUID_SECONDARY_SERVICE) {
             rc = ble_att_svr_service_uuid(entry, &service_uuid, &att_error);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
             /* handle (2 bytes) + type(2 bytes) + uuid (variable) */
@@ -3759,6 +3812,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -3782,6 +3836,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
             memcpy(data + 4, val, attr_len);
@@ -3807,6 +3862,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
             memcpy(data + 4, val, attr_len);

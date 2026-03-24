@@ -25,6 +25,7 @@
 #include "services/ras/ble_svc_ras.h"
 #include "sysinit/sysinit.h"
 #include "host/ble_cs.h"
+#include "host/ble_hs_log.h"
 #include "nimble/hci_common.h"
 #include "esp_nimble_mem.h"
 
@@ -320,6 +321,7 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         sizeof(ble_svc_ras_cp_val),
                         &ble_svc_ras_cp_val, NULL);
                 if (rc != 0) {
+                    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                     return rc;
                 }
                  MODLOG_DFLT(INFO, "ble_svc_gap_cp_val = %02x %02x %02x \n",ble_svc_ras_cp_val[0],ble_svc_ras_cp_val[1],ble_svc_ras_cp_val[2]);
@@ -386,7 +388,6 @@ unknown:
 }
 
 void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
-
     struct ranging_buffer *buf = NULL;
 
     /* Check if the subevent is already stored */

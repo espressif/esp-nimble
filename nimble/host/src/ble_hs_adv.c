@@ -22,6 +22,7 @@
 #include "nimble/ble.h"
 #include "host/ble_hs_adv.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(ENC_ADV_DATA)
 #include "host/ble_ead.h"
 #endif
@@ -65,6 +66,7 @@ ble_hs_adv_set_hdr(uint8_t type, uint8_t data_len, uint8_t max_len,
         data_len++;
         rc = os_mbuf_append(om, &data_len, sizeof(data_len));
         if (rc) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -73,6 +75,7 @@ ble_hs_adv_set_hdr(uint8_t type, uint8_t data_len, uint8_t max_len,
 
 
     if (*dst_len + 2 + data_len > max_len) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
@@ -95,6 +98,7 @@ ble_hs_adv_set_flat_mbuf(uint8_t type, int data_len, const void *data,
 
     rc = ble_hs_adv_set_hdr(type, data_len, max_len, dst, dst_len, om);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -113,6 +117,7 @@ ble_hs_adv_set_flat(uint8_t type, int data_len, const void *data,
                     uint8_t *dst, uint8_t *dst_len, uint8_t max_len)
 {
 #if !NIMBLE_BLE_ADVERTISE
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -130,12 +135,14 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
     int i;
 
     if (num_elems > 127) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     rc = ble_hs_adv_set_hdr(type, num_elems * 2, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -143,6 +150,7 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
         if (om) {
             rc = ble_uuid_to_mbuf(&elems[i].u, om);
             if (rc) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         } else {
@@ -165,12 +173,14 @@ ble_hs_adv_set_array_uuid32(uint8_t type, uint8_t num_elems,
     int i;
 
     if ((uint16_t)num_elems * 4 > 255) { // Prevent truncation, actual AD field limited by BLE_HS_ADV_MAX_FIELD_SZ
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
     rc = ble_hs_adv_set_hdr(type, num_elems * 4, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -183,6 +193,7 @@ ble_hs_adv_set_array_uuid32(uint8_t type, uint8_t num_elems,
             uuid_le = htole32(elems[i].value);
             rc = os_mbuf_append(om, &uuid_le, sizeof(uuid_le));
             if (rc) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         } else {
@@ -204,12 +215,14 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
     int i;
 
     if (num_elems > 15) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     rc = ble_hs_adv_set_hdr(type, num_elems * 16, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -217,6 +230,7 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
         if (om) {
             rc = ble_uuid_to_mbuf(&elems[i].u, om);
             if (rc) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         } else {
@@ -238,12 +252,14 @@ ble_hs_adv_set_array16(uint8_t type, uint8_t num_elems, const uint16_t *elems,
     int i;
 
     if (num_elems > 127) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     rc = ble_hs_adv_set_hdr(type, num_elems * sizeof *elems, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -252,6 +268,7 @@ ble_hs_adv_set_array16(uint8_t type, uint8_t num_elems, const uint16_t *elems,
             tmp = htole16(elems[i]);
             rc = os_mbuf_append(om, &tmp, sizeof(tmp));
             if (rc) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         } else {
@@ -269,6 +286,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                       struct os_mbuf *om)
 {
 #if !NIMBLE_BLE_ADVERTISE
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -296,6 +314,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       max_len, om);
 
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -312,6 +331,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                          adv_fields->uuids16, dst, &dst_len_local,
                                          max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -328,6 +348,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                          adv_fields->uuids32, dst, &dst_len_local,
                                          max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -344,6 +365,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                           adv_fields->uuids128, dst, &dst_len_local,
                                           max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -360,6 +382,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->name, dst, &dst_len_local, max_len,
                                       om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -373,6 +396,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         if (adv_fields->tx_pwr_lvl == BLE_HS_ADV_TX_PWR_LVL_AUTO) {
             rc = ble_hs_hci_util_read_adv_tx_pwr(&tx_pwr_lvl);
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         } else
@@ -384,6 +408,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_TX_PWR_LVL, 1,
                                       &tx_pwr_lvl, dst, &dst_len_local, max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -396,6 +421,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       max_len, om);
 
        if (rc != 0) {
+           BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
            return rc;
        }
     }
@@ -407,6 +433,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       &adv_fields->sm_oob_flag, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
              return rc;
         }
      }
@@ -419,6 +446,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->slave_itvl_range, dst,
                                       &dst_len_local, max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -431,6 +459,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                          adv_fields->sol_uuids16, dst, &dst_len_local,
                                          max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -441,6 +470,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                           adv_fields->sol_uuids128, dst, &dst_len_local,
                                           max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -454,6 +484,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->svc_data_uuid16, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -468,6 +499,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                  adv_fields->public_tgt_addr, dst, &dst_len_local,
                                  max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -483,6 +515,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                  adv_fields->random_tgt_addr, dst, &dst_len_local,
                                  max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -496,6 +529,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       &adv_fields->appearance, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -506,6 +540,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                     &adv_fields->adv_itvl, dst, &dst_len_local,
                                     max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -523,6 +558,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       dev_addr_ad, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -533,6 +569,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       &adv_fields->le_role, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -544,6 +581,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                          adv_fields->sol_uuids32, dst, &dst_len_local,
                                          max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -556,6 +594,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                      adv_fields->svc_data_uuid32, dst, &dst_len_local,
                                      max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -567,6 +606,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->svc_data_uuid128, dst,
                                       &dst_len_local, max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -577,6 +617,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->uri, dst, &dst_len_local, max_len,
                                       om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -589,6 +630,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->le_supp_feat, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -600,6 +642,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       &adv_fields->adv_itvl_long, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -613,6 +656,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->enc_adv_data, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -626,6 +670,7 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                                       adv_fields->mfg_data,
                                       dst, &dst_len_local, max_len, om);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -647,6 +692,7 @@ ble_hs_adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                       uint8_t *dst, uint8_t *dst_len, uint8_t max_len)
 {
 #if !NIMBLE_BLE_ADVERTISE
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -658,6 +704,7 @@ ble_hs_adv_set_fields_mbuf(const struct ble_hs_adv_fields *adv_fields,
                            struct os_mbuf *om)
 {
 #if !NIMBLE_BLE_ADVERTISE
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
     return adv_set_fields(adv_fields, NULL, NULL, 0, om);
@@ -674,6 +721,7 @@ ble_hs_adv_parse_uuids16(struct ble_hs_adv_fields *adv_fields,
 #endif
 
     if (data_len % 2 != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -688,6 +736,7 @@ ble_hs_adv_parse_uuids16(struct ble_hs_adv_fields *adv_fields,
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
@@ -721,6 +770,7 @@ ble_hs_adv_parse_uuids32(struct ble_hs_adv_fields *adv_fields,
 #endif
 
     if (data_len % 4 != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -736,6 +786,7 @@ ble_hs_adv_parse_uuids32(struct ble_hs_adv_fields *adv_fields,
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
     /* Append new UUIDs to existing list */
@@ -769,6 +820,7 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
 #endif
 
     if (data_len % 16 != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -784,6 +836,7 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
     /* Append new UUIDs to existing list */
@@ -816,6 +869,7 @@ ble_hs_adv_uuids_alloc(void)
     }
     ble_hs_adv_uuids = nimble_platform_mem_calloc(1, sizeof(*ble_hs_adv_uuids));
     if (!ble_hs_adv_uuids) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     return 0;
@@ -833,15 +887,18 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     int rc;
 
     if (src_len < 1) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
     *total_len = src[0] + 1;
 
     if (*total_len < 2) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     if (src_len < *total_len) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
@@ -850,12 +907,14 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     data_len = *total_len - 2;
 
     if (data_len > BLE_HS_ADV_MAX_FIELD_SZ) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     switch (type) {
     case BLE_HS_ADV_TYPE_FLAGS:
         if (data_len != BLE_HS_ADV_FLAGS_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->flags = *data;
@@ -864,6 +923,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_INCOMP_UUIDS16:
         rc = ble_hs_adv_parse_uuids16(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         adv_fields->uuids16_is_complete = 0;
@@ -872,6 +932,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_COMP_UUIDS16:
         rc = ble_hs_adv_parse_uuids16(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         adv_fields->uuids16_is_complete = 1;
@@ -880,6 +941,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_INCOMP_UUIDS32:
         rc = ble_hs_adv_parse_uuids32(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         adv_fields->uuids32_is_complete = 0;
@@ -888,6 +950,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_COMP_UUIDS32:
         rc = ble_hs_adv_parse_uuids32(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         adv_fields->uuids32_is_complete = 1;
@@ -896,6 +959,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_INCOMP_UUIDS128:
         rc = ble_hs_adv_parse_uuids128(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         adv_fields->uuids128_is_complete = 0;
@@ -904,6 +968,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_COMP_UUIDS128:
         rc = ble_hs_adv_parse_uuids128(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         adv_fields->uuids128_is_complete = 1;
@@ -923,6 +988,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_TX_PWR_LVL:
         if (data_len != BLE_HS_ADV_TX_PWR_LVL_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->tx_pwr_lvl = *data;
@@ -932,6 +998,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 #if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_SEC_MGR_TK_VALUE:
         if (data_len != 16) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->sm_tk_value = data;
@@ -940,6 +1007,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_SEC_MGR_OOB_FLAG:
         if (data_len != 1) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->sm_oob_flag = *data;
@@ -949,6 +1017,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_SLAVE_ITVL_RANGE:
         if (data_len != BLE_HS_ADV_SLAVE_ITVL_RANGE_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->slave_itvl_range = data;
@@ -958,6 +1027,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_SOL_UUIDS16:
         rc = ble_hs_adv_parse_uuids16(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         break;
@@ -965,6 +1035,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_SOL_UUIDS128:
         rc = ble_hs_adv_parse_uuids128(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         break;
@@ -972,6 +1043,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_SVC_DATA_UUID16:
         if (data_len < BLE_HS_ADV_SVC_DATA_UUID16_MIN_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->svc_data_uuid16 = data;
@@ -980,6 +1052,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_PUBLIC_TGT_ADDR:
         if (data_len % BLE_HS_ADV_PUBLIC_TGT_ADDR_ENTRY_LEN != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->public_tgt_addr = data;
@@ -990,6 +1063,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 #if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_RANDOM_TGT_ADDR:
         if (data_len % BLE_HS_ADV_PUBLIC_TGT_ADDR_ENTRY_LEN != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->random_tgt_addr = data;
@@ -1000,6 +1074,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_APPEARANCE:
         if (data_len != BLE_HS_ADV_APPEARANCE_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->appearance = get_le16(data);
@@ -1009,6 +1084,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 #if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_DEVICE_ADDR:
         if (data_len != 7) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->device_addr = data;
@@ -1017,6 +1093,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_LE_ROLE:
         if (data_len != 1) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->le_role = *data;
@@ -1026,6 +1103,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_ADV_ITVL:
         if (data_len != BLE_HS_ADV_ADV_ITVL_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->adv_itvl = get_le16(data);
@@ -1034,6 +1112,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_SVC_DATA_UUID32:
         if (data_len < BLE_HS_ADV_SVC_DATA_UUID32_MIN_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->svc_data_uuid32 = data;
@@ -1042,6 +1121,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 
     case BLE_HS_ADV_TYPE_SVC_DATA_UUID128:
         if (data_len < BLE_HS_ADV_SVC_DATA_UUID128_MIN_LEN) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         adv_fields->svc_data_uuid128 = data;
@@ -1057,6 +1137,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
     case BLE_HS_ADV_TYPE_SOL_UUIDS32:
         rc = ble_hs_adv_parse_uuids32(adv_fields, data, data_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         break;
@@ -1092,6 +1173,7 @@ ble_hs_adv_parse_fields(struct ble_hs_adv_fields *adv_fields,
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_adv_uuids_alloc() != 0) {
         ESP_LOGE(TAG, "Failed to allocate BLE adv UUIDs");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -1099,6 +1181,7 @@ ble_hs_adv_parse_fields(struct ble_hs_adv_fields *adv_fields,
     while (src_len > 0) {
         rc = ble_hs_adv_parse_one_field(adv_fields, &field_len, src, src_len);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -1119,6 +1202,7 @@ ble_hs_adv_parse(const uint8_t *data, uint8_t length,
         field = (const void *) data;
 
         if (field->length >= length) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
 
@@ -1139,6 +1223,7 @@ find_field_func(const struct ble_hs_adv_field *field, void *user_data)
     struct find_field_data *ffd = user_data;
 
     if (field->type != ffd->type) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
         return BLE_HS_EAGAIN;
     }
 
@@ -1159,10 +1244,12 @@ ble_hs_adv_find_field(uint8_t type, const uint8_t *data, uint8_t length,
 
     rc = ble_hs_adv_parse(data, length, find_field_func, &ffd);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (!ffd.field) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 

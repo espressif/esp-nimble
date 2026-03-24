@@ -20,6 +20,7 @@
 #include <assert.h>
 #include "os/os.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 int
 ble_hs_misc_conn_chan_find(uint16_t conn_handle, uint16_t cid,
@@ -64,6 +65,7 @@ ble_hs_misc_conn_chan_find_reqd(uint16_t conn_handle, uint16_t cid,
 
     rc = ble_hs_misc_conn_chan_find(conn_handle, cid, &conn, &chan);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

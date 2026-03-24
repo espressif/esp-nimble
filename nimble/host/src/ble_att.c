@@ -21,6 +21,7 @@
 #include <errno.h>
 #include "ble_hs_priv.h"
 #include "host/ble_att.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 
@@ -586,6 +587,7 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 
     rc = os_mbuf_copydata(*om, 0, 1, &op);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
@@ -598,6 +600,7 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
         BLE_HS_LOG(INFO, "ATT handler not found; op=0x%02x conn_handle=0x%04x "
                    "cid=0x%04x; packet dropped\n", op, conn_handle, cid);
         ble_att_rx_handle_unknown_request(op, conn_handle, cid, om);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 
@@ -610,6 +613,9 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
     if (rc != 0) {
         if (rc == BLE_HS_ENOTSUP) {
             ble_att_rx_handle_unknown_request(op, conn_handle, cid, om);
+        }
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         }
         return rc;
     }
@@ -624,11 +630,13 @@ ble_att_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
     /* Validate mbuf in release builds */
     if (om == NULL || *om == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     conn_handle = ble_l2cap_get_conn_handle(chan);
     if (conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
@@ -649,9 +657,11 @@ ble_att_set_preferred_mtu(uint16_t mtu)
     int i;
 
     if (mtu < BLE_ATT_MTU_DFLT) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (mtu > BLE_ATT_MTU_MAX) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -780,6 +790,7 @@ ble_att_set_default_bearer_using_cid(uint16_t conn_handle, uint16_t cid) {
 
     return rc;
 #endif
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 }
 
@@ -812,11 +823,13 @@ ble_att_init(void)
         STATS_HDR(ble_att_stats), STATS_SIZE_INIT_PARMS(ble_att_stats,
         STATS_SIZE_32), STATS_NAME_INIT_PARMS(ble_att_stats), "ble_att");
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
         return BLE_HS_EOS;
     }
 
     rc = ble_eatt_init(ble_att_rx_extended);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

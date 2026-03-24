@@ -19,6 +19,7 @@
 
 #include "syscfg/syscfg.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
 #endif
@@ -122,6 +123,7 @@ ble_hs_flow_tx_num_comp_pkts(void)
                            BLE_HCI_OCF_CB_HOST_NUM_COMP_PKTS),
                 buf, sizeof(buf));
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -211,6 +213,7 @@ ble_hs_flow_acl_free(struct os_mempool_ext *mpe, void *data, void *arg)
     /* Free the mbuf back to its pool. */
     rc = os_memblock_put_from_cb(&mpe->mpe_mp, data);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -295,6 +298,7 @@ ble_hs_flow_startup(void)
                                       BLE_HCI_OCF_CB_SET_CTLR_TO_HOST_FC),
                            &enable_cmd, sizeof(enable_cmd), NULL, 0);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -306,6 +310,9 @@ ble_hs_flow_startup(void)
         ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND,
                                      BLE_HCI_OCF_CB_SET_CTLR_TO_HOST_FC),
                           &enable_cmd, sizeof(enable_cmd), NULL, 0);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 

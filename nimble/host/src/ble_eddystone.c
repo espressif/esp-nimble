@@ -22,6 +22,7 @@
 #include "host/ble_eddystone.h"
 #include "host/ble_hs_adv.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #define BLE_EDDYSTONE_MAX_SVC_DATA_LEN  22
 #define BLE_EDDYSTONE_SVC_DATA_BASE_SZ  3
@@ -78,15 +79,19 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
     int rc;
 
     if (adv_fields->num_uuids16 > BLE_EDDYSTONE_MAX_UUIDS16) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (svc_data_len > (BLE_EDDYSTONE_MAX_SVC_DATA_LEN - BLE_EDDYSTONE_SVC_DATA_BASE_SZ)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (adv_fields->num_uuids16 > 0 && !adv_fields->uuids16_is_complete) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (adv_fields->svc_data_uuid16_len != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -96,6 +101,7 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
     /* Only copy if there are UUIDs and the pointer is valid */
     if (adv_fields->num_uuids16 > 0) {
         if (adv_fields->uuids16 == NULL) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
         memcpy(ble_eddystone_uuids16 + 1, adv_fields->uuids16,
@@ -111,6 +117,7 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
 
     rc = ble_gap_adv_set_fields(adv_fields);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -126,12 +133,15 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
 
     /* Validate inputs before modifying global state */
     if (adv_fields == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (uid == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (measured_power < -127 || measured_power > 20) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -150,6 +160,7 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
 
     rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -168,18 +179,23 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
 
     /* Validate all inputs before modifying global state */
     if (adv_fields == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (url_body == NULL && url_body_len > 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (measured_power < -127 || measured_power > 20) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (url_scheme > BLE_EDDYSTONE_URL_SCHEME_HTTPS) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (url_suffix != BLE_EDDYSTONE_URL_SUFFIX_NONE && url_suffix > BLE_EDDYSTONE_URL_SUFFIX_GOV) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -188,6 +204,7 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
         url_len++;
     }
     if (url_len < 1 || url_len > BLE_EDDYSTONE_URL_MAX_LEN) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -206,6 +223,7 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
 
     rc = ble_eddystone_set_adv_data_gen(adv_fields, url_len + 2);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

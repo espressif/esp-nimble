@@ -25,6 +25,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "services/ans/ble_svc_ans.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_ANS_SERVICE
 /* Max length of new alert info string */
@@ -233,6 +234,7 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
                                        &ble_svc_ans_alert_not_ctrl_pt,
                                        NULL);
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -335,10 +337,12 @@ ble_svc_ans_new_alert_add(uint8_t cat_id, const char * info_str)
     if (cat_id < BLE_SVC_ANS_CAT_NUM) {
         cat_bit_mask = (1 << cat_id);
     } else {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     if ((cat_bit_mask & ble_svc_ans_new_alert_cat) == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -366,10 +370,12 @@ ble_svc_ans_unr_alert_add(uint8_t cat_id)
     if (cat_id < BLE_SVC_ANS_CAT_NUM) {
         cat_bit_mask = 1 << cat_id;
     } else {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     if ((cat_bit_mask & ble_svc_ans_unr_alert_cat) == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 

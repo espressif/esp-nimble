@@ -22,6 +22,7 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "services/sps/ble_svc_sps.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
 #endif
