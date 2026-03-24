@@ -12,6 +12,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
 #include "services/htp/ble_svc_htp.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_HTP_SERVICE
 /* Characteristic values */
@@ -218,6 +219,9 @@ ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit)
 
     ble_gatts_chr_updated(ble_svc_htp_intr_temp_val_handle);
 err:
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -248,11 +252,15 @@ ble_svc_htp_indicate(uint16_t conn_handle, float temp, bool temp_unit)
     rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));
     if (rc != 0) {
         os_mbuf_free_chain(txom);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_gatts_indicate_custom(conn_handle,
                                    ble_svc_htp_temp_measurement_val_handle, txom);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 

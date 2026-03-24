@@ -21,6 +21,7 @@
 #include "host/ble_hs_adv.h"
 #include "host/ble_ibeacon.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #define BLE_IBEACON_MFG_DATA_SIZE       25
 
@@ -48,9 +49,11 @@ ble_ibeacon_set_adv_data(const void *uuid128, uint16_t major,
 
     /* Validate inputs before any buffer writes */
     if (uuid128 == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     if (measured_power < -126 || measured_power > 20) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 

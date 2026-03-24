@@ -23,6 +23,7 @@
 #include "os/os.h"
 #include "host/ble_hs_id.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static SLIST_HEAD(, ble_hs_periodic_sync) g_ble_hs_periodic_sync_handles;
@@ -227,6 +228,7 @@ ble_hs_periodic_sync_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_hs_periodic_sync_ensure_ctx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -237,6 +239,7 @@ ble_hs_periodic_sync_init(void)
                              sizeof(struct ble_hs_periodic_sync), NULL,
                              "ble_hs_periodic_disc_pool");
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
             return BLE_HS_EOS;
         }
         SLIST_INIT(&g_ble_hs_periodic_sync_handles);
@@ -251,6 +254,7 @@ ble_hs_periodic_sync_init(void)
                 sizeof(os_membuf_t));
     }
     if (!ble_hs_psync_elem_mem) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -272,6 +276,7 @@ ble_hs_periodic_sync_init(void)
             nimble_platform_mem_free(ble_hs_periodic_ctx);
             ble_hs_periodic_ctx = NULL;
         }
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -304,6 +309,7 @@ ble_hs_periodic_sync_init(void)
             ble_hs_psync_elem_mem = NULL;
         }
 #endif
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
         return BLE_HS_EOS;
     }
 

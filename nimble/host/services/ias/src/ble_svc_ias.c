@@ -22,6 +22,7 @@
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
 #include "services/ias/ble_svc_ias.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_IAS_SERVICE
 /* Callback function */
@@ -112,6 +113,7 @@ ble_svc_ias_access(uint16_t conn_handle, uint16_t attr_handle,
                                        sizeof alert_level,
                                        &alert_level, NULL);
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
             if (alert_level > BLE_SVC_IAS_ALERT_LEVEL_HIGH_ALERT) {

@@ -23,6 +23,7 @@
 #include "nimble/nimble_opt.h"
 #include "host/ble_sm.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_SM_LEGACY)
@@ -117,6 +118,7 @@ ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
 
     default:
         BLE_HS_DBG_ASSERT(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -181,6 +183,7 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
 
     rc = ble_sm_alg_s1(proc->tk, proc->rands, proc->randm, key);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

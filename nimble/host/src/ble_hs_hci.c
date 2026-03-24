@@ -27,6 +27,7 @@
 
 #include "nimble/transport.h"
 #include "bt_common.h"
+#include "host/ble_hs_log.h"
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
 #include "host/ble_hs.h"
@@ -386,6 +387,7 @@ int
 ble_hs_hci_set_buf_sz(uint16_t pktlen, uint16_t max_pkts)
 {
     if (pktlen == 0 || max_pkts == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -421,6 +423,7 @@ ble_hs_hci_rx_cmd_complete(const void *data, int len,
 
     if (len < (int)sizeof(*ev)) {
         if (len < (int)sizeof(*nop)) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
@@ -428,6 +431,7 @@ ble_hs_hci_rx_cmd_complete(const void *data, int len,
 
         opcode = le16toh(nop->opcode);
         if (opcode != BLE_HCI_OPCODE_NOP) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
@@ -463,6 +467,7 @@ ble_hs_hci_rx_cmd_status(const void *data, int len,
     const struct ble_hci_ev_command_status *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -530,6 +535,9 @@ ble_hs_hci_process_ack(uint16_t expected_opcode,
         STATS_INC(ble_hs_stats, hci_invalid_ack);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -715,6 +723,7 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
 #else
             ble_transport_free(hci_ev);
 #endif
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
         enqueue = (cmd_complete->opcode == BLE_HCI_OPCODE_NOP);
@@ -738,6 +747,7 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
 #else
             ble_transport_free(hci_ev);
 #endif
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
         enqueue = (cmd_status->opcode == BLE_HCI_OPCODE_NOP);
@@ -889,6 +899,7 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
 #endif
         if (frag == NULL) {
             *om = txom;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
             return BLE_HS_EAGAIN;
         }
 
@@ -925,6 +936,7 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
     if (txom != NULL) {
         /* The controller couldn't accommodate some or all of the packet. */
         *om = txom;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
         return BLE_HS_EAGAIN;
     }
 
@@ -961,6 +973,7 @@ ble_hs_hci_acl_tx(struct ble_hs_conn *conn, struct os_mbuf **om)
 
     /* If this conn is already backed up, don't even try to send. */
     if (STAILQ_FIRST(&conn->bhc_tx_q) != NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
         return BLE_HS_EAGAIN;
     }
 

@@ -22,6 +22,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_hs_hci.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_ISO)
 #include "host/ble_hs_iso.h"
 #endif /* MYNEWT_VAL(BLE_ISO) */
@@ -37,6 +38,7 @@ ble_hs_startup_read_sup_f_tx(void)
                                       BLE_HCI_OCF_IP_RD_LOC_SUPP_FEAT),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -62,6 +64,7 @@ ble_hs_startup_read_local_ver_tx(void)
                                       BLE_HCI_OCF_IP_RD_LOCAL_VER),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -82,6 +85,7 @@ ble_hs_startup_read_sup_cmd_tx(void)
                                       BLE_HCI_OCF_IP_RD_LOC_SUPP_CMD),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -101,6 +105,7 @@ ble_hs_startup_le_read_sup_f_tx(void)
                                       BLE_HCI_OCF_LE_RD_LOC_SUPP_FEAT),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -122,6 +127,7 @@ ble_hs_startup_le_read_buf_sz_v2_tx(uint16_t *out_acl_pktlen, uint8_t *out_max_a
                                       BLE_HCI_OCF_LE_RD_BUF_SIZE_V2), NULL, 0,
                            &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -147,6 +153,7 @@ ble_hs_startup_le_read_buf_sz_tx(uint16_t *out_pktlen, uint8_t *out_max_pkts)
                                       BLE_HCI_OCF_LE_RD_BUF_SIZE), NULL, 0,
                            &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -167,6 +174,7 @@ ble_hs_startup_read_buf_sz_tx(uint16_t *out_pktlen, uint16_t *out_max_pkts)
                                       BLE_HCI_OCF_IP_RD_BUF_SIZE), NULL, 0,
                            &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -195,6 +203,7 @@ ble_hs_startup_read_buf_sz(void)
     rc = ble_hs_startup_le_read_buf_sz_tx(&le_pktlen, &le_max_pkts);
 #endif /* MYNEWT_VAL(BLE_ISO) */
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -204,12 +213,14 @@ ble_hs_startup_read_buf_sz(void)
     } else {
         rc = ble_hs_startup_read_buf_sz_tx(&pktlen, &max_pkts);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
 
     rc = ble_hs_hci_set_buf_sz(pktlen, max_pkts);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -218,6 +229,7 @@ ble_hs_startup_read_buf_sz(void)
     rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
     ble_hs_unlock();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif /* MYNEWT_VAL(BLE_ISO) */
@@ -236,11 +248,13 @@ ble_hs_startup_read_bd_addr(void)
                                       BLE_HCI_OCF_IP_RD_BD_ADDR),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_hs_id_set_pub(rsp.addr);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     return 0;
@@ -434,6 +448,7 @@ ble_hs_startup_le_set_evmask_tx(void)
                                       BLE_HCI_OCF_LE_SET_EVENT_MASK),
                            &cmd, sizeof(cmd), NULL, 0);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -468,6 +483,7 @@ ble_hs_startup_set_evmask_tx(void)
                                       BLE_HCI_OCF_CB_SET_EVENT_MASK),
                            &cmd, sizeof(cmd), NULL, 0);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -481,6 +497,7 @@ ble_hs_startup_set_evmask_tx(void)
                                           BLE_HCI_OCF_CB_SET_EVENT_MASK2),
                                &cmd2, sizeof(cmd2), NULL, 0);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -505,17 +522,20 @@ ble_hs_startup_go(void)
 
     rc = ble_hs_startup_reset_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_hs_startup_read_local_ver_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     /* Read local supported commands. */
     rc = ble_hs_startup_read_sup_cmd_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -528,34 +548,40 @@ ble_hs_startup_go(void)
 
     rc = ble_hs_startup_read_sup_f_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
 
     rc = ble_hs_startup_set_evmask_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_hs_startup_le_set_evmask_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_PERIPHERAL)
     rc = ble_hs_startup_read_buf_sz();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
 
     rc = ble_hs_startup_le_read_sup_f_tx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_hs_startup_read_bd_addr();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

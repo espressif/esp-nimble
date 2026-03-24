@@ -199,7 +199,6 @@ ble_cs_call_event_cb(struct ble_cs_event *event)
 static void
 ble_cs_call_procedure_complete_cb(uint16_t conn_handle, uint8_t status)
 {
-
     struct ble_cs_event event;
 
     memset(&event, 0, sizeof event);
@@ -507,7 +506,6 @@ int
 ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data,
                                               unsigned int len)
 {
-
     int rc;
     const struct ble_hci_ev_le_subev_cs_rd_rem_supp_cap_complete *ev = data;
     struct ble_cs_set_def_settings_cp set_cmd;
@@ -517,6 +515,7 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
 
     if (len != sizeof(*ev) || ev->status) {
 
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -532,6 +531,7 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (desc.role == BLE_GAP_ROLE_MASTER) {
@@ -548,6 +548,9 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     if (rc) {
         BLE_HS_LOG(INFO, "Failed to set the default CS settings, err %d", rc);
 
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
      BLE_HS_LOG(INFO, "Set default CS settings ");
@@ -561,6 +564,9 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
             BLE_HS_LOG(INFO, "Failed to read FAE table");
         }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -568,7 +574,6 @@ int
 ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
                                          unsigned int len)
 {
-
     struct ble_gap_conn_desc desc;
     const struct ble_hci_ev_le_subev_cs_rd_rem_fae_complete *ev = data;
     struct ble_cs_create_config_cp cmd;
@@ -576,6 +581,7 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
     int rc=0;
 
     if (len != sizeof(*ev) || ev->status) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -607,6 +613,7 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
 
     rc = ble_gap_conn_find(cmd.conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -641,6 +648,9 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
             BLE_HS_LOG(INFO, "Failed to create CS config");
         }
     }
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -648,7 +658,6 @@ int
 ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
                                          unsigned int len)
 {
-
     int rc;
     struct ble_cs_set_proc_params_cp cmd;
     struct ble_cs_set_proc_params_rp rsp;
@@ -659,6 +668,7 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     if (len != sizeof(*ev) || ev->status) {
         BLE_HS_LOG(INFO, "Failed to enable CS security BLE_HS_ECNOTEROLLER");
 
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -699,6 +709,9 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     rc = ble_cs_set_proc_params(&cmd, &rsp);
     if (rc) {
         BLE_HS_LOG(INFO, "Failed to set CS procedure parameters");
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     } else {
         BLE_HS_LOG(INFO, "CS procedure parameters set");
@@ -711,6 +724,7 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (desc.role == BLE_GAP_ROLE_MASTER) {
@@ -720,6 +734,9 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
             BLE_HS_LOG(INFO, "Failed to enable CS procedure");
         } else {
             BLE_HS_LOG(INFO, "CS procedure enabled");
+        }
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         }
         return rc;
     }
@@ -737,6 +754,7 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
     // struct ble_hs_conn *conn;
 
     if (len != sizeof(*ev) || ev->status) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -746,6 +764,7 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -755,6 +774,9 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
         if (rc) {
             BLE_HS_LOG(DEBUG, "Failed to enable CS security");
             ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_ERR_UNSPECIFIED);
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
     }
@@ -770,6 +792,7 @@ ble_hs_hci_evt_le_cs_proc_enable_complete(uint8_t subevent, const void *data,
 
     if (len != sizeof(*ev) || ev->status) {
 
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -795,11 +818,13 @@ ble_hs_hci_evt_le_cs_subevent_result(uint8_t subevent, const void *data,
     while (steps_remaining > 0) {
         if ((uint8_t *)step_ptr + sizeof(struct cs_steps_data) > data_end) {
              MODLOG_DFLT(INFO, "Invalid step_ptr bounds");
+             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
              return BLE_HS_ECONTROLLER;
         }
         step_size = sizeof(struct cs_steps_data) + ((struct cs_steps_data *)step_ptr)->data_len;
         if ((uint8_t *)step_ptr + step_size > data_end || step_size <= 0) {
              MODLOG_DFLT(INFO, "Invalid step_size");
+             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
              return BLE_HS_ECONTROLLER;
         }
 
@@ -810,6 +835,7 @@ ble_hs_hci_evt_le_cs_subevent_result(uint8_t subevent, const void *data,
 
     if (len != expected_len) {
         MODLOG_DFLT(INFO, "ble_hs_hci_evt_le_cs_subevent_result\n len :%d  expected_len : %d\n", len, expected_len);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -836,11 +862,13 @@ ble_hs_hci_evt_le_cs_subevent_result_continue(uint8_t subevent, const void *data
         /* Check bounds before dereferencing step_ptr */
         if ((uint8_t *)step_ptr + sizeof(struct cs_steps_data) > data_end) {
             MODLOG_DFLT(INFO, "Invalid step_ptr bounds in continue event");
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
         step_size = sizeof(struct cs_steps_data) + ((struct cs_steps_data *)step_ptr)->data_len;
         if ((uint8_t *)step_ptr + step_size > data_end || step_size <= 0) {
             MODLOG_DFLT(INFO, "Invalid step_size in continue event");
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
@@ -851,6 +879,7 @@ ble_hs_hci_evt_le_cs_subevent_result_continue(uint8_t subevent, const void *data
 
     if (len != expected_len) {
         MODLOG_DFLT(INFO, "ble_hs_hci_evt_le_cs_subevent_result_continue len: %d     expected_len: %d\n", len, expected_len);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
     ble_cs_call_result_continue_cb(event);
@@ -864,6 +893,7 @@ ble_hs_hci_evt_le_cs_test_end_complete(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_cs_test_end_complete *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -874,7 +904,6 @@ ble_hs_hci_evt_le_cs_test_end_complete(uint8_t subevent, const void *data,
 int
 ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_params *params)
 {
-
     struct ble_cs_rd_rem_supp_cap_cp cmd;
     int rc;
 
@@ -896,6 +925,9 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
                    "err %d", rc);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 

@@ -27,6 +27,7 @@
 #include "services/cts/ble_svc_cts.h"
 #include "time.h"
 #include <sys/time.h>
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_CTS_SERVICE
 static struct ble_svc_cts_cfg cts_cfg = {0};
@@ -179,6 +180,7 @@ ble_svc_cts_access(uint16_t conn_handle, uint16_t attr_handle,
             }
             rc = ble_svc_cts_curr_time_validate(curr_time);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
             if(cts_cfg.set_time_cb == NULL) {
@@ -222,6 +224,7 @@ ble_svc_cts_access(uint16_t conn_handle, uint16_t attr_handle,
             }
             rc = ble_svc_cts_local_time_info_validate(local_time_info);
             if(rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 

@@ -25,6 +25,7 @@
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
 #include "esp_nimble_mem.h"
+#include "host/ble_hs_log.h"
 
 /** At least three channels required per connection (sig, att, sm). */
 #define BLE_HS_CONN_MIN_CHANS       3
@@ -62,6 +63,7 @@ ble_hs_conn_ensure_ctx(void)
 
     ble_hs_conn_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_conn_ctx));
     if (ble_hs_conn_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -155,6 +157,7 @@ int
 ble_hs_conn_chan_insert(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 {
 #if !NIMBLE_BLE_CONNECT
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -164,6 +167,7 @@ ble_hs_conn_chan_insert(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
     prev = NULL;
     SLIST_FOREACH(cur, &conn->bhc_channels, next) {
         if (cur->scid == chan->scid) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
             return BLE_HS_EALREADY;
         }
         if (cur->scid > chan->scid) {
@@ -656,6 +660,7 @@ ble_hs_conn_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_hs_conn_ensure_ctx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -668,6 +673,7 @@ ble_hs_conn_init(void)
         if (!ble_hs_conn_elem_mem) {
             nimble_platform_mem_free(ble_hs_conn_ctx);
             ble_hs_conn_ctx = NULL;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -681,16 +687,18 @@ ble_hs_conn_init(void)
     if (rc != 0) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-       nimble_platform_mem_free(ble_hs_conn_elem_mem);
-       ble_hs_conn_elem_mem = NULL;
+        nimble_platform_mem_free(ble_hs_conn_elem_mem);
+        ble_hs_conn_elem_mem = NULL;
 #endif
-       if (ble_hs_conn_ctx) {
-           nimble_platform_mem_free(ble_hs_conn_ctx);
-           ble_hs_conn_ctx = NULL;
-       }
-       memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
+        os_mempool_unregister(&ble_hs_conn_pool);
+        if (ble_hs_conn_ctx) {
+            nimble_platform_mem_free(ble_hs_conn_ctx);
+            ble_hs_conn_ctx = NULL;
+        }
+        memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
 #endif
-       return BLE_HS_EOS;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
+        return BLE_HS_EOS;
     }
 
     SLIST_INIT(&ble_hs_conns);
@@ -712,6 +720,7 @@ ble_hs_conn_deinit(void)
         ble_hs_conn_elem_mem = NULL;
     }
 #endif
+    os_mempool_unregister(&ble_hs_conn_pool);
     memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
     nimble_platform_mem_free(ble_hs_conn_ctx);
     ble_hs_conn_ctx = NULL;

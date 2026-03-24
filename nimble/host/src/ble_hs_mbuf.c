@@ -20,6 +20,7 @@
 #include "host/ble_hs.h"
 #include "host/ble_hs_mbuf.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 /**
  * Allocates an mbuf for use by the nimble host.
@@ -151,6 +152,7 @@ ble_hs_mbuf_to_flat(const struct os_mbuf *om, void *flat, uint16_t max_len,
     int rc;
 
     if (om == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -162,6 +164,7 @@ ble_hs_mbuf_to_flat(const struct os_mbuf *om, void *flat, uint16_t max_len,
 
     rc = os_mbuf_copydata(om, 0, copy_len, flat);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -181,15 +184,18 @@ int
 ble_hs_mbuf_pullup_base(struct os_mbuf **om, int base_len)
 {
     if (base_len <= 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     if (OS_MBUF_PKTLEN(*om) < base_len) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     *om = os_mbuf_pullup(*om, base_len);
     if (*om == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 

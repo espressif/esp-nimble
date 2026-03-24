@@ -22,6 +22,7 @@
 #include "nimble/nimble_opt.h"
 #include "host/ble_sm.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 void *
@@ -76,6 +77,7 @@ ble_sm_tx(uint16_t conn_handle, struct os_mbuf *txom)
 
     return rc;
 #endif
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 }
 
