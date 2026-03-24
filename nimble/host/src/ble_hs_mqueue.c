@@ -18,6 +18,7 @@
  */
 
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 int
 ble_mqueue_init(struct ble_mqueue *mq, ble_npl_event_fn *ev_fn, void *ev_arg)

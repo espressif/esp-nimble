@@ -24,6 +24,7 @@
 #include "nimble/hci_common.h"
 #include "ble_hs_priv.h"
 #include "bt_common.h"
+#include "host/ble_hs_log.h"
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
@@ -51,9 +52,11 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
         return 0;
 
     case BLE_ERR_MEM_CAPACITY:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM_EVT);
         return BLE_HS_ENOMEM_EVT;
 
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 }
@@ -67,6 +70,7 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 
     cmd = (struct ble_hci_cmd *)ble_transport_alloc_cmd();
     if (cmd == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM_EVT);
         return BLE_HS_ENOMEM_EVT;
     }
     BLE_HS_DBG_ASSERT(cmd != NULL);
@@ -121,10 +125,12 @@ ble_hs_hci_cmd_send_buf(uint16_t opcode, const void *buf, uint8_t buf_len)
 {
     switch (ble_hs_sync_state) {
     case BLE_HS_SYNC_STATE_BAD:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSYNCED);
         return BLE_HS_ENOTSYNCED;
 
     case BLE_HS_SYNC_STATE_BRINGUP:
         if (!ble_hs_is_parent_task()) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSYNCED);
             return BLE_HS_ENOTSYNCED;
         }
         break;
@@ -134,6 +140,7 @@ ble_hs_hci_cmd_send_buf(uint16_t opcode, const void *buf, uint8_t buf_len)
 
     default:
         BLE_HS_DBG_ASSERT(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 

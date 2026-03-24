@@ -20,6 +20,7 @@
  */
 
 #include "syscfg/syscfg.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 
 #include <stdint.h>
@@ -97,6 +98,7 @@ ble_rpa_remove_peer_dev_rec(struct ble_hs_dev_records *p_dev_rec)
     }
 
     if (i >= ble_store_num_peer_dev_rec) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -237,6 +239,7 @@ ble_rpa_resolv_add_peer_rec(uint8_t *peer_addr)
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
     if (ble_store_num_peer_dev_rec >= BLE_RESOLV_LIST_SIZE) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_CAP);
         return BLE_HS_ESTORE_CAP;
     }
     p_dev_rec = &peer_dev_rec[ble_store_num_peer_dev_rec];
@@ -373,6 +376,7 @@ ble_hs_rand_prand_get(uint8_t *prand)
         /* Get 24 bits of random data */
         rc = ble_hs_hci_util_rand(prand, 3);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -591,6 +595,7 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
 
     /* Check if we have any open entries */
     if (g_ble_hs_resolv_data.rl_cnt >= BLE_RESOLV_LIST_SIZE) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -598,6 +603,7 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
     ident_addr = cmd->peer_id_addr;
 
     if (ble_hs_is_on_resolv_list((uint8_t *)ident_addr, addr_type)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -757,11 +763,13 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
      * operations. Max RPA_TIMEOUT is ~11.5HRS (Spec v4.2, Vol 2, Part E,
      * section 7.8.45) */
     if (!((tmo_secs > 0) && (tmo_secs <= BLE_MAX_RPA_TIMEOUT_VAL))) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     ticks = ble_npl_time_ms_to_ticks32(tmo_secs * 1000);
     if (ticks > INT32_MAX) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -819,6 +827,7 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
     struct ble_encryption_block ecb = {0};
 
     if (!(is_irk_nonzero(irk))) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -834,6 +843,7 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
     /* Send the data to ble_sm_alg_encrypt in little-endian style */
     rc = ble_sm_alg_encrypt(ecb.key, ecb.plain_text, ecb.cipher_text);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     swap_in_place(ecb.cipher_text, 16);

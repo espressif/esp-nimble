@@ -61,6 +61,7 @@
 #include "host/ble_gap.h"
 #include "ble_hs_priv.h"
 #include "ble_gattc_cache_priv.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 #include "host/ble_esp_gattc_cache.h"
 #endif
@@ -396,6 +397,7 @@ ble_gattc_ensure_ctx(void)
 
     ble_gattc_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_gattc_ctx));
     if (ble_gattc_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1719,6 +1721,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -1783,6 +1788,7 @@ ble_gattc_disc_all_svcs_tx(struct ble_gattc_proc *proc)
                                         proc->disc_all_svcs.prev_handle + 1,
                                         0xffff, &uuid.u);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1799,6 +1805,9 @@ ble_gattc_disc_all_svcs_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_disc_all_svcs_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -1869,6 +1878,7 @@ ble_gattc_disc_all_svcs_rx_adata(struct ble_gattc_proc *proc,
 done:
     cbrc = ble_gattc_disc_all_svcs_cb(proc, rc, 0, &service);
     if (rc != 0 || cbrc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     } else {
         return 0;
@@ -1888,18 +1898,21 @@ ble_gattc_disc_all_svcs_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_disc_all_svcs_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (proc->disc_all_svcs.prev_handle == 0xffff) {
         /* Service discovery complete. */
         ble_gattc_disc_all_svcs_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     /* Send follow-up request. */
     rc = ble_gattc_disc_all_svcs_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -1911,6 +1924,7 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
                         void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_DISC_ALL_SVCS)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2030,6 +2044,7 @@ ble_gattc_disc_svc_uuid_tx(struct ble_gattc_proc *proc)
                                         val,
                                         ble_uuid_length(&proc->disc_svc_uuid.service_uuid.u));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2046,6 +2061,9 @@ ble_gattc_disc_svc_uuid_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_disc_svc_uuid_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -2101,6 +2119,7 @@ ble_gattc_disc_svc_uuid_rx_hinfo(struct ble_gattc_proc *proc,
 done:
     cbrc = ble_gattc_disc_svc_uuid_cb(proc, rc, 0, &service);
     if (rc != 0 || cbrc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     } else {
         return 0;
@@ -2120,18 +2139,21 @@ ble_gattc_disc_svc_uuid_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_disc_svc_uuid_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (proc->disc_svc_uuid.prev_handle == 0xffff) {
         /* Service discovery complete. */
         ble_gattc_disc_svc_uuid_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     /* Send follow-up request. */
     rc = ble_gattc_disc_svc_uuid_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -2143,6 +2165,7 @@ ble_gattc_disc_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *uuid,
                            ble_gatt_disc_svc_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_DISC_SVC_UUID)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2183,6 +2206,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -2256,6 +2282,7 @@ ble_gattc_find_inc_svcs_tx(struct ble_gattc_proc *proc)
                                       proc->find_inc_svcs.prev_handle + 1,
                                       proc->find_inc_svcs.end_handle, &uuid.u);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     } else {
@@ -2263,6 +2290,7 @@ ble_gattc_find_inc_svcs_tx(struct ble_gattc_proc *proc)
         rc = ble_att_clt_tx_read(proc->conn_handle, proc->cid,
                                  proc->find_inc_svcs.cur_start);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -2280,6 +2308,9 @@ ble_gattc_find_inc_svcs_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_find_inc_svcs_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -2354,6 +2385,7 @@ ble_gattc_find_inc_svcs_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     rc = ble_gattc_find_inc_svcs_cb(proc, 0, 0, &service);
     if (rc != 0) {
         /* Application has indicated that the procedure should be aborted. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -2369,6 +2401,7 @@ ble_gattc_find_inc_svcs_rx_read_rsp(struct ble_gattc_proc *proc, int status,
 
 err:
     ble_gattc_find_inc_svcs_cb(proc, rc, 0, NULL);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -2445,6 +2478,7 @@ done:
     }
 
     if (rc != 0 || cbrc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     } else {
         return 0;
@@ -2464,18 +2498,21 @@ ble_gattc_find_inc_svcs_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_find_inc_svcs_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (proc->find_inc_svcs.prev_handle == 0xffff) {
         /* Procedure complete. */
         ble_gattc_find_inc_svcs_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     /* Send follow-up request. */
     rc = ble_gattc_find_inc_svcs_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
     return 0;
@@ -2494,6 +2531,7 @@ ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
 #endif
 {
 #if !MYNEWT_VAL(BLE_GATT_FIND_INC_SVCS)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2534,6 +2572,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -2598,6 +2639,7 @@ ble_gattc_disc_all_chrs_tx(struct ble_gattc_proc *proc)
                                   proc->disc_all_chrs.prev_handle + 1,
                                   proc->disc_all_chrs.end_handle, &uuid.u);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2614,6 +2656,9 @@ ble_gattc_disc_all_chrs_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_disc_all_chrs_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -2686,6 +2731,7 @@ ble_gattc_disc_all_chrs_rx_adata(struct ble_gattc_proc *proc,
 done:
     cbrc = ble_gattc_disc_all_chrs_cb(proc, rc, 0, &chr);
     if (rc != 0 || cbrc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     } else {
         return 0;
@@ -2705,18 +2751,21 @@ ble_gattc_disc_all_chrs_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_disc_all_chrs_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (proc->disc_all_chrs.prev_handle == proc->disc_all_chrs.end_handle) {
         /* Characteristic discovery complete. */
         ble_gattc_disc_all_chrs_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     /* Send follow-up request. */
     rc = ble_gattc_disc_all_chrs_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
     return 0;
@@ -2728,6 +2777,7 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
                         void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_DISC_ALL_CHRS)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2842,6 +2892,7 @@ ble_gattc_disc_chr_uuid_tx(struct ble_gattc_proc *proc)
                                   proc->disc_chr_uuid.prev_handle + 1,
                                   proc->disc_chr_uuid.end_handle, &uuid.u);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2858,6 +2909,9 @@ ble_gattc_disc_chr_uuid_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_disc_chr_uuid_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -2941,6 +2995,7 @@ done:
     }
 
     if (rc != 0 || cbrc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     } else {
         return 0;
@@ -2960,18 +3015,21 @@ ble_gattc_disc_chr_uuid_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_disc_chr_uuid_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (proc->disc_chr_uuid.prev_handle == proc->disc_chr_uuid.end_handle) {
         /* Characteristic discovery complete. */
         ble_gattc_disc_chr_uuid_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     /* Send follow-up request. */
     rc = ble_gattc_disc_chr_uuid_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
     return 0;
@@ -2983,6 +3041,7 @@ ble_gattc_disc_chrs_by_uuid(uint16_t conn_handle, uint16_t start_handle,
                             ble_gatt_chr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_DISC_CHR_UUID)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3024,6 +3083,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -3087,6 +3149,7 @@ ble_gattc_disc_all_dscs_tx(struct ble_gattc_proc *proc)
                                   proc->disc_all_dscs.prev_handle + 1,
                                   proc->disc_all_dscs.end_handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3103,6 +3166,9 @@ ble_gattc_disc_all_dscs_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_disc_all_dscs_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -3156,6 +3222,7 @@ done:
 
     cbrc = ble_gattc_disc_all_dscs_cb(proc, rc, 0, &dsc);
     if (rc != 0 || cbrc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     } else {
         return 0;
@@ -3175,18 +3242,21 @@ ble_gattc_disc_all_dscs_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_disc_all_dscs_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (proc->disc_all_dscs.prev_handle == proc->disc_all_dscs.end_handle) {
         /* All descriptors discovered. */
         ble_gattc_disc_all_dscs_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     /* Send follow-up request. */
     rc = ble_gattc_disc_all_dscs_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -3199,6 +3269,7 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
                         ble_gatt_dsc_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_DISC_ALL_DSCS)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3258,6 +3329,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -3265,8 +3339,10 @@ done:
 int ble_gattc_check_valid_param(uint16_t num, uint16_t offset)
 {
     if (num == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_ATTR_NOT_FOUND);
         return BLE_ATT_ERR_ATTR_NOT_FOUND;
     } else if (offset >= num) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INVALID_OFFSET);
         return BLE_ATT_ERR_INVALID_OFFSET;
     }
 
@@ -3432,6 +3508,9 @@ int ble_gattc_get_service(uint16_t conn_handle,
               nimble_platform_mem_free(db);
           }
           *count = 0;
+          if (rc != 0) {
+              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+          }
           return rc;
       } else {
           ble_gattc_fill_gatt_db_conversion(count, svc_num, ESP_BLE_GATT_DB_PRIMARY_SERVICE, offset, (void *)result, db);
@@ -3461,6 +3540,9 @@ int ble_gattc_get_all_char(uint16_t conn_handle,
               nimble_platform_mem_free(db);
           }
           *count = 0;
+          if (rc != 0) {
+              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+          }
           return rc;
       } else {
           ble_gattc_fill_gatt_db_conversion(count, char_num, ESP_BLE_GATT_DB_CHARACTERISTIC, offset, (void *)result, db);
@@ -3489,6 +3571,9 @@ int ble_gattc_get_all_descr(uint16_t conn_handle,
               nimble_platform_mem_free(db);
           }
           *count = 0;
+          if (rc != 0) {
+              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+          }
           return rc;
       } else {
           ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, offset, (void *)result, db);
@@ -3519,6 +3604,9 @@ int ble_gattc_get_char_by_uuid(uint16_t conn_handle,
             nimble_platform_mem_free(db);
           }
           *count = 0;
+          if (rc != 0) {
+              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+          }
           return rc;
       } else {
           ble_gattc_fill_gatt_db_conversion(count, char_num, ESP_BLE_GATT_DB_CHARACTERISTIC, 0, (void *)result, db);
@@ -3551,6 +3639,9 @@ int ble_gattc_get_descr_by_uuid(uint16_t conn_handle,
               nimble_platform_mem_free(db);
           }
           *count = 0;
+          if (rc != 0) {
+              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+          }
           return rc;
       } else {
              ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, 0, (void *)result, db);
@@ -3580,6 +3671,9 @@ int ble_gattc_get_descr_by_char_handle(uint16_t conn_handle,
               nimble_platform_mem_free(db);
           }
           *count = 0;
+          if (rc != 0) {
+              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+          }
           return rc;
       } else {
           ble_gattc_fill_gatt_db_conversion(count, descr_num, ESP_BLE_GATT_DB_DESCRIPTOR, 0, (void *)result, db);
@@ -3612,6 +3706,9 @@ int ble_gattc_get_include_service(uint16_t conn_handle,
             nimble_platform_mem_free(db);
         }
         *count = 0;
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     } else {
         ble_gattc_fill_gatt_db_conversion(count, incl_num, ESP_BLE_GATT_DB_INCLUDED_SERVICE, 0, (void *)result, db);
@@ -3648,6 +3745,7 @@ int ble_gattc_get_db(uint16_t conn_handle,
     ble_gattc_get_cached_gatt_db(conn_handle, start_handle, end_handle, &db, &num, count);
 
     if (num == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_ATTR_NOT_FOUND);
         return BLE_ATT_ERR_ATTR_NOT_FOUND;
     }
     if (db) {
@@ -3745,6 +3843,7 @@ ble_gattc_read_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     *om = attr.om;
 
     /* The read operation only has a single request / response exchange. */
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -3755,6 +3854,7 @@ ble_gattc_read_tx(struct ble_gattc_proc *proc)
 
     rc = ble_att_clt_tx_read(proc->conn_handle, proc->cid, proc->read.handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3766,6 +3866,7 @@ ble_gattc_read(uint16_t conn_handle, uint16_t attr_handle,
                ble_gatt_attr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_READ)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3800,6 +3901,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -3888,6 +3992,7 @@ ble_gattc_read_uuid_rx_adata(struct ble_gattc_proc *proc,
     os_mbuf_free_chain(attr.om);
 
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -3905,6 +4010,7 @@ ble_gattc_read_uuid_rx_complete(struct ble_gattc_proc *proc, int status)
 
     if (status != 0) {
         ble_gattc_read_uuid_cb(proc, status, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -3912,6 +4018,7 @@ ble_gattc_read_uuid_rx_complete(struct ble_gattc_proc *proc, int status)
      * of multiple characteristics with identical UUIDs.
      */
     ble_gattc_read_uuid_cb(proc, BLE_HS_EDONE, 0, NULL);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -3930,6 +4037,7 @@ ble_gattc_read_by_uuid(uint16_t conn_handle, uint16_t start_handle,
                        ble_gatt_attr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_READ_UUID)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -3964,6 +4072,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -4030,6 +4141,7 @@ ble_gattc_read_long_tx(struct ble_gattc_proc *proc)
     if (proc->read_long.offset == 0) {
         rc = ble_att_clt_tx_read(proc->conn_handle, proc->cid, proc->read_long.handle);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     } else {
@@ -4037,6 +4149,7 @@ ble_gattc_read_long_tx(struct ble_gattc_proc *proc)
                                       proc->read_long.handle,
                                       proc->read_long.offset);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -4054,6 +4167,9 @@ ble_gattc_read_long_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_read_long_cb(proc, rc, 0, NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -4100,6 +4216,7 @@ ble_gattc_read_long_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     *om = attr.om;
 
     if (rc != 0 || status != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -4107,12 +4224,14 @@ ble_gattc_read_long_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     mtu = ble_att_mtu_by_cid(proc->conn_handle, proc->cid);
     if (mtu == 0) {
         /* No longer connected. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (data_len < mtu - 1) {
         /* Response shorter than maximum allowed; read complete. */
         ble_gattc_read_long_cb(proc, BLE_HS_EDONE, 0, NULL);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -4120,6 +4239,7 @@ ble_gattc_read_long_rx_read_rsp(struct ble_gattc_proc *proc, int status,
     proc->read_long.offset += data_len;
     rc = ble_gattc_read_long_resume(proc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -4131,6 +4251,7 @@ ble_gattc_read_long(uint16_t conn_handle, uint16_t handle, uint16_t offset,
                     ble_gatt_attr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_READ_LONG)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -4165,6 +4286,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -4344,6 +4468,7 @@ ble_gattc_read_mult_tx(struct ble_gattc_proc *proc)
     rc = ble_att_clt_tx_read_mult(proc->conn_handle, proc->cid, proc->read_mult.handles,
                                   proc->read_mult.num_handles, proc->read_mult.variable);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -4358,6 +4483,7 @@ ble_gattc_read_mult_internal(uint16_t conn_handle, const uint16_t *handles,
                              void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_READ_MULT)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -4401,6 +4527,9 @@ done:
     }
 
     ble_gattc_process_status(proc, rc);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -4422,6 +4551,7 @@ ble_gattc_read_mult_var(uint16_t conn_handle, const uint16_t *handles,
     return ble_gattc_read_mult_internal(conn_handle, handles, num_handles,
                                         true, NULL, cb, cb_arg);
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -4435,6 +4565,7 @@ ble_gattc_write_no_rsp(uint16_t conn_handle, uint16_t attr_handle,
                        struct os_mbuf *txom)
 {
 #if !MYNEWT_VAL(BLE_GATT_WRITE_NO_RSP)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -4452,6 +4583,9 @@ ble_gattc_write_no_rsp(uint16_t conn_handle, uint16_t attr_handle,
     }
     ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -4464,11 +4598,13 @@ ble_gattc_write_no_rsp_flat(uint16_t conn_handle, uint16_t attr_handle,
 
     om = ble_hs_mbuf_from_flat(data, data_len);
     if (om == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
     rc = ble_gattc_write_no_rsp(conn_handle, attr_handle, om);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -4485,6 +4621,7 @@ ble_gattc_signed_write(uint16_t conn_handle, uint16_t attr_handle,
                        struct os_mbuf *txom)
 {
 #if !MYNEWT_VAL(BLE_GATT_SIGNED_WRITE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -4606,6 +4743,7 @@ ble_gattc_write(uint16_t conn_handle, uint16_t attr_handle,
                 struct os_mbuf *txom, ble_gatt_attr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_WRITE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -4662,11 +4800,13 @@ ble_gattc_write_flat(uint16_t conn_handle, uint16_t attr_handle,
 
     om = ble_hs_mbuf_from_flat(data, data_len);
     if (om == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
     rc = ble_gattc_write(conn_handle, attr_handle, om, cb, cb_arg);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -4781,6 +4921,9 @@ ble_gattc_write_long_tx(struct ble_gattc_proc *proc)
 
 done:
     os_mbuf_free_chain(om);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -4794,6 +4937,9 @@ ble_gattc_write_long_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_write_long_cb(proc, rc, 0);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -4900,6 +5046,7 @@ ble_gattc_write_long_rx_prep(struct ble_gattc_proc *proc,
 err:
     /* XXX: Might need to cancel pending writes. */
     ble_gattc_write_long_cb(proc, rc, 0);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -4918,10 +5065,12 @@ ble_gattc_write_long_rx_exec(struct ble_gattc_proc *proc, int status)
         /* Expecting an execute write response, not a prepare write
          * response.
          */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     ble_gattc_write_long_cb(proc, status, 0);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -4931,6 +5080,7 @@ ble_gattc_write_long(uint16_t conn_handle, uint16_t attr_handle,
                      ble_gatt_attr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_WRITE_LONG)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -5090,6 +5240,9 @@ ble_gattc_write_reliable_tx(struct ble_gattc_proc *proc)
 
 done:
     os_mbuf_free_chain(om);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -5103,6 +5256,9 @@ ble_gattc_write_reliable_resume(struct ble_gattc_proc *proc)
     rc = ble_gattc_process_resume_status(proc, status);
     if (rc != 0) {
         ble_gattc_write_reliable_cb(proc, rc, 0);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -5194,6 +5350,7 @@ ble_gattc_write_reliable_rx_prep(struct ble_gattc_proc *proc,
 
 err:
     ble_gattc_write_reliable_err(proc, rc, 0);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -5206,6 +5363,7 @@ ble_gattc_write_reliable_rx_exec(struct ble_gattc_proc *proc, int status)
 {
     ble_gattc_dbg_assert_proc_not_inserted(proc);
     ble_gattc_write_reliable_cb(proc, status, 0);
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -5216,6 +5374,7 @@ ble_gattc_write_reliable(uint16_t conn_handle,
                          ble_gatt_reliable_attr_fn *cb, void *cb_arg)
 {
 #if !MYNEWT_VAL(BLE_GATT_WRITE_RELIABLE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -5284,6 +5443,7 @@ static int ble_gatts_check_conn_aware(uint16_t conn_handle, bool *aware) {
     struct ble_hs_conn *conn;
     conn = ble_hs_conn_find(conn_handle);
     if(conn == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
     *aware = conn->bhc_gatt_svr.aware_state;
@@ -5297,6 +5457,7 @@ ble_gatts_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
                         struct os_mbuf *txom)
 {
 #if !MYNEWT_VAL(BLE_GATT_NOTIFY)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -5365,6 +5526,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
                                  struct ble_gatt_notif *tuples)
 {
 #if !MYNEWT_VAL(BLE_GATT_NOTIFY_MULTIPLE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -5380,6 +5542,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
 
     txom = ble_hs_mbuf_att_pkt();
     if (txom == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -5388,6 +5551,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
     if (conn == NULL) {
         ble_hs_unlock();
         os_mbuf_free_chain(txom);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
@@ -5571,6 +5735,7 @@ int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_
     /* Check if a GATT procedure is already active */
     if (gatt_proc_active) {
         BLE_HS_LOG(WARN, "Gatt procedure active; cannot start new process.");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBUSY);
         return BLE_HS_EBUSY;
     }
 
@@ -5591,6 +5756,9 @@ int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_
         nimble_platform_mem_free(cccd_reg_flag);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -5640,6 +5808,7 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
 {
     if (gatt_proc_active) {
         BLE_HS_LOG(WARN, "Gatt procedure active; cannot start new process");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBUSY);
         return BLE_HS_EBUSY;
     }
 
@@ -5661,6 +5830,9 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
       nimble_platform_mem_free(cccd_unreg_flag);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 #endif  //MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
@@ -5671,6 +5843,7 @@ int
 ble_gatts_notify(uint16_t conn_handle, uint16_t chr_val_handle)
 {
 #if !MYNEWT_VAL(BLE_GATT_NOTIFY)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -5778,6 +5951,7 @@ ble_gatts_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
                           struct os_mbuf *txom)
 {
 #if !MYNEWT_VAL(BLE_GATT_INDICATE)
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -6355,12 +6529,14 @@ ble_gattc_err_dispatch_init(void)
 {
 
     if (ble_gattc_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     ble_gattc_err_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_err_fn *));
 
     if (!ble_gattc_err_dispatch) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
     }
 
@@ -6405,12 +6581,14 @@ static int
 ble_gattc_resume_dispatch_init(void)
 {
     if (ble_gattc_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     ble_gattc_resume_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_resume_fn *));
 
     if (!ble_gattc_resume_dispatch) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
     }
     ble_gattc_resume_dispatch[BLE_GATT_OP_MTU]               = NULL;
@@ -6449,12 +6627,14 @@ static int
 ble_gattc_tmo_dispatch_init(void)
 {
     if (ble_gattc_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     ble_gattc_tmo_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_tmo_fn *));
 
     if (!ble_gattc_tmo_dispatch) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
     }
 
@@ -6504,6 +6684,7 @@ ble_gattc_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_gattc_ensure_ctx();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -6524,6 +6705,7 @@ ble_gattc_init(void)
         if (ble_gattc_proc_mem == NULL) {
             ble_gattc_proc_mem = (os_membuf_t *)nimble_platform_mem_calloc(mem_bytes, sizeof(os_membuf_t));
             if (ble_gattc_proc_mem == NULL) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
                 return BLE_HS_ENOMEM;
             }
         }
@@ -6548,6 +6730,9 @@ ble_gattc_init(void)
         rc = ble_gattc_err_dispatch_init();
         if (rc != 0) {
             ble_gattc_deinit();
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
 #endif
@@ -6556,6 +6741,9 @@ ble_gattc_init(void)
         rc = ble_gattc_resume_dispatch_init();
         if (rc != 0) {
             ble_gattc_deinit();
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
 #endif
@@ -6563,12 +6751,16 @@ ble_gattc_init(void)
         rc = ble_gattc_tmo_dispatch_init();
         if (rc != 0) {
             ble_gattc_deinit();
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
 #endif
 
 #else
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 #endif
@@ -6578,11 +6770,13 @@ ble_gattc_init(void)
         STATS_HDR(ble_gattc_stats), STATS_SIZE_INIT_PARMS(ble_gattc_stats,
         STATS_SIZE_32), STATS_NAME_INIT_PARMS(ble_gattc_stats), "ble_gattc");
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
         return BLE_HS_EOS;
     }
 
     return 0;
 #else
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }

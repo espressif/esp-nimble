@@ -50,6 +50,7 @@
 #include "ble_hs_resolv_priv.h"
 #include "../store/config/src/ble_store_config_priv.h"
 #include "esp_nimble_mem.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 
@@ -339,6 +340,7 @@ ble_sm_gen_pair_rand(uint8_t *pair_rand)
 
     rc = ble_hs_hci_util_rand(pair_rand, 16);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -360,6 +362,7 @@ ble_sm_gen_ediv(struct ble_sm_master_id *master_id)
 
     rc = ble_hs_hci_util_rand(&master_id->ediv, sizeof master_id->ediv);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -381,6 +384,7 @@ ble_sm_gen_master_id_rand(struct ble_sm_master_id *master_id)
 
     rc = ble_hs_hci_util_rand(&master_id->rand_val, sizeof master_id->rand_val);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -403,6 +407,7 @@ ble_sm_gen_ltk(struct ble_sm_proc *proc, uint8_t *ltk)
 
     rc = ble_hs_hci_util_rand(ltk, proc->key_size);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -428,6 +433,7 @@ ble_sm_gen_csrk(struct ble_sm_proc *proc, uint8_t *csrk)
 
     rc = ble_hs_hci_util_rand(csrk, 16);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -961,6 +967,7 @@ ble_sm_read_bond(uint16_t conn_handle, struct ble_store_value_sec *out_bond)
 
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1005,6 +1012,9 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
         case BLE_HS_ENOENT:
             return 0;
         default:
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
 
@@ -1024,6 +1034,7 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
 
     BLE_HS_LOG(DEBUG, "silently ignoring pair request from bonded peer");
 
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
     return BLE_HS_EALREADY;
 }
 
@@ -1177,6 +1188,7 @@ ble_sm_chk_store_overflow_by_type(int obj_type, uint16_t conn_handle)
 
     rc = ble_store_util_count(obj_type, &count);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1195,6 +1207,7 @@ ble_sm_chk_store_overflow_by_type(int obj_type, uint16_t conn_handle)
      */
     rc = ble_store_full_event(obj_type, conn_handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1209,12 +1222,14 @@ ble_sm_chk_store_overflow(uint16_t conn_handle)
     rc = ble_sm_chk_store_overflow_by_type(BLE_STORE_OBJ_TYPE_PEER_SEC,
                                            conn_handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_sm_chk_store_overflow_by_type(BLE_STORE_OBJ_TYPE_OUR_SEC,
                                            conn_handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1406,9 +1421,11 @@ ble_sm_retrieve_ltk(uint16_t ediv, uint64_t rand, uint8_t peer_addr_type,
 
     rc = ble_store_read_our_sec(&key_sec, value_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (value_sec->ediv != ediv || value_sec->rand_num != rand) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     return rc;
@@ -1428,10 +1445,12 @@ ble_sm_ltk_req_reply_tx(uint16_t conn_handle, const uint8_t *ltk)
                                       BLE_HCI_OCF_LE_LT_KEY_REQ_REPLY),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (le16toh(rsp.conn_handle) != conn_handle) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1450,10 +1469,12 @@ ble_sm_ltk_req_neg_reply_tx(uint16_t conn_handle)
                                       BLE_HCI_OCF_LE_LT_KEY_REQ_NEG_REPLY),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (le16toh(rsp.conn_handle) != conn_handle) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -2807,6 +2828,7 @@ ble_sm_incr_our_sign_counter(uint16_t conn_handle)
 
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2815,23 +2837,28 @@ ble_sm_incr_our_sign_counter(uint16_t conn_handle)
 
     rc = ble_store_read_our_sec(&key_sec, &value_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (value_sec.csrk_present != 1) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     if (value_sec.sign_counter == (uint32_t)0xffffffff) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
     rc = ble_store_delete_our_sec(&key_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     value_sec.sign_counter += 1;
     rc = ble_store_write_our_sec(&value_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2857,6 +2884,7 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2865,17 +2893,21 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 
     rc = ble_store_read_peer_sec(&key_sec, &value_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (value_sec.csrk_present != 1) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     if (value_sec.sign_counter == (uint32_t)0xffffffff) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
     rc = ble_store_delete_peer_sec(&key_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2891,6 +2923,7 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
     value_sec.sign_counter += 1;
     rc = ble_store_write_peer_sec(&value_sec);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2951,6 +2984,7 @@ ble_sm_pair_initiate(uint16_t conn_handle)
 
     if (proc != NULL) {
         res.app_status = BLE_HS_EALREADY;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
         return BLE_HS_EALREADY;
     }
 
@@ -2959,6 +2993,7 @@ ble_sm_pair_initiate(uint16_t conn_handle)
      */
     rc = ble_sm_chk_store_overflow(conn_handle);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3095,11 +3130,13 @@ ble_sm_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
     conn_handle = ble_l2cap_get_conn_handle(chan);
     if (conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = os_mbuf_copydata(*om, 0, 1, &op);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -3242,6 +3279,7 @@ ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey)
      * SMP state.
      */
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3268,6 +3306,7 @@ ble_sm_state_dispatch_init(void)
     ble_sm_state_dispatch = nimble_platform_mem_calloc(1, BLE_SM_PROC_STATE_CNT * sizeof(ble_sm_state_fn *));
 
     if (!ble_sm_state_dispatch) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
     }
 
@@ -3309,6 +3348,7 @@ ble_sm_init(void)
     if (!ble_sm_ctx) {
         ble_sm_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_sm_ctx));
         if (!ble_sm_ctx) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -3322,6 +3362,7 @@ ble_sm_init(void)
             /* free the allocated memory */
             nimble_platform_mem_free(ble_sm_ctx);
             ble_sm_ctx = NULL;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -3340,6 +3381,9 @@ ble_sm_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         ble_sm_deinit();
 #endif
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -3348,6 +3392,9 @@ ble_sm_init(void)
 
     if (rc != 0) {
         ble_sm_deinit();
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -3395,11 +3442,13 @@ ble_sm_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
     handle = ble_l2cap_get_conn_handle(chan);
     if (!handle) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     cmd = ble_sm_cmd_get(BLE_SM_OP_PAIR_FAIL, sizeof(*cmd), &txom);
     if (cmd == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -3438,6 +3487,7 @@ ble_sm_configure_static_passkey(uint32_t passkey, bool enable)
     if (enable) {
         /* Validate passkey is 6 digits */
         if (passkey > 999999) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
         /* Passkey authentication requires MITM; ensure it is enabled. */
@@ -3458,6 +3508,7 @@ int
 ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled)
 {
     if (passkey == NULL || enabled == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 

@@ -26,6 +26,7 @@
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
 #include "esp_nimble_mem.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_ISO)
 #include "host/ble_hs_iso.h"
 #endif /* MYNEWT_VAL(BLE_ISO) */
@@ -395,6 +396,7 @@ static int ble_hs_hci_ensure_ctx(void)
     ble_hci_ctx = nimble_platform_mem_calloc (1, sizeof(* ble_hci_ctx));
 
     if (!ble_hci_ctx) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -468,6 +470,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 #endif
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -499,6 +502,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 	 */
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 	if (ble_hs_hci_ensure_ctx()) {
+	    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
 	    return BLE_HS_ENOMEM;
 	}
 #endif
@@ -550,6 +554,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 #endif
             rc = ble_hs_atomic_conn_delete(ev->conn_handle);
             if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -597,6 +602,7 @@ ble_hs_hci_evt_encrypt_change(uint8_t event_code, const void *data,
     const struct ble_hci_ev_enrypt_chg *ev = data;
 
     if (len != sizeof (*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -612,6 +618,7 @@ ble_hs_hci_evt_hw_error(uint8_t event_code, const void *data, unsigned int len)
     const struct ble_hci_ev_hw_error *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -628,6 +635,7 @@ ble_hs_hci_evt_enc_key_refresh(uint8_t event_code, const void *data,
     const struct ble_hci_ev_enc_key_refresh *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -647,10 +655,12 @@ ble_hs_hci_evt_num_completed_pkts(uint8_t event_code, const void *data,
     int i;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
     if (len != sizeof(*ev) + (ev->count * sizeof(ev->completed[0]))) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -692,6 +702,7 @@ ble_hs_hci_evt_vs(uint8_t event_code, const void *data, unsigned int len)
     const struct ble_hci_ev_vs *ev = data;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -734,6 +745,7 @@ ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
     ble_hs_hci_evt_le_fn *fn;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -757,15 +769,18 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE) {
         if (len != sizeof(*ev) - 3) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
     } else {
         if (len != sizeof(*ev)) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
     }
 #else
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 #endif
@@ -811,6 +826,7 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_hs_hci_ensure_ctx()) {
+             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
              return BLE_HS_ENOMEM;
         }
 #endif
@@ -843,6 +859,7 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
     struct ble_gap_conn_complete evt;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -886,6 +903,7 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_hs_hci_ensure_ctx()) {
+             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
              return BLE_HS_ENOMEM;
         }
 #endif
@@ -909,6 +927,7 @@ ble_hs_hci_evt_le_adv_rpt_first_pass(const void *data, unsigned int len)
     int i;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -917,18 +936,21 @@ ble_hs_hci_evt_le_adv_rpt_first_pass(const void *data, unsigned int len)
 
     if (ev->num_reports < BLE_HCI_LE_ADV_RPT_NUM_RPTS_MIN ||
         ev->num_reports > BLE_HCI_LE_ADV_RPT_NUM_RPTS_MAX) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     for (i = 0; i < ev->num_reports; i++) {
         /* extra byte for RSSI after adv data */
         if (len < sizeof(*rpt) + 1) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
         rpt = data;
 
         if (rpt->data_len > len) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
@@ -939,6 +961,7 @@ ble_hs_hci_evt_le_adv_rpt_first_pass(const void *data, unsigned int len)
 
     /* Make sure length was correct */
     if (len) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -957,6 +980,7 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
     /* Validate the event is formatted correctly */
     rc = ble_hs_hci_evt_le_adv_rpt_first_pass(data, len);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1024,6 +1048,7 @@ ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, const void *data, unsigned int l
     int i;
 
     if (len < sizeof(*ev) || len != sizeof(*ev) + ev->num_reports * sizeof(ev->reports[0])) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1054,6 +1079,7 @@ ble_hs_hci_evt_le_rd_rem_used_feat_complete(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_rd_rem_used_feat *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1069,6 +1095,7 @@ ble_hs_hci_evt_rd_rem_ver_complete(uint8_t subevent, const void *data,
     const struct ble_hci_ev_rd_rem_ver_info_cmp *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1139,6 +1166,7 @@ ble_hs_hci_evt_le_cis_estab(uint8_t subevent, const void *data, unsigned int len
     const struct ble_hci_ev_le_subev_cis_established *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1157,6 +1185,7 @@ ble_hs_hci_evt_le_cis_request(uint8_t subevent, const void *data, unsigned int l
     const struct ble_hci_ev_le_subev_cis_request *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1175,11 +1204,13 @@ ble_hs_hci_evt_le_create_big_comp(uint8_t subevent, const void *data, unsigned i
     const struct ble_hci_ev_le_subev_create_big_complete *ev = data;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
     if ((len != sizeof(*ev) + ev->num_bis * 2) ||
         (ev->num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG))) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1198,6 +1229,7 @@ ble_hs_hci_evt_le_term_big_comp(uint8_t subevent, const void *data, unsigned int
     const struct ble_hci_ev_le_subev_terminate_big_complete *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1216,11 +1248,13 @@ ble_hs_hci_evt_le_big_sync_estab(uint8_t subevent, const void *data, unsigned in
     const struct ble_hci_ev_le_subev_big_sync_established *ev = data;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
     if ((len != sizeof(*ev) + ev->num_bis * 2) ||
         (ev->num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG))) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1239,6 +1273,7 @@ ble_hs_hci_evt_le_big_sync_lost(uint8_t subevent, const void *data, unsigned int
     const struct ble_hci_ev_le_subev_big_sync_lost *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1257,6 +1292,7 @@ ble_hs_hci_evt_le_biginfo_adv_rpt(uint8_t subevent, const void *data, unsigned i
     const struct ble_hci_ev_le_subev_biginfo_adv_report *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1276,6 +1312,7 @@ ble_hs_hci_evt_le_cis_estab_v2(uint8_t subevent, const void *data, unsigned int 
     const struct ble_hci_ev_le_subev_cis_established_v2 *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1298,6 +1335,7 @@ ble_hs_hci_evt_le_ext_adv_rpt_first_pass(const void *data, unsigned int len)
     int i;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1306,17 +1344,20 @@ ble_hs_hci_evt_le_ext_adv_rpt_first_pass(const void *data, unsigned int len)
 
     if (ev->num_reports < BLE_HCI_LE_ADV_RPT_NUM_RPTS_MIN ||
         ev->num_reports > BLE_HCI_LE_ADV_RPT_NUM_RPTS_MAX) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     for (i = 0; i < ev->num_reports; i++) {
         if (len < sizeof(*report)) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
         report = data;
 
         if (report->data_len > len) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
@@ -1326,6 +1367,7 @@ ble_hs_hci_evt_le_ext_adv_rpt_first_pass(const void *data, unsigned int len)
 
     /* Make sure length was correct */
     if (len) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1348,6 +1390,7 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
 
     rc = ble_hs_hci_evt_le_ext_adv_rpt_first_pass(data, len);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1409,6 +1452,7 @@ ble_hs_hci_evt_le_periodic_adv_sync_estab(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_periodic_adv_sync_estab *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1426,6 +1470,7 @@ ble_hs_hci_evt_le_periodic_adv_rpt(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_periodic_adv_rpt *ev = data;
 
     if (len < sizeof(*ev) || len != (sizeof(*ev) + ev->data_len)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1443,6 +1488,7 @@ ble_hs_hci_evt_le_periodic_adv_sync_lost(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_periodic_adv_sync_lost *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1460,6 +1506,7 @@ ble_hs_hci_evt_le_pathloss_threshold(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_path_loss_threshold *ev = data;
 
     if (len != sizeof(*ev)) {
+	BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
 	return BLE_HS_EBADDATA;
     }
 
@@ -1474,6 +1521,7 @@ ble_hs_hci_evt_le_transmit_power_report(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_transmit_power_report *ev = data;
 
     if (len != sizeof(*ev)) {
+	BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
 	return BLE_HS_EBADDATA;
     }
 
@@ -1491,6 +1539,7 @@ ble_hs_hci_evt_le_periodic_adv_sync_transfer(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_periodic_adv_sync_transfer *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1509,6 +1558,7 @@ ble_hs_hci_evt_le_biginfo_adv_report(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_biginfo_adv_report *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1527,6 +1577,7 @@ ble_hs_hci_evt_le_scan_timeout(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_scan_timeout *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1545,6 +1596,7 @@ ble_hs_hci_evt_le_adv_set_terminated(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_adv_set_terminated *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1552,6 +1604,7 @@ ble_hs_hci_evt_le_adv_set_terminated(uint8_t subevent, const void *data,
      * 0-BLE_ADV_INSTANCES range only
      */
     if (ev->adv_handle >= BLE_ADV_INSTANCES) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1559,6 +1612,7 @@ ble_hs_hci_evt_le_adv_set_terminated(uint8_t subevent, const void *data,
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_hs_hci_ensure_ctx()) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
 #endif
@@ -1582,6 +1636,7 @@ ble_hs_hci_evt_le_scan_req_rcvd(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_scan_req_rcvd *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1589,6 +1644,7 @@ ble_hs_hci_evt_le_scan_req_rcvd(uint8_t subevent, const void *data,
      * 0-BLE_ADV_INSTANCES range only
      */
     if (ev->adv_handle >= BLE_ADV_INSTANCES) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1607,6 +1663,7 @@ ble_hs_hci_evt_le_subrate_change(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_subrate_change *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1624,10 +1681,12 @@ ble_hs_hci_evt_le_connless_iq_report(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_connless_iq_rpt *ev = data;
 
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
     if (len < sizeof(*ev) + (unsigned int)ev->sample_count * 2) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
     ble_gap_rx_connless_iq_report(ev);
@@ -1641,10 +1700,12 @@ ble_hs_hci_evt_le_conn_iq_report(uint8_t subevent, const void *data,
 {
     const struct ble_hci_ev_le_subev_conn_iq_rpt *ev = data;
     if (len < sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
     if (len < sizeof(*ev) + ev->sample_count * 2) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1660,6 +1721,7 @@ ble_hs_hci_evt_le_cte_req_failed(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_cte_req_failed *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1677,6 +1739,7 @@ ble_hs_hci_evt_le_periodic_adv_subev_data_req(uint8_t subevent, const void *data
     const struct ble_hci_ev_le_subev_periodic_adv_subev_data_req *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1699,21 +1762,25 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
     uint32_t size;
 
     if (len < 5) {  // minimum size for fixed fields
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
     num_responses = ev_data[4];  // ev->num_responses
     offset = 5;
     for (uint8_t i = 0; i < num_responses; i++) {
         if (offset + 6 > len) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
         uint8_t data_length = ev_data[offset + 5];  // data_length field position
         if (offset + 6 + data_length > len) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
         offset += 6 + data_length;
     }
     if (offset != len) {  // exact match
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1723,6 +1790,7 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
         size += sizeof(struct periodic_adv_response) + ev->responses[i].data_length;
     }
     if (len < size) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1736,6 +1804,7 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
     for (uint8_t i = 0; i < ev->num_responses; i++) {
         response = data;
         if (len < sizeof(*response) + response->data_length) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
 
@@ -1765,6 +1834,7 @@ ble_hs_hci_evt_le_conn_upd_complete(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_conn_upd_complete *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1790,6 +1860,7 @@ ble_hs_hci_evt_le_lt_key_req(uint8_t subevent, const void *data, unsigned int le
     const struct ble_hci_ev_le_subev_lt_key_req *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1804,6 +1875,7 @@ ble_hs_hci_evt_le_conn_parm_req(uint8_t subevent, const void *data, unsigned int
     const struct ble_hci_ev_le_subev_rem_conn_param_req *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1829,6 +1901,7 @@ ble_hs_hci_evt_le_phy_update_complete(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_phy_update_complete *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1844,6 +1917,7 @@ ble_hs_hci_evt_le_data_len_change(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_data_len_chg *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1860,6 +1934,7 @@ ble_hs_hci_evt_le_rd_all_rem_feat(uint8_t subevent, const void *data,
     const struct  ble_hci_ev_le_subev_rd_all_rem_feat *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1911,6 +1986,7 @@ ble_hci_ev_le_subev_monitor_adv_report(uint8_t subevent, const void *data,
     const struct  ble_hci_ev_le_subev_monitor_adv_report *ev = data;
 
     if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -1995,6 +2071,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
     rc = ble_hs_hci_util_data_hdr_strip(om, &hci_hdr);
     if (rc != 0) {
         os_mbuf_free_chain(om);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2012,6 +2089,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
 
     if (hci_hdr.hdh_len != OS_MBUF_PKTHDR(om)->omp_len) {
         os_mbuf_free_chain(om);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 

@@ -47,6 +47,7 @@
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
 #include "esp_nimble_mem.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 /*****************************************************************************
@@ -365,6 +366,7 @@ ble_l2cap_sig_rx_noop(uint16_t conn_handle,
                       struct ble_l2cap_sig_hdr *hdr,
                       struct os_mbuf **om)
 {
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 }
 
@@ -411,28 +413,33 @@ ble_l2cap_sig_check_conn_params(const struct ble_gap_upd_params *params)
     /* Check connection interval min */
     if ((params->itvl_min < BLE_HCI_CONN_ITVL_MIN) ||
         (params->itvl_min > BLE_HCI_CONN_ITVL_MAX)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
     /* Check connection interval max */
     if ((params->itvl_max < BLE_HCI_CONN_ITVL_MIN) ||
         (params->itvl_max > BLE_HCI_CONN_ITVL_MAX) ||
         (params->itvl_max < params->itvl_min)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     /* Check connection latency */
     if (params->latency > BLE_HCI_CONN_LATENCY_MAX) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     /* Check supervision timeout */
     if ((params->supervision_timeout < BLE_HCI_CONN_SPVN_TIMEOUT_MIN) ||
         (params->supervision_timeout > BLE_HCI_CONN_SPVN_TIMEOUT_MAX)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     /* Check connection event length */
     if (params->min_ce_len > params->max_ce_len) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -457,21 +464,25 @@ ble_l2cap_sig_update_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_mbuf_pullup_base(om, BLE_L2CAP_SIG_UPDATE_REQ_SZ);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (OS_MBUF_PKTLEN(*om) != BLE_L2CAP_SIG_UPDATE_REQ_SZ) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     rc = ble_hs_atomic_conn_flags(conn_handle, &conn_flags);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     /* Only a master can process an update request. */
     sig_err = !(conn_flags & BLE_HS_CONN_F_MASTER);
     if (sig_err) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
         return BLE_HS_EREJECT;
     }
 
@@ -654,24 +665,34 @@ ble_l2cap_sig_coc_err2ble_hs_err(uint16_t l2cap_coc_err)
     case BLE_L2CAP_COC_ERR_CONNECTION_SUCCESS:
         return 0;
     case BLE_L2CAP_COC_ERR_UNKNOWN_LE_PSM:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     case BLE_L2CAP_COC_ERR_NO_RESOURCES:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     case BLE_L2CAP_COC_ERR_INSUFFICIENT_AUTHEN:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAUTHEN);
         return BLE_HS_EAUTHEN;
     case BLE_L2CAP_COC_ERR_INSUFFICIENT_AUTHOR:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAUTHOR);
         return BLE_HS_EAUTHOR;
     case BLE_L2CAP_COC_ERR_INSUFFICIENT_KEY_SZ:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EENCRYPT_KEY_SZ);
         return BLE_HS_EENCRYPT_KEY_SZ;
     case BLE_L2CAP_COC_ERR_INSUFFICIENT_ENC:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EENCRYPT);
         return BLE_HS_EENCRYPT;
     case BLE_L2CAP_COC_ERR_INVALID_SOURCE_CID:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
         return BLE_HS_EREJECT;
     case BLE_L2CAP_COC_ERR_SOURCE_CID_ALREADY_USED:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
         return BLE_HS_EALREADY;
     case BLE_L2CAP_COC_ERR_UNACCEPTABLE_PARAMETERS:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 }
@@ -819,6 +840,7 @@ ble_l2cap_sig_credit_base_reconfig_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_mbuf_pullup_base(om, hdr->length);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -996,6 +1018,7 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_mbuf_pullup_base(om, hdr->length);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1287,10 +1310,12 @@ ble_l2cap_sig_coc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*req));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1459,6 +1484,7 @@ ble_l2cap_sig_coc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
     int rc;
 
     if (!sdu_rx || !cb) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -1467,12 +1493,14 @@ ble_l2cap_sig_coc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     if (!conn) {
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     chan = ble_l2cap_coc_chan_alloc(conn, psm, mtu, sdu_rx, cb, cb_arg);
     if (!chan) {
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1480,6 +1508,7 @@ ble_l2cap_sig_coc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
     if (!proc) {
         ble_l2cap_chan_free(conn, chan);
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1537,6 +1566,7 @@ ble_l2cap_sig_ecoc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
     int j;
 
     if (!sdu_rx || !cb) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -1545,12 +1575,14 @@ ble_l2cap_sig_ecoc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     if (!conn) {
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     proc = ble_l2cap_sig_proc_alloc();
     if (!proc) {
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1627,12 +1659,14 @@ ble_l2cap_sig_coc_reconfig(uint16_t conn_handle, struct ble_l2cap_chan *chans[],
 
     if (!conn) {
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     proc = ble_l2cap_sig_proc_alloc();
     if (!proc) {
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1703,6 +1737,7 @@ ble_l2cap_sig_disc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*req));
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1721,6 +1756,7 @@ ble_l2cap_sig_disc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
         os_mbuf_free_chain(txom);
         ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1849,6 +1885,7 @@ ble_l2cap_sig_disconnect(struct ble_l2cap_chan *chan)
 
     proc = ble_l2cap_sig_proc_alloc();
     if (proc == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1892,6 +1929,7 @@ ble_l2cap_sig_le_credits_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     }
 
     if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -1918,6 +1956,7 @@ ble_l2cap_sig_le_credits(uint16_t conn_handle, uint16_t scid, uint16_t credits)
                                 ble_l2cap_sig_next_id(), sizeof(*cmd), &txom);
 
     if (!cmd) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1978,6 +2017,7 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
     rc = ble_hs_mbuf_pullup_base(om, BLE_L2CAP_SIG_HDR_SZ);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1991,6 +2031,7 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
             ble_l2cap_sig_reject_tx(conn_handle, hdr.identifier,
                                     BLE_L2CAP_SIG_ERR_CMD_NOT_UNDERSTOOD, NULL, 0);
         }
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -2007,6 +2048,9 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
                                         NULL, 0);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -2183,6 +2227,7 @@ ble_l2cap_sig_init(void)
     if (!ble_l2cap_sig_ctx) {
         ble_l2cap_sig_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_l2cap_sig_ctx));
         if (!ble_l2cap_sig_ctx) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -2197,6 +2242,7 @@ ble_l2cap_sig_init(void)
             // free the allocated memory
             nimble_platform_mem_free(ble_l2cap_sig_ctx);
             ble_l2cap_sig_ctx = NULL;
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }

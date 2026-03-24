@@ -25,6 +25,7 @@
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
 #include "host/ble_uuid.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
 #endif
@@ -61,6 +62,7 @@ hex2val(char c, uint8_t *value)
     } else if (c >= 'A' && c <= 'F') {
         *value = c - 'A' + 10;
     } else {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     return 0;
@@ -115,6 +117,7 @@ ble_uuid_init_from_buf(ble_uuid_any_t *uuid, const void *buf, size_t len)
         return 0;
     }
 
+    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
     return BLE_HS_EINVAL;
 }
 
@@ -206,6 +209,7 @@ ble_uuid_base_init(void)
     if (ble_uuid_base == NULL) {
         ble_uuid_base = nimble_platform_mem_calloc(1, sizeof(uint8_t) * 16);
         if (ble_uuid_base == NULL) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -236,11 +240,13 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc = ble_uuid_base_init();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
 
     if ((len < 4) || (len % 2 != 0)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -253,6 +259,7 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
     } else if (len <= BLE_UUID128_STR_MAX_LEN) {
         uuid->u.type = BLE_UUID_TYPE_128;
     } else {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -262,6 +269,7 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
         int bytes_parsed = 0;
         for (int i = 0; i < 16; i++) {
             if (hex2bin(str_ptr, u8p, 1) != 1) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
                 return BLE_HS_EINVAL;
             }
             bytes_parsed++;
@@ -281,6 +289,7 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
             u8p++;
         }
         if (bytes_parsed != 16 || str_ptr != str) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
 
@@ -303,6 +312,7 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
     case BLE_UUID_TYPE_32:
         for (int i = 0; i < 4; i++) {
             if (hex2bin(str_ptr, &tmp_rslt, 1) != 1) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
                 return BLE_HS_EINVAL;
             }
             u32 |= ((uint32_t) tmp_rslt) << (i * 8);
@@ -317,6 +327,7 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
     case BLE_UUID_TYPE_16:
         for (int i = 0; i < 2; i++) {
             if (hex2bin(str_ptr, &tmp_rslt, 1) != 1) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
                 return BLE_HS_EINVAL;
             }
             u16 |= ((uint32_t) tmp_rslt) << (i * 8);
@@ -329,6 +340,7 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
         uuid->u16.value = u16;
         break;
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -354,11 +366,15 @@ ble_uuid_init_from_att_mbuf(ble_uuid_any_t *uuid, struct os_mbuf *om, int off,
 
     rc = os_mbuf_copydata(om, off, len, val);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_uuid_init_from_att_buf(uuid, val, len);
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -400,6 +416,7 @@ ble_uuid_to_any(const ble_uuid_t *uuid, ble_uuid_any_t *uuid_any)
         memcpy(uuid_any->u128.value, BLE_UUID128(uuid)->value, 16);
         break;
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -423,6 +440,7 @@ ble_uuid_to_mbuf(const ble_uuid_t *uuid, struct os_mbuf *om)
 
     buf = os_mbuf_extend(om, len);
     if (buf == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -439,6 +457,7 @@ ble_uuid_flat(const ble_uuid_t *uuid, void *dst)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc = ble_uuid_base_init();
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -455,6 +474,7 @@ ble_uuid_flat(const ble_uuid_t *uuid, void *dst)
         memcpy(dst, BLE_UUID128(uuid)->value, 16);
         break;
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 

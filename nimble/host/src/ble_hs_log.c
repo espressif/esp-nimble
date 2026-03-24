@@ -17,40 +17,80 @@
  * under the License.
  */
 
+#include <stdio.h>
 #include "os/os.h"
+#include "sdkconfig.h"
 #include "host/ble_hs.h"
 #include "host/ble_hs_log.h"
 
 struct log ble_hs_log;
 
+#define BLE_HS_LOG_HEX_BYTES_PER_LINE 10
+
+static void
+ble_hs_log_debug_hex_chunk(const uint8_t *bytes, int len)
+{
+    char hex_str[31] = {0}; // 10 bytes * 3 chars ("FF ") + 1 null = 31
+    int offset = 0;
+
+    if (len <= 0) {
+        return;
+    }
+
+    if (len > BLE_HS_LOG_HEX_BYTES_PER_LINE) {
+        len = BLE_HS_LOG_HEX_BYTES_PER_LINE;
+    }
+
+    for (int i = 0; i < len; i++) {
+        offset += snprintf(hex_str + offset, sizeof(hex_str) - offset, "%02x ", bytes[i]);
+    }
+
+    BLE_HS_LOG(DEBUG, "%s", hex_str);
+}
+
 void
 ble_hs_log_mbuf(const struct os_mbuf *om)
 {
-    uint8_t u8;
-    int i;
+    uint8_t buf[BLE_HS_LOG_HEX_BYTES_PER_LINE];
+    int total_len;
+    int offset;
+    int chunk_len;
 
     if (om == NULL) {
         return;
     }
 
-    for (i = 0; i < OS_MBUF_PKTLEN(om); i++) {
-        os_mbuf_copydata(om, i, 1, &u8);
-        BLE_HS_LOG(DEBUG, "0x%02x ", u8);
+    total_len = OS_MBUF_PKTLEN(om);
+
+    for (offset = 0; offset < total_len; offset += BLE_HS_LOG_HEX_BYTES_PER_LINE) {
+        chunk_len = total_len - offset;
+        if (chunk_len > BLE_HS_LOG_HEX_BYTES_PER_LINE) {
+            chunk_len = BLE_HS_LOG_HEX_BYTES_PER_LINE;
+        }
+
+        os_mbuf_copydata(om, offset, chunk_len, buf);
+        ble_hs_log_debug_hex_chunk(buf, chunk_len);
     }
 }
 
 void
 ble_hs_log_flat_buf(const void *data, int len)
 {
+    int offset;
+    int chunk_len;
     const uint8_t *u8ptr;
-    int i;
 
     if (data == NULL) {
         return;
     }
 
     u8ptr = data;
-    for (i = 0; i < len; i++) {
-        BLE_HS_LOG(DEBUG, "0x%02x ", u8ptr[i]);
+    for (offset = 0; offset < len; offset += BLE_HS_LOG_HEX_BYTES_PER_LINE) {
+        chunk_len = len - offset;
+        if (chunk_len > BLE_HS_LOG_HEX_BYTES_PER_LINE) {
+            chunk_len = BLE_HS_LOG_HEX_BYTES_PER_LINE;
+        }
+
+        ble_hs_log_debug_hex_chunk(u8ptr + offset, chunk_len);
     }
 }

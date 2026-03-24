@@ -23,6 +23,7 @@
 #include "ble_hs_priv.h"
 #include "host/ble_hs_stop.h"
 #include "nimble/nimble_npl.h"
+#include "host/ble_hs_log.h"
 #ifndef MYNEWT
 #include "nimble/nimble_port.h"
 #endif
@@ -126,6 +127,9 @@ ble_hs_stop_terminate_all_periodic_sync(void)
         if (rc != 0 && rc != BLE_HS_ENOTCONN) {
             BLE_HS_LOG(ERROR, "failed to terminate periodic sync=0x%04x, rc=%d\n",
                        sync_handle, rc);
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
     }
@@ -239,14 +243,17 @@ ble_hs_stop_begin(struct ble_hs_stop_listener *listener,
         if (listener != NULL) {
             ble_hs_stop_register_listener(listener, fn, arg);
         }
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBUSY);
         return BLE_HS_EBUSY;
 
     case BLE_HS_ENABLED_STATE_OFF:
         /* Host already stopped. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
         return BLE_HS_EALREADY;
 
     default:
         assert(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 }
@@ -269,6 +276,9 @@ ble_hs_stop(struct ble_hs_stop_listener *listener,
         return 0;
 
     default:
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 
@@ -281,6 +291,9 @@ ble_hs_stop(struct ble_hs_stop_listener *listener,
     rc = ble_hs_stop_terminate_all_periodic_sync();
     if (rc != 0) {
         ble_hs_stop_done(rc);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 #endif
@@ -289,6 +302,9 @@ ble_hs_stop(struct ble_hs_stop_listener *listener,
                                          ble_hs_stop_gap_event, NULL);
     if (rc != 0) {
         ble_hs_stop_done(rc);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
 

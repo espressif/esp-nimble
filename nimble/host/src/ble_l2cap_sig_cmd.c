@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 
 #if NIMBLE_BLE_CONNECT
 /* this function consumes tx os_mbuf */
@@ -65,6 +66,7 @@ ble_l2cap_sig_reject_tx(uint16_t conn_handle, uint8_t id, uint16_t reason,
     cmd = ble_l2cap_sig_cmd_get(BLE_L2CAP_SIG_OP_REJECT, id,
                            sizeof(*cmd) + data_len, &txom);
     if (!cmd) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 

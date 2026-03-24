@@ -25,6 +25,7 @@
 #include "services/gap/ble_svc_gap.h"
 #include "os/endian.h"
 #include "esp_nimble_cfg.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
 
@@ -237,6 +238,7 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
 
     ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, om_len + 1);
     if (!ble_hs_gap_svc_ctx->svc_gap_name) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -434,11 +436,13 @@ ble_svc_gap_device_name_set(const char *name)
     int len;
 
     if (!name) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     len = strlen(name);
     if (len > BLE_SVC_GAP_NAME_MAX_LEN) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -447,6 +451,7 @@ ble_svc_gap_device_name_set(const char *name)
         ble_hs_gap_svc_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_gap_svc_ctx));
 
         if (!ble_hs_gap_svc_ctx) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -457,6 +462,7 @@ ble_svc_gap_device_name_set(const char *name)
 
     ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, len + 1);
     if (!ble_hs_gap_svc_ctx->svc_gap_name) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -489,6 +495,7 @@ ble_svc_gap_device_appearance_set(uint16_t appearance)
     if (!ble_hs_gap_svc_ctx) {
         int rc = ble_svc_gap_appearance_init();
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -509,6 +516,7 @@ int
 ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv)
 {
     if (!session_key || !iv) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
     memcpy(&ble_svc_gap_km.session_key, session_key, BLE_EAD_KEY_SIZE);
@@ -526,6 +534,7 @@ ble_svc_gap_appearance_init(void)
         ble_hs_gap_svc_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_gap_svc_ctx));
 
         if (!ble_hs_gap_svc_ctx) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
     }
@@ -539,6 +548,7 @@ static int
 ble_svc_gap_init_name(void)
 {
     if (!ble_hs_gap_svc_ctx) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -551,6 +561,7 @@ ble_svc_gap_init_name(void)
 
     ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, len + 1);
     if (!ble_hs_gap_svc_ctx->svc_gap_name) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 

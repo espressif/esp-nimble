@@ -28,6 +28,7 @@
  * power.
  */
 #include "../src/ble_hs_hci_priv.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_TPS_SERVICE
 /* Access function */

@@ -24,6 +24,7 @@
 #include "ble_hs_priv.h"
 #include "ble_gattc_cache_priv.h"
 #include "esp_nimble_mem.h"
+#include "host/ble_hs_log.h"
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 /* Gatt Procedure macros */
@@ -37,12 +38,14 @@
 #define CHECK_CACHE_CONN_STATE(cache_state, cb, cb_arg, opcode, \
                                 s_handle, e_handle, p_uuid) \
     if (ble_hs_cfg.gatt_use_cache == 0) { \
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP); \
         return BLE_HS_ENOTSUP; \
     } \
     op = &conn->pending_op; \
     switch(cache_state) { \
     case SVC_DISC_IN_PROGRESS: \
         if((void*)ble_gattc_cache_conn_svc_disced == cb) { \
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL); \
             return BLE_HS_EINVAL; \
         } \
         ble_gattc_cache_conn_fill_op(op, s_handle, e_handle, p_uuid, cb, \
@@ -50,6 +53,7 @@
         return 0; \
     case CHR_DISC_IN_PROGRESS: \
        if((void*)ble_gattc_cache_conn_chr_disced == cb) { \
+           BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL); \
            return BLE_HS_EINVAL; \
        } \
         ble_gattc_cache_conn_fill_op(op, s_handle, e_handle, p_uuid, cb, \
@@ -57,6 +61,7 @@
         return 0; \
     case INC_DISC_IN_PROGRESS: \
        if((void *)ble_gattc_cache_conn_inc_disced == cb) { \
+           BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL); \
            return BLE_HS_EINVAL; \
         } \
         ble_gattc_cache_conn_fill_op(op, s_handle, e_handle, p_uuid, cb, \
@@ -64,6 +69,7 @@
         return 0; \
     case DSC_DISC_IN_PROGRESS: \
        if((void*)ble_gattc_cache_conn_dsc_disced == cb) { \
+           BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL); \
            return BLE_HS_EINVAL; \
        } \
         ble_gattc_cache_conn_fill_op(op, s_handle, e_handle, p_uuid, cb, \
@@ -317,6 +323,7 @@ ble_gattc_cache_conn_dsc_add(ble_addr_t peer_addr, uint16_t chr_val_handle,
          * happen.
          */
         assert(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -332,6 +339,7 @@ ble_gattc_cache_conn_dsc_add(ble_addr_t peer_addr, uint16_t chr_val_handle,
          */
         BLE_HS_LOG(ERROR, "Couldn't find characteristc for dsc handle = %d", gatt_dsc->handle);
         assert(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -345,6 +353,7 @@ ble_gattc_cache_conn_dsc_add(ble_addr_t peer_addr, uint16_t chr_val_handle,
     dsc = os_memblock_get(&ble_gattc_cache_conn_dsc_pool);
     if (dsc == NULL) {
         /* Out of memory. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memset(dsc, 0, sizeof * dsc);
@@ -524,6 +533,7 @@ ble_gattc_cache_conn_chr_add(ble_addr_t peer_addr, uint16_t svc_start_handle,
          * happen.
          */
         assert(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -536,6 +546,7 @@ ble_gattc_cache_conn_chr_add(ble_addr_t peer_addr, uint16_t svc_start_handle,
     chr = os_memblock_get(&ble_gattc_cache_conn_chr_pool);
     if (chr == NULL) {
         /* Out of memory. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memset(chr, 0, sizeof * chr);
@@ -716,6 +727,7 @@ ble_gattc_cache_conn_inc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *ga
         svc = os_memblock_get(&ble_gattc_cache_conn_svc_pool);
         if (svc == NULL) {
             /* Out of memory. */
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
 
@@ -750,6 +762,7 @@ ble_gattc_cache_conn_inc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *ga
        */
         BLE_HS_LOG(WARN, "Current Service is NULL.\n");
         assert(0);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -761,6 +774,7 @@ ble_gattc_cache_conn_inc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *ga
 
     incl_svc = os_memblock_get(&ble_gattc_cache_conn_incl_svc_pool);
     if (incl_svc == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -803,6 +817,7 @@ ble_gattc_cache_conn_svc_add(ble_addr_t peer_addr, const struct ble_gatt_svc *ga
     svc = os_memblock_get(&ble_gattc_cache_conn_svc_pool);
     if (svc == NULL) {
         /* Out of memory. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memset(svc, 0, sizeof * svc);
@@ -1699,6 +1714,9 @@ ble_gattc_cache_conn_inc_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -1736,6 +1754,9 @@ ble_gattc_cache_conn_svc_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -1802,6 +1823,7 @@ ble_gattc_cache_conn_create(uint16_t conn_handle, ble_addr_t ble_gattc_cache_con
     cache_conn = os_memblock_get(&ble_gattc_cache_conn_pool);
     if (cache_conn == NULL) {
         /* Out of memory. */
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -1877,6 +1899,9 @@ ble_gattc_cache_conn_dsc_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -1959,6 +1984,9 @@ ble_gattc_cache_conn_chr_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+    }
     return rc;
 }
 
@@ -2069,6 +2097,7 @@ int ble_gattc_cache_refresh(ble_addr_t peer_addr)
                    peer_addr.val[0], peer_addr.val[1], peer_addr.val[2],
                    peer_addr.val[3], peer_addr.val[4], peer_addr.val[5]);
 
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
@@ -2079,6 +2108,7 @@ int ble_gattc_cache_refresh(ble_addr_t peer_addr)
     conn = ble_gattc_cache_conn_find_by_addr(peer_addr);
     if (conn == NULL) {
         BLE_HS_LOG(WARN, "GATT cache refresh: no cache entry found for peer.");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -2111,6 +2141,9 @@ ble_gattc_cache_conn_assoc_on_read(uint16_t conn_handle,
     rc = os_mbuf_copydata(attr->om, 0, sizeof(database_hash), database_hash);
     if (rc != 0) {
         BLE_HS_LOG(WARN, "Failed to copy database hash from attr->om (rc=%d)", rc);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        }
         return rc;
     }
     rc =  ble_gattc_cache_find_source((struct ble_gattc_cache_conn *)arg, database_hash);
@@ -2126,6 +2159,7 @@ int ble_gattc_cache_assoc(ble_addr_t peer_addr)
     cache_conn = ble_gattc_cache_conn_find_by_addr(peer_addr);
     if (cache_conn == NULL) {
         BLE_HS_LOG(WARN, "No cache entry found for peer.");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -2144,6 +2178,9 @@ int ble_gattc_cache_assoc(ble_addr_t peer_addr)
 
         if (rc != 0) {
             cache_conn->cache_state = CACHE_INVALID;
+            if (rc != 0) {
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            }
             return rc;
         }
     }
@@ -2178,6 +2215,7 @@ int ble_gattc_cache_clean(ble_addr_t peer_addr)
     if (conn == NULL) {
         ble_hs_unlock();
         BLE_HS_LOG(WARN, "GATT cache clean: no cache entry found for peer.");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -2454,6 +2492,7 @@ static int ble_gattc_cache_conn_verify(struct ble_gattc_cache_conn *conn)
     ble_hs_unlock();
 
     if (gap_conn == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
     if (conn->cache_state == CACHE_LOADED) {
@@ -2542,11 +2581,13 @@ ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,
         BLE_HS_LOG(DEBUG, "No connection in the Cache"
                    "HANDLE=%d\n",
                    conn_handle);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2603,11 +2644,13 @@ ble_gattc_cache_conn_search_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *
         BLE_HS_LOG(DEBUG, "No connection in the Cache"
                    "HANDLE=%d\n",
                    conn_handle);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2696,11 +2739,13 @@ ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle
         BLE_HS_LOG(DEBUG, "No connection in the Cache"
                    "HANDLE=%d\n",
                    conn_handle);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2765,11 +2810,13 @@ ble_gattc_cache_conn_search_all_chrs(uint16_t conn_handle, uint16_t start_handle
         BLE_HS_LOG(DEBUG, "No connection in the Cache"
                    "HANDLE=%d\n",
                    conn_handle);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2834,11 +2881,13 @@ ble_gattc_cache_conn_search_chrs_by_uuid(uint16_t conn_handle, uint16_t start_ha
         BLE_HS_LOG(DEBUG, "No connection in the Cache"
                    "HANDLE=%d\n",
                    conn_handle);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2908,11 +2957,13 @@ ble_gattc_cache_conn_search_all_dscs(uint16_t conn_handle, uint16_t start_handle
         BLE_HS_LOG(DEBUG, "No connection in the Cache"
                    "HANDLE=%d\n",
                    conn_handle);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

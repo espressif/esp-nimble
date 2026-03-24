@@ -22,6 +22,7 @@
 
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
+#include "host/ble_hs_log.h"
 
 
 #if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
@@ -202,6 +203,7 @@ fill_proto_mode(uint8_t instance)
 
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
@@ -245,6 +247,7 @@ fill_boot_kbd_inp(uint8_t instance)
 
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
@@ -278,6 +281,7 @@ fill_boot_kbd_out(uint8_t instance)
 
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
@@ -359,6 +363,7 @@ fill_rpt_map(uint8_t instance)
     this is done to indicate there are no more descriptors */
     dsc = ble_svc_hid_get_dsc(2);
     if (!dsc) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memcpy(dsc, demo_dsc, 2 * sizeof(struct ble_gatt_dsc_def));
@@ -366,6 +371,7 @@ fill_rpt_map(uint8_t instance)
     demo_chr.descriptors = dsc;
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
@@ -400,6 +406,7 @@ fill_reports(uint8_t instance)
         this is done to indicate there are no more descriptors */
         dsc = ble_svc_hid_get_dsc(2);
         if (!dsc) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
         demo_dsc[0].arg = &hid_instances[instance].rpts[i].handle;
@@ -432,6 +439,7 @@ fill_reports(uint8_t instance)
 
         chr = ble_svc_hid_get_chr_block();
         if (!chr) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
         memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
@@ -502,6 +510,7 @@ ble_svc_hid_end_chrs(void)
     struct ble_gatt_chr_def *chr;
     chr = ble_svc_hid_get_chr_block();
     if (chr == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memset(chr, 0, sizeof(struct ble_gatt_chr_def));
@@ -797,6 +806,7 @@ ble_svc_hid_end(void)
 
     svc = ble_svc_get_svc_block();
     if (svc == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memset(svc, 0, sizeof(struct ble_gatt_svc_def));

@@ -20,6 +20,7 @@
 #include <string.h>
 #include "host/ble_hs_id.h"
 #include "ble_hs_priv.h"
+#include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 #include "ble_hs_resolv_priv.h"
 #endif
@@ -54,6 +55,7 @@ ble_hs_id_ensure_ctx(void)
     ble_hs_id_ctx = nimble_platform_mem_calloc(1, sizeof(* ble_hs_id_ctx));
 
     if (!ble_hs_id_ctx) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -88,6 +90,7 @@ ble_hs_id_set_pub(const uint8_t *pub_addr)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -106,6 +109,7 @@ ble_hs_id_gen_rnd(int nrpa, ble_addr_t *out_addr)
 
     rc = ble_hs_hci_util_rand(out_addr->val, 6);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -135,12 +139,14 @@ ble_hs_id_set_nrpa_rnd(void)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
 
     rc = ble_hs_id_gen_rnd(1, &nrpa_addr);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -180,6 +186,7 @@ ble_hs_id_set_pseudo_rnd(const uint8_t *rnd_addr)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
@@ -223,6 +230,7 @@ ble_hs_id_set_rnd(const uint8_t *rnd_addr)
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 #endif
@@ -308,10 +316,12 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
         break;
 
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     if (memcmp(id_addr, ble_hs_misc_null_addr, 6) == 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOADDR);
         return BLE_HS_ENOADDR;
     }
 
@@ -356,6 +366,7 @@ ble_hs_id_addr_type_usable(uint8_t own_addr_type)
     case BLE_OWN_ADDR_RANDOM:
         rc = ble_hs_id_addr(own_addr_type, NULL, NULL);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         break;
@@ -365,14 +376,17 @@ ble_hs_id_addr_type_usable(uint8_t own_addr_type)
         id_addr_type = ble_hs_misc_own_addr_type_to_id(own_addr_type);
         rc = ble_hs_id_addr(id_addr_type, NULL, &nrpa);
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         if (nrpa) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOADDR);
             return BLE_HS_ENOADDR;
         }
         break;
 
     default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -386,6 +400,7 @@ ble_hs_id_use_addr(uint8_t own_addr_type)
 
     rc = ble_hs_id_addr_type_usable(own_addr_type);
     if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -395,9 +410,11 @@ ble_hs_id_use_addr(uint8_t own_addr_type)
 #if MYNEWT_VAL(BLE_HS_PVCY)
         rc = ble_hs_pvcy_ensure_started();
         if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 #else
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
 #endif
     }
