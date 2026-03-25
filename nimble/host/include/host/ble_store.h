@@ -169,7 +169,10 @@ struct ble_store_key_ead {
 struct ble_store_value_ead {
     ble_addr_t peer_addr;
     unsigned km_present:1;
-    struct key_material *km;
+    struct {
+        uint8_t session_key[16];
+        uint8_t iv[8];
+    } km ;
 };
 #endif
 
