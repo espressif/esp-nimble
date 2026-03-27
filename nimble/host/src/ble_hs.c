@@ -715,7 +715,7 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
 
-    if (ev && ble_hs_evq->eventq) {
+    if (ev) {
         memset (ev, 0, sizeof *ev);
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
         ble_npl_eventq_put(ble_hs_evq, ev);
