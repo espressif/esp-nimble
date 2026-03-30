@@ -11,15 +11,14 @@
 #include "nimble/hci_common.h"
 #include "host/ble_hs_hci.h"
 #include "ble_hs_priv.h"
-#include "bt_osi_mem.h"
 #include "host/ble_hs_iso.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
 #endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+#include "esp_hci_internal.h"
 
-extern int ble_hci_trans_hs_iso_tx(const uint8_t *data, uint16_t length, void *arg);
 #if MYNEWT_VAL(BLE_ISO_NON_STD_FLOW_CTRL)
-extern uint16_t ble_ll_iso_free_buf_num_get(uint16_t conn_handle);
+extern uint16_t r_ble_ll_iso_free_buf_num_get(uint16_t conn_handle);
 #endif
 
 #if MYNEWT_VAL(BLE_ISO)
@@ -80,6 +79,15 @@ ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts)
     }
 
     return 0;
+}
+
+void
+ble_hs_hci_get_iso_buf_size(uint16_t *pktlen, uint8_t *max_pkts)
+{
+    assert(pktlen && max_pkts);
+
+    *pktlen = ble_hs_iso_buf_sz;
+    *max_pkts = ble_hs_iso_max_pkts;
 }
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
@@ -185,7 +193,7 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
         return BLE_HS_EAGAIN;
     }
 #elif MYNEWT_VAL(BLE_ISO_NON_STD_FLOW_CTRL)
-    if (ble_ll_iso_free_buf_num_get(conn_handle) == 0) {
+    if (r_ble_ll_iso_free_buf_num_get(conn_handle) == 0) {
         BLE_HS_LOG(WARN, "ISO flow control!");
         return BLE_HS_EAGAIN;
     }
@@ -266,7 +274,8 @@ ble_hs_rx_iso_data(const uint8_t *data, uint16_t len, void *arg)
     }
 
     /* The `data` is dynamically allocated by Controller, free it here */
-    bt_osi_mem_free((void *)data);
+    // TODO: add adapter for controller free.
+    free((void *)data);
 
     return 0;
 }

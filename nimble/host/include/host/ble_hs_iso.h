@@ -18,6 +18,8 @@ extern "C" {
 
 int ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts);
 
+void ble_hs_hci_get_iso_buf_size(uint16_t *pktlen, uint8_t *max_pkts);
+
 void ble_hs_hci_add_iso_avail_pkts(uint16_t conn_handle, uint16_t delta);
 
 int ble_hs_hci_iso_tx(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len,
