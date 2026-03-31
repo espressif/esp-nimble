@@ -50,8 +50,8 @@ ble_transport_to_ll_cmd_impl(void *buf)
 
     pkt = HCI_DRIVER_D2P(buf);
     len = *(uint8_t *)(buf + 2);
-    pkt->length = len;
-    return hci_driver_host_cmd_tx((uint8_t *)pkt, len);
+    pkt->length = len + 3;
+    return hci_driver_host_cmd_tx((uint8_t *)pkt);
 }
 
 int
