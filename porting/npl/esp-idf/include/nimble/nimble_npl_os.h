@@ -84,7 +84,13 @@ ble_npl_eventq_deinit(struct ble_npl_eventq *evq)
 static inline struct ble_npl_event *
 ble_npl_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
 {
-    return (void *)btdm_osal_eventq_get(&evq->eventq, tmo) - offsetof(struct ble_npl_eventq, eventq);
+    struct btdm_osal_event *ev;
+
+    ev = btdm_osal_eventq_get(&evq->eventq, tmo);
+    if (ev) {
+        return (void *)ev - offsetof(struct ble_npl_event, event);
+    }
+    return NULL;
 }
 
 static inline void

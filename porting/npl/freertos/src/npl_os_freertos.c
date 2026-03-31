@@ -270,9 +270,11 @@ npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
 void
 npl_freertos_event_deinit(struct ble_npl_event *ev)
 {
-    BLE_LL_ASSERT(ev->event);
+    if (!ev->event) {
+        return;
+    }
+    
 #if OS_MEM_ALLOC
-
     os_memblock_put(&ble_freertos_ev_pool,ev->event);
 #else
     nimble_platform_mem_free(ev->event);
