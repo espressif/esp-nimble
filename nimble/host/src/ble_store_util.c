@@ -28,6 +28,18 @@ struct ble_store_util_peer_set {
     int status;
 };
 
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static int
+ble_store_util_lock_owned_by_cur_task(void)
+{
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    return ble_hs_locked_by_cur_task();
+#else
+    return 0;
+#endif
+}
+#endif
+
 #if NIMBLE_BLE_CONNECT
 static int
 ble_store_util_iter_unique_peer(int obj_type,
@@ -197,8 +209,14 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
     }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-    struct ble_hs_dev_records *peer_rec =
-                              ble_rpa_find_peer_dev_rec(key.sec.peer_addr.val);
+    struct ble_hs_dev_records *peer_rec;
+    int needs_unlock;
+
+    needs_unlock = !ble_store_util_lock_owned_by_cur_task();
+    if (needs_unlock) {
+        ble_hs_lock();
+    }
+    peer_rec = ble_rpa_find_peer_dev_rec(peer_id_addr->val);
 
     if (peer_rec != NULL) {
         rc = ble_hs_resolv_list_rmv(peer_rec->peer_sec.peer_addr.type,
@@ -210,8 +228,14 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
         rc = ble_rpa_remove_peer_dev_rec(peer_rec);
         if (rc != 0) {
+            if (needs_unlock) {
+                ble_hs_unlock();
+            }
             return rc;
         }
+    }
+    if (needs_unlock) {
+        ble_hs_unlock();
     }
 #endif
 

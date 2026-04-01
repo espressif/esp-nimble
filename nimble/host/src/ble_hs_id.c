@@ -332,14 +332,14 @@ ble_hs_id_copy_addr(uint8_t id_addr_type, uint8_t *out_id_addr,
     const uint8_t *addr;
     int rc;
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
 
     rc = ble_hs_id_addr(id_addr_type, &addr, out_is_nrpa);
     if (rc == 0 && out_id_addr != NULL) {
         memcpy(out_id_addr, addr, 6);
     }
 
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     return rc;
 }

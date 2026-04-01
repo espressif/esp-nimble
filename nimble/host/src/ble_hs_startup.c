@@ -214,7 +214,9 @@ ble_hs_startup_read_buf_sz(void)
     }
 
 #if MYNEWT_VAL(BLE_ISO)
+    ble_hs_lock();
     rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
+    ble_hs_unlock();
     if (rc != 0) {
         return rc;
     }
