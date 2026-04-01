@@ -789,10 +789,12 @@ ble_att_get_default_bearer_cid(uint16_t conn_handle) {
     struct ble_hs_conn * conn;
     uint16_t default_cid = 0;
 
+    ble_hs_lock_nested();
     conn = ble_hs_conn_find(conn_handle);
     if (conn != NULL) {
         default_cid = conn->default_cid;
     }
+    ble_hs_unlock_nested();
 
     return default_cid;
 #endif

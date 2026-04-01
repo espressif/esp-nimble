@@ -98,7 +98,7 @@ struct ble_hs_dev_records *ble_rpa_get_peer_dev_records(void);
 int ble_rpa_get_num_peer_dev_records(void);
 void ble_rpa_set_num_peer_dev_records(int);
 int ble_rpa_remove_peer_dev_rec(struct ble_hs_dev_records *);
-struct ble_hs_dev_records *ble_rpa_find_peer_dev_rec(uint8_t *);
+struct ble_hs_dev_records *ble_rpa_find_peer_dev_rec(const uint8_t *);
 
 /* Set the resolvable private address timeout */
 int ble_hs_resolv_set_rpa_tmo(uint16_t);

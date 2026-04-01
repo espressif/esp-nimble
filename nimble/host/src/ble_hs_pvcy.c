@@ -192,7 +192,9 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     memcpy(cmd.peer_irk, irk, 16);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_hs_lock_nested();
     rc = ble_hs_resolv_list_add((uint8_t *) &cmd);
+    ble_hs_unlock_nested();
     if (rc != 0) {
         return rc;
     }
@@ -299,18 +301,20 @@ void ble_hs_pvcy_set_default_irk(void)
     struct ble_store_value_local_irk  value_local_irk;
     struct ble_store_key_local_irk key_local_irk;
 
-    uint8_t *local_id = NULL;
+    uint8_t local_id[BLE_DEV_ADDR_LEN];
+    bool have_local_id;
     int rc;
 
     memset(&key_local_irk, 0, sizeof key_local_irk);
     memset(&value_local_irk, 0x0, sizeof value_local_irk);
 
-    rc = ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+    rc = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, local_id, NULL);
+    have_local_id = (rc == 0);
 
     /* Create key / value */
     /* Some controllers give all 0s as address. Handle such case */
-    if (local_id) {
-        memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    if (have_local_id) {
+        memcpy(key_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
     }
 
     key_local_irk.addr.type = BLE_ADDR_PUBLIC;
@@ -350,7 +354,7 @@ void ble_hs_pvcy_set_default_irk(void)
 
         memcpy(&value_local_irk.irk, ble_hs_pvcy_default_irk, 16);
 
-        if (local_id) {
+        if (have_local_id) {
             memcpy(value_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
         }
 
@@ -397,6 +401,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     if (irk != NULL) {
+       ble_hs_lock_nested();
        bool rpa_state = false;
 
        if ((rpa_state = ble_host_rpa_enabled()) == true) {
@@ -408,6 +413,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
        if (rpa_state) {
              ble_hs_resolv_enable(1);
        }
+       ble_hs_unlock_nested();
    }
 #else
     rc = ble_hs_pvcy_set_resolve_enabled(0);
