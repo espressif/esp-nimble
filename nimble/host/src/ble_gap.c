@@ -476,7 +476,9 @@ static void ble_gap_update_entry_free(struct ble_gap_update_entry *entry);
 static struct ble_gap_update_entry *
 ble_gap_update_entry_find(uint16_t conn_handle,
                           struct ble_gap_update_entry **out_prev);
+#endif
 
+#if NIMBLE_BLE_CONNECT
 static void
 ble_gap_update_l2cap_cb(uint16_t conn_handle, int status, void *arg);
 #endif
@@ -1061,7 +1063,7 @@ ble_gap_set_prefered_le_phy(uint16_t conn_handle, uint8_t tx_phys_mask,
 int ble_gap_get_local_used_addr(ble_addr_t *addr)
 {
     uint8_t own_addr_type = 0;
-    const uint8_t *out_id_addr;
+    uint8_t out_id_addr[BLE_DEV_ADDR_LEN];
     int rc;
 
     if (addr == NULL) {
@@ -1070,7 +1072,7 @@ int ble_gap_get_local_used_addr(ble_addr_t *addr)
 
     own_addr_type = ble_gap_slave[0].our_addr_type;
 
-    rc = ble_hs_id_addr(own_addr_type, &out_id_addr,NULL);
+    rc = ble_hs_id_copy_addr(own_addr_type, out_id_addr, NULL);
 
     if (rc == 0) {
         addr->type = own_addr_type;
@@ -2811,8 +2813,10 @@ ble_gap_rx_periodic_adv_sync_lost(const struct ble_hci_ev_le_subev_periodic_adv_
     /* remove any sync_lost event from queue */
     ble_npl_eventq_remove(ble_hs_evq_get(), &psync->lost_ev);
 
-    /* Free the memory occupied by psync as it is no longer needed */
+    /* ble_hs_periodic_sync_free() requires host lock. */
+    ble_hs_lock();
     ble_hs_periodic_sync_free(psync);
+    ble_hs_unlock();
 
     ble_gap_event_listener_call(&event);
     if (cb) {
@@ -5850,8 +5854,10 @@ ble_gap_npl_sync_lost(struct ble_npl_event *ev)
     event.periodic_sync_lost.sync_handle = psync->sync_handle;
     event.periodic_sync_lost.reason = BLE_HS_EDONE;
 
-    /* Free the memory occupied by psync as it is no longer needed */
+    /* ble_hs_periodic_sync_free() requires host lock. */
+    ble_hs_lock();
     ble_hs_periodic_sync_free(psync);
+    ble_hs_unlock();
 
     ble_gap_event_listener_call(&event);
     if (cb) {
@@ -9171,7 +9177,8 @@ ble_gap_reset_irk(void)
     ble_addr_t oldest_peer_id_addr[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     struct ble_store_value_local_irk  value_local_irk;
     struct ble_store_key_local_irk key_local_irk;
-    uint8_t *local_id = NULL;
+    uint8_t local_id[BLE_DEV_ADDR_LEN];
+    int have_local_id;
     int rc, num_peers;
     uint8_t tmp_addr[6];
 
@@ -9185,10 +9192,11 @@ ble_gap_reset_irk(void)
     memset(&key_local_irk, 0, sizeof key_local_irk);
     memset(&value_local_irk, 0x0, sizeof value_local_irk);
 
-    ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+    rc = ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, local_id, NULL);
+    have_local_id = (rc == 0);
 
-    if (local_id) {
-        memcpy (key_local_irk.addr.val , local_id, BLE_DEV_ADDR_LEN);
+    if (have_local_id) {
+        memcpy(key_local_irk.addr.val, local_id, BLE_DEV_ADDR_LEN);
     }
 
     key_local_irk.addr.type = BLE_ADDR_PUBLIC;

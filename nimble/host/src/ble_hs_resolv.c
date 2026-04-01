@@ -131,7 +131,7 @@ ble_rpa_peer_dev_rec_clear_all(void)
  *         NULL            otherwise
  */
 struct ble_hs_dev_records *
-ble_rpa_find_peer_dev_rec(uint8_t *addr)
+ble_rpa_find_peer_dev_rec(const uint8_t *addr)
 {
     struct ble_hs_dev_records *p_dev_rec = &peer_dev_rec[0];
     int i;
