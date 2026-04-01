@@ -732,8 +732,10 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
         }
 
         struct ble_hs_resolv_entry *rl = NULL;
+        ble_hs_lock();
         ble_rpa_replace_peer_params_with_rl(evt.peer_addr,
                                             &evt.peer_addr_type, &rl);
+        ble_hs_unlock();
 #endif
         evt.conn_itvl = le16toh(ev->conn_itvl);
         evt.conn_latency = le16toh(ev->conn_latency);
@@ -804,8 +806,10 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
         }
 
         struct ble_hs_resolv_entry *rl = NULL;
+        ble_hs_lock();
         ble_rpa_replace_peer_params_with_rl(evt.peer_addr,
                                             &evt.peer_addr_type, &rl);
+        ble_hs_unlock();
 #endif
         evt.conn_itvl = le16toh(ev->conn_itvl);
         evt.conn_latency = le16toh(ev->conn_latency);
@@ -930,6 +934,7 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     struct ble_hs_resolv_entry *rl = NULL;
+    ble_hs_lock();
     rl = ble_hs_resolv_rpa_addr(desc.addr.val, desc.addr.type);
 
     if (rl != NULL) {
@@ -939,6 +944,7 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
         memcpy(desc.addr.val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
         desc.addr.type = rl->rl_addr_type;
     }
+    ble_hs_unlock();
 #endif
 
         desc.length_data = rpt->data_len;

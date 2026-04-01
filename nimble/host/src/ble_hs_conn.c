@@ -78,7 +78,7 @@ ble_hs_conn_can_alloc(void)
 
     int result;
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
 
 #if MYNEWT_VAL(BLE_GATTS)
     result = ble_hs_conn_pool.mp_num_free >= 1 &&
@@ -89,7 +89,7 @@ ble_hs_conn_can_alloc(void)
              ble_l2cap_chan_pool.mp_num_free >= BLE_HS_CONN_MIN_CHANS;
 #endif
 
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     return result;
 }
@@ -504,13 +504,17 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
             addrs->our_id_addr.type == BLE_ADDR_RANDOM) {
         our_id_addr_val = conn->bhc_our_rnd_addr;
     } else {
+        ble_hs_lock_nested();
         rc = ble_hs_id_addr(addrs->our_id_addr.type, &our_id_addr_val, NULL);
+        ble_hs_unlock_nested();
         if (rc != 0) {
             return;
         }
     }
 #else
+    ble_hs_lock_nested();
     rc = ble_hs_id_addr(addrs->our_id_addr.type, &our_id_addr_val, NULL);
+    ble_hs_unlock_nested();
     if (rc != 0) {
         return;
     }
@@ -535,14 +539,15 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
     memcpy(bhc_peer_addr.val, conn->bhc_peer_addr.val, BLE_DEV_ADDR_LEN);
 
     struct ble_hs_resolv_entry *rl = NULL;
+    ble_hs_lock_nested();
     rl = ble_hs_resolv_list_find(bhc_peer_addr.val);
     if (rl != NULL) {
         memcpy(addrs->peer_id_addr.val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
         addrs->peer_id_addr.type = rl->rl_addr_type;
 
         if (ble_host_rpa_enabled()) {
-            uint8_t *local_id = NULL;
-            rc = ble_hs_id_addr(BLE_ADDR_PUBLIC, (const uint8_t **) &local_id, NULL);
+            const uint8_t *local_id = NULL;
+            rc = ble_hs_id_addr(BLE_ADDR_PUBLIC, &local_id, NULL);
 
             /* RL is present: populate our id addr with public ID */
             if (rc == 0 && local_id != NULL) {
@@ -554,6 +559,7 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
             }
         }
     }
+    ble_hs_unlock_nested();
 #endif
     switch (conn->bhc_peer_addr.type) {
     case BLE_ADDR_PUBLIC:

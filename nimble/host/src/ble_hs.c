@@ -749,9 +749,15 @@ ble_hs_notifications_sched(void)
 void
 ble_hs_sched_reset(int reason)
 {
-    BLE_HS_DBG_ASSERT(ble_hs_reset_reason == 0);
+    ble_hs_lock_nested();
+    if (ble_hs_reset_reason != 0) {
+        ble_hs_unlock_nested();
+        return;
+    }
 
     ble_hs_reset_reason = reason;
+    ble_hs_unlock_nested();
+
     ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_reset);
 }
 
@@ -933,6 +939,13 @@ ble_hs_init(void)
     ble_hs_reset_reason = 0;
     ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
 
+    rc = ble_npl_mutex_init(&ble_hs_mutex);
+    SYSINIT_PANIC_ASSERT(rc == 0);
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    ble_hs_dbg_mutex_locked = 0;
+#endif
+
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_GATTS)
     ble_npl_event_init(&ble_hs_ev_tx_notifications, ble_hs_event_tx_notify,
@@ -1001,13 +1014,6 @@ ble_hs_init(void)
         STATS_HDR(ble_hs_stats), STATS_SIZE_INIT_PARMS(ble_hs_stats,
         STATS_SIZE_32), STATS_NAME_INIT_PARMS(ble_hs_stats), "ble_hs");
     SYSINIT_PANIC_ASSERT(rc == 0);
-
-    rc = ble_npl_mutex_init(&ble_hs_mutex);
-    SYSINIT_PANIC_ASSERT(rc == 0);
-
-#if MYNEWT_VAL(BLE_HS_DEBUG)
-    ble_hs_dbg_mutex_locked = 0;
-#endif
 
 #ifdef MYNEWT
     ble_hs_evq_set((struct ble_npl_eventq *)os_eventq_dflt_get());

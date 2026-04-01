@@ -550,8 +550,10 @@ uint16_t
 ble_eatt_get_available_chan_cid(uint16_t conn_handle, uint8_t op)
 {
     uint16_t default_cid;
+    uint16_t cid;
     struct ble_eatt * eatt;
 
+    ble_hs_lock_nested();
     default_cid = ble_att_get_default_bearer_cid(conn_handle);
     if (default_cid) {
         eatt = ble_eatt_find(conn_handle, default_cid);
@@ -559,11 +561,16 @@ ble_eatt_get_available_chan_cid(uint16_t conn_handle, uint8_t op)
         eatt = ble_eatt_find_not_busy(conn_handle);
     }
     if (!eatt) {
-        return BLE_L2CAP_CID_ATT;
+        cid = BLE_L2CAP_CID_ATT;
+        goto done;
     }
 
     eatt->client_op = op;
-    return eatt->chan->scid;
+    cid = eatt->chan->scid;
+
+done:
+    ble_hs_unlock_nested();
+    return cid;
 }
 
 
@@ -572,8 +579,10 @@ ble_eatt_release_chan(uint16_t conn_handle, uint8_t op)
 {
     struct ble_eatt *eatt;
 
+    ble_hs_lock_nested();
     eatt = ble_eatt_find_by_conn_handle_and_busy_op(conn_handle, op);
     if (!eatt) {
+        ble_hs_unlock_nested();
         BLE_EATT_LOG_DEBUG("ble_eatt_release_chan:"
                            "EATT not found for conn_handle 0x%04x, operation 0x%02x\n",
                            conn_handle, op);
@@ -581,6 +590,7 @@ ble_eatt_release_chan(uint16_t conn_handle, uint8_t op)
     }
 
     eatt->client_op = 0;
+    ble_hs_unlock_nested();
 }
 
 int
