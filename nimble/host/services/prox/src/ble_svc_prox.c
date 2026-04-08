@@ -16,8 +16,11 @@
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_PROX_SERVICE
 /* Characteristic values */
 static uint8_t ble_svc_prox_link_loss_alert;
-static uint8_t ble_svc_prox_alert;
+static int8_t ble_svc_prox_alert;
 static uint8_t ble_svc_prox_tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+
+#define BLE_SVC_PROX_HIGH_THRESHOLD  (-70)
+#define BLE_SVC_PROX_LOW_THRESHOLD   (-100)
 
 /* Characteristic value handles */
 static uint16_t ble_svc_prox_link_loss_val_handle;
@@ -129,11 +132,13 @@ ble_prox_prph_alert_unalert(uint16_t conn_handle)
         MODLOG_DFLT(ERROR, "conn_handle %d exceeds max connections", conn_handle);
         return;
     }
-    if (ble_svc_prox_alert != 0 && !ble_svc_prox_alert_conn[conn_handle]) {
+    if (ble_svc_prox_alert > BLE_SVC_PROX_HIGH_THRESHOLD &&
+        !ble_svc_prox_alert_conn[conn_handle]) {
         MODLOG_DFLT(INFO, "Path loss exceeded threshold, starting alert for device with "
                     "conn_handle %d", conn_handle);
         ble_svc_prox_alert_conn[conn_handle] = true;
-    } else if (ble_svc_prox_alert == 0 && ble_svc_prox_alert_conn[conn_handle]) {
+    } else if (ble_svc_prox_alert < BLE_SVC_PROX_LOW_THRESHOLD &&
+               ble_svc_prox_alert_conn[conn_handle]) {
         MODLOG_DFLT(INFO, "Path loss lower than threshold, stopping alert for device with "
                     "conn_handle %d", conn_handle);
         ble_svc_prox_alert_conn[conn_handle] = false;
