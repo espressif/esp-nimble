@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include "os/os.h"
 #include "sysinit/sysinit.h"
+#include "esp_nimble_cfg.h"
 
 #if CONFIG_BT_NIMBLE_ENABLED
 #include "host/ble_hs.h"
@@ -45,10 +46,10 @@
 #if !CONFIG_BT_CONTROLLER_ENABLED
 #include "nimble/transport.h"
 #endif
+#include "bt_common.h"
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
-#endif // (BT_HCI_LOG_INCLUDED == TRUE)
-#include "bt_common.h"
+#endif
 
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
@@ -198,6 +199,12 @@ esp_err_t esp_nimble_init(void)
     
     ble_transport_ll_init();
 
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    if (bt_hci_log_init() != ESP_OK) {
+        ESP_LOGW(NIMBLE_PORT_LOG_TAG, "bt_hci_log_init failed");
+    }
+#endif
+
     return ESP_OK;
 }
 
@@ -213,6 +220,10 @@ esp_err_t esp_nimble_deinit(void)
 #endif
 
     ble_transport_ll_deinit();
+
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    bt_hci_log_deinit();
+#endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
     ble_adv_list_deinit();
@@ -362,10 +373,6 @@ nimble_port_deinit(void)
         return ret;
     }
 #endif
-
-#if (BT_HCI_LOG_INCLUDED == TRUE)
-    bt_hci_log_deinit();
-#endif // (BT_HCI_LOG_INCLUDED == TRUE)
 
     return ESP_OK;
 }
