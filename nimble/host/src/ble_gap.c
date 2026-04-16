@@ -2062,7 +2062,8 @@ ble_gap_accept_slave_conn(uint8_t instance)
 
 #if NIMBLE_BLE_SCAN
 static int
-ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len)
+ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len,
+                                   int is_scan_rsp)
 {
     const struct ble_hs_adv_field *flags;
     int rc;
@@ -2078,9 +2079,10 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
         return -1;
     }
 
-    if (ble_gap_master.disc.observer) {
+    if (ble_gap_master.disc.observer || is_scan_rsp) {
         /* Observer role is enabled; All adv reports regardless of
          * Flags AD Type need to be discovered.
+	 * Also, ignore AD type checks for scan response data
          */
         return 0;
     }
@@ -2154,7 +2156,8 @@ void
 ble_gap_rx_adv_report(struct ble_gap_disc_desc *desc)
 {
 #if NIMBLE_BLE_SCAN
-    if (ble_gap_rx_adv_report_sanity_check(desc->data, desc->length_data)) {
+    if (ble_gap_rx_adv_report_sanity_check(desc->data, desc->length_data,
+                                           desc->event_type == BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP)) {
         return;
     }
 
@@ -2173,7 +2176,8 @@ ble_gap_rx_le_scan_timeout(void)
 void
 ble_gap_rx_ext_adv_report(struct ble_gap_ext_disc_desc *desc)
 {
-    if (ble_gap_rx_adv_report_sanity_check(desc->data, desc->length_data)) {
+    if (ble_gap_rx_adv_report_sanity_check(desc->data, desc->length_data,
+                                           desc->props & BLE_HCI_ADV_SCAN_RSP_MASK)) {
         return;
     }
 
