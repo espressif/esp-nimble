@@ -1554,6 +1554,9 @@ int ble_gap_slave_adv_reattempt(void)
 		return rc;
 	    }
 
+	    /* Mark retry context before invoking start; cleared in ble_gap_adv_start(). */
+	    ble_adv_reattempt.retry = 1;
+
 	    rc = ble_gap_adv_start(ble_adv_reattempt.own_addr_type,
 		    (ble_adv_reattempt.direct_addr_present == 1 ? &ble_adv_reattempt.direct_addr: NULL),
 		    ble_adv_reattempt.duration_ms, &ble_adv_reattempt.adv_params,
@@ -1561,8 +1564,6 @@ int ble_gap_slave_adv_reattempt(void)
 	    if (rc != 0) {
 		return rc;
 	    }
-
-	    ble_adv_reattempt.retry = 1 ;
 	    break;
 
 	case 1:
@@ -1573,6 +1574,9 @@ int ble_gap_slave_adv_reattempt(void)
 
 	    rc = ble_gap_ext_adv_start(ble_adv_reattempt.instance, ble_adv_reattempt.duration,
 		    ble_adv_reattempt.max_events);
+
+	    ble_adv_reattempt.retry = 0;
+
 	    if (rc != 0) {
 		return rc;
 	    }
@@ -4330,6 +4334,9 @@ ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
     STATS_INC(ble_gap_stats, adv_start);
 
     if (!ble_hs_is_enabled()) {
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
+        ble_adv_reattempt.retry = 0;
+#endif
         return BLE_HS_EDISABLED;
     }
 
@@ -4433,15 +4440,10 @@ ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
     }
 
     rc = 0;
-
-#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
-    if (ble_adv_reattempt.retry) {
-        ble_adv_reattempt.retry = 0;
-    }
-#endif
-
-
 done:
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
+    ble_adv_reattempt.retry = 0;
+#endif
     ble_hs_unlock();
 
     if (rc != 0) {
