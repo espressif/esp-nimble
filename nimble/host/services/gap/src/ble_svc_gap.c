@@ -536,10 +536,8 @@ ble_svc_gap_appearance_init(void)
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
+        ble_svc_gap_appearance = MYNEWT_VAL(BLE_SVC_GAP_APPEARANCE);
     }
-
-    ble_svc_gap_appearance = MYNEWT_VAL(BLE_SVC_GAP_APPEARANCE);
-
     return 0;
 }
 
@@ -549,6 +547,11 @@ ble_svc_gap_init_name(void)
     if (!ble_hs_gap_svc_ctx) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
+    }
+
+    if (ble_hs_gap_svc_ctx->svc_gap_name != NULL) {
+        /* Device name is already initialized (either default or set at runtime) */
+        return 0;
     }
 
     const char *default_name = MYNEWT_VAL(BLE_SVC_GAP_DEVICE_NAME);
