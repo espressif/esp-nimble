@@ -1014,14 +1014,22 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
         memcpy(desc.addr.val, rpt->addr, BLE_DEV_ADDR_LEN);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+
+    /* Preserve the on-air (OTA) address before any identity-address swap
+     * below, so applications that need the actual advertised address (RPA
+     * when the peer is using privacy) can access it via desc.ota_addr.
+     */
+    desc.ota_addr = desc.addr;
+
     struct ble_hs_resolv_entry *rl = NULL;
     ble_hs_lock();
     rl = ble_hs_resolv_rpa_addr(desc.addr.val, desc.addr.type);
 
     if (rl != NULL) {
-        if(desc.addr.type == 1) {
-           rl->rl_isrpa = 1;
-        }
+        if (desc.addr.type == 1) {
+            rl->rl_isrpa = 1;
+	}
+
         memcpy(desc.addr.val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
         desc.addr.type = rl->rl_addr_type;
     }
@@ -1062,6 +1070,10 @@ ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, const void *data, unsigned int l
         memcpy(desc.direct_addr.val, ev->reports[i].dir_addr, BLE_DEV_ADDR_LEN);
         desc.rssi = ev->reports[i].rssi;
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        /* Directed adv path does not perform identity-swap; mirror OTA addr. */
+        desc.ota_addr = desc.addr;
+#endif
         ble_gap_rx_adv_report(&desc);
     }
 
