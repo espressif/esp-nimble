@@ -24,6 +24,10 @@ enum gap_status {
 
 typedef enum gap_status gap_status_t;
 
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_LIST_SUBCODE_ADD          0
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_LIST_SUBCODE_REMOVE       1
+#define BLE_DUPLICATE_SCAN_EXCEPTIONAL_LIST_SUBCODE_CLEAN        2
+
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_ADV_ADDR             0
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_LINK_ID         1
 #define BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_BEACON_TYPE     2
@@ -246,7 +250,7 @@ int ble_gap_set_auto_pcl_param(struct ble_gap_set_auto_pcl_params *params);
  *
  * @return                0 on success; nonzero on failure.
  */
-int ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *value, void *cb);
+int ble_gap_duplicate_exception_list(uint8_t subcode, uint32_t type, uint8_t *value, void *cb);
 
 /**
  * This API is used to clean up residue memory in controller for legacy advertisement
