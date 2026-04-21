@@ -9898,9 +9898,13 @@ ble_gap_set_auto_pcl_param(struct ble_gap_set_auto_pcl_params *params)
 #endif
 
 int
-ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *value, void *cb)
+ble_gap_duplicate_exception_list(uint8_t subcode, uint32_t type, uint8_t *value, void *cb)
 {
     uint8_t device_info_array[1 + 4 + BLE_DEV_ADDR_LEN] = {0};
+
+    if (!value) {
+        return BLE_HS_EINVAL;
+    }
 
     device_info_array[0] = subcode;
     device_info_array[1] = type & 0xff;
@@ -9910,8 +9914,7 @@ ble_gap_duplicate_exception_list(uint8_t subcode, uint8_t type, uint8_t *value, 
     switch (type)
     {
         case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_ADV_ADDR:
-            swap_in_place(value, BLE_DEV_ADDR_LEN);
-	    memcpy(&device_info_array[5], value, BLE_DEV_ADDR_LEN);
+            swap_buf(&device_info_array[5], value, BLE_DEV_ADDR_LEN);
             break;
         case BLE_DUPLICATE_SCAN_EXCEPTIONAL_INFO_MESH_LINK_ID:
             memcpy(&device_info_array[5], value, 4);
