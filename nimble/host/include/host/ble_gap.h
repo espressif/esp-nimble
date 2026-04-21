@@ -529,6 +529,19 @@ struct ble_gap_disc_desc {
      * event type (BLE_ADDR_ANY otherwise).
      */
     ble_addr_t direct_addr;
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    /** Over-the-air advertiser address as received from the controller.
+     *
+     * When host-based privacy is enabled and the peer is a bonded device using
+     * a resolvable private address (RPA), `addr` is replaced with the stored
+     * identity address so applications can correlate against their bond
+     * records. This field always carries the original on-air address (RPA
+     * when resolvable, or the same value as `addr` otherwise) so applications
+     * that need the OTA address (e.g. for display or direct connect) can use
+     * it. Populated only when BLE_HOST_BASED_PRIVACY is enabled.
+     */
+    ble_addr_t ota_addr;
+#endif
 };
 
 struct ble_gap_repeat_pairing {
