@@ -376,7 +376,6 @@ ble_hs_rand_prand_get(uint8_t *prand)
         /* Get 24 bits of random data */
         rc = ble_hs_hci_util_rand(prand, 3);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -843,7 +842,6 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
     /* Send the data to ble_sm_alg_encrypt in little-endian style */
     rc = ble_sm_alg_encrypt(ecb.key, ecb.plain_text, ecb.cipher_text);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     swap_in_place(ecb.cipher_text, 16);

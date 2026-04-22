@@ -321,7 +321,6 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         sizeof(ble_svc_ras_cp_val),
                         &ble_svc_ras_cp_val, NULL);
                 if (rc != 0) {
-                    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                     return rc;
                 }
                  MODLOG_DFLT(INFO, "ble_svc_gap_cp_val = %02x %02x %02x \n",ble_svc_ras_cp_val[0],ble_svc_ras_cp_val[1],ble_svc_ras_cp_val[2]);

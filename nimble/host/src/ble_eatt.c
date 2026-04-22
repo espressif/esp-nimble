@@ -195,9 +195,6 @@ ble_eatt_prepare_rx_sdu(struct ble_l2cap_chan *chan)
                            chan->conn_handle, rc);
         os_mbuf_free_chain(om);
     }
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -307,9 +304,6 @@ ble_eatt_l2cap_event_fn(struct ble_l2cap_event *event, void *arg)
         rc = ble_eatt_prepare_rx_sdu(event->accept.chan);
         if (rc) {
             ble_eatt_free(eatt);
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-            }
             return rc;
         }
         break;
@@ -325,7 +319,6 @@ ble_eatt_l2cap_event_fn(struct ble_l2cap_event *event, void *arg)
         if (OS_MBUF_PKTLEN(event->receive.sdu_rx) < 1) {
             os_mbuf_free_chain(event->receive.sdu_rx);
             ble_l2cap_disconnect(eatt->chan);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
             return BLE_HS_EREJECT;
         }
         opcode = event->receive.sdu_rx->om_data[0];
@@ -341,14 +334,12 @@ ble_eatt_l2cap_event_fn(struct ble_l2cap_event *event, void *arg)
              */
             os_mbuf_free_chain(event->receive.sdu_rx);
             ble_l2cap_disconnect(eatt->chan);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
             return BLE_HS_EREJECT;
         }
 
         if (ble_gap_conn_find(event->receive.conn_handle, &desc)) {
              os_mbuf_free_chain(event->receive.sdu_rx);
              ble_l2cap_disconnect(eatt->chan);
-             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
              return BLE_HS_EREJECT;
         }
         /* As per BLE 5.4 Standard, Vol. 3, Part G, section 5.3.2
@@ -362,7 +353,6 @@ ble_eatt_l2cap_event_fn(struct ble_l2cap_event *event, void *arg)
         if (!desc.sec_state.encrypted) {
             os_mbuf_free_chain(event->receive.sdu_rx);
             ble_l2cap_disconnect(eatt->chan);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
             return BLE_HS_EREJECT;
         }
 
@@ -452,7 +442,6 @@ ble_gatt_eatt_read_cl_uuid_cb(uint16_t conn_handle,
                                   ble_gatt_eatt_write_cl_cb, NULL);
         BLE_EATT_LOG_DEBUG("eatt: %s , write rc = %d \n", __func__, rc);
         if (rc != 0) {
-             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
              return rc;
         }
     }
@@ -470,20 +459,17 @@ ble_gatt_eatt_read_uuid_cb(uint16_t conn_handle,
 
     if (error == NULL || (error->status != 0 && error->status != BLE_HS_EDONE)) {
         BLE_EATT_LOG_DEBUG("eatt: Cannot find Server Supported features on peer device\n");
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     if (attr == NULL) {
         BLE_EATT_LOG_ERROR("eatt: Invalid attribute \n");
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
     rc = os_mbuf_copydata(attr->om, 0, 1, &supported_features);
     if (rc) {
         BLE_EATT_LOG_ERROR("eatt: Cannot read srv supported features \n");
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
         return BLE_HS_EDONE;
     }
 
@@ -494,7 +480,6 @@ ble_gatt_eatt_read_uuid_cb(uint16_t conn_handle,
             ble_npl_eventq_put(ble_hs_evq_get(), ev);
         }
     }
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EDONE);
     return BLE_HS_EDONE;
 }
 
@@ -642,17 +627,11 @@ ble_eatt_tx(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom)
         BLE_EATT_LOG_DEBUG("ble_eatt_tx: Eatt stalled");
         /* L2CAP owns the mbuf; COC_TX_UNSTALLED event will fire when ready */
         /* Do NOT re-queue - this would cause use-after-free */
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     } else if (rc == BLE_HS_EBUSY) {
         BLE_EATT_LOG_DEBUG("ble_eatt_tx: Message queued");
         STAILQ_INSERT_HEAD(&eatt->eatt_tx_q, OS_MBUF_PKTHDR(txom), omp_next);
         ble_npl_eventq_put(ble_hs_evq_get(), &eatt->wakeup_ev);
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     } else {
         BLE_EATT_LOG_ERROR("eatt: %s, ERROR %d ", __func__, rc);

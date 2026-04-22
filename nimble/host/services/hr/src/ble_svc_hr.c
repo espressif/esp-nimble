@@ -187,7 +187,6 @@ ble_svc_hr_notify_measurement(void)
             rc = ble_gatts_notify_custom(ble_svc_hr_conn_handle[i],
                                          ble_svc_hr_measurement_val_handle, txom);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         }

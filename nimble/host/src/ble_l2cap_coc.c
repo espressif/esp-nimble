@@ -115,7 +115,6 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
 
     if (ble_l2cap_coc_srv_find(psm) != NULL) {
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
         return BLE_HS_EALREADY;
     }
 
@@ -255,7 +254,6 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
         rc = ble_hs_mbuf_pullup_base(om, BLE_L2CAP_SDU_SIZE);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -271,7 +269,6 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
             /* Disconnect peer with invalid behaviour */
             rx->data_offset = 0;
             ble_l2cap_disconnect(chan);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         if (sdu_len > rx->mtu) {
@@ -280,7 +277,6 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
             /* Disconnect peer with invalid behaviour */
             ble_l2cap_disconnect(chan);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
 
@@ -294,9 +290,6 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "Could not append data rc=%d\n", rc);
             ble_l2cap_disconnect(chan);
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-            }
             return rc;
         }
 
@@ -314,16 +307,12 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
             rx->sdus[chan->coc_rx.current_sdu_idx] = NULL;
             rx->data_offset = 0;
             ble_l2cap_disconnect(chan);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         rc = os_mbuf_appendfrom(rx_sdu, *om, 0, om_total);
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "Could not append data rc=%d\n", rc);
             ble_l2cap_disconnect(chan);
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-            }
             return rc;
         }
     }
@@ -331,7 +320,6 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     if (rx->credits == 0) {
         BLE_HS_LOG(ERROR, "RX credits underflow, disconnecting\n");
 	ble_l2cap_disconnect(chan);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
     rx->credits--;
@@ -457,7 +445,6 @@ ble_l2cap_coc_create_srv_chan(struct ble_hs_conn *conn, uint16_t psm,
     /* Check if there is server registered on this PSM */
     srv = ble_l2cap_coc_srv_find(psm);
     if (!srv) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 
@@ -627,7 +614,6 @@ ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
         /* Not complete SDU sent, wait for credits */
         tx->flags |= BLE_L2CAP_COC_FLAG_STALLED;
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTALLED);
         return BLE_HS_ESTALLED;
     }
 
@@ -719,7 +705,6 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
     c = ble_hs_conn_chan_find_by_scid(conn, chan->scid);
     if (!c) {
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -767,7 +752,6 @@ ble_l2cap_coc_send(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_tx)
     tx = &chan->coc_tx;
 
     if (OS_MBUF_PKTLEN(sdu_tx) > tx->mtu) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 

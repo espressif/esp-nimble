@@ -98,7 +98,6 @@ ble_sm_alg_s1(const uint8_t *k, const uint8_t *r1, const uint8_t *r2,
     /* s1(k, r1 , r2) = e(k, r') */
     rc = ble_sm_alg_encrypt(k, out, out);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

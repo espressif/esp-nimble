@@ -65,7 +65,6 @@ ble_hs_misc_conn_chan_find_reqd(uint16_t conn_handle, uint16_t cid,
 
     rc = ble_hs_misc_conn_chan_find(conn_handle, cid, &conn, &chan);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

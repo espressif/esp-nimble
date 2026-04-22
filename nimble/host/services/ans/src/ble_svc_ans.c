@@ -234,7 +234,6 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
                                        &ble_svc_ans_alert_not_ctrl_pt,
                                        NULL);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 

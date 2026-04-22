@@ -340,7 +340,6 @@ ble_sm_gen_pair_rand(uint8_t *pair_rand)
 
     rc = ble_hs_hci_util_rand(pair_rand, 16);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -362,7 +361,6 @@ ble_sm_gen_ediv(struct ble_sm_master_id *master_id)
 
     rc = ble_hs_hci_util_rand(&master_id->ediv, sizeof master_id->ediv);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -384,7 +382,6 @@ ble_sm_gen_master_id_rand(struct ble_sm_master_id *master_id)
 
     rc = ble_hs_hci_util_rand(&master_id->rand_val, sizeof master_id->rand_val);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -407,7 +404,6 @@ ble_sm_gen_ltk(struct ble_sm_proc *proc, uint8_t *ltk)
 
     rc = ble_hs_hci_util_rand(ltk, proc->key_size);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -433,7 +429,6 @@ ble_sm_gen_csrk(struct ble_sm_proc *proc, uint8_t *csrk)
 
     rc = ble_hs_hci_util_rand(csrk, 16);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -967,7 +962,6 @@ ble_sm_read_bond(uint16_t conn_handle, struct ble_store_value_sec *out_bond)
 
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1012,9 +1006,6 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
         case BLE_HS_ENOENT:
             return 0;
         default:
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-            }
             return rc;
         }
 
@@ -1034,7 +1025,6 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
 
     BLE_HS_LOG(DEBUG, "silently ignoring pair request from bonded peer");
 
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
     return BLE_HS_EALREADY;
 }
 
@@ -1199,7 +1189,6 @@ ble_sm_chk_store_overflow_by_type(int obj_type, uint16_t conn_handle)
 
     rc = ble_store_util_count(obj_type, &count);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1218,7 +1207,6 @@ ble_sm_chk_store_overflow_by_type(int obj_type, uint16_t conn_handle)
      */
     rc = ble_store_full_event(obj_type, conn_handle);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1233,14 +1221,12 @@ ble_sm_chk_store_overflow(uint16_t conn_handle)
     rc = ble_sm_chk_store_overflow_by_type(BLE_STORE_OBJ_TYPE_PEER_SEC,
                                            conn_handle);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_sm_chk_store_overflow_by_type(BLE_STORE_OBJ_TYPE_OUR_SEC,
                                            conn_handle);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1432,11 +1418,9 @@ ble_sm_retrieve_ltk(uint16_t ediv, uint64_t rand, uint8_t peer_addr_type,
 
     rc = ble_store_read_our_sec(&key_sec, value_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (value_sec->ediv != ediv || value_sec->rand_num != rand) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     return rc;
@@ -1456,7 +1440,6 @@ ble_sm_ltk_req_reply_tx(uint16_t conn_handle, const uint8_t *ltk)
                                       BLE_HCI_OCF_LE_LT_KEY_REQ_REPLY),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1480,7 +1463,6 @@ ble_sm_ltk_req_neg_reply_tx(uint16_t conn_handle)
                                       BLE_HCI_OCF_LE_LT_KEY_REQ_NEG_REPLY),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2845,7 +2827,6 @@ ble_sm_incr_our_sign_counter(uint16_t conn_handle)
 
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2854,11 +2835,9 @@ ble_sm_incr_our_sign_counter(uint16_t conn_handle)
 
     rc = ble_store_read_our_sec(&key_sec, &value_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (value_sec.csrk_present != 1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     if (value_sec.sign_counter == (uint32_t)0xffffffff) {
@@ -2868,14 +2847,12 @@ ble_sm_incr_our_sign_counter(uint16_t conn_handle)
 
     rc = ble_store_delete_our_sec(&key_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     value_sec.sign_counter += 1;
     rc = ble_store_write_our_sec(&value_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2901,7 +2878,6 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2910,11 +2886,9 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 
     rc = ble_store_read_peer_sec(&key_sec, &value_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (value_sec.csrk_present != 1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     if (value_sec.sign_counter == (uint32_t)0xffffffff) {
@@ -2924,7 +2898,6 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 
     rc = ble_store_delete_peer_sec(&key_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2940,7 +2913,6 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
     value_sec.sign_counter += 1;
     rc = ble_store_write_peer_sec(&value_sec);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3001,7 +2973,6 @@ ble_sm_pair_initiate(uint16_t conn_handle)
 
     if (proc != NULL) {
         res.app_status = BLE_HS_EALREADY;
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
         return BLE_HS_EALREADY;
     }
 
@@ -3010,7 +2981,6 @@ ble_sm_pair_initiate(uint16_t conn_handle)
      */
     rc = ble_sm_chk_store_overflow(conn_handle);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3153,7 +3123,6 @@ ble_sm_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
     rc = os_mbuf_copydata(*om, 0, 1, &op);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -3296,7 +3265,6 @@ ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey)
      * SMP state.
      */
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3398,9 +3366,6 @@ ble_sm_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         ble_sm_deinit();
 #endif
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
 
@@ -3409,9 +3374,6 @@ ble_sm_init(void)
 
     if (rc != 0) {
         ble_sm_deinit();
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
 

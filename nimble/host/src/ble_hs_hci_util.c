@@ -54,7 +54,6 @@ ble_hs_hci_util_read_adv_tx_pwr(int8_t *out_tx_pwr)
                                       BLE_HCI_OCF_LE_RD_ADV_CHAN_TXPWR),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -86,7 +85,6 @@ ble_hs_hci_util_rand(void *dst, int len)
         rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_RAND),
                                NULL, 0, &rsp, sizeof(rsp));
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -119,7 +117,6 @@ ble_hs_hci_util_read_rssi(uint16_t conn_handle, int8_t *out_rssi)
                                       BLE_HCI_OCF_RD_RSSI), &cmd, sizeof(cmd),
                            &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -178,7 +175,6 @@ ble_hs_hci_util_set_data_len(uint16_t conn_handle, uint16_t tx_octets,
                                       BLE_HCI_OCF_LE_SET_DATA_LEN),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -206,7 +202,6 @@ ble_hs_hci_util_read_sugg_def_data_len(uint16_t *out_sugg_max_tx_octets,
                                       BLE_HCI_OCF_LE_RD_SUGG_DEF_DATA_LEN),
                            NULL, 0, &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -293,7 +288,6 @@ ble_hs_hci_read_chan_map(uint16_t conn_handle, uint8_t *out_chan_map)
                                       BLE_HCI_OCF_LE_RD_CHAN_MAP),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -448,7 +442,6 @@ ble_hs_hci_rd_all_local_supp_features(uint8_t* status, uint8_t* max_page,
                                       &rsp, sizeof(rsp));
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -543,7 +536,6 @@ ble_hs_hci_read_monitor_adv_list_size(uint8_t *out_number)
                                       &rsp, sizeof(rsp));
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

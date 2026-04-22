@@ -117,7 +117,6 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
 
     rc = ble_gap_adv_set_fields(adv_fields);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -160,7 +159,6 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
 
     rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -223,7 +221,6 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
 
     rc = ble_eddystone_set_adv_data_gen(adv_fields, url_len + 2);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

@@ -38,7 +38,6 @@
 #define CHECK_CACHE_CONN_STATE(cache_state, cb, cb_arg, opcode, \
                                 s_handle, e_handle, p_uuid) \
     if (ble_hs_cfg.gatt_use_cache == 0) { \
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP); \
         return BLE_HS_ENOTSUP; \
     } \
     op = &conn->pending_op; \
@@ -1714,9 +1713,6 @@ ble_gattc_cache_conn_inc_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -1754,9 +1750,6 @@ ble_gattc_cache_conn_svc_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -1899,9 +1892,6 @@ ble_gattc_cache_conn_dsc_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -1984,9 +1974,6 @@ ble_gattc_cache_conn_chr_disced(uint16_t conn_handle, const struct ble_gatt_erro
         ble_gattc_cache_conn_disc_complete(peer, rc);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -2141,9 +2128,6 @@ ble_gattc_cache_conn_assoc_on_read(uint16_t conn_handle,
     rc = os_mbuf_copydata(attr->om, 0, sizeof(database_hash), database_hash);
     if (rc != 0) {
         BLE_HS_LOG(WARN, "Failed to copy database hash from attr->om (rc=%d)", rc);
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
     rc =  ble_gattc_cache_find_source((struct ble_gattc_cache_conn *)arg, database_hash);
@@ -2178,9 +2162,6 @@ int ble_gattc_cache_assoc(ble_addr_t peer_addr)
 
         if (rc != 0) {
             cache_conn->cache_state = CACHE_INVALID;
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-            }
             return rc;
         }
     }
@@ -2582,7 +2563,6 @@ ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2645,7 +2625,6 @@ ble_gattc_cache_conn_search_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2740,7 +2719,6 @@ ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2811,7 +2789,6 @@ ble_gattc_cache_conn_search_all_chrs(uint16_t conn_handle, uint16_t start_handle
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2882,7 +2859,6 @@ ble_gattc_cache_conn_search_chrs_by_uuid(uint16_t conn_handle, uint16_t start_ha
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2958,7 +2934,6 @@ ble_gattc_cache_conn_search_all_dscs(uint16_t conn_handle, uint16_t start_handle
 
     rc = ble_gattc_cache_conn_verify(conn);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

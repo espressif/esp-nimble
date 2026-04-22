@@ -109,7 +109,6 @@ ble_hs_id_gen_rnd(int nrpa, ble_addr_t *out_addr)
 
     rc = ble_hs_hci_util_rand(out_addr->val, 6);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -146,7 +145,6 @@ ble_hs_id_set_nrpa_rnd(void)
 
     rc = ble_hs_id_gen_rnd(1, &nrpa_addr);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -321,7 +319,6 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
     }
 
     if (memcmp(id_addr, ble_hs_misc_null_addr, 6) == 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOADDR);
         return BLE_HS_ENOADDR;
     }
 
@@ -366,7 +363,6 @@ ble_hs_id_addr_type_usable(uint8_t own_addr_type)
     case BLE_OWN_ADDR_RANDOM:
         rc = ble_hs_id_addr(own_addr_type, NULL, NULL);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         break;
@@ -376,11 +372,9 @@ ble_hs_id_addr_type_usable(uint8_t own_addr_type)
         id_addr_type = ble_hs_misc_own_addr_type_to_id(own_addr_type);
         rc = ble_hs_id_addr(id_addr_type, NULL, &nrpa);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         if (nrpa) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOADDR);
             return BLE_HS_ENOADDR;
         }
         break;
@@ -400,7 +394,6 @@ ble_hs_id_use_addr(uint8_t own_addr_type)
 
     rc = ble_hs_id_addr_type_usable(own_addr_type);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -410,11 +403,9 @@ ble_hs_id_use_addr(uint8_t own_addr_type)
 #if MYNEWT_VAL(BLE_HS_PVCY)
         rc = ble_hs_pvcy_ensure_started();
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 #else
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
 #endif
     }

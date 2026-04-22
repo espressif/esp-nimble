@@ -107,9 +107,6 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
         if (is_request) {
             conn->client_att_busy = false;
         }
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
     return 0;
@@ -134,9 +131,6 @@ ble_att_tx(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom)
     if (rc != 0) {
         ble_hs_unlock();
         os_mbuf_free_chain(txom);
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
 
