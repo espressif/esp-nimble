@@ -267,14 +267,12 @@ ble_store_config_read_our_sec(const struct ble_store_key_sec *key_sec,
     idx = ble_store_config_find_sec(key_sec, ble_store_config_our_secs,
                                     ble_store_config_num_our_secs);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     *value_sec = ble_store_config_our_secs[idx];
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -312,21 +310,18 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
 
     rc = ble_store_config_persist_our_secs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (ble_store_config_our_bond_count > (UINT16_MAX - 5)) {
         rc = ble_restore_our_sec_nvs();
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 
@@ -366,14 +361,12 @@ ble_store_config_delete_sec(const struct ble_store_key_sec *key_sec,
 
     idx = ble_store_config_find_sec(key_sec, value_secs, *num_value_secs);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     rc = ble_store_config_delete_obj(value_secs, sizeof *value_secs, idx,
                                   num_value_secs);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -390,13 +383,11 @@ ble_store_config_delete_our_sec(const struct ble_store_key_sec *key_sec)
     rc = ble_store_config_delete_sec(key_sec, ble_store_config_our_secs,
                                      &ble_store_config_num_our_secs);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_our_secs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -411,13 +402,11 @@ ble_store_config_delete_peer_sec(const struct ble_store_key_sec *key_sec)
     rc = ble_store_config_delete_sec(key_sec, ble_store_config_peer_secs,
                                   &ble_store_config_num_peer_secs);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_peer_secs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     return 0;
@@ -434,14 +423,12 @@ ble_store_config_read_peer_sec(const struct ble_store_key_sec *key_sec,
     idx = ble_store_config_find_sec(key_sec, ble_store_config_peer_secs,
                              ble_store_config_num_peer_secs);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     *value_sec = ble_store_config_peer_secs[idx];
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 
@@ -479,21 +466,18 @@ ble_store_config_write_peer_sec(const struct ble_store_value_sec *value_sec)
 
     rc = ble_store_config_persist_peer_secs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     if (ble_store_config_peer_bond_count > (UINT16_MAX - 5)) {
         rc = ble_restore_peer_sec_nvs();
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -546,7 +530,6 @@ ble_store_config_delete_cccd(const struct ble_store_key_cccd *key_cccd)
 
     idx = ble_store_config_find_cccd(key_cccd);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -555,18 +538,15 @@ ble_store_config_delete_cccd(const struct ble_store_key_cccd *key_cccd)
                                      idx,
                                      &ble_store_config_num_cccds);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_cccds();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -580,14 +560,12 @@ ble_store_config_read_cccd(const struct ble_store_key_cccd *key_cccd,
 
     idx = ble_store_config_find_cccd(key_cccd);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     *value_cccd = ble_store_config_cccds[idx];
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -618,13 +596,11 @@ ble_store_config_write_cccd(const struct ble_store_value_cccd *value_cccd)
 
     rc = ble_store_config_persist_cccds();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -669,7 +645,6 @@ ble_store_config_delete_ead(const struct ble_store_key_ead *key_ead)
 
     idx = ble_store_config_find_ead(key_ead);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -678,13 +653,11 @@ ble_store_config_delete_ead(const struct ble_store_key_ead *key_ead)
                                      idx,
                                      &ble_store_config_num_eads);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_eads();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -699,7 +672,6 @@ ble_store_config_read_ead(const struct ble_store_key_ead *key_ead,
 
     idx = ble_store_config_find_ead(key_ead);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -733,7 +705,6 @@ ble_store_config_write_ead(const struct ble_store_value_ead *value_ead)
 
     rc = ble_store_config_persist_eads();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -781,7 +752,6 @@ ble_store_config_delete_local_irk(const struct ble_store_key_local_irk *key_irk)
 
     idx = ble_store_config_find_local_irk(key_irk);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -790,18 +760,15 @@ ble_store_config_delete_local_irk(const struct ble_store_key_local_irk *key_irk)
                                      idx,
                                      &ble_store_config_num_local_irks);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_local_irk();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -815,14 +782,12 @@ ble_store_config_read_local_irk(const struct ble_store_key_local_irk *key_irk,
 
     idx = ble_store_config_find_local_irk(key_irk);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     *value_irk = ble_store_config_local_irks[idx];
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -862,15 +827,11 @@ ble_store_config_write_local_irk(const struct ble_store_value_local_irk *value_i
         if (appended) {
             ble_store_config_num_local_irks--;
         }
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -913,13 +874,11 @@ ble_store_config_read_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec,st
 
     idx = ble_store_config_find_rpa_rec(key_rpa_rec);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     *value_rpa_rec = ble_store_config_rpa_recs[idx];
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -948,12 +907,10 @@ ble_store_config_write_rpa_rec(const struct ble_store_value_rpa_rec *value_rpa_r
 
     rc = ble_store_config_persist_rpa_recs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -967,7 +924,6 @@ ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
 
     idx = ble_store_config_find_rpa_rec(key_rpa_rec);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -976,19 +932,16 @@ ble_store_config_delete_rpa_rec(const struct ble_store_key_rpa_rec *key_rpa_rec)
                                      idx,
                                      &ble_store_config_num_rpa_recs);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_rpa_recs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -1034,7 +987,6 @@ ble_store_config_delete_csfc(const struct ble_store_key_csfc *key_csfc)
     idx = ble_store_config_find_csfc(key_csfc, ble_store_config_csfcs,
                                      ble_store_config_num_csfcs);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -1043,19 +995,16 @@ ble_store_config_delete_csfc(const struct ble_store_key_csfc *key_csfc)
                                      idx, &ble_store_config_num_csfcs);
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_config_persist_csfcs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -1070,14 +1019,12 @@ ble_store_config_read_csfc(const struct ble_store_key_csfc *key_csfc,
     idx = ble_store_config_find_csfc(key_csfc, ble_store_config_csfcs,
                                     ble_store_config_num_csfcs);
     if (idx == -1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     *value_csfc = ble_store_config_csfcs[idx];
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -1109,13 +1056,11 @@ ble_store_config_write_csfc(const struct ble_store_value_csfc *value_csfc)
 
     rc = ble_store_config_persist_csfcs();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 #endif
 }
@@ -1179,7 +1124,6 @@ ble_store_config_read(int obj_type, const union ble_store_key *key,
        rc =  ble_store_config_read_local_irk(&key->local_irk, &value->local_irk);
        return rc;
     default:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 }
@@ -1226,7 +1170,6 @@ ble_store_config_write(int obj_type, const union ble_store_value *val)
        return rc;
 
     default:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 }
@@ -1269,7 +1212,6 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
         return rc;
 
     default:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 }

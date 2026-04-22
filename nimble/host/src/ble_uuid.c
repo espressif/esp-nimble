@@ -240,7 +240,6 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc = ble_uuid_base_init();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -366,15 +365,11 @@ ble_uuid_init_from_att_mbuf(ble_uuid_any_t *uuid, struct os_mbuf *om, int off,
 
     rc = os_mbuf_copydata(om, off, len, val);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_uuid_init_from_att_buf(uuid, val, len);
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -457,7 +452,6 @@ ble_uuid_flat(const ble_uuid_t *uuid, void *dst)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc = ble_uuid_base_init();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif

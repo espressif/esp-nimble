@@ -366,7 +366,6 @@ ble_l2cap_sig_rx_noop(uint16_t conn_handle,
                       struct ble_l2cap_sig_hdr *hdr,
                       struct os_mbuf **om)
 {
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 }
 
@@ -413,33 +412,28 @@ ble_l2cap_sig_check_conn_params(const struct ble_gap_upd_params *params)
     /* Check connection interval min */
     if ((params->itvl_min < BLE_HCI_CONN_ITVL_MIN) ||
         (params->itvl_min > BLE_HCI_CONN_ITVL_MAX)) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
     /* Check connection interval max */
     if ((params->itvl_max < BLE_HCI_CONN_ITVL_MIN) ||
         (params->itvl_max > BLE_HCI_CONN_ITVL_MAX) ||
         (params->itvl_max < params->itvl_min)) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     /* Check connection latency */
     if (params->latency > BLE_HCI_CONN_LATENCY_MAX) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     /* Check supervision timeout */
     if ((params->supervision_timeout < BLE_HCI_CONN_SPVN_TIMEOUT_MIN) ||
         (params->supervision_timeout > BLE_HCI_CONN_SPVN_TIMEOUT_MAX)) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     /* Check connection event length */
     if (params->min_ce_len > params->max_ce_len) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ERR_INV_HCI_CMD_PARMS);
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -464,7 +458,6 @@ ble_l2cap_sig_update_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_mbuf_pullup_base(om, BLE_L2CAP_SIG_UPDATE_REQ_SZ);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -475,14 +468,12 @@ ble_l2cap_sig_update_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_atomic_conn_flags(conn_handle, &conn_flags);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     /* Only a master can process an update request. */
     sig_err = !(conn_flags & BLE_HS_CONN_F_MASTER);
     if (sig_err) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
         return BLE_HS_EREJECT;
     }
 
@@ -665,7 +656,6 @@ ble_l2cap_sig_coc_err2ble_hs_err(uint16_t l2cap_coc_err)
     case BLE_L2CAP_COC_ERR_CONNECTION_SUCCESS:
         return 0;
     case BLE_L2CAP_COC_ERR_UNKNOWN_LE_PSM:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     case BLE_L2CAP_COC_ERR_NO_RESOURCES:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
@@ -683,10 +673,8 @@ ble_l2cap_sig_coc_err2ble_hs_err(uint16_t l2cap_coc_err)
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EENCRYPT);
         return BLE_HS_EENCRYPT;
     case BLE_L2CAP_COC_ERR_INVALID_SOURCE_CID:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EREJECT);
         return BLE_HS_EREJECT;
     case BLE_L2CAP_COC_ERR_SOURCE_CID_ALREADY_USED:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
         return BLE_HS_EALREADY;
     case BLE_L2CAP_COC_ERR_UNACCEPTABLE_PARAMETERS:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
@@ -840,7 +828,6 @@ ble_l2cap_sig_credit_base_reconfig_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_mbuf_pullup_base(om, hdr->length);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1018,7 +1005,6 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
 
     rc = ble_hs_mbuf_pullup_base(om, hdr->length);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1310,7 +1296,6 @@ ble_l2cap_sig_coc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*req));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1493,7 +1478,6 @@ ble_l2cap_sig_coc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     if (!conn) {
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
@@ -1575,7 +1559,6 @@ ble_l2cap_sig_ecoc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     if (!conn) {
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
@@ -1659,7 +1642,6 @@ ble_l2cap_sig_coc_reconfig(uint16_t conn_handle, struct ble_l2cap_chan *chans[],
 
     if (!conn) {
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
@@ -1737,7 +1719,6 @@ ble_l2cap_sig_disc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*req));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2017,7 +1998,6 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 
     rc = ble_hs_mbuf_pullup_base(om, BLE_L2CAP_SIG_HDR_SZ);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2048,9 +2028,6 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
                                         NULL, 0);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 

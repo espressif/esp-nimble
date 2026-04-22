@@ -531,7 +531,6 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (desc.role == BLE_GAP_ROLE_MASTER) {
@@ -548,9 +547,6 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     if (rc) {
         BLE_HS_LOG(INFO, "Failed to set the default CS settings, err %d", rc);
 
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
      BLE_HS_LOG(INFO, "Set default CS settings ");
@@ -564,9 +560,6 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
             BLE_HS_LOG(INFO, "Failed to read FAE table");
         }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -613,7 +606,6 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
 
     rc = ble_gap_conn_find(cmd.conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -647,9 +639,6 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
         if (rc) {
             BLE_HS_LOG(INFO, "Failed to create CS config");
         }
-    }
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
     }
     return rc;
 }
@@ -709,9 +698,6 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     rc = ble_cs_set_proc_params(&cmd, &rsp);
     if (rc) {
         BLE_HS_LOG(INFO, "Failed to set CS procedure parameters");
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     } else {
         BLE_HS_LOG(INFO, "CS procedure parameters set");
@@ -724,7 +710,6 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     if (desc.role == BLE_GAP_ROLE_MASTER) {
@@ -734,9 +719,6 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
             BLE_HS_LOG(INFO, "Failed to enable CS procedure");
         } else {
             BLE_HS_LOG(INFO, "CS procedure enabled");
-        }
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         }
         return rc;
     }
@@ -764,7 +746,6 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -774,9 +755,6 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
         if (rc) {
             BLE_HS_LOG(DEBUG, "Failed to enable CS security");
             ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_ERR_UNSPECIFIED);
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-            }
             return rc;
         }
     }
@@ -925,9 +903,6 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
                    "err %d", rc);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 

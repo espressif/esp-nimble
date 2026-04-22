@@ -146,7 +146,6 @@ ble_l2cap_parse_hdr(struct os_mbuf *om, struct ble_l2cap_hdr *hdr)
 
     rc = os_mbuf_copydata(om, 0, sizeof(*hdr), hdr);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
@@ -442,7 +441,6 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
     if (!chan) {
         ble_l2cap_sig_reject_invalid_cid_tx(conn_handle, 0, 0, rx_cid);
         os_mbuf_free_chain(rx_frags);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -450,14 +448,12 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         chan->dcid <= BLE_L2CAP_COC_CID_END && rx_len > chan->my_coc_mps) {
         ble_l2cap_disconnect(chan);
         os_mbuf_free_chain(rx_frags);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     if (rx_len > ble_l2cap_get_mtu(chan)) {
         ble_l2cap_disconnect(chan);
         os_mbuf_free_chain(rx_frags);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -506,9 +502,6 @@ ble_l2cap_tx(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan,
 
     default:
         /* Error. */
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
 }
@@ -521,7 +514,6 @@ ble_l2cap_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_l2cap_ensure_ctx();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

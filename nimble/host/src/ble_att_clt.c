@@ -46,7 +46,6 @@ ble_att_clt_rx_error(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 
     rc = ble_hs_mbuf_pullup_base(rxom, sizeof(*rsp));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -90,7 +89,6 @@ ble_att_clt_tx_mtu(uint16_t conn_handle, uint16_t mtu)
     ble_hs_unlock();
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -128,7 +126,6 @@ ble_att_clt_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 
 #if MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0
     if (ble_hs_cfg.eatt && cid != BLE_L2CAP_CID_ATT) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 #endif
@@ -165,7 +162,6 @@ ble_att_clt_tx_find_info(uint16_t conn_handle, uint16_t cid, uint16_t start_hand
                          uint16_t end_handle)
 {
 #if !NIMBLE_BLE_ATT_CLT_FIND_INFO
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -206,13 +202,11 @@ ble_att_clt_parse_find_info_entry(struct os_mbuf **rxom, uint8_t rsp_format,
         break;
 
     default:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
     rc = ble_hs_mbuf_pullup_base(rxom, entry_len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -222,7 +216,6 @@ ble_att_clt_parse_find_info_entry(struct os_mbuf **rxom, uint8_t rsp_format,
     case BLE_ATT_FIND_INFO_RSP_FORMAT_16BIT:
         rc = ble_uuid_init_from_att_mbuf(&idata->uuid, *rxom, 2, 2);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         break;
@@ -230,7 +223,6 @@ ble_att_clt_parse_find_info_entry(struct os_mbuf **rxom, uint8_t rsp_format,
     case BLE_ATT_FIND_INFO_RSP_FORMAT_128BIT:
         rc = ble_uuid_init_from_att_mbuf(&idata->uuid, *rxom, 2, 16);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
             return BLE_HS_EBADDATA;
         }
         break;
@@ -248,7 +240,6 @@ int
 ble_att_clt_rx_find_info(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 {
 #if !NIMBLE_BLE_ATT_CLT_FIND_INFO
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -301,7 +292,6 @@ ble_att_clt_tx_find_type_value(uint16_t conn_handle, uint16_t cid,
                                const void *attribute_value, int value_len)
 {
 #if !NIMBLE_BLE_ATT_CLT_FIND_TYPE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -344,7 +334,6 @@ ble_att_clt_parse_find_type_value_hinfo(
 
     rc = ble_hs_mbuf_pullup_base(om, sizeof(*group));
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
@@ -362,7 +351,6 @@ int
 ble_att_clt_rx_find_type_value(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_FIND_TYPE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -395,7 +383,6 @@ ble_att_clt_tx_read_type(uint16_t conn_handle, uint16_t cid, uint16_t start_hand
                          uint16_t end_handle, const ble_uuid_t *uuid)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_TYPE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -426,7 +413,6 @@ int
 ble_att_clt_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_TYPE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -485,7 +471,6 @@ int
 ble_att_clt_tx_read(uint16_t conn_handle, uint16_t cid, uint16_t handle)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -512,7 +497,6 @@ int
 ble_att_clt_rx_read(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -529,7 +513,6 @@ int
 ble_att_clt_tx_read_blob(uint16_t conn_handle, uint16_t cid, uint16_t handle, uint16_t offset)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_BLOB
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -557,7 +540,6 @@ int
 ble_att_clt_rx_read_blob(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_BLOB
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -574,7 +556,6 @@ ble_att_clt_tx_read_mult(uint16_t conn_handle, uint16_t cid,
                          const uint16_t *handles, int num_handles, bool variable)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_MULT
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -609,7 +590,6 @@ int
 ble_att_clt_rx_read_mult(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_MULT
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -622,7 +602,6 @@ int
 ble_att_clt_rx_read_mult_var(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_MULT_VAR
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -641,7 +620,6 @@ ble_att_clt_tx_read_group_type(uint16_t conn_handle, uint16_t cid,
                                const ble_uuid_t *uuid)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_GROUP_TYPE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -675,13 +653,11 @@ ble_att_clt_parse_read_group_type_adata(
     int rc;
 
     if (data_len < BLE_ATT_READ_GROUP_TYPE_ADATA_BASE_SZ + 1) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
     rc = ble_hs_mbuf_pullup_base(om, data_len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -697,7 +673,6 @@ int
 ble_att_clt_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_READ_GROUP_TYPE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -744,7 +719,6 @@ ble_att_clt_tx_write_req(uint16_t conn_handle, uint16_t cid, uint16_t handle,
                          struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_WRITE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -769,7 +743,6 @@ ble_att_clt_tx_write_cmd(uint16_t conn_handle, uint16_t cid,
                          uint16_t handle, struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_WRITE_NO_RSP
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -808,7 +781,6 @@ int
 ble_att_clt_rx_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_WRITE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -950,7 +922,6 @@ ble_att_clt_tx_prep_write(uint16_t conn_handle, uint16_t cid, uint16_t handle,
                           uint16_t offset, struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_PREP_WRITE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1002,7 +973,6 @@ int
 ble_att_clt_rx_prep_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_PREP_WRITE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1041,7 +1011,6 @@ int
 ble_att_clt_tx_exec_write(uint16_t conn_handle, uint16_t cid, uint8_t flags)
 {
 #if !NIMBLE_BLE_ATT_CLT_EXEC_WRITE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1063,7 +1032,6 @@ int
 ble_att_clt_rx_exec_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_EXEC_WRITE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1082,7 +1050,6 @@ ble_att_clt_tx_notify(uint16_t conn_handle, uint16_t handle,
                       struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_NOTIFY
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1124,7 +1091,6 @@ ble_att_clt_tx_indicate(uint16_t conn_handle, uint16_t cid,
                         uint16_t handle, struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_INDICATE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1158,7 +1124,6 @@ int
 ble_att_clt_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
 #if !NIMBLE_BLE_ATT_CLT_INDICATE
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -1175,7 +1140,6 @@ int
 ble_att_clt_tx_notify_mult(uint16_t conn_handle, struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_NOTIFY_MULT
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 

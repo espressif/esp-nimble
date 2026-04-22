@@ -157,7 +157,6 @@ int
 ble_hs_conn_chan_insert(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 {
 #if !NIMBLE_BLE_CONNECT
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -167,7 +166,6 @@ ble_hs_conn_chan_insert(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
     prev = NULL;
     SLIST_FOREACH(cur, &conn->bhc_channels, next) {
         if (cur->scid == chan->scid) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EALREADY);
             return BLE_HS_EALREADY;
         }
         if (cur->scid > chan->scid) {
@@ -660,7 +658,6 @@ ble_hs_conn_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_hs_conn_ensure_ctx();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

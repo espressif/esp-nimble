@@ -495,7 +495,6 @@ ble_svc_gap_device_appearance_set(uint16_t appearance)
     if (!ble_hs_gap_svc_ctx) {
         int rc = ble_svc_gap_appearance_init();
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }

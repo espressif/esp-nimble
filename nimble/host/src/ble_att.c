@@ -587,7 +587,6 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 
     rc = os_mbuf_copydata(*om, 0, 1, &op);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EMSGSIZE);
         return BLE_HS_EMSGSIZE;
     }
 
@@ -600,7 +599,6 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
         BLE_HS_LOG(INFO, "ATT handler not found; op=0x%02x conn_handle=0x%04x "
                    "cid=0x%04x; packet dropped\n", op, conn_handle, cid);
         ble_att_rx_handle_unknown_request(op, conn_handle, cid, om);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
         return BLE_HS_ENOTSUP;
     }
 
@@ -613,9 +611,6 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
     if (rc != 0) {
         if (rc == BLE_HS_ENOTSUP) {
             ble_att_rx_handle_unknown_request(op, conn_handle, cid, om);
-        }
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         }
         return rc;
     }
@@ -790,7 +785,6 @@ ble_att_set_default_bearer_using_cid(uint16_t conn_handle, uint16_t cid) {
 
     return rc;
 #endif
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 }
 
@@ -829,7 +823,6 @@ ble_att_init(void)
 
     rc = ble_eatt_init(ble_att_rx_extended);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

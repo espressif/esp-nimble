@@ -535,9 +535,6 @@ ble_hs_hci_process_ack(uint16_t expected_opcode,
         STATS_INC(ble_hs_stats, hci_invalid_ack);
     }
 
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -899,7 +896,6 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
 #endif
         if (frag == NULL) {
             *om = txom;
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
             return BLE_HS_EAGAIN;
         }
 
@@ -936,7 +932,6 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
     if (txom != NULL) {
         /* The controller couldn't accommodate some or all of the packet. */
         *om = txom;
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
         return BLE_HS_EAGAIN;
     }
 
@@ -973,7 +968,6 @@ ble_hs_hci_acl_tx(struct ble_hs_conn *conn, struct os_mbuf **om)
 
     /* If this conn is already backed up, don't even try to send. */
     if (STAILQ_FIRST(&conn->bhc_tx_q) != NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
         return BLE_HS_EAGAIN;
     }
 

@@ -123,14 +123,12 @@ cacheEraseItem(cache_handle_t handle, const char *key)
     if (cache_fn.erase_key_item) {
         rc = cache_fn.erase_key_item(handle,key);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
         if (cache_fn.commit) {
             rc = cache_fn.commit(handle);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         }
@@ -801,7 +799,6 @@ ble_gattc_cache_assoc_load(ble_addr_t src_addr, uint8_t src_index, ble_addr_t as
     BLE_HS_LOG(DEBUG, "Successfully associated cache from src_addr to assoc_addr.");
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -954,7 +951,6 @@ ble_gattc_cache_init(void *storage_cb)
    int no_cached_blob = 0;
    rc = ble_gattc_cache_static_vars_init();
    if (rc != 0) {
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
     return rc;
    }
 #endif
