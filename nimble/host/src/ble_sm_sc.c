@@ -238,7 +238,6 @@ ble_sm_gen_pub_priv(uint8_t *pub, uint8_t *priv)
 
     rc = ble_sm_alg_gen_key_pair(pub, priv);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -259,7 +258,6 @@ ble_sm_sc_ensure_keys_generated(void)
 #endif
         rc = ble_sm_gen_pub_priv(ble_sm_sc_pub_key, ble_sm_sc_priv_key);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -463,7 +461,6 @@ ble_sm_sc_random_advance(struct ble_sm_proc *proc)
         proc->state = BLE_SM_PROC_STATE_CONFIRM;
         rc = ble_sm_gen_pair_rand(ble_sm_our_pair_rand(proc));
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -1016,20 +1013,17 @@ ble_sm_sc_oob_generate_data(struct ble_sm_sc_oob_data *oob_data)
 
     rc = ble_sm_sc_ensure_keys_generated();
     if (rc) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_hs_hci_util_rand(oob_data->r, 16);
     if (rc) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_sm_alg_f4(ble_sm_sc_pub_key, ble_sm_sc_pub_key, oob_data->r, 0,
                        oob_data->c);
     if (rc) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

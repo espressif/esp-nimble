@@ -183,7 +183,6 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
 
     rc = ble_sm_alg_s1(proc->tk, proc->rands, proc->randm, key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

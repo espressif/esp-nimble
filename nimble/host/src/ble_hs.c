@@ -286,9 +286,6 @@ ble_hs_lock_nested(void)
 #endif
 
     rc = ble_npl_mutex_pend(&ble_hs_mutex, 0xffffffff);
-    if (rc != 0 && rc != OS_NOT_STARTED) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     counter_lock++;
@@ -327,9 +324,6 @@ ble_hs_unlock_nested(void)
 #endif
 
     rc = ble_npl_mutex_release(&ble_hs_mutex);
-    if (rc != 0 && rc != OS_NOT_STARTED) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 
 }
@@ -393,7 +387,6 @@ ble_hs_wakeup_tx_conn(struct ble_hs_conn *conn)
              * get transmitted next time around.
              */
             STAILQ_INSERT_HEAD(&conn->bhc_tx_q, OS_MBUF_PKTHDR(om), omp_next);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
             return BLE_HS_EAGAIN;
         }
     }
@@ -803,7 +796,6 @@ ble_hs_start(void)
     ble_hs_unlock();
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -822,7 +814,6 @@ ble_hs_start(void)
 #if MYNEWT_VAL(BLE_GATTS)
     rc = ble_gatts_start();
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif

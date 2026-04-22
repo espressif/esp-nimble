@@ -131,7 +131,6 @@ ble_store_util_bonded_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
                            ble_store_util_iter_unique_peer,
                            &set);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -144,7 +143,6 @@ ble_store_util_bonded_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -171,13 +169,11 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_OUR_SEC, &key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_SEC, &key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -186,7 +182,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CCCD, &key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -196,7 +191,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -206,7 +200,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_ADDR, &key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -215,7 +208,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CSFC, &key);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -242,7 +234,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
             if (needs_unlock) {
                 ble_hs_unlock();
             }
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
     }
@@ -253,7 +244,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -279,15 +269,11 @@ ble_store_util_delete_all(int type, const union ble_store_key *key)
     } while (rc == 0);
 
     if (rc != BLE_HS_ENOENT) {
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        }
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -321,13 +307,11 @@ ble_store_util_count(int type, int *out_count)
                            ble_store_util_iter_count,
                            out_count);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -345,7 +329,6 @@ ble_store_util_delete_oldest_peer(void)
             peer_id_addrs, &num_peers,
             sizeof peer_id_addrs / sizeof peer_id_addrs[0]);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -355,13 +338,11 @@ ble_store_util_delete_oldest_peer(void)
 
     rc = ble_store_util_delete_peer(&peer_id_addrs[0]);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
     return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -401,7 +382,6 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
                           ble_store_util_iter_unique_peer,
                           &set);
    if (rc != 0) {
-       BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
        return rc;
    }
 
@@ -412,7 +392,6 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
    *out_num_peers = set.num_peers;
    return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -433,7 +412,6 @@ ble_store_util_delete_ead_oldest_peer(void)
            peer_id_addrs, &num_peers,
            sizeof peer_id_addrs / sizeof peer_id_addrs[0]);
    if (rc != 0) {
-       BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
        return rc;
    }
 
@@ -444,13 +422,11 @@ ble_store_util_delete_ead_oldest_peer(void)
    key.ead.peer_addr = peer_id_addrs[0];
    rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &key);
    if (rc != 0) {
-       BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
        return rc;
    }
 
    return 0;
 #else
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTSUP);
     return BLE_HS_ENOTSUP;
 #endif
 }

@@ -733,7 +733,6 @@ ble_gatts_calculate_hash(uint8_t *out_hash_key)
     /* data with all zeroes */
     rc = ble_att_get_database_size(&size);
     if(rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     buf = nimble_platform_mem_calloc(1,sizeof(uint8_t) * size);
@@ -773,7 +772,6 @@ ble_gatts_register_inc(struct ble_gatts_svc_entry *entry)
     rc = ble_att_svr_register(uuid_inc, BLE_ATT_F_READ, 0, &handle,
                               ble_gatts_inc_access, entry);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -869,7 +867,6 @@ ble_gatts_register_dsc(const struct ble_gatt_svc_def *svc,
     rc = ble_att_svr_register(dsc->uuid, dsc->att_flags, dsc->min_key_size,
                               &dsc_handle, ble_gatts_dsc_access, (void *)dsc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1127,7 +1124,6 @@ ble_gatts_clt_cfg_access(uint16_t conn_handle, uint16_t attr_handle,
     ble_hs_unlock();
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1159,7 +1155,6 @@ ble_gatts_register_clt_cfg_dsc(uint16_t *att_handle, uint8_t cccd_flags)
     rc = ble_att_svr_register(uuid_ccc, cccd_flags, 0,
                               att_handle, ble_gatts_clt_cfg_access, NULL);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1238,7 +1233,6 @@ ble_gatts_register_cpfds(const struct ble_gatt_cpfd *cpfds)
         rc = ble_att_svr_register(uuid_cpf, BLE_ATT_F_READ, 0, &first_cpfd_handle,
                                   ble_gatts_cpfd_access, (void *)(cpfds + idx));
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -1253,7 +1247,6 @@ ble_gatts_register_cpfds(const struct ble_gatt_cpfd *cpfds)
         first_cpfd_handle -= (idx - 1);
         first_cpfd_entry = ble_att_svr_find_by_handle(first_cpfd_handle);
         if (first_cpfd_entry == NULL) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
             return BLE_HS_ENOENT;
         }
         
@@ -1265,7 +1258,6 @@ ble_gatts_register_cpfds(const struct ble_gatt_cpfd *cpfds)
         rc = ble_att_svr_register(uuid_caf, BLE_ATT_F_READ, 0, NULL,
                                   ble_gatts_cafd_access, (void *)(first_cpfd_entry));
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
 
@@ -1310,7 +1302,6 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     rc = ble_att_svr_register(uuid_chr, BLE_ATT_F_READ, 0, &def_handle,
                               ble_gatts_chr_def_access, (void *)chr);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1322,7 +1313,6 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
                               &val_handle, ble_gatts_chr_val_access,
                               (void *)chr);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     BLE_HS_DBG_ASSERT(val_handle == def_handle + 1);
@@ -1344,7 +1334,6 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
         att_flags = ble_gatts_chr_clt_cfg_flags_from_chr_flags(chr->flags);
         rc = ble_gatts_register_clt_cfg_dsc(&dsc_handle, att_flags);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         BLE_HS_DBG_ASSERT(dsc_handle == def_handle + 2);
@@ -1353,7 +1342,6 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     /* Register each Client Presentation Format Descriptor. */
     rc = ble_gatts_register_cpfds(chr->cpfd);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 #endif
@@ -1364,7 +1352,6 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
             rc = ble_gatts_register_dsc(svc, chr, dsc, def_handle, register_cb,
                                         cb_arg);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         }
@@ -1426,7 +1413,6 @@ ble_gatts_register_svc(const struct ble_gatt_svc_def *svc,
     int i;
 
     if (!ble_gatts_svc_incs_satisfied(svc)) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EAGAIN);
         return BLE_HS_EAGAIN;
     }
 
@@ -1447,7 +1433,6 @@ ble_gatts_register_svc(const struct ble_gatt_svc_def *svc,
     rc = ble_att_svr_register(uuid, BLE_ATT_F_READ, 0, out_handle,
                               ble_gatts_svc_access, (void *)svc);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1473,7 +1458,6 @@ ble_gatts_register_svc(const struct ble_gatt_svc_def *svc,
             rc = ble_gatts_register_inc(ble_gatts_svc_entries + idx);
 #endif
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         }
@@ -1484,7 +1468,6 @@ ble_gatts_register_svc(const struct ble_gatt_svc_def *svc,
         for (chr = svc->characteristics; chr->uuid != NULL; chr++) {
             rc = ble_gatts_register_chr(svc, chr, register_cb, cb_arg);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
         }
@@ -1531,9 +1514,6 @@ ble_gatts_register_round(int *out_num_registered, ble_gatt_register_fn *cb,
                 break;
 
             default:
-                if (rc != 0) {
-                    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-                }
                 return rc;
             }
         }
@@ -1617,7 +1597,6 @@ ble_gatts_register_svcs(const struct ble_gatt_svc_def *svcs,
     while (total_registered < num_svcs) {
         rc = ble_gatts_register_round(&cur_registered, cb, cb_arg);
         if (rc != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
             return rc;
         }
         total_registered += cur_registered;
@@ -2055,9 +2034,6 @@ done:
     }
 
     ble_hs_unlock();
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-    }
     return rc;
 }
 
@@ -2226,18 +2202,15 @@ ble_gatts_send_next_indicate(uint16_t conn_handle)
     ble_hs_unlock();
 
     if (conn == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOTCONN);
         return BLE_HS_ENOTCONN;
     }
 
     if (chr_val_handle == 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
     rc = ble_gatts_indicate(conn_handle, chr_val_handle);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2271,7 +2244,6 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
     if (clt_cfg_idx == -1) {
 #endif
         /* This characteristic does not have a CCCD. */
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -2280,7 +2252,6 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
 #endif
     if (!(clt_cfg->allowed & BLE_GATTS_CLT_CFG_F_INDICATE)) {
         /* This characteristic does not allow indications. */
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -2334,7 +2305,6 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
     ble_hs_unlock();
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2972,7 +2942,6 @@ ble_gatts_find_svc_chr_attr(const ble_uuid_t *svc_uuid,
     svc_entry = ble_gatts_find_svc_entry(svc_uuid);
 #endif
     if (svc_entry == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -2986,14 +2955,12 @@ ble_gatts_find_svc_chr_attr(const ble_uuid_t *svc_uuid,
     while (1) {
         if (cur == NULL) {
             /* Reached end of attribute list without a match. */
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
             return BLE_HS_ENOENT;
         }
         next = STAILQ_NEXT(cur, ha_next);
 
         if (cur->ha_handle_id == svc_entry->end_group_handle) {
             /* Reached end of service without a match. */
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
             return BLE_HS_ENOENT;
         }
 
@@ -3025,7 +2992,6 @@ ble_gatts_find_svc(const ble_uuid_t *uuid, uint16_t *out_handle)
     entry = ble_gatts_find_svc_entry(uuid);
 #endif
     if (entry == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -3044,7 +3010,6 @@ ble_gatts_find_chr(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
 
     rc = ble_gatts_find_svc_chr_attr(svc_uuid, chr_uuid, NULL, &att_chr);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3070,7 +3035,6 @@ ble_gatts_find_dsc(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
     rc = ble_gatts_find_svc_chr_attr(svc_uuid, chr_uuid, &svc_entry,
                                      &att_chr);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -3078,20 +3042,17 @@ ble_gatts_find_dsc(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
     while (1) {
         if (cur == NULL) {
             /* Reached end of attribute list without a match. */
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
             return BLE_HS_ENOENT;
         }
 
         if (cur->ha_handle_id > svc_entry->end_group_handle) {
             /* Reached end of service without a match. */
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
             return BLE_HS_ENOENT;
         }
 
         uuid16 = ble_uuid_u16(cur->ha_uuid);
         if (uuid16 == BLE_ATT_UUID_CHARACTERISTIC) {
             /* Reached end of characteristic without a match. */
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
             return BLE_HS_ENOENT;
         }
 
@@ -3127,7 +3088,6 @@ static int ble_gatts_remove_clt_cfg(struct ble_gatts_clt_cfg_list *clt_cfgs, uin
     }
 
     if (cfg == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
 
@@ -3283,7 +3243,6 @@ ble_gatts_deregister_svc(const ble_uuid_t *uuid) {
     entry = ble_gatts_find_svc_entry_by_uuid(uuid);
     if (entry == NULL) {
         /* no such service */
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     rc = 0;
@@ -3305,7 +3264,6 @@ ble_gatts_remove_svc_entry(const ble_uuid_t *uuid)
         }
     }
     if (entry == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
         return BLE_HS_ENOENT;
     }
     STAILQ_REMOVE(&ble_gatts_svc_entries, entry, ble_gatts_svc_entry, next);
@@ -3459,7 +3417,6 @@ ble_gatts_svc_set_visibility(uint16_t handle, int visible)
         }
     }
 
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOENT);
     return BLE_HS_ENOENT;
 }
 
@@ -3612,7 +3569,6 @@ ble_gatts_count_cfg(const struct ble_gatt_svc_def *defs)
 
     rc = ble_gatts_count_resources(defs, &res);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

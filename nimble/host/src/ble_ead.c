@@ -18,7 +18,6 @@ static int ble_ead_rand(void *buf, int len)
     int rc;
     rc = ble_hs_hci_util_rand(buf, len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
     return 0;

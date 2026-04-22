@@ -331,13 +331,11 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
 
     rc = ble_aes_ccm_crypt(key_reversed, nonce, enc_msg, out_msg, msg_len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     rc = ble_aes_ccm_auth(key_reversed, nonce, out_msg, msg_len, aad, aad_len, mic, mic_size);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -372,14 +370,12 @@ int ble_aes_ccm_encrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
     /** Calculating MIC */
     int rc = ble_aes_ccm_auth(key_reversed, nonce, msg, msg_len, aad, aad_len, mic, mic_size);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
     /** Encrypting advertisement */
     rc = ble_aes_ccm_crypt(key_reversed, nonce, msg, out_msg, msg_len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 

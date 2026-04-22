@@ -554,7 +554,6 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 #endif
             rc = ble_hs_atomic_conn_delete(ev->conn_handle);
             if (rc != 0) {
-                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
                 return rc;
             }
 
@@ -980,7 +979,6 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
     /* Validate the event is formatted correctly */
     rc = ble_hs_hci_evt_le_adv_rpt_first_pass(data, len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -1390,7 +1388,6 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
 
     rc = ble_hs_hci_evt_le_ext_adv_rpt_first_pass(data, len);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
@@ -2070,7 +2067,6 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
     rc = ble_hs_hci_util_data_hdr_strip(om, &hci_hdr);
     if (rc != 0) {
         os_mbuf_free_chain(om);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
         return rc;
     }
 
