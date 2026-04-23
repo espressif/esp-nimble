@@ -85,6 +85,11 @@ int ble_svc_ans_unr_alert_add(uint8_t cat_id);
 
 void ble_svc_ans_init(void);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int ble_svc_ans_ensure_ctx_init(void);
+void ble_svc_ans_ctx_deinit(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

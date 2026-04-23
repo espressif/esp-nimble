@@ -218,6 +218,10 @@ struct segment {
 }  __attribute__((packed));
 
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void ble_svc_ras_ensure_ctx_init(void);
+void ble_svc_ras_ctx_deinit(void);
+#endif
 void ble_gatts_indicate_ranging_data_ready(uint16_t ranging_counter);
 void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent);
 void ble_gatts_indicate_control_point_response(uint16_t attr_handle , uint16_t ranging_counter);

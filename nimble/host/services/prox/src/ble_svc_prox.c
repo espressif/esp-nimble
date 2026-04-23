@@ -13,22 +13,87 @@
 #include "host/ble_gap.h"
 #include "host/ble_hs_log.h"
 #include "services/prox/ble_svc_prox.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_PROX_SERVICE
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+
+typedef struct {
+    uint8_t _ble_svc_prox_link_loss_alert;
+    int8_t _ble_svc_prox_alert;
+    uint8_t _ble_svc_prox_tx_pwr_lvl;
+    bool _ble_svc_prox_alert_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+    TaskHandle_t _ble_prox_task_handle;
+} ble_svc_prox_ctx_t;
+
+static ble_svc_prox_ctx_t * ble_svc_prox_ctx = NULL;
+
+#define ble_svc_prox_link_loss_alert (ble_svc_prox_ctx->_ble_svc_prox_link_loss_alert)
+#define ble_svc_prox_alert (ble_svc_prox_ctx->_ble_svc_prox_alert)
+#define ble_svc_prox_tx_pwr_lvl (ble_svc_prox_ctx->_ble_svc_prox_tx_pwr_lvl)
+#define ble_svc_prox_alert_conn (ble_svc_prox_ctx->_ble_svc_prox_alert_conn)
+#define ble_prox_task_handle (ble_svc_prox_ctx->_ble_prox_task_handle)
+
+#else /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
 /* Characteristic values */
 static uint8_t ble_svc_prox_link_loss_alert;
 static int8_t ble_svc_prox_alert;
 static uint8_t ble_svc_prox_tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
 
-#define BLE_SVC_PROX_HIGH_THRESHOLD  (-70)
-#define BLE_SVC_PROX_LOW_THRESHOLD   (-100)
+static bool ble_svc_prox_alert_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+
+static TaskHandle_t ble_prox_task_handle;
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 /* Characteristic value handles */
 static uint16_t ble_svc_prox_link_loss_val_handle;
 static uint16_t ble_svc_prox_immediate_alert_loc_val_handle;
 static uint16_t ble_svc_prox_tx_pwr_lvl_val_handle;
 
-static bool ble_svc_prox_alert_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+#define BLE_SVC_PROX_HIGH_THRESHOLD  (-70)
+#define BLE_SVC_PROX_LOW_THRESHOLD   (-100)
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_svc_prox_ensure_ctx_init()
+{
+    if (ble_svc_prox_ctx == NULL) {
+        ble_svc_prox_ctx = nimble_platform_mem_calloc(1, sizeof(ble_svc_prox_ctx_t));
+        if (ble_svc_prox_ctx == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+        ble_svc_prox_ctx->_ble_svc_prox_tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+    }
+    return 0;
+}
+
+/* This API is provided to free the memory used by the service in the heap
+ * after the service is no longer required. However, the task ble_prox_prph_task
+ * runs indefinately. Is it only recommended to use this API after that task has
+ * been deinited.
+ */
+void
+ble_svc_prox_ctx_deinit()
+{
+    if (ble_svc_prox_ctx == NULL) {
+        return;
+    }
+
+    if (ble_prox_task_handle) {
+        vTaskDelete(ble_prox_task_handle);
+        ble_prox_task_handle = NULL;
+    }
+
+    if (ble_svc_prox_ctx) {
+        nimble_platform_mem_free(ble_svc_prox_ctx);
+        ble_svc_prox_ctx = NULL;
+    }
+}
+#endif
 
 static int
 ble_svc_prox_link_loss_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -275,19 +340,25 @@ ble_svc_prox_init(void)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if(ble_svc_prox_ensure_ctx_init()) {
+        SYSINIT_PANIC_ASSERT(0);
+        return;
+    }
+#endif
+
     rc = ble_gatts_count_cfg(ble_svc_prox_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
     rc = ble_gatts_add_svcs(ble_svc_prox_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    static TaskHandle_t ble_prox_task_handle;
-    BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task", 4096, NULL, 10, &ble_prox_task_handle);
-    SYSINIT_PANIC_ASSERT(ret == pdPASS);
-
     /* Initializing alert array */
     for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
         ble_svc_prox_alert_conn[i] = false;
     }
+
+    BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task", 4096, NULL, 10, &ble_prox_task_handle);
+    SYSINIT_PANIC_ASSERT(ret == pdPASS);
 }
 #endif
