@@ -30,6 +30,9 @@
 #include "nimble/hci_common.h"
 #include "sys/queue.h"
 #include "ble_hs_hci_priv.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 #define BT_LE_CS_CHANNEL_BIT_SET_VAL(chmap, bit, val)                                              \
 ((chmap)[(bit) / 8] = ((chmap)[(bit) / 8] & ~BIT((bit) % 8)) | ((val) << ((bit) % 8)))
@@ -180,12 +183,47 @@ struct ble_cs_state {
     void *cb_arg;
 };
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static struct ble_cs_state * cs_state_ptr = NULL;
+#define cs_state (*cs_state_ptr)
+#else
 static struct ble_cs_state cs_state;
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_cs_state_ensure_init()
+{
+    if (cs_state_ptr == NULL) {
+        cs_state_ptr = nimble_platform_mem_calloc(1, sizeof(struct ble_cs_state));
+        if (cs_state_ptr == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+    return 0;
+}
+
+void
+ble_cs_state_deinit()
+{
+    if (cs_state_ptr) {
+        nimble_platform_mem_free(cs_state_ptr);
+        cs_state_ptr = NULL;
+    }
+}
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 static int
 ble_cs_call_event_cb(struct ble_cs_event *event)
 {
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_cs_state_ensure_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
 
     if (cs_state.cb != NULL) {
         rc = cs_state.cb(event, cs_state.cb_arg);
@@ -878,6 +916,13 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
     struct ble_cs_rd_rem_supp_cap_cp cmd;
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_cs_state_ensure_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
+
     /* Channel Sounding setup phase:
      * 1. Set local default CS settings
      * 2. Exchange CS capabilities with the remote
@@ -902,12 +947,25 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
 int
 ble_cs_initiator_procedure_terminate(uint16_t conn_handle)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_cs_state_deinit();
+#endif
+
     return 0;
 }
 
 int
 ble_cs_reflector_setup(struct ble_cs_reflector_setup_params *params)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    rc = ble_cs_state_ensure_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
+    
     cs_state.cb = params->cb;
     cs_state.cb_arg = params->cb_arg;
 

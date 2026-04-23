@@ -780,7 +780,8 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
      * type are present in advertising data.
      */
 
-    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint32_t)) - adv_fields->num_uuids128;
+    free_slots = (sizeof(ble_hs_adv_uuids128) / sizeof(ble_hs_adv_uuids128[0])) -
+                 adv_fields->num_uuids128;
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */

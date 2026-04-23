@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include "host/ble_aes_ccm.h"
+#include "esp_nimble_mem.h"
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
 
@@ -19,9 +20,34 @@
 const char *
 ble_aes_ccm_hex(const void *buf, size_t len)
 {
-    static const char hex[] = "0123456789abcdef";
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    typedef struct {
+        char _hexbufs[4][137];
+        uint8_t _curbuf;
+    } ble_aes_ccm_hex_ctx_t;
+
+    static ble_aes_ccm_hex_ctx_t *ble_aes_ccm_hex_ctx = NULL;
+
+#define hexbufs (ble_aes_ccm_hex_ctx->_hexbufs)
+#define curbuf (ble_aes_ccm_hex_ctx->_curbuf)
+
+    /* When this option is enabled, the space for these variables will
+     * only be allocated in the heap if this function is called.
+     * Since there is no way to be sure this function won't be called anymore,
+     * once allocated the memory shall stay in the heap.
+     */
+    if (ble_aes_ccm_hex_ctx == NULL) {
+        ble_aes_ccm_hex_ctx = nimble_platform_mem_calloc(1, sizeof(ble_aes_ccm_hex_ctx_t));
+        if (ble_aes_ccm_hex_ctx == NULL) {
+            return "";
+        }
+    }
+#else
     static char hexbufs[4][137];
     static uint8_t curbuf;
+#endif
+
+    static const char hex[] = "0123456789abcdef";
     const uint8_t *b = buf;
     char *str;
     int i;
@@ -39,6 +65,10 @@ ble_aes_ccm_hex(const void *buf, size_t len)
     str[i * 2] = '\0';
 
     return str;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#undef hexbufs
+#undef curbuf
+#endif
 }
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)

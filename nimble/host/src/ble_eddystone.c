@@ -19,9 +19,13 @@
 
 #include <string.h>
 #include "os/endian.h"
+#include "nimble/nimble_opt.h"
 #include "host/ble_eddystone.h"
 #include "host/ble_hs_adv.h"
 #include "ble_hs_priv.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 #define BLE_EDDYSTONE_MAX_SVC_DATA_LEN  22
 #define BLE_EDDYSTONE_SVC_DATA_BASE_SZ  3
@@ -35,8 +39,46 @@
 #define BLE_EDDYSTONE_UID_RFU_LEN       2
 #define BLE_EDDYSTONE_UID_SVC_DATA_LEN  (1 + BLE_EDDYSTONE_UID_LEN + BLE_EDDYSTONE_UID_RFU_LEN)
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    ble_uuid16_t _ble_eddystone_uuids16[BLE_EDDYSTONE_MAX_UUIDS16 + 1];
+    uint8_t _ble_eddystone_svc_data[BLE_EDDYSTONE_MAX_SVC_DATA_LEN];
+} ble_eddystone_ctx_t;
+
+static ble_eddystone_ctx_t *ble_eddystone_ctx;
+
+#define ble_eddystone_uuids16 (ble_eddystone_ctx->_ble_eddystone_uuids16)
+#define ble_eddystone_svc_data (ble_eddystone_ctx->_ble_eddystone_svc_data)
+
+#else
+
 static ble_uuid16_t ble_eddystone_uuids16[BLE_EDDYSTONE_MAX_UUIDS16 + 1];
 static uint8_t ble_eddystone_svc_data[BLE_EDDYSTONE_MAX_SVC_DATA_LEN];
+
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_eddystone_ensure_ctx_init()
+{
+    if (ble_eddystone_ctx == NULL) {
+        ble_eddystone_ctx = nimble_platform_mem_calloc(1, sizeof(ble_eddystone_ctx_t));
+        if (ble_eddystone_ctx == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+    return 0;
+}
+
+void
+ble_eddystone_ctx_deinit()
+{
+    if (ble_eddystone_ctx) {
+        nimble_platform_mem_free(ble_eddystone_ctx);
+        ble_eddystone_ctx = NULL;
+    }
+}
+#endif
 
 /**
  * Writes an eddystone header to the global service data buffer.
@@ -135,6 +177,13 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
         return BLE_HS_EINVAL;
     }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_eddystone_ensure_ctx_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
+
     /* Eddystone UUID and frame type (0). */
     svc_data = ble_eddystone_set_svc_data_base(BLE_EDDYSTONE_FRAME_TYPE_UID);
 
@@ -182,6 +231,13 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
     if (url_suffix != BLE_EDDYSTONE_URL_SUFFIX_NONE && url_suffix > BLE_EDDYSTONE_URL_SUFFIX_GOV) {
         return BLE_HS_EINVAL;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_eddystone_ensure_ctx_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
 
     url_len = url_body_len;
     if (url_suffix != BLE_EDDYSTONE_URL_SUFFIX_NONE) {
