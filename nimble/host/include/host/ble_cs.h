@@ -82,6 +82,13 @@ struct ble_cs_reflector_setup_params {
     void *cb_arg;
 };
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int ble_cs_state_ensure_init(void);
+/* In case of reflector-only setup, the context won't be freed by the stack,
+ * this API is meant to be used by the application to free the CS context in that case.
+ */
+void ble_cs_state_deinit(void);
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 int ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_params *params);
 int ble_cs_initiator_procedure_terminate(uint16_t conn_handle);

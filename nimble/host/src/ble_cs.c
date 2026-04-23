@@ -32,6 +32,9 @@
 #include "ble_hs_hci_priv.h"
 #include "ble_hs_priv.h"
 #include "modlog/modlog.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 #define BT_LE_CS_CHANNEL_BIT_SET_VAL(chmap, bit, val)                                              \
 ((chmap)[(bit) / 8] = ((chmap)[(bit) / 8] & ~BIT((bit) % 8)) | ((val) << ((bit) % 8)))
@@ -187,7 +190,35 @@ struct ble_cs_state {
  * Known limitation: cs_state is global and supports only one active CS procedure at a time.
  * Current design assumes single CS procedure usage pattern.
  */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+static struct ble_cs_state * cs_state_ptr = NULL;
+#define cs_state (*cs_state_ptr)
+#else
 static struct ble_cs_state cs_state;
+#endif
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_cs_state_ensure_init()
+{
+    if (cs_state_ptr == NULL) {
+        cs_state_ptr = nimble_platform_mem_calloc(1, sizeof(struct ble_cs_state));
+        if (cs_state_ptr == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+    return 0;
+}
+
+void
+ble_cs_state_deinit()
+{
+    if (cs_state_ptr) {
+        nimble_platform_mem_free(cs_state_ptr);
+        cs_state_ptr = NULL;
+    }
+}
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 static int
 ble_cs_call_event_cb(struct ble_cs_event *event)
@@ -197,6 +228,13 @@ ble_cs_call_event_cb(struct ble_cs_event *event)
     ble_cs_event_fn *cb = cs_state.cb;
     void *cb_arg = cs_state.cb_arg;
     ble_hs_unlock();
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_cs_state_ensure_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
 
     if (cb != NULL) {
         rc = cb(event, cb_arg);
@@ -1021,6 +1059,12 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
     if (params == NULL) {
         return BLE_HS_EINVAL;
     }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_cs_state_ensure_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
 
     /* Channel Sounding setup phase:
      * 1. Set local default CS settings
@@ -1048,15 +1092,28 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
 int
 ble_cs_initiator_procedure_terminate(uint16_t conn_handle)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_cs_state_deinit();
+#endif
+
     return 0;
 }
 
 int
 ble_cs_reflector_setup(struct ble_cs_reflector_setup_params *params)
 {
+    int rc;
+
     if (params == NULL) {
         return BLE_HS_EINVAL;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    rc = ble_cs_state_ensure_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
 
     ble_hs_lock();
     cs_state.cb = params->cb;

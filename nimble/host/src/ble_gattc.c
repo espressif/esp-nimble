@@ -1429,6 +1429,42 @@ ble_gattc_fail_procs(uint16_t conn_handle, uint8_t op, int status)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+static void
+ble_gattc_fail_cached_procs(uint16_t conn_handle, int status)
+{
+    struct ble_gattc_proc *prev;
+    struct ble_gattc_proc *proc;
+    struct ble_gattc_proc *next;
+    ble_gattc_err_fn *err_cb;
+
+    prev = NULL;
+    proc = STAILQ_FIRST(&ble_gattc_cached_procs);
+    while (proc != NULL) {
+        next = STAILQ_NEXT(proc, next);
+
+        if (proc->conn_handle == conn_handle) {
+            err_cb = ble_gattc_err_dispatch_get(proc->op);
+            if (err_cb != NULL) {
+                err_cb(proc, status, 0);
+            }
+
+            if (prev == NULL) {
+                STAILQ_REMOVE_HEAD(&ble_gattc_cached_procs, next);
+            } else {
+                STAILQ_REMOVE_AFTER(&ble_gattc_cached_procs, prev, next);
+            }
+
+            ble_gattc_proc_free(proc);
+        } else {
+            prev = proc;
+        }
+
+        proc = next;
+    }
+}
+#endif
+
 #if MYNEWT_VAL(BLE_GATTC)
 static void
 ble_gattc_resume_procs(void)
@@ -6686,6 +6722,9 @@ ble_gattc_connection_broken(uint16_t conn_handle)
     struct os_mbuf_pkthdr *omp;
 
     ble_gattc_fail_procs(conn_handle, BLE_GATT_OP_NONE, BLE_HS_ENOTCONN);
+#if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    ble_gattc_fail_cached_procs(conn_handle, BLE_HS_ENOTCONN);
+#endif
 
     ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);

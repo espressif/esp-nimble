@@ -35,57 +35,55 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
-static uint16_t ble_svc_ras_feat_val_handle;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    uint32_t _ble_svc_ras_feat_val;
+    uint16_t _ble_svc_ras_rd_val;
+    uint16_t _ble_svc_ras_rd_ov_val;
+    uint8_t  _ble_svc_ras_cp_val[RASCP_CMD_OPCODE_LEN + sizeof(uint16_t)] ;
+    struct segment *_ble_svc_ras_od_rd_val;
+    uint16_t _ble_svc_ras_od_rd_seg_len;
+    uint16_t _ble_svc_ras_rt_rd_val;
+    struct ranging_buffer _ranging_buffers[BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE];
+} ble_svc_ras_ctx_t;
+
+static ble_svc_ras_ctx_t *ble_svc_ras_ctx;
+
+#define ble_svc_ras_feat_val (ble_svc_ras_ctx->_ble_svc_ras_feat_val)
+#define ble_svc_ras_rd_val (ble_svc_ras_ctx->_ble_svc_ras_rd_val)
+#define ble_svc_ras_rd_ov_val (ble_svc_ras_ctx->_ble_svc_ras_rd_ov_val)
+#define ble_svc_ras_cp_val (ble_svc_ras_ctx->_ble_svc_ras_cp_val)
+#define ble_svc_ras_od_rd_val (ble_svc_ras_ctx->_ble_svc_ras_od_rd_val)
+#define ble_svc_ras_od_rd_seg_len (ble_svc_ras_ctx->_ble_svc_ras_od_rd_seg_len)
+#define ble_svc_ras_rt_rd_val (ble_svc_ras_ctx->_ble_svc_ras_rt_rd_val)
+#define ranging_buffers (ble_svc_ras_ctx->_ranging_buffers)
+
+#else /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
 static uint32_t ble_svc_ras_feat_val;
 
-static uint16_t ble_svc_ras_rd_val_handle;
 static uint16_t ble_svc_ras_rd_val;
 
-static uint16_t ble_svc_ras_rd_ov_val_handle;
 static uint16_t ble_svc_ras_rd_ov_val;
 
-static uint16_t ble_svc_ras_cp_val_handle;
 static uint8_t  ble_svc_ras_cp_val[RASCP_CMD_OPCODE_LEN + sizeof(uint16_t)] ;
 
 
-static uint16_t ble_svc_ras_od_rd_val_handle;
 static struct segment *ble_svc_ras_od_rd_val;
 static uint16_t ble_svc_ras_od_rd_seg_len;
 
-static uint16_t ble_svc_ras_rt_rd_val_handle;
 static uint16_t ble_svc_ras_rt_rd_val;
 
 static struct ranging_buffer ranging_buffers[BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE];
 
-/* Global state usage for connection-specific ranging data causes multi-connection interference and privacy leaks
- * This RAS implementation is example/prototype code for demonstrating basic Channel Sounding ranging functionality.
- * The use of global state is intentional for simplicity in single-connection test scenarios. */
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
-/* Race condition and incorrect broadcast of RAS Control Point responses due to shared global buffer usage
- * Control Point responses use shared buffers intentionally for simplified example code.
- * Multi-connection scenarios requiring isolated responses would need per-connection buffers.
- * This is prototype/example code, not multi-connection implementation. */
-
-void ble_gatts_indicate_ranging_data_ready(uint16_t ranging_counter)
-{
-    MODLOG_DFLT(INFO, "Indicate ranging data ready for counter %d\n", ranging_counter);
-    /* Indicate that the ranging data is ready for the client */
-    ble_svc_ras_rd_val = ranging_counter & 0x0FFF; /* Mask to 12 bits to match ranging_header */
-    ble_gatts_chr_updated(ble_svc_ras_rd_val_handle);
-}
-
-void ble_gatts_indicate_control_point_response(uint16_t attr_handle , uint16_t ranging_counter)
-{
-    /* Indication control point response only when all the indication for on_demand_rd is sent for all segments */
-    if (attr_handle == ble_svc_ras_od_rd_val_handle) {
-        MODLOG_DFLT(INFO, "Indicate control point response\n");
-        ble_svc_ras_cp_val[0] = RASCP_RSP_OPCODE_COMPLETE_RD_RSP;
-        memcpy(&ble_svc_ras_cp_val[RASCP_RSP_OPCODE_COMPLETE_RD_RSP_LEN], &ranging_counter, sizeof(uint16_t));
-        ble_gatts_chr_updated(ble_svc_ras_cp_val_handle);
-    } else {
-        return ;
-    }
-}
+static uint16_t ble_svc_ras_feat_val_handle;
+static uint16_t ble_svc_ras_rd_val_handle;
+static uint16_t ble_svc_ras_rd_ov_val_handle;
+static uint16_t ble_svc_ras_cp_val_handle;
+static uint16_t ble_svc_ras_od_rd_val_handle;
+static uint16_t ble_svc_ras_rt_rd_val_handle;
 
 static void ranging_buffer_init(uint16_t conn_handle, struct ranging_buffer *buf, uint16_t ranging_counter)
 {
@@ -110,8 +108,77 @@ static void reset_ranging_buffer(void)
         ranging_buffers[i].subevent_cursor = 0;
     }
 }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+void
+ble_svc_ras_ensure_ctx_init()
+{
+    if (ble_svc_ras_ctx == NULL) {
+        ble_svc_ras_ctx = nimble_platform_mem_calloc(1, sizeof(ble_svc_ras_ctx_t));
+    }
+
+    reset_ranging_buffer();
+}
+
+void
+ble_svc_ras_ctx_deinit()
+{
+    if (ble_svc_ras_ctx) {
+        if (ble_svc_ras_ctx->_ble_svc_ras_od_rd_val) {
+            /* Ensure that heap memory is not lost after deiniting ras. */
+            nimble_platform_mem_free(ble_svc_ras_ctx->_ble_svc_ras_od_rd_val);
+            ble_svc_ras_ctx->_ble_svc_ras_od_rd_val = NULL;
+        }
+        nimble_platform_mem_free(ble_svc_ras_ctx);
+        ble_svc_ras_ctx = NULL;
+    }
+}
+#endif
+
+void ble_gatts_indicate_ranging_data_ready(uint16_t ranging_counter)
+{
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_ras_ensure_ctx_init();
+    if (ble_svc_ras_ctx == NULL) {
+        return;
+    }
+#endif
+
+    MODLOG_DFLT(INFO, "Indicate ranging data ready for counter %d\n", ranging_counter);
+    /* Indicate that the ranging data is ready for the client */
+    ble_svc_ras_rd_val = ranging_counter;
+    ble_gatts_chr_updated(ble_svc_ras_rd_val_handle);
+}
+
+void ble_gatts_indicate_control_point_response(uint16_t attr_handle , uint16_t ranging_counter)
+{
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_ras_ensure_ctx_init();
+    if (ble_svc_ras_ctx == NULL) {
+        return;
+    }
+#endif
+
+    /* Indication control point response only when all the indication for on_demand_rd is sent for all segments */
+    if (attr_handle == ble_svc_ras_od_rd_val_handle) {
+        MODLOG_DFLT(INFO, "Indicate control point response\n");
+        ble_svc_ras_cp_val[0] = RASCP_RSP_OPCODE_COMPLETE_RD_RSP;
+        memcpy(&ble_svc_ras_cp_val[RASCP_RSP_OPCODE_COMPLETE_RD_RSP_LEN], &ranging_counter, sizeof(uint16_t));
+        ble_gatts_chr_updated(ble_svc_ras_cp_val_handle);
+    } else {
+        return ;
+    }
+}
+
 struct ranging_buffer *ranging_buffer_alloc(uint16_t conn_handle, uint16_t ranging_counter)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_ras_ensure_ctx_init();
+    if (ble_svc_ras_ctx == NULL) {
+        return NULL;
+    }
+#endif
+
     for (uint8_t i = 0; i < sizeof(ranging_buffers)/sizeof(ranging_buffers[0]); i++) {
         if (ranging_buffers[i].conn == -1) {
             ranging_buffer_init(conn_handle, &ranging_buffers[i], ranging_counter);
@@ -224,6 +291,13 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
 {
     uint16_t uuid;
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_ras_ctx == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
+
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_READ_CHR:
             if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
@@ -420,6 +494,12 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
         MODLOG_DFLT(INFO, "Ignoring non-result event type %d\n", ranging_subevent.type);
         return;
     }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_ras_ensure_ctx_init();
+    if (ble_svc_ras_ctx == NULL) {
+        return;
+    }
+#endif
 
     /* Check if the subevent is already stored */
     for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
@@ -562,6 +642,13 @@ ble_svc_ras_init(void) {
      * BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE is used intentionally to size the procedure buffer array.
      * In this implementation, one buffer per procedure is sufficient for the example use case.
      * While semantically a separate constant could improve clarity, functionally this is correct. */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_svc_ras_ensure_ctx_init();
+    if (ble_svc_ras_ctx == NULL) {
+        SYSINIT_PANIC_ASSERT(0);
+        return;
+    }
+#endif
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
     SYSINIT_PANIC_ASSERT(rc == 0);

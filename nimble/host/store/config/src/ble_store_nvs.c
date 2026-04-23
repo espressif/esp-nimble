@@ -793,6 +793,9 @@ ble_nvs_restore_peer_records(void)
     esp_err_t err;
     int ble_store_num_peer_dev_rec = 0;
     struct ble_hs_dev_records *peer_dev_rec = ble_rpa_get_peer_dev_records();
+    if (peer_dev_rec == NULL) {
+        return BLE_HS_ENOMEM;
+    }
 
     err = populate_db_from_nvs(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, peer_dev_rec,
                                &ble_store_num_peer_dev_rec);
@@ -1066,6 +1069,9 @@ int ble_store_persist_peer_records(void)
     struct ble_hs_dev_records peer_rec;
     int ble_store_num_peer_dev_rec = ble_rpa_get_num_peer_dev_records();
     struct ble_hs_dev_records *peer_dev_rec = ble_rpa_get_peer_dev_records();
+    if (peer_dev_rec == NULL) {
+        return BLE_HS_ENOMEM;
+    }
 
     nvs_count = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, 0, NULL, 0);
     if (nvs_count == -1) {
