@@ -27,6 +27,9 @@
 #include "host/ble_gap.h"
 #include "services/ans/ble_svc_ans.h"
 #include "host/ble_hs_log.h"
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#include "esp_nimble_mem.h"
+#endif
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_ANS_SERVICE
 /* Max length of new alert info string */
@@ -37,6 +40,33 @@
 
 /* Category ID for "all categories" */
 #define BLE_SVC_ANS_CAT_ID_ALL  0xFF
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    uint8_t _ble_svc_ans_new_alert_cat;
+    uint8_t _ble_svc_ans_unr_alert_cat;
+    uint8_t _ble_svc_ans_new_alert_val[BLE_SVC_ANS_NEW_ALERT_MAX_LEN];
+    uint16_t _ble_svc_ans_new_alert_val_len;
+    uint8_t _ble_svc_ans_unr_alert_stat[2];
+    uint8_t _ble_svc_ans_alert_not_ctrl_pt[2];
+    uint8_t _ble_svc_ans_new_alert_cnt[BLE_SVC_ANS_CAT_NUM];
+    uint8_t _ble_svc_ans_unr_alert_cnt[BLE_SVC_ANS_CAT_NUM];
+    uint16_t _ble_svc_ans_conn_handle;
+} ble_svc_ans_ctx_t;
+
+static ble_svc_ans_ctx_t * ble_svc_ans_ctx;
+
+#define ble_svc_ans_new_alert_cat (ble_svc_ans_ctx->_ble_svc_ans_new_alert_cat)
+#define ble_svc_ans_unr_alert_cat (ble_svc_ans_ctx->_ble_svc_ans_unr_alert_cat)
+#define ble_svc_ans_new_alert_val (ble_svc_ans_ctx->_ble_svc_ans_new_alert_val)
+#define ble_svc_ans_new_alert_val_len (ble_svc_ans_ctx->_ble_svc_ans_new_alert_val_len)
+#define ble_svc_ans_unr_alert_stat (ble_svc_ans_ctx->_ble_svc_ans_unr_alert_stat)
+#define ble_svc_ans_alert_not_ctrl_pt (ble_svc_ans_ctx->_ble_svc_ans_alert_not_ctrl_pt)
+#define ble_svc_ans_new_alert_cnt (ble_svc_ans_ctx->_ble_svc_ans_new_alert_cnt)
+#define ble_svc_ans_unr_alert_cnt (ble_svc_ans_ctx->_ble_svc_ans_unr_alert_cnt)
+#define ble_svc_ans_conn_handle (ble_svc_ans_ctx->_ble_svc_ans_conn_handle)
+
+#else /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 /* Supported categories bitmasks */
 static uint8_t ble_svc_ans_new_alert_cat;
@@ -56,10 +86,6 @@ static uint8_t ble_svc_ans_alert_not_ctrl_pt[2];
 static uint8_t ble_svc_ans_new_alert_cnt[BLE_SVC_ANS_CAT_NUM];
 static uint8_t ble_svc_ans_unr_alert_cnt[BLE_SVC_ANS_CAT_NUM];
 
-/* Characteristic value handles */
-static uint16_t ble_svc_ans_new_alert_val_handle;
-static uint16_t ble_svc_ans_unr_alert_val_handle;
-
 /* Connection handle
  *
  * TODO: In order to support multiple connections we would need to save
@@ -67,6 +93,12 @@ static uint16_t ble_svc_ans_unr_alert_val_handle;
  *       we would need to notify each connection when needed.
  * */
 static uint16_t ble_svc_ans_conn_handle;
+
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
+/* Characteristic value handles */
+static uint16_t ble_svc_ans_new_alert_val_handle;
+static uint16_t ble_svc_ans_unr_alert_val_handle;
 
 /* Access function */
 static int
@@ -163,6 +195,29 @@ static const struct ble_gatt_svc_def ble_svc_ans_defs[] = {
     },
 };
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int
+ble_svc_ans_ensure_ctx_init()
+{
+    if (ble_svc_ans_ctx == NULL) {
+        ble_svc_ans_ctx = nimble_platform_mem_calloc(1, sizeof(ble_svc_ans_ctx_t));
+        if (ble_svc_ans_ctx == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+    return 0;
+}
+
+void
+ble_svc_ans_ctx_deinit()
+{
+    if (ble_svc_ans_ctx) {
+        nimble_platform_mem_free(ble_svc_ans_ctx);
+        ble_svc_ans_ctx = NULL;
+    }
+}
+#endif
+
 /**
  * ANS access function
  */
@@ -179,6 +234,12 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
     uint8_t cat_id;
     uint8_t cat_bit_mask;
     int i;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_ans_ctx == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
 
     uuid16 = ble_uuid_u16(ctxt->chr->uuid);
     if (uuid16 == 0) {
@@ -359,6 +420,12 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_ans_on_gap_connect(uint16_t conn_handle)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if(ble_svc_ans_ensure_ctx_init()) {
+        return;
+    }
+#endif
+
     ble_hs_lock();
     ble_svc_ans_conn_handle = conn_handle;
     ble_hs_unlock();
@@ -380,6 +447,12 @@ ble_svc_ans_new_alert_add(uint8_t cat_id, const char * info_str)
 {
     uint8_t cat_bit_mask;
     int rc = 0;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if(ble_svc_ans_ensure_ctx_init()) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     if (cat_id < BLE_SVC_ANS_CAT_NUM) {
         cat_bit_mask = (1 << cat_id);
@@ -423,6 +496,12 @@ ble_svc_ans_unr_alert_add(uint8_t cat_id)
 {
     uint8_t cat_bit_mask;
     int rc = 0;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if(ble_svc_ans_ensure_ctx_init()) {
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     if (cat_id < BLE_SVC_ANS_CAT_NUM) {
         cat_bit_mask = 1 << cat_id;
@@ -571,6 +650,13 @@ ble_svc_ans_init(void)
 
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if(ble_svc_ans_ensure_ctx_init()) {
+        SYSINIT_PANIC_ASSERT(0);
+        return;
+    }
+#endif
 
     rc = ble_gatts_count_cfg(ble_svc_ans_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);

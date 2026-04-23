@@ -28,6 +28,7 @@
 #include "ble_hs_priv.h"
 #include "host/ble_hs_id.h"
 #include "nimble/ble.h"
+#include "esp_nimble_mem.h"
 #include "nimble/nimble_opt.h"
 #include "ble_hs_resolv_priv.h"
 #include "store/config/ble_store_config.h"
@@ -44,6 +45,25 @@ struct ble_hs_resolv_data {
     struct ble_npl_callout rpa_timer;
 };
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+typedef struct {
+    struct ble_hs_resolv_data _g_ble_hs_resolv_data;
+    struct ble_hs_resolv_entry _g_ble_hs_resolv_list[BLE_RESOLV_LIST_SIZE];
+    struct ble_hs_dev_records _peer_dev_rec[BLE_RESOLV_LIST_SIZE];
+    int _ble_store_num_peer_dev_rec;
+    bool _nrpa_pvcy;
+} ble_hs_resolv_ctx_t;
+
+static ble_hs_resolv_ctx_t *ble_hs_resolv_ctx;
+
+#define g_ble_hs_resolv_data        ble_hs_resolv_ctx->_g_ble_hs_resolv_data
+#define g_ble_hs_resolv_list        ble_hs_resolv_ctx->_g_ble_hs_resolv_list
+#define peer_dev_rec                ble_hs_resolv_ctx->_peer_dev_rec
+#define ble_store_num_peer_dev_rec  ble_hs_resolv_ctx->_ble_store_num_peer_dev_rec
+#define nrpa_pvcy                   ble_hs_resolv_ctx->_nrpa_pvcy
+
+#else /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
 static struct ble_hs_resolv_data g_ble_hs_resolv_data;
 static struct ble_hs_resolv_entry g_ble_hs_resolv_list[BLE_RESOLV_LIST_SIZE];
 /* Allocate one extra space for peer_records than no. of Bonds, it will take
@@ -54,6 +74,37 @@ static int ble_store_num_peer_dev_rec;
 /* NRPA bit: Enables NRPA as private address. */
 static bool nrpa_pvcy;
 
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+/* This is different from ble_hs_resolv_init, as it just initialises the context.
+ * In cases during stack init and startup, timer initialization is not required, but the context must be allocated.
+ * So the two are treated as seperate inits, where ble_hs_resolv_init calls this API.
+ */
+static int
+ble_hs_resolv_ctx_ensure_init(void)
+{
+    /* Allocate memory for global static variables. */
+    if (ble_hs_resolv_ctx == NULL) {
+        ble_hs_resolv_ctx = nimble_platform_mem_calloc(1, sizeof(ble_hs_resolv_ctx_t));
+        if (ble_hs_resolv_ctx == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+    return 0;
+}
+
+static void
+ble_hs_resolv_ctx_deinit(void)
+{
+    /* Finally, free memory used by global static variables. */
+    if (ble_hs_resolv_ctx) {
+        nimble_platform_mem_free(ble_hs_resolv_ctx);
+        ble_hs_resolv_ctx = NULL;
+    }
+}
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
 /*** APIs for Peer Device Records.
  *
  * These Peer records are necessary to take care of Peers with RPA address when
@@ -62,18 +113,51 @@ static bool nrpa_pvcy;
 struct ble_hs_dev_records *
 ble_rpa_get_peer_dev_records(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return NULL;
+        }
+    }
+#endif
+
     return &peer_dev_rec[0];
 }
 
 int
 ble_rpa_get_num_peer_dev_records(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return 0;
+        }
+    }
+#endif
+
     return ble_store_num_peer_dev_rec;
 }
 
 void
 ble_rpa_set_num_peer_dev_records(int num_rec)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
+
     if (num_rec < 0 || num_rec > BLE_RESOLV_LIST_SIZE) {
         ble_store_num_peer_dev_rec = 0;
         BLE_HS_LOG(ERROR, "Invalid peer dev record count %d, resetting to 0\n", num_rec);
@@ -88,6 +172,17 @@ ble_rpa_remove_peer_dev_rec(struct ble_hs_dev_records *p_dev_rec)
     int i;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
 
     for (i = 0; i < ble_store_num_peer_dev_rec; i++) {
         if (!(memcmp(p_dev_rec, &peer_dev_rec[i], sizeof(struct
@@ -135,10 +230,23 @@ ble_rpa_peer_dev_rec_clear_all(void)
 struct ble_hs_dev_records *
 ble_rpa_find_peer_dev_rec(const uint8_t *addr)
 {
-    struct ble_hs_dev_records *p_dev_rec = &peer_dev_rec[0];
+    struct ble_hs_dev_records *p_dev_rec;
     int i;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return NULL;
+        }
+    }
+#endif
+
+    p_dev_rec = &peer_dev_rec[0];
 
     if (addr == NULL) {
         return NULL;
@@ -230,13 +338,27 @@ ble_rpa_replace_id_with_rand_addr(uint8_t *addr_type, uint8_t *peer_addr)
  *
  * @return 0                    if added successfully,
  *         BLE_HS_ESTORE_CAP    if the no. of peer device records are exceeding
- *                              maximum allowed value (No. of Bonds + 1)  */
+ *                              maximum allowed value (No. of Bonds + 1)
+ *         BLE_HS_ENOMEM        if heap was unable to provide memory for allocation
+ *                              of the rpa context.
+ */
 int
 ble_rpa_resolv_add_peer_rec(uint8_t *peer_addr)
 {
     struct ble_hs_dev_records *p_dev_rec;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
 
     if (ble_store_num_peer_dev_rec >= BLE_RESOLV_LIST_SIZE) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_CAP);
@@ -324,6 +446,17 @@ ble_rpa_replace_peer_params_with_rl(uint8_t *peer_addr, uint8_t *addr_type,
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
+
     is_rpa = ble_hs_is_rpa(peer_addr, *addr_type);
 
     if (is_rpa) {
@@ -349,6 +482,17 @@ ble_rpa_replace_peer_params_with_rl(uint8_t *peer_addr, uint8_t *addr_type,
 uint8_t
 is_ble_hs_resolv_enabled(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return 0;
+        }
+    }
+#endif
+
     return g_ble_hs_resolv_data.addr_res_enabled;
 }
 
@@ -356,6 +500,17 @@ is_ble_hs_resolv_enabled(void)
 bool
 ble_host_rpa_enabled(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return false;
+        }
+    }
+#endif
+
     if (nrpa_pvcy) {
         return false;
     }
@@ -482,6 +637,15 @@ ble_hs_gen_own_private_rnd(void)
     uint8_t addr[BLE_DEV_ADDR_LEN];
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
+
     if (nrpa_pvcy) {
         return ble_hs_id_set_nrpa_rnd();
     }
@@ -506,6 +670,17 @@ ble_hs_gen_own_private_rnd(void)
 uint8_t *
 ble_hs_get_rpa_local(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return NULL;
+        }
+    }
+#endif
+
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[0];
     return rl->rl_local_rpa;
 }
@@ -517,6 +692,17 @@ ble_hs_get_rpa_local(void)
 static void
 ble_hs_resolv_rpa_timer_cb(struct ble_npl_event *ev)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
+
     if (ble_host_rpa_enabled() || (nrpa_pvcy)) {
         BLE_HS_LOG(DEBUG, "RPA/NRPA Timeout; start active adv & scan with new Private address \n");
         ble_gap_preempt();
@@ -571,6 +757,12 @@ ble_hs_resolv_list_find(uint8_t *addr)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_resolv_ctx == NULL) {
+        return NULL;
+    }
+#endif
+
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int i;
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];
@@ -611,6 +803,17 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
     struct ble_hs_dev_records *p_dev_rec = NULL;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
 
     /* Check if we have any open entries */
     if (g_ble_hs_resolv_data.rl_cnt >= BLE_RESOLV_LIST_SIZE) {
@@ -665,9 +868,20 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
 int
 ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
 {
-    int rc = BLE_HS_ENOENT;
+    int rc;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
+
+    rc = BLE_HS_ENOENT;
 
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int position;
@@ -705,6 +919,17 @@ ble_hs_resolv_list_clear_all(bool preserve_local)
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
+
     /* Index 0 is the local identity. Some callers clear only peer state,
      * while local IRK replacement must clear it too.
      */
@@ -741,6 +966,17 @@ ble_hs_resolv_update_local_irk(const uint8_t *irk)
 void
 ble_hs_resolv_nrpa_enable(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
+
     nrpa_pvcy = true;
 }
 
@@ -750,6 +986,17 @@ ble_hs_resolv_nrpa_enable(void)
 void
 ble_hs_resolv_nrpa_disable(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
+
     nrpa_pvcy = false;
 }
 /**
@@ -763,6 +1010,17 @@ void
 ble_hs_resolv_enable(bool enable)
 {
     int32_t tmo;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return;
+        }
+    }
+#endif
 
     /* If we change state, we need to disable/enable the RPA timer */
     if (enable ^ g_ble_hs_resolv_data.addr_res_enabled) {
@@ -789,6 +1047,17 @@ int
 ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
 {
     uint32_t ticks;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    if (ble_hs_resolv_ctx == NULL) {
+        rc = ble_hs_resolv_ctx_ensure_init();
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#endif
 
     /* Though the check validates smaller timeout values, it is recommended to
      * set it to enough bigger value (~15 minutes). There is no point in
@@ -822,6 +1091,12 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
 struct ble_hs_resolv_entry *
 ble_hs_resolv_rpa_addr(uint8_t *addr, uint8_t addr_type) {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_resolv_ctx == NULL) {
+        return NULL;
+    }
+#endif
 
     if (!ble_hs_is_rpa(addr, addr_type)) {
         return NULL;
@@ -881,17 +1156,38 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
 
 void ble_hs_resolv_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    rc = ble_hs_resolv_ctx_ensure_init();
+    if (rc != 0) {
+        return;
+    }
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
+
     g_ble_hs_resolv_data.rpa_tmo = ble_npl_time_ms_to_ticks32(MYNEWT_VAL(BLE_RPA_TIMEOUT) * 1000);
 
     ble_npl_callout_init(&g_ble_hs_resolv_data.rpa_timer,
                          ble_hs_evq_get(),
                          ble_hs_resolv_rpa_timer_cb,
                          NULL);
+
 }
 
 void ble_hs_resolv_deinit(void)
 {
+    /* Return early incase already deinited. */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_resolv_ctx == NULL) {
+        return;
+    }
+#endif
+
     ble_npl_callout_stop(&g_ble_hs_resolv_data.rpa_timer);
     ble_npl_callout_deinit(&g_ble_hs_resolv_data.rpa_timer);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_hs_resolv_ctx_deinit();
+#endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 }
 #endif  /* if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY) */

@@ -55,6 +55,11 @@ int ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit);
 
 void ble_svc_htp_init(void);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int ble_svc_htp_ensure_ctx_init(void);
+void ble_svc_htp_ctx_deinit(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

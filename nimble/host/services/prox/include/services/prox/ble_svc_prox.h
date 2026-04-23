@@ -30,6 +30,10 @@ struct ble_hs_cfg;
 /* Error Definitions */
 #define BLE_SVC_HS_ERR_CMD_NOT_SUPPORTED                    0x80
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+int ble_svc_prox_ensure_ctx_init(void);
+void ble_svc_prox_ctx_deinit(void);
+#endif
 /**
  * @brief  Initializes proximity service.
  */
