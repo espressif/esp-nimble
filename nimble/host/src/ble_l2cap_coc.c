@@ -272,7 +272,7 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
             return BLE_HS_EBADDATA;
         }
         if (sdu_len > rx->mtu) {
-            BLE_HS_LOG(INFO, "error: sdu_len > rx->mtu (%d>%d)\n",
+            BLE_HS_LOG(ERROR, "error: sdu_len > rx->mtu (%d>%d)\n",
                        sdu_len, rx->mtu);
 
             /* Disconnect peer with invalid behaviour */
