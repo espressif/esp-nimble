@@ -187,8 +187,11 @@ esp_err_t esp_nimble_init(void)
     /* Initialize default event queue */
     ble_npl_eventq_init(&g_eventq_dflt);
     os_msys_init();
+#else
+    /* Initialize default event queue */
+    ble_npl_eventq_init(&g_eventq_dflt);
+#endif // !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 
-#endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
     ble_adv_list_init();
@@ -239,15 +242,13 @@ esp_err_t esp_nimble_deinit(void)
         return ESP_FAIL;
     }
 #else
-   ble_transport_deinit();
+    ble_transport_deinit();
     ble_buf_free();
 #endif
 
 #endif
 
-#if CONFIG_BT_CONTROLLER_ENABLED
     ble_npl_eventq_deinit(&g_eventq_dflt);
-#endif
 
     ble_hs_deinit();
 
