@@ -77,6 +77,10 @@ ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
+        /* Returns advertising TX power as an approximation of the connection
+         * TX power level. A spec-compliant implementation would use
+         * HCI_Read_Transmit_Power_Level with conn_handle, which requires an
+         * async HCI exchange not possible inside a synchronous GATT callback. */
         rc = ble_hs_hci_util_read_adv_tx_pwr(&tx_power_level);
         if (rc != 0) {
             return BLE_ATT_ERR_UNLIKELY;

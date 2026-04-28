@@ -103,6 +103,9 @@ gatt_svr_chr_access_uart_write(uint16_t conn_handle, uint16_t attr_handle,
     struct os_mbuf *om = ctxt->om;
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
+              /* console_write runs in the NimBLE host task; it may briefly block
+               * if the UART ring buffer is full. For production use, consider
+               * an async write path to avoid stalling BLE protocol processing. */
               while(om) {
                   console_write((char *)om->om_data, om->om_len);
                   om = SLIST_NEXT(om, om_next);
@@ -142,7 +145,7 @@ bleuart_uart_read(void)
 {
     int rc;
     int off;
-    int full_line;
+    int full_line = 0;
     struct os_mbuf *om;
 
     off = 0;
@@ -150,6 +153,11 @@ bleuart_uart_read(void)
         rc = console_read(console_buf + off,
                           MYNEWT_VAL(BLEUART_MAX_INPUT) - off, &full_line);
         if (rc <= 0 && !full_line) {
+            if (off >= MYNEWT_VAL(BLEUART_MAX_INPUT)) {
+                /* Buffer full with no newline: send partial line and exit
+                 * to prevent an infinite hang (console_read called with 0). */
+                break;
+            }
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
@@ -157,15 +165,15 @@ bleuart_uart_read(void)
         if (!full_line) {
             continue;
         }
-
-        om = ble_hs_mbuf_from_flat(console_buf, off);
-        if (!om) {
-            return;
-        }
-        ble_gatts_notify_custom(g_console_conn_handle,
-                                g_bleuart_attr_read_handle, om);
-        off = 0;
         break;
+    }
+
+    if (off > 0) {
+        om = ble_hs_mbuf_from_flat(console_buf, off);
+        if (om) {
+            ble_gatts_notify_custom(g_console_conn_handle,
+                                    g_bleuart_attr_read_handle, om);
+        }
     }
 }
 

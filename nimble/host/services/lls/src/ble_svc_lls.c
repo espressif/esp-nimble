@@ -28,7 +28,9 @@
 /* Callback function */
 static ble_svc_lls_event_fn *ble_svc_lls_cb_fn;
 
-/* Alert level */
+/* Alert level - single global per upstream NimBLE design. Multi-connection
+ * scenarios that require per-connection alert levels must be managed at the
+ * application level via ble_svc_lls_alert_level_set per connection event. */
 static uint8_t ble_svc_lls_alert_level;
 
 /* Write characteristic function */
@@ -150,7 +152,10 @@ ble_svc_lls_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_lls_on_gap_disconnect(int reason)
 {
-    if (reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_SPVN_TMO)) {
+    if (reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_SPVN_TMO) ||
+        reason == BLE_HS_HCI_ERR(BLE_ERR_LMP_LL_RSP_TMO) ||
+        reason == BLE_HS_HCI_ERR(BLE_ERR_INSTANT_PASSED) ||
+        reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_TERM_MIC)) {
         if (ble_svc_lls_cb_fn != NULL) {
             ble_svc_lls_cb_fn(ble_svc_lls_alert_level);
         }

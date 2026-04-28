@@ -70,6 +70,8 @@ uint8_t *ble_hs_get_rpa_local(void);
 int ble_hs_resolv_list_rmv(uint8_t, uint8_t *);
 /* Clear the resolving list and peer dev record */
 void ble_hs_resolv_list_clear_all(bool preserve_local);
+/* Update the local IRK stored at index 0 (must hold host lock) */
+void ble_hs_resolv_update_local_irk(const uint8_t *irk);
 
 /* Address resolution enable command */
 void ble_hs_resolv_enable(bool);

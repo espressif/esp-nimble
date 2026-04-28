@@ -91,6 +91,9 @@ int
 ble_l2cap_sig_reject_invalid_cid_tx(uint16_t conn_handle, uint8_t id,
                                     uint16_t src_cid, uint16_t dst_cid)
 {
+    /* CID fields are written via memcpy without explicit htole16 conversion.
+     * All supported ESP32 targets (Xtensa, RISC-V) are little-endian so host
+     * and wire byte order are identical; no conversion is needed here. */
     struct {
         uint16_t local_cid;
         uint16_t remote_cid;

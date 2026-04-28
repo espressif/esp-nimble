@@ -440,6 +440,12 @@ ble_l2cap_sig_check_conn_params(const struct ble_gap_upd_params *params)
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
+    /* apply the changes: validate mandatory relationship per BT spec Vol 3 Part A Section 4.20:
+     * supervision_timeout * 4 > (1 + latency) * itvl_max */
+    if (params->supervision_timeout * 4 <= (uint32_t)(1 + params->latency) * params->itvl_max) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
     return 0;
 }
 
@@ -606,7 +612,9 @@ ble_l2cap_sig_update_rsp_rx(uint16_t conn_handle,
 done:
     ble_l2cap_sig_update_call_cb(proc, cb_status);
     ble_l2cap_sig_proc_free(proc);
-    return rc;
+    /* apply the changes: always return 0 for response signals; Command Reject must not be
+     * sent in response to identified response packets (BT spec Vol 3 Part A Section 4.1) */
+    return 0;
 }
 
 int
@@ -625,6 +633,22 @@ ble_l2cap_sig_update_nolock(uint16_t conn_handle,
     proc = NULL;
 
     STATS_INC(ble_l2cap_stats, update_init);
+
+    /* apply the changes: validate parameters before allocating resources or transmitting;
+     * prevents sending invalid protocol packets that the peer would reject */
+    {
+        struct ble_gap_upd_params gap_params = {
+            .itvl_min = params->itvl_min,
+            .itvl_max = params->itvl_max,
+            .latency = params->slave_latency,
+            .supervision_timeout = params->timeout_multiplier,
+            .min_ce_len = 0,
+            .max_ce_len = 0xffff,
+        };
+        if (ble_l2cap_sig_check_conn_params(&gap_params) != 0) {
+            return BLE_HS_EINVAL;
+        }
+    }
 
     rc = ble_hs_misc_conn_chan_find_reqd(conn_handle, BLE_L2CAP_CID_SIG,
                                          &conn, &chan);
@@ -738,6 +762,10 @@ ble_l2cap_sig_coc_err2ble_hs_err(uint16_t l2cap_coc_err)
     case BLE_L2CAP_COC_ERR_SOURCE_CID_ALREADY_USED:
         return BLE_HS_EALREADY;
     case BLE_L2CAP_COC_ERR_UNACCEPTABLE_PARAMETERS:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    /* apply the changes */
+    case BLE_L2CAP_COC_ERR_INVALID_PARAMETERS:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     default:
@@ -1033,7 +1061,9 @@ done:
 
     ble_l2cap_sig_proc_free(proc);
 
-    return rc ? rc : 0;
+    /* apply the changes: always return 0 for response signals; Command Reject must not be
+     * sent in response to identified response packets (BT spec Vol 3 Part A Section 4.1) */
+    return 0;
 }
 
 static int
@@ -1200,6 +1230,9 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
         for (i = 0; i < num_of_scids; i++) {
             if (chans[i]) {
                 ble_l2cap_event_coc_connected(chans[i], rc);
+                /* apply the changes: clear cb before delete_chan to prevent
+                 * spurious DISCONNECTED event on already-notified channel */
+                chans[i]->cb = NULL;
                 ble_hs_lock();
                 conn = ble_hs_conn_find(conn_handle);
                 if (conn) {
@@ -1220,6 +1253,9 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
                 ble_l2cap_event_coc_connected(chans[i], 0);
             } else {
                 ble_l2cap_event_coc_connected(chans[i], BLE_HS_EUNKNOWN);
+                /* apply the changes: clear cb before delete_chan to prevent
+                 * double-free of EATT context via spurious DISCONNECTED event */
+                chans[i]->cb = NULL;
                 ble_hs_lock();
                 conn = ble_hs_conn_find(conn_handle);
                 if (conn) {
@@ -1329,6 +1365,7 @@ ble_l2cap_sig_credit_base_con_rsp_rx(uint16_t conn_handle,
 done:
     for (i = 0; i < BLE_L2CAP_MAX_COC_CONN_REQ; i++) {
         if (duplicated_cids[i] != 0){
+            int disc_rc;
             ble_hs_lock();
             conn = ble_hs_conn_find(conn_handle);
             if (conn != NULL) {
@@ -1338,7 +1375,9 @@ done:
             }
             ble_hs_unlock();
             if (chan != NULL) {
-                rc = ble_l2cap_sig_disconnect(chan);
+                /* apply the changes: use separate variable to avoid overwriting connection result rc */
+                disc_rc = ble_l2cap_sig_disconnect(chan);
+                (void)disc_rc;
             }
         }
     }
@@ -1544,6 +1583,8 @@ ble_l2cap_sig_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     conn = ble_hs_conn_find(conn_handle);
     if (!conn) {
+        /* apply the changes: take ownership of sdu_rx on all error paths for consistent semantics */
+        os_mbuf_free_chain(sdu_rx);
         return BLE_HS_ENOTCONN;
     }
 
@@ -1554,6 +1595,8 @@ ble_l2cap_sig_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     proc = ble_l2cap_sig_proc_alloc();
     if (!proc) {
+        /* apply the changes */
+        chan->cb = NULL;
         ble_l2cap_chan_free(conn, chan);
         return BLE_HS_ENOMEM;
     }
@@ -1567,6 +1610,8 @@ ble_l2cap_sig_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
     req = ble_l2cap_sig_cmd_get(BLE_L2CAP_SIG_OP_LE_CREDIT_CONNECT_REQ, proc->id,
                                 sizeof(*req), &txom);
     if (!req) {
+        /* apply the changes */
+        chan->cb = NULL;
         ble_l2cap_chan_free(conn, chan);
         ble_l2cap_sig_proc_free(proc);
         return BLE_HS_ENOMEM;
@@ -1580,8 +1625,9 @@ ble_l2cap_sig_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     rc = ble_l2cap_sig_tx_nolock(proc->conn_handle, txom);
     if (rc != 0) {
-        ble_hs_lock();
+        /* apply the changes: removed erroneous ble_hs_lock() call; lock already held by caller */
         conn = ble_hs_conn_find(conn_handle);
+        chan->cb = NULL;
         ble_l2cap_chan_free(conn, chan);
         ble_l2cap_sig_proc_free(proc);
         return rc;
@@ -1612,11 +1658,19 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
 
     conn = ble_hs_conn_find(conn_handle);
     if (!conn) {
+        /* apply the changes: free all sdu_rx buffers on early error to take consistent ownership */
+        for (i = 0; i < num && i < BLE_L2CAP_MAX_COC_CONN_REQ; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
         return BLE_HS_ENOTCONN;
     }
 
     proc = ble_l2cap_sig_proc_alloc();
     if (!proc) {
+        /* apply the changes: free all sdu_rx buffers on early error to take consistent ownership */
+        for (i = 0; i < num && i < BLE_L2CAP_MAX_COC_CONN_REQ; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
         return BLE_HS_ENOMEM;
     }
 
@@ -1640,7 +1694,6 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
         proc->connect.chan[i] =
             ble_l2cap_coc_chan_alloc(conn, psm, mtu, sdu_rx[i], cb, cb_arg);
         if (!proc->connect.chan[i]) {
-            /* Clear request buffer */
             os_mbuf_free_chain(txom);
             rc = BLE_HS_ENOMEM;
             goto failed;
@@ -1668,7 +1721,7 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
     return 0;
 
 failed:
-    /* clean up on failure, ble_l2cap_chan_free() handles NULL as well */
+    /* apply the changes: NULL check before cb access prevents UAF/NULL-deref for unallocated channels */
     for (i = 0; i < num; i++) {
         if (proc->connect.chan[i]) {
             proc->connect.chan[i]->cb = NULL;
@@ -1997,7 +2050,8 @@ ble_l2cap_sig_le_credits_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 
     rc = ble_l2cap_sig_mbuf_pullup_base(om, sizeof(*req), NULL);
     if (rc != 0) {
-        return 0;
+        /* apply the changes: return error to trigger Command Reject, consistent with other handlers */
+        return rc;
     }
 
     if (OS_MBUF_PKTLEN(*om) != sizeof(*req)) {
@@ -2120,8 +2174,17 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     /* Strip L2CAP sig header from the front of the mbuf. */
     os_mbuf_adj(*om, BLE_L2CAP_SIG_HDR_SZ);
 
+    /* apply the changes: response opcodes must never trigger a Command Reject per BT spec
+     * Vol 3 Part A Section 4.1 */
+    int is_rsp_op = (hdr.op == BLE_L2CAP_SIG_OP_REJECT ||
+                     hdr.op == BLE_L2CAP_SIG_OP_UPDATE_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_LE_CREDIT_CONNECT_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_DISCONN_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_CREDIT_CONNECT_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_CREDIT_RECONFIG_RSP);
+
     if (OS_MBUF_PKTLEN(*om) != hdr.length) {
-        if (hdr.op != BLE_L2CAP_SIG_OP_REJECT) {
+        if (!is_rsp_op) {
             ble_l2cap_sig_reject_tx(conn_handle, hdr.identifier,
                                     BLE_L2CAP_SIG_ERR_CMD_NOT_UNDERSTOOD, NULL, 0);
         }
@@ -2136,7 +2199,7 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
         rc = rx_cb(conn_handle, &hdr, om);
     }
 
-    if (rc) {
+    if (rc && !is_rsp_op) {
         ble_l2cap_sig_reject_tx(conn_handle, hdr.identifier,
                                         BLE_L2CAP_SIG_ERR_CMD_NOT_UNDERSTOOD,
                                         NULL, 0);
@@ -2200,6 +2263,7 @@ ble_l2cap_sig_extract_expired(struct ble_l2cap_sig_proc_list *dst_list)
             }
             STAILQ_INSERT_TAIL(dst_list, proc, next);
         } else {
+            prev = proc;
             if (time_diff < next_exp_in) {
                 next_exp_in = time_diff;
             }
@@ -2376,6 +2440,8 @@ ble_l2cap_sig_deinit(void)
     struct ble_l2cap_sig_proc *proc;
 
     if (ble_l2cap_sig_ctx) {
+        /* apply the changes: free any active procedures before unregistering the mempool to
+         * prevent os_mempool_unregister assertion (mp_num_free != mp_num_blocks) on stop timeout */
         while ((proc = STAILQ_FIRST(&ble_l2cap_sig_procs)) != NULL) {
             STAILQ_REMOVE_HEAD(&ble_l2cap_sig_procs, next);
             ble_l2cap_sig_proc_free(proc);

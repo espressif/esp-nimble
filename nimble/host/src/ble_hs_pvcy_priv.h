@@ -46,9 +46,7 @@ bool ble_hs_pvcy_enabled(void);
 #endif
 bool ble_hs_pvcy_resolve_with_irk(const uint8_t rpa[6], const uint8_t irk[16]);
 
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_hs_pvcy_irk_deinit(void);
-#endif
 #ifdef __cplusplus
 }
 #endif

@@ -492,6 +492,12 @@ os_memblock_get(struct os_mempool *mp)
                 } else if (mp->mp_alloc_blocks < mp->mp_num_blocks) {
                     need_alloc = true;
                     mp->mp_alloc_blocks++;
+                } else {
+                    /* apply the changes: pool budget exhausted and free list empty;
+                     * exit without decrementing mp_num_free to prevent permanent
+                     * pool exhaustion when mp_num_free > 0 but no block available */
+                    OS_EXIT_CRITICAL(sr);
+                    return NULL;
                 }
             } else {
                 need_alloc = true;
@@ -520,6 +526,9 @@ os_memblock_get(struct os_mempool *mp)
                 // Should not happen
                 OS_ENTER_CRITICAL(sr);
                 mp->mp_num_free++;
+                /* apply the changes: restore pre-incremented mp_alloc_blocks on
+                 * malloc failure to keep counter consistent with actual allocations */
+                mp->mp_alloc_blocks--;
                 OS_EXIT_CRITICAL(sr);
                 esp_rom_printf("%s malloc failed, size=%u\n", __func__, alloc_size);
             }
@@ -587,6 +596,10 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
                 }
             }
 
+            /* apply the changes: poison before adding to free list while still
+             * holding the lock; poisoning after the lock release allows another
+             * thread to obtain and corrupt the block before it is marked invalid */
+            os_mempool_poison(mp, block_addr);
             block = (struct os_memblock *)block_addr;
             SLIST_NEXT(block, mb_next) = SLIST_FIRST(mp);
             SLIST_FIRST(mp) = block;
@@ -599,8 +612,6 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
         /* Free outside critical section */
         if (need_free) {
             nimble_platform_mem_free(block_addr);
-        } else {
-            os_mempool_poison(mp, block_addr);
         }
         return OS_OK;
     }

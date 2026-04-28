@@ -62,6 +62,8 @@ ble_hs_log_mbuf(const struct os_mbuf *om)
         return;
     }
 
+    /* Caller must ensure om is a packet-header mbuf (OS_MBUF_IS_PKTHDR);
+     * all NimBLE host-layer mbufs satisfy this invariant. */
     total_len = OS_MBUF_PKTLEN(om);
 
     for (offset = 0; offset < total_len; offset += BLE_HS_LOG_HEX_BYTES_PER_LINE) {

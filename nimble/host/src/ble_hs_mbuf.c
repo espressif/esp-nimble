@@ -32,9 +32,9 @@ ble_hs_mbuf_gen_pkt(uint16_t leading_space)
     int rc;
 
 #if MYNEWT_VAL(BLE_CONTROLLER)
-    om = os_msys_get_pkthdr(0, sizeof(struct ble_mbuf_hdr));
+    om = os_msys_get_pkthdr(leading_space, sizeof(struct ble_mbuf_hdr));
 #else
-    om = os_msys_get_pkthdr(0, 0);
+    om = os_msys_get_pkthdr(leading_space, 0);
 #endif
     if (om == NULL) {
         return NULL;
@@ -72,11 +72,12 @@ ble_hs_mbuf_bare_pkt(void)
 struct os_mbuf *
 ble_hs_mbuf_acl_pkt(void)
 {
+    /* The +1 for the H4 packet type indicator is used by zero-copy transports.
+     * The copy-based esp_nimble_hci transport does not use it but the space is
+     * reserved here for consistency with the fragment pool fallback path. */
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
-    /* +1 for HCI packet type indicator byte */
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ + 1);
 #else
-    /* +1 for HCI packet type indicator byte */
     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ + BLE_HS_CTRL_DATA_HDR_SZ + 1);
 #endif
 }

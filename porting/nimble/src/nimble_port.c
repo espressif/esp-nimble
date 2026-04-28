@@ -171,7 +171,10 @@ esp_err_t esp_nimble_init(void)
         return BLE_HS_ENOMEM;
     }
 
-    npl_freertos_mempool_init();
+    if (npl_freertos_mempool_init() != 0) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "mempool init failed\n");
+        return ESP_FAIL;
+    }
 
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_init() != ESP_OK) {
@@ -200,7 +203,6 @@ esp_err_t esp_nimble_init(void)
     ble_npl_eventq_init(&g_eventq_dflt);
 #endif // !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 
-
     /* Initialize the host */
     ble_transport_hs_init();
     
@@ -222,7 +224,12 @@ esp_err_t esp_nimble_init(void)
  */
 esp_err_t esp_nimble_deinit(void)
 {
+    esp_err_t ret = ESP_OK;
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ctx == NULL) {
+        return ESP_OK;
+    }
     ble_npl_deiniting = true;
 #endif
 
@@ -232,10 +239,7 @@ esp_err_t esp_nimble_deinit(void)
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "hci deinit failed\n");
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-        ble_npl_deiniting = false;  /* Reset flag before early return */
-#endif
-        return ESP_FAIL;
+        ret = ESP_FAIL;
     }
 #else
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
@@ -274,7 +278,7 @@ esp_err_t esp_nimble_deinit(void)
     os_mempool_deinit();
 #endif
 
-    return ESP_OK;
+    return ret;
 }
 
 /**
@@ -320,19 +324,20 @@ nimble_port_init(void)
 
     ret = esp_nimble_init();
     if (ret != ESP_OK) {
+        esp_nimble_deinit();
 
 #if CONFIG_BT_CONTROLLER_ENABLED
-	// Disable and deinit controller to free memory
+        // Disable and deinit controller to free memory
         if(esp_bt_controller_disable() != ESP_OK) {
             ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller disable failed\n");
         }
 
-	if(esp_bt_controller_deinit() != ESP_OK) {
+        if(esp_bt_controller_deinit() != ESP_OK) {
             ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller deinit failed\n");
         }
 #endif
 
-	ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble host init failed\n");
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble host init failed\n");
         return ret;
     }
 
@@ -348,29 +353,26 @@ nimble_port_init(void)
 esp_err_t
 nimble_port_deinit(void)
 {
-    esp_err_t ret;
+    esp_err_t ret = ESP_OK;
 
-    ret = esp_nimble_deinit();
-    if(ret != ESP_OK) {
+    if(esp_nimble_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble host deinit failed\n");
-        return ret;
+        ret = ESP_FAIL;
     }
 
 #if CONFIG_BT_CONTROLLER_ENABLED
-    ret = esp_bt_controller_disable();
-    if(ret != ESP_OK) {
+    if(esp_bt_controller_disable() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller disable failed\n");
-        return ret;
+        ret = ESP_FAIL;
     }
 
-    ret = esp_bt_controller_deinit();
-    if(ret != ESP_OK) {
+    if(esp_bt_controller_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "controller deinit failed\n");
-        return ret;
+        ret = ESP_FAIL;
     }
 #endif
 
-    return ESP_OK;
+    return ret;
 }
 
 
@@ -379,6 +381,12 @@ nimble_port_stop(void)
 {
     esp_err_t err = ESP_OK;
     ble_npl_error_t rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ctx == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+#endif
 
     rc = ble_npl_sem_init(&ble_hs_stop_sem, 0);
 
@@ -418,12 +426,18 @@ IRAM_ATTR
 void nimble_port_run(void)
 {
     struct ble_npl_event *ev;
+    /* Cache addresses before entering the loop. When BLE_STATIC_TO_DYNAMIC is
+     * enabled these macros dereference ble_npl_ctx; caching prevents a race
+     * where ble_npl_ctx is freed between the stop-event callback returning and
+     * the loop-exit check below. */
+    struct ble_npl_eventq * const evq = &g_eventq_dflt;
+    struct ble_npl_event * const stop_ev = &ble_hs_ev_stop;
 
     while (1) {
-        ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
+        ev = ble_npl_eventq_get(evq, BLE_NPL_TIME_FOREVER);
         if (ev) {
             ble_npl_event_run(ev);
-            if (ev == &ble_hs_ev_stop) {
+            if (ev == stop_ev) {
                 break;
             }
         }

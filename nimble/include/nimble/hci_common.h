@@ -2360,6 +2360,9 @@ struct ble_hci_ev_le_subev_chan_sel_alg {
 } __attribute__((packed));
 
 
+/* Maximum number of IQ sample pairs per HCI IQ report event (BT spec 5.2). */
+#define BLE_HCI_LE_IQ_SAMPLE_MAX_COUNT          (0x52)
+
 #define BLE_HCI_LE_SUBEV_CONNLESS_IQ_RPT        (0x15)
 struct ble_hci_ev_le_subev_connless_iq_rpt {
     uint8_t  subev_code;
