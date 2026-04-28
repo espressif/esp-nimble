@@ -29,10 +29,23 @@ static int
 mem_malloc_mempool_gen(uint16_t num_blocks, uint32_t block_size,
                        void **out_buf)
 {
+    /* Prevent integer overflow in alignment calculation */
+    if (block_size > (UINT32_MAX - OS_ALIGNMENT)) {
+        return OS_EINVAL;
+    }
+
     block_size = OS_ALIGN(block_size, OS_ALIGNMENT);
 
+    /* Detect overflow in total size calculation using 64-bit arithmetic */
     if (num_blocks > 0) {
-        *out_buf = nimble_platform_mem_malloc(OS_MEMPOOL_BYTES(num_blocks, block_size));
+        uint64_t total_size = (uint64_t)num_blocks * (uint64_t)block_size;
+
+        /* Check for 32-bit overflow */
+        if (total_size > UINT32_MAX) {
+            return OS_EINVAL;
+        }
+
+        *out_buf = nimble_platform_mem_malloc((uint32_t)total_size);
         if (*out_buf == NULL) {
             return OS_ENOMEM;
         }
@@ -152,15 +165,26 @@ mem_malloc_mbuf_pool(struct os_mempool *mempool,
     void *buf;
     int rc;
 
+    /* Validate parameters to prevent silent truncation */
+    if (block_size > UINT16_MAX - sizeof(struct os_mbuf)) {
+        return OS_EINVAL; /* block_size would overflow when adding header */
+    }
+
     block_size = OS_ALIGN(block_size + sizeof (struct os_mbuf), OS_ALIGNMENT);
+
+    /* Final check after alignment - ensure it still fits in uint16_t for os_mbuf_pool_init */
+    if (block_size > UINT16_MAX) {
+        return OS_EINVAL;
+    }
 
     rc = mem_malloc_mempool(mempool, num_blocks, block_size, name, &buf);
     if (rc != 0) {
         return rc;
     }
 
-    rc = os_mbuf_pool_init(mbuf_pool, mempool, block_size, num_blocks);
+    rc = os_mbuf_pool_init(mbuf_pool, mempool, (uint16_t)block_size, num_blocks);
     if (rc != 0) {
+        os_mempool_unregister(mempool); /* Remove from global list on failure */
         nimble_platform_mem_free(buf);
         return rc;
     }
@@ -211,12 +235,20 @@ mem_init_mbuf_pool(void *mem, struct os_mempool *mempool,
 {
     int rc;
 
-    rc = os_mempool_init(mempool, num_blocks, block_size, mem, name);
+    /* Validate parameters to prevent silent truncation */
+    if (num_blocks < 0 || num_blocks > UINT16_MAX) {
+        return OS_EINVAL;
+    }
+    if (block_size < 0 || block_size > UINT16_MAX) {
+        return OS_EINVAL;
+    }
+
+    rc = os_mempool_init(mempool, (uint16_t)num_blocks, (uint32_t)block_size, mem, name);
     if (rc != 0) {
         return rc;
     }
 
-    rc = os_mbuf_pool_init(mbuf_pool, mempool, block_size, num_blocks);
+    rc = os_mbuf_pool_init(mbuf_pool, mempool, (uint16_t)block_size, (uint16_t)num_blocks);
     if (rc != 0) {
         return rc;
     }

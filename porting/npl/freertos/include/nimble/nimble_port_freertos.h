@@ -30,20 +30,20 @@ extern "C" {
 
 /**
  * @brief esp_nimble_enable - Initialize the NimBLE host task
- * 
- * @param host_task 
- * @return esp_err_t 
+ *
+ * @param host_task
+ * @return esp_err_t
  */
 esp_err_t esp_nimble_enable(void *host_task);
 
 /**
  * @brief esp_nimble_disable - Disable the NimBLE host task
- * 
- * @return esp_err_t 
+ *
+ * @return esp_err_t
  */
 esp_err_t esp_nimble_disable(void);
 
-void nimble_port_freertos_init(TaskFunction_t host_task_fn);
+esp_err_t nimble_port_freertos_init(TaskFunction_t host_task_fn);
 void nimble_port_freertos_deinit(void);
 void npl_freertos_funcs_init(void);
 void npl_freertos_funcs_deinit(void);

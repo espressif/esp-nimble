@@ -186,6 +186,10 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
         #endif
         SLIST_FIRST(mp) = NULL;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        /* Ensure list is initialized before inserting */
+        os_mempool_list_ensure_init();
+#endif
         STAILQ_INSERT_TAIL(&g_os_mempool_list, mp, mp_list);
         return OS_OK;
     }
@@ -213,6 +217,7 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     os_mempool_list_ensure_init();
+#endif
 
     /* Check if mempool is already in the list (reinitialization case) */
     {
@@ -225,7 +230,6 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
             }
         }
     }
-#endif
 
     STAILQ_INSERT_TAIL(&g_os_mempool_list, mp, mp_list);
 
@@ -310,6 +314,14 @@ os_mempool_clear(struct os_mempool *mp)
         return OS_INVALID_PARM;
     }
 
+    /* Handle zero-block pools safely */
+    if (mp->mp_num_blocks == 0) {
+        mp->mp_num_free = 0;
+        mp->mp_min_free = 0;
+        SLIST_FIRST(mp) = NULL;
+        return OS_OK;
+    }
+
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* For runtime allocation mode, check whether all blocks have been freed */
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
@@ -364,15 +376,21 @@ os_mempool_clear(struct os_mempool *mp)
 os_error_t
 os_mempool_ext_clear(struct os_mempool_ext *mpe)
 {
+    int rc;
+
+    /* Clear the mempool first while EXT flag is intact */
+    rc = os_mempool_clear(&mpe->mpe_mp);
+
+    /* Then clear the extended flags using bitwise operation to preserve other flags */
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     mpe->mpe_mp.mp_flags &= ~OS_MEMPOOL_F_EXT;
 #else
-    mpe->mpe_mp.mp_flags = 0;
+    mpe->mpe_mp.mp_flags &= ~OS_MEMPOOL_F_EXT;
 #endif
     mpe->mpe_put_cb = NULL;
     mpe->mpe_put_arg = NULL;
 
-    return os_mempool_clear(&mpe->mpe_mp);
+    return rc;
 }
 
 bool
@@ -388,7 +406,13 @@ os_mempool_is_sane(const struct os_mempool *mp)
 #endif
 
     /* Verify that each block in the free list belongs to the mempool. */
+    /* Limit iterations to prevent infinite loops in case of corruption */
+    uint16_t iterations = 0;
     SLIST_FOREACH(block, mp, mb_next) {
+        if (++iterations > mp->mp_num_blocks) {
+            /* Potential cycle detected */
+            return false;
+        }
         if (!os_memblock_from(mp, block)) {
             return false;
         }
@@ -447,7 +471,7 @@ os_memblock_get(struct os_mempool *mp)
         bool need_alloc = false;
         void *allocated_block;
         uint32_t alloc_size;
-        
+
         OS_ENTER_CRITICAL(sr);
 
         if (mp->mp_num_free) {
@@ -544,6 +568,15 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
         /* Runtime allocation mode - free directly */
         OS_ENTER_CRITICAL(sr);
         if (mp->mp_flags & OS_MEMPOOL_F_REUSED) {
+            /* Check for double-free by searching the free list */
+            struct os_memblock *existing_block;
+            SLIST_FOREACH(existing_block, mp, mb_next) {
+                if (existing_block == block_addr) {
+                    OS_EXIT_CRITICAL(sr);
+                    return OS_INVALID_PARM;
+                }
+            }
+
             block = (struct os_memblock *)block_addr;
             SLIST_NEXT(block, mb_next) = SLIST_FIRST(mp);
             SLIST_FIRST(mp) = block;
@@ -563,12 +596,10 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
     }
 #endif
 
- #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    /* Validate that the block belongs to this mempool */
-    if (!os_memblock_from(mp, block_addr)) {
+    /* Validate that the block belongs to this mempool for static pools */
+    if (!(mp->mp_flags & OS_MEMPOOL_F_RUNTIME) && !os_memblock_from(mp, block_addr)) {
         return OS_INVALID_PARM;
     }
-#endif
 
     os_mempool_guard_check(mp, block_addr);
     os_mempool_poison(mp, block_addr);
@@ -723,9 +754,10 @@ os_mempool_module_init(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     os_mempool_list_ensure_init();
-#endif
-
+#else
+    /* Only initialize if not using dynamic initialization */
     STAILQ_INIT(&g_os_mempool_list);
+#endif
 }
 
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)

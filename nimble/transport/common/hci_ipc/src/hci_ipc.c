@@ -48,6 +48,15 @@ hci_ipc_alloc(struct hci_ipc_sm *sm)
         sm->buf = ble_transport_alloc_cmd();
         break;
 #endif
+#if !MYNEWT_VAL(BLE_CONTROLLER)
+    case HCI_IPC_TYPE_EVT:
+    case HCI_IPC_TYPE_EVT_DISCARDABLE:
+        sm->buf = ble_transport_alloc_evt(sm->hdr.type == HCI_IPC_TYPE_EVT_DISCARDABLE ? 1 : 0);
+        break;
+    case HCI_IPC_TYPE_EVT_IN_CMD:
+        sm->buf = ble_transport_alloc_cmd();
+        break;
+#endif
     case HCI_IPC_TYPE_ACL:
 #if MYNEWT_VAL(BLE_CONTROLLER)
         sm->om = ble_transport_alloc_acl_from_hs();
@@ -55,17 +64,6 @@ hci_ipc_alloc(struct hci_ipc_sm *sm)
         sm->om = ble_transport_alloc_acl_from_ll();
 #endif
         break;
-#if !MYNEWT_VAL(BLE_CONTROLLER)
-    case HCI_IPC_TYPE_EVT:
-        sm->buf = ble_transport_alloc_evt(0);
-        break;
-    case HCI_IPC_TYPE_EVT_DISCARDABLE:
-        sm->buf = ble_transport_alloc_evt(1);
-        break;
-    case HCI_IPC_TYPE_EVT_IN_CMD:
-        sm->buf = ble_transport_alloc_cmd();
-        break;
-#endif
     case HCI_IPC_TYPE_ISO:
 #if MYNEWT_VAL(BLE_CONTROLLER)
         sm->om = ble_transport_alloc_iso_from_hs();
@@ -73,15 +71,13 @@ hci_ipc_alloc(struct hci_ipc_sm *sm)
         sm->om = ble_transport_alloc_iso_from_ll();
 #endif
         break;
-    default:
-        assert(0);
-        break;
     }
 
-    assert(sm->buf);
-
-    sm->rem_len = sm->hdr.length;
-    sm->buf_len = 0;
+    /* Set up buffer state only if allocation succeeded */
+    if (sm->buf || sm->om) {
+        sm->rem_len = sm->hdr.length;
+        sm->buf_len = 0;
+    }
 }
 
 static bool
@@ -93,6 +89,8 @@ hci_ipc_has_hdr(struct hci_ipc_sm *sm)
 static void
 hci_ipc_frame(struct hci_ipc_sm *sm)
 {
+    int rc;
+
     assert(sm->hdr.type);
     assert(sm->buf);
     assert(sm->rem_len == 0);
@@ -100,28 +98,52 @@ hci_ipc_frame(struct hci_ipc_sm *sm)
     switch (sm->hdr.type) {
 #if MYNEWT_VAL(BLE_CONTROLLER)
     case HCI_IPC_TYPE_CMD:
-        ble_transport_to_ll_cmd(sm->buf);
+        rc = ble_transport_to_ll_cmd(sm->buf);
+        if (rc != 0) {
+            /* Transport failed to process - buffer may need explicit cleanup */
+            ble_transport_free(BLE_HCI_CMD, sm->buf);
+        }
         break;
 #endif
     case HCI_IPC_TYPE_ACL:
 #if MYNEWT_VAL(BLE_CONTROLLER)
-        ble_transport_to_ll_acl(sm->om);
+        rc = ble_transport_to_ll_acl(sm->om);
+        if (rc != 0) {
+            /* Transport failed - free the mbuf chain */
+            os_mbuf_free_chain(sm->om);
+        }
 #else
-        ble_transport_to_hs_acl(sm->om);
+        rc = ble_transport_to_hs_acl(sm->om);
+        if (rc != 0) {
+            /* Transport failed - free the mbuf chain */
+            os_mbuf_free_chain(sm->om);
+        }
 #endif
         break;
 #if !MYNEWT_VAL(BLE_CONTROLLER)
     case HCI_IPC_TYPE_EVT:
     case HCI_IPC_TYPE_EVT_DISCARDABLE:
     case HCI_IPC_TYPE_EVT_IN_CMD:
-        ble_transport_to_hs_evt(sm->buf);
+        rc = ble_transport_to_hs_evt(sm->buf);
+        if (rc != 0) {
+            /* Transport failed to process - buffer may need explicit cleanup */
+            ble_transport_free(BLE_HCI_EVT, sm->buf);
+        }
         break;
 #endif
     case HCI_IPC_TYPE_ISO:
 #if MYNEWT_VAL(BLE_CONTROLLER)
-        ble_transport_to_ll_iso(sm->om);
+        rc = ble_transport_to_ll_iso(sm->om);
+        if (rc != 0) {
+            /* Transport failed - free the mbuf chain */
+            os_mbuf_free_chain(sm->om);
+        }
 #else
-        ble_transport_to_hs_iso(sm->om);
+        rc = ble_transport_to_hs_iso(sm->om);
+        if (rc != 0) {
+            /* Transport failed - free the mbuf chain */
+            os_mbuf_free_chain(sm->om);
+        }
 #endif
         break;
     default:
@@ -231,12 +253,29 @@ hci_ipc_init(volatile struct hci_ipc_shm *shm, struct hci_ipc_sm *sm)
     memset(sm, 0, sizeof(*sm));
 
 #if MYNEWT_VAL(BLE_CONTROLLER)
-    while (shm->n2a_num_evt_disc == 0) {
-        /* Wait until app side initializes credits */
+    /* Controller side: wait for host to initialize, with timeout to prevent hang */
+    uint32_t timeout = 100000; /* ~100ms timeout */
+    while (shm->n2a_num_evt_disc == 0 && timeout > 0) {
+        timeout--;
+        /* Small delay to prevent tight spin and allow other tasks to run */
+        if ((timeout % 1000) == 0) {
+            ble_npl_time_delay(1); /* 1 tick delay every 1000 iterations */
+        }
     }
+    if (timeout == 0) {
+        assert(0); /* Timeout waiting for host initialization */
+    }
+    /* Memory barrier to ensure we see updated values from host */
+    __asm__ __volatile__("dmb" ::: "memory");
 #else
+    /* Host side: initialize credit counts with memory barrier */
     shm->n2a_num_acl = MYNEWT_VAL(BLE_TRANSPORT_ACL_FROM_LL_COUNT);
     shm->n2a_num_evt = MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT);
+
+    /* Memory barrier to ensure previous writes are visible before signaling ready */
+    __asm__ __volatile__("dmb" ::: "memory");
+
+    /* Signal initialization complete to controller */
     shm->n2a_num_evt_disc = MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT);
 #endif
 }

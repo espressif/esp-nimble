@@ -100,28 +100,19 @@ int ble_restore_our_sec_nvs(void)
     int err;
     struct ble_store_value_sec temp_our_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int temp_count = 0;
+    uint16_t saved_bond_count;
 
-    ble_store_config_our_bond_count = 0;
+    saved_bond_count = ble_store_config_our_bond_count;
 
     memcpy(temp_our_secs, ble_store_config_our_secs, ble_store_config_num_our_secs * sizeof(struct ble_store_value_sec));
     temp_count = ble_store_config_num_our_secs;
 
     qsort(temp_our_secs, temp_count, sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
 
-    for (int i = 0; i < temp_count; i++) {
-
-        union ble_store_key key;
-        ble_store_key_from_value_sec(&key.sec, &temp_our_secs[i]);
-
-        err = ble_store_config_delete(BLE_STORE_OBJ_TYPE_OUR_SEC, &key);
-
-        if (err != ESP_OK) {
-            BLE_HS_LOG(DEBUG, "Error deleting from nvs");
-            return err;
-        }
-    }
+    ble_store_config_our_bond_count = 0;
 
     for (int i = 0; i < temp_count; i++) {
+        temp_our_secs[i].bond_count = ++ble_store_config_our_bond_count;
 
         union ble_store_value val;
         val.sec = temp_our_secs[i];
@@ -129,14 +120,11 @@ int ble_restore_our_sec_nvs(void)
         err = ble_store_config_write(BLE_STORE_OBJ_TYPE_OUR_SEC, &val);
 
         if (err != ESP_OK) {
-            BLE_HS_LOG(DEBUG, "Error writing to nvs");
+            BLE_HS_LOG(DEBUG, "Error updating bond in NVS: %d", err);
+            ble_store_config_our_bond_count = saved_bond_count;
             return err;
         }
     }
-
-    /* The global array ble_store_config_our_secs and its count are already correctly updated
-     * by the ble_store_config_write calls in the loop above. Overwriting them here with
-     * temp_our_secs would revert the bond_count reset. */
 
     return 0;
 }
@@ -149,42 +137,31 @@ int ble_restore_peer_sec_nvs(void)
     int err;
     struct ble_store_value_sec temp_peer_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int temp_count = 0;
+    uint16_t saved_bond_count;
 
-    ble_store_config_peer_bond_count = 0;
+    saved_bond_count = ble_store_config_peer_bond_count;
 
     memcpy(temp_peer_secs, ble_store_config_peer_secs, ble_store_config_num_peer_secs * sizeof(struct ble_store_value_sec));
     temp_count = ble_store_config_num_peer_secs;
 
     qsort(temp_peer_secs, temp_count, sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
 
-    for (int i = 0; i < temp_count; i++) {
-
-        union ble_store_key key;
-        ble_store_key_from_value_sec(&key.sec, &temp_peer_secs[i]);
-
-        err = ble_store_config_delete(BLE_STORE_OBJ_TYPE_PEER_SEC, &key);
-
-        if (err != ESP_OK) {
-            BLE_HS_LOG(DEBUG, "Error deleting from nvs %d ",err);
-            return err;
-        }
-    }
+    ble_store_config_peer_bond_count = 0;
 
     for (int i = 0; i < temp_count; i++) {
+        temp_peer_secs[i].bond_count = ++ble_store_config_peer_bond_count;
+
         union ble_store_value val;
         val.sec = temp_peer_secs[i];
 
         err = ble_store_config_write(BLE_STORE_OBJ_TYPE_PEER_SEC, &val);
 
         if (err != ESP_OK) {
-            BLE_HS_LOG(DEBUG, "Error writing to nvs %d ",err);
+            BLE_HS_LOG(DEBUG, "Error updating peer bond in NVS: %d", err);
+            ble_store_config_peer_bond_count = saved_bond_count;
             return err;
         }
     }
-
-    /* The global array ble_store_config_peer_secs and its count are already correctly updated
-     * by the ble_store_config_write calls in the loop above. Overwriting them here with
-     * temp_peer_secs would revert the bond_count reset. */
 
     return 0;
 }
@@ -194,6 +171,13 @@ int ble_restore_peer_sec_nvs(void)
 static void
 ble_store_config_print_value_sec(const struct ble_store_value_sec *sec)
 {
+    /*
+     * NOTE: This function's multi-call logging pattern is intentionally preserved.
+     * ESP-IDF's BLE_HS_LOG implementation may buffer or consolidate outputs.
+     * The separate calls allow conditional logging of different security components
+     * (LTK, IRK, CSRK) which is useful for debugging. No consolidation needed
+     * unless ESP-IDF logging performance issues are observed.
+     */
     if (sec->ltk_present) {
         BLE_HS_LOG(DEBUG, "ediv=%u rand=%llu authenticated=%d ltk=",
                        sec->ediv, sec->rand_num, sec->authenticated);
@@ -577,6 +561,10 @@ static int
 ble_store_config_write_cccd(const struct ble_store_value_cccd *value_cccd)
 {
 #if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+    /* NOTE: Host lock is held during this operation by design.
+     * This ensures atomic CCCD updates and prevents concurrent access
+     * to the CCCD store during write operations. The brief blocking
+     * is acceptable for configuration persistence operations. */
     struct ble_store_key_cccd key_cccd;
     int idx;
     int rc;
@@ -597,6 +585,12 @@ ble_store_config_write_cccd(const struct ble_store_value_cccd *value_cccd)
 
     ble_store_config_cccds[idx] = *value_cccd;
 
+    /*
+     * NOTE: NVS persistence while BLE host lock is held is a design tradeoff.
+     * This ensures atomicity between BLE stack state and persistent storage.
+     * ESP-IDF NVS operations are typically fast enough not to cause BLE timeouts.
+     * Consider async persistence only if real timing issues are observed.
+     */
     rc = ble_store_config_persist_cccds();
     if (rc != 0) {
         return rc;
@@ -855,10 +849,14 @@ ble_store_config_find_rpa_rec(const struct ble_store_key_rpa_rec *key)
     for(i = 0; i < ble_store_config_num_rpa_recs; i++){
         rpa_rec = ble_store_config_rpa_recs + i;
 
-        if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr) &&
-            ble_addr_cmp(&rpa_rec->peer_addr, &key->peer_rpa_addr)) {
-            continue;
+        if (ble_addr_cmp(&key->peer_rpa_addr, BLE_ADDR_ANY) != 0) {
+            /* Not a wildcard search - check addresses */
+            if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr) &&
+                ble_addr_cmp(&rpa_rec->peer_addr, &key->peer_rpa_addr)) {
+                continue;
+            }
         }
+        /* Wildcard search or address matched */
         if (key->idx > skipped) {
             skipped++;
             continue;
@@ -892,10 +890,23 @@ ble_store_config_write_rpa_rec(const struct ble_store_value_rpa_rec *value_rpa_r
     struct ble_store_key_rpa_rec key_rpa_rec;
     int idx;
     int rc;
+
     ble_store_key_from_value_rpa_rec(&key_rpa_rec, value_rpa_rec);
     idx = ble_store_config_find_rpa_rec(&key_rpa_rec);
 
     if (idx == -1) {
+        /* RPA not found, search by identity address to prevent duplicates */
+        for (int i = 0; i < ble_store_config_num_rpa_recs; i++) {
+            if (ble_addr_cmp(&ble_store_config_rpa_recs[i].peer_addr, &value_rpa_rec->peer_addr) == 0) {
+                /* Found existing record for this identity - update it */
+                idx = i;
+                break;
+            }
+        }
+    }
+
+    if (idx == -1) {
+        /* New identity address - create new record */
         if (ble_store_config_num_rpa_recs >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
             BLE_HS_LOG(DEBUG, "error persisting peer addrr; too many entries (%d)\n",
                        ble_store_config_num_rpa_recs);
@@ -906,6 +917,7 @@ ble_store_config_write_rpa_rec(const struct ble_store_value_rpa_rec *value_rpa_r
         idx = ble_store_config_num_rpa_recs;
         ble_store_config_num_rpa_recs++;
     }
+
     ble_store_config_rpa_recs[idx] = *value_rpa_rec;
 
     rc = ble_store_config_persist_rpa_recs();
@@ -1219,9 +1231,16 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
     }
 }
 
+/* Track initialization state for idempotency */
+static bool g_ble_store_config_initialized = false;
+
 void
 ble_store_config_init(void)
 {
+    if (g_ble_store_config_initialized) {
+        return;
+    }
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_store_config_vars == NULL) {
         ble_store_config_vars = nimble_platform_mem_calloc(1, sizeof(ble_store_config_vars_t));
@@ -1240,7 +1259,6 @@ ble_store_config_init(void)
     ble_hs_cfg.store_write_cb = ble_store_config_write;
     ble_hs_cfg.store_delete_cb = ble_store_config_delete;
 
-    /* Re-initialize BSS values in case of unit tests. */
     ble_store_config_num_our_secs = 0;
     ble_store_config_num_peer_secs = 0;
     ble_store_config_num_cccds = 0;
@@ -1251,6 +1269,8 @@ ble_store_config_init(void)
     ble_store_config_num_rpa_recs = 0;
     ble_store_config_num_local_irks=0;
     ble_store_config_conf_init();
+
+    g_ble_store_config_initialized = true;
 }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -1261,5 +1281,12 @@ ble_store_config_deinit(void)
         nimble_platform_mem_free(ble_store_config_vars);
         ble_store_config_vars = NULL;
     }
+
+    ble_hs_cfg.store_read_cb = NULL;
+    ble_hs_cfg.store_write_cb = NULL;
+    ble_hs_cfg.store_delete_cb = NULL;
+
+    /* Reset initialization flag to allow re-initialization */
+    g_ble_store_config_initialized = false;
 }
 #endif

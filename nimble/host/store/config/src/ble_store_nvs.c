@@ -159,8 +159,11 @@ get_nvs_peer_record(char *key_string, struct ble_hs_dev_records *p_dev_rec)
     size_t required_size = 0;
     nvs_handle_t nimble_handle;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READONLY, &nimble_handle);
     if (err != ESP_OK) {
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            return ESP_ERR_NVS_NOT_FOUND;
+        }
         ESP_LOGE(TAG, "NVS open operation failed");
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
         return BLE_HS_ESTORE_FAIL;
@@ -221,8 +224,11 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
     size_t expected_size;
     nvs_handle_t nimble_handle;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READONLY, &nimble_handle);
     if (err != ESP_OK) {
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            return ESP_ERR_NVS_NOT_FOUND;
+        }
         ESP_LOGE(TAG, "NVS open operation failed");
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
         return BLE_HS_ESTORE_FAIL;
@@ -404,7 +410,7 @@ ble_nvs_delete_value(int obj_type, int index)
 
     /* Erase the key with given index */
     err = nvs_erase_key(nimble_handle, key_string);
-    if (err != ESP_OK) {
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
         goto error;
     }
     err = nvs_commit(nimble_handle);
@@ -436,22 +442,20 @@ ble_nvs_write_key_value(char *key, const void *value, size_t required_size)
     err = nvs_set_blob(nimble_handle, key, value, required_size);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS write operation failed !!");
-        goto error;
+        nvs_close(nimble_handle);
+        return (err == ESP_ERR_NVS_NOT_ENOUGH_SPACE) ? BLE_HS_ESTORE_CAP : BLE_HS_ESTORE_FAIL;
     }
 
     /* NVS commit and close */
     err = nvs_commit(nimble_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS commit operation failed !!");
-        goto error;
+        nvs_close(nimble_handle);
+        return (err == ESP_ERR_NVS_NOT_ENOUGH_SPACE) ? BLE_HS_ESTORE_CAP : BLE_HS_ESTORE_FAIL;
     }
 
     nvs_close(nimble_handle);
     return 0;
-error:
-    nvs_close(nimble_handle);
-    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
-    return BLE_HS_ESTORE_FAIL;
 }
 
 /* To write key value in NVS.
@@ -877,14 +881,14 @@ int ble_store_config_persist_csfcs(void)
 int ble_store_config_persist_eads(void)
 {
     int nvs_count, nvs_idx;
-    union ble_store_value val; 
+    union ble_store_value val;
 
     nvs_count = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, 0, NULL, 0);
     if (nvs_count == -1) {
         ESP_LOGE(TAG, "NVS operation failed while persisting EAD");
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
         return BLE_HS_ESTORE_FAIL;
-    } 
+    }
 
     if (nvs_count < ble_store_config_num_eads) {
         /* NVS db count less than RAM count, write operation */
@@ -934,6 +938,16 @@ int ble_store_config_persist_local_irk(void)
         }
         ESP_LOGD(TAG, "Deleting Local IRK, nvs idx = %d", nvs_idx);
         return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_LOCAL_IRK, nvs_idx);
+    } else {
+        /* Equal counts - this could be an update, sync all entries */
+        ESP_LOGD(TAG, "Syncing Local IRK values to NVS...");
+        for (int i = 0; i < ble_store_config_num_local_irks; i++) {
+            val.local_irk = ble_store_config_local_irks[i];
+            int rc = ble_store_nvs_write(BLE_STORE_OBJ_TYPE_LOCAL_IRK, &val);
+            if (rc != 0) {
+                return rc;
+            }
+        }
     }
     return 0;
 }
@@ -1036,6 +1050,12 @@ int ble_store_config_persist_our_secs(void)
 }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+/*
+ * NOTE: This function performs NVS operations while BLE host lock is held.
+ * This is intentional design ensuring atomicity between RAM state and persistent
+ * storage. ESP-IDF NVS operations are optimized and typically complete within
+ * acceptable timing bounds for BLE operations.
+ */
 int ble_store_persist_peer_records(void)
 {
     int nvs_count, nvs_idx;

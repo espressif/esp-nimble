@@ -830,7 +830,8 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
         return BLE_HS_EINVAL;
     }
 
-    swap_buf(ecb.key, irk, 16);
+    /* IRK is already in little-endian format; ble_sm_alg_encrypt will handle byte order */
+    memcpy(ecb.key, irk, 16);
     memset(ecb.plain_text, 0, 16);
 
     ecb.plain_text[15] = rpa[3];
