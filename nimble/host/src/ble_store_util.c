@@ -274,6 +274,8 @@ ble_store_util_delete_all(int type, const union ble_store_key *key)
 
     return 0;
 #else
+    /* ENOTSUP here is unreachable from delete_peer/delete_all callers
+     * because those are also gated by NIMBLE_BLE_CONNECT; no premature multi-type break. */
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -312,6 +314,7 @@ ble_store_util_count(int type, int *out_count)
 
     return 0;
 #else
+    /* *out_count is only valid when rc==0; caller must check return code. */
     return BLE_HS_ENOTSUP;
 #endif
 }
@@ -385,7 +388,7 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
        return rc;
    }
 
-   if (set.status != 0 && set.status != BLE_HS_ENOMEM) {
+   if (set.status != 0) {
        return set.status;
    }
 

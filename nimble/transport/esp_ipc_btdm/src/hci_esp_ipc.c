@@ -18,7 +18,13 @@
 static int
 ble_transport_dummy_host_recv_cb(hci_driver_data_type_t type, uint8_t *data, uint16_t len)
 {
-    /* Dummy function */
+    if (type == HCI_DRIVER_TYPE_ACL) {
+        os_mbuf_free_chain((struct os_mbuf *)data);
+    } else if (type == HCI_DRIVER_TYPE_ISO) {
+        free(data);
+    } else {
+        ble_transport_free(data);
+    }
     return 0;
 }
 
@@ -29,15 +35,23 @@ ble_transport_host_recv_cb(hci_driver_data_type_t type, uint8_t *data, uint16_t 
     if (type == HCI_DRIVER_TYPE_ACL) {
 #if CONFIG_BT_NIMBLE_ROLE_CENTRAL || CONFIG_BT_NIMBLE_ROLE_PERIPHERAL
         rc = ble_transport_to_hs_acl((struct os_mbuf *)data);
+#else
+        os_mbuf_free_chain((struct os_mbuf *)data);
 #endif
     }
-#if MYNEWT_VAL(BLE_ISO) 
+#if MYNEWT_VAL(BLE_ISO)
     else if (type == HCI_DRIVER_TYPE_ISO) {
         rc = ble_transport_to_hs_iso_v2(data, len);
     }
-#endif /* MYNEWT_VAL(BLE_ISO)  */
+#else
+    else if (type == HCI_DRIVER_TYPE_ISO) {
+        free(data);
+    }
+#endif /* MYNEWT_VAL(BLE_ISO) */
     else if (type == HCI_DRIVER_TYPE_EVT) {
         rc = ble_transport_to_hs_evt(data);
+    } else {
+        ble_transport_free(data);
     }
     return rc;
 }
@@ -49,6 +63,8 @@ ble_transport_to_ll_cmd_impl(void *buf)
     uint16_t len;
 
     pkt = HCI_DRIVER_D2P(buf);
+    /* buf layout is [Opcode L][Opcode H][Len][Params] (no type prefix);
+     * buf+2 IS the parameter length byte and len+3 correctly covers opcode(2)+len(1)+params. */
     len = *(uint8_t *)(buf + 2);
     pkt->length = len + 3;
     return hci_driver_host_cmd_tx((uint8_t *)pkt);
@@ -57,7 +73,11 @@ ble_transport_to_ll_cmd_impl(void *buf)
 int
 ble_transport_to_ll_acl_impl(struct os_mbuf *om)
 {
-    return hci_driver_host_acl_tx((uint8_t *)om, 0);
+    int rc = hci_driver_host_acl_tx((uint8_t *)om, 0);
+    if (rc != 0) {
+        os_mbuf_free_chain(om);
+    }
+    return rc;
 }
 
 void

@@ -3028,7 +3028,7 @@ ble_sm_update_peer_sign_counter(uint16_t conn_handle, uint32_t sign_counter)
 }
 
 int
-ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
+ble_sm_incr_peer_sign_counter(uint16_t conn_handle, uint32_t new_counter)
 {
     struct ble_store_key_sec key_sec;
     struct ble_store_value_sec value_sec;
@@ -3069,7 +3069,7 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
     }
 #endif
 
-    value_sec.sign_counter += 1;
+    value_sec.sign_counter = new_counter;
     rc = ble_store_write_peer_sec(&value_sec);
     if (rc != 0) {
         return rc;

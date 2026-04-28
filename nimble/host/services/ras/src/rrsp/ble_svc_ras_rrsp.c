@@ -27,7 +27,7 @@
 static uint32_t ble_svc_ras_feat_val;
 static uint16_t ble_svc_ras_rd_val;
 static uint16_t ble_svc_ras_rd_ov_val;
-static uint16_t ble_svc_ras_cp_val;
+static uint8_t ble_svc_ras_cp_val[RASCP_WRITE_MAX_LEN];
 
 static uint16_t ble_svc_ras_feat_val_handle;
 static uint16_t ble_svc_ras_od_val_handle;
@@ -164,51 +164,21 @@ gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handle,
    return BLE_ATT_ERR_UNLIKELY;
  }
 
-void
-custom_gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
-{
-    char buf[BLE_UUID_STR_LEN];
-
-    switch (ctxt->op) {
-    case BLE_GATT_REGISTER_OP_SVC:
-        MODLOG_DFLT(DEBUG, "registered service %s with handle=%d\n",
-                    ble_uuid_to_str(ctxt->svc.svc_def->uuid, buf),
-                    ctxt->svc.handle);
-        break;
-
-    case BLE_GATT_REGISTER_OP_CHR:
-        MODLOG_DFLT(DEBUG, "registering characteristic %s with "
-                    "def_handle=%d val_handle=%d\n",
-                    ble_uuid_to_str(ctxt->chr.chr_def->uuid, buf),
-                    ctxt->chr.def_handle,
-                    ctxt->chr.val_handle);
-        break;
-
-    case BLE_GATT_REGISTER_OP_DSC:
-        MODLOG_DFLT(DEBUG, "registering descriptor %s with handle=%d\n",
-                    ble_uuid_to_str(ctxt->dsc.dsc_def->uuid, buf),
-                    ctxt->dsc.handle);
-        break;
-
-    default:
-        break;
-    }
-}
-
 int
 ble_svc_ras_rrsp_init(void)
 {
     int rc;
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
-    if (rc != 0) {
-        return rc;
-    }
+    assert(rc == 0);
 
     rc = ble_gatts_add_svcs(gatt_svr_svcs);
-    if (rc != 0) {
-        return rc;
-    }
+    assert(rc == 0);
+
+    /* Missing initialization of characteristic values in service init.
+     * ble_svc_ras_feat_val intentionally remains 0. RETRIEVE_LST_SEG, ABORT_OP, and
+     * FLTR_RANGING_DATA are not implemented in this RRSP stack; advertising them would
+     * mislead the peer into issuing opcodes that will be silently ignored. */
 
     return 0;
 }

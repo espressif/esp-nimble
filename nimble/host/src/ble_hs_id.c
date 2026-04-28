@@ -48,15 +48,28 @@ static const uint8_t ble_hs_misc_null_addr[6];
 int
 ble_hs_id_ensure_ctx(void)
 {
+    ble_hs_id_ctx_t *new_ctx;
+
     if (ble_hs_id_ctx) {
         return 0;
     }
 
-    ble_hs_id_ctx = nimble_platform_mem_calloc(1, sizeof(* ble_hs_id_ctx));
-
-    if (!ble_hs_id_ctx) {
+    new_ctx = nimble_platform_mem_calloc(1, sizeof(*new_ctx));
+    if (!new_ctx) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
+    }
+
+    ble_hs_lock();
+    if (!ble_hs_id_ctx) {
+        ble_hs_id_ctx = new_ctx;
+        new_ctx = NULL; /* Mark as used, don't free */
+    }
+    ble_hs_unlock();
+
+    /* If another task won the race, free our allocation */
+    if (new_ctx) {
+        nimble_platform_mem_free(new_ctx);
     }
 
     return 0;
@@ -298,6 +311,12 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
     const uint8_t *id_addr;
     int nrpa;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_id_ctx) {
+        return BLE_HS_ENOADDR;
+    }
+#endif
+
     switch (id_addr_type) {
     case BLE_ADDR_PUBLIC:
     case BLE_ADDR_PUBLIC_ID:
@@ -353,6 +372,7 @@ static int
 ble_hs_id_addr_type_usable(uint8_t own_addr_type)
 {
     uint8_t id_addr_type;
+    const uint8_t *id_addr_ptr;
     int nrpa;
     int rc;
 
@@ -368,13 +388,17 @@ ble_hs_id_addr_type_usable(uint8_t own_addr_type)
     case BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT:
     case BLE_OWN_ADDR_RPA_RANDOM_DEFAULT:
         id_addr_type = ble_hs_misc_own_addr_type_to_id(own_addr_type);
-        rc = ble_hs_id_addr(id_addr_type, NULL, &nrpa);
+        rc = ble_hs_id_addr(id_addr_type, &id_addr_ptr, &nrpa);
         if (rc != 0) {
             return rc;
         }
         if (nrpa) {
             return BLE_HS_ENOADDR;
         }
+
+#if !MYNEWT_VAL(BLE_HS_PVCY)
+        return BLE_HS_ENOTSUP;
+#endif
         break;
 
     default:
@@ -444,7 +468,9 @@ ble_hs_id_infer_auto(int privacy, uint8_t *out_addr_type)
         rc = ble_hs_id_addr_type_usable(addr_type);
         switch (rc) {
         case 0:
-            *out_addr_type = addr_type;
+            if (out_addr_type != NULL) {
+                *out_addr_type = addr_type;
+            }
             goto done;
 
         case BLE_HS_ENOADDR:

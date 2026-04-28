@@ -29,6 +29,10 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
 static uint16_t ble_att_preferred_mtu_val;
 
 /** Dispatch table for incoming ATT requests. */
@@ -172,13 +176,47 @@ ble_att_conn_chan_find(uint16_t conn_handle, uint16_t cid, struct ble_hs_conn **
                                       out_conn, out_chan);
 }
 
+#if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) != 0
 int
 ble_att_conn_chan_find_by_psm(uint16_t conn_handle, uint16_t psm,
                               struct ble_hs_conn **out_conn,
                               struct ble_l2cap_chan **out_chan)
 {
-    return ble_hs_misc_conn_chan_find(conn_handle, psm, out_conn, out_chan);
+    struct ble_l2cap_chan *chan;
+    struct ble_hs_conn *conn;
+
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn == NULL) {
+        if (out_conn != NULL) {
+            *out_conn = NULL;
+        }
+        if (out_chan != NULL) {
+            *out_chan = NULL;
+        }
+        return BLE_HS_ENOTCONN;
+    }
+
+    SLIST_FOREACH(chan, &conn->bhc_channels, next) {
+        if (chan->psm == psm) {
+            if (out_conn != NULL) {
+                *out_conn = conn;
+            }
+            if (out_chan != NULL) {
+                *out_chan = chan;
+            }
+            return 0;
+        }
+    }
+
+    if (out_conn != NULL) {
+        *out_conn = conn;
+    }
+    if (out_chan != NULL) {
+        *out_chan = NULL;
+    }
+    return BLE_HS_ENOTCONN;
 }
+#endif /* BLE_L2CAP_COC_MAX_NUM != 0 */
 
 void
 ble_att_inc_tx_stat(uint8_t att_op)
@@ -507,9 +545,9 @@ ble_att_chan_mtu(const struct ble_l2cap_chan *chan)
     if (ble_hs_cfg.eatt && chan->psm == BLE_EATT_PSM) {
         /* The ATT_MTU for the Enhanced ATT bearer shall be set to the minimum of the
          * MTU field values of the two devices. Reference:
-         * Core v5.4 Vol 3 Part G 5.3.1 ATT_MTU
-         */
-        return min(chan->coc_tx.mtu, chan->coc_rx.mtu);
+         * Core v5.4 Vol 3 Part G 5.3.1 ATT_MTU */
+         
+        return max(min(chan->coc_tx.mtu, chan->coc_rx.mtu), 64);
     }
 #endif
 
@@ -545,6 +583,16 @@ ble_att_rx_handle_unknown_request(uint8_t op, uint16_t conn_handle,
                    op, conn_handle, cid);
         return;
     }
+
+    if (ble_att_is_response_op(op)) {
+        return;
+    }
+
+    if (op == BLE_ATT_OP_NOTIFY_REQ || op == BLE_ATT_OP_INDICATE_REQ || 
+        op == BLE_ATT_OP_NOTIFY_MULTI_REQ) {
+        return;
+    }
+
 #if MYNEWT_VAL(BLE_GATTS)
     os_mbuf_adj(*om, OS_MBUF_PKTLEN(*om));
     ble_att_svr_tx_error_rsp(conn_handle, cid, *om, op, 0,
@@ -640,6 +688,10 @@ ble_att_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
 uint16_t
 ble_att_preferred_mtu(void)
 {
+    /* Returns the locally configured preferred ATT MTU (a global, not negotiated
+     * per-connection). Callers that need the actual MTU for a live connection
+     * must use ble_att_mtu(conn_handle) instead, which returns the negotiated
+     * value (min of local and peer preferences after MTU Exchange). */
     return ble_att_preferred_mtu_val;
 }
 
@@ -659,10 +711,9 @@ ble_att_set_preferred_mtu(uint16_t mtu)
         return BLE_HS_EINVAL;
     }
 
-    ble_att_preferred_mtu_val = mtu;
-
-    /* Set my_mtu for established connections that haven't exchanged. */
     ble_hs_lock();
+
+    ble_att_preferred_mtu_val = mtu;
 
     i = 0;
     while ((conn = ble_hs_conn_find_by_idx(i)) != NULL) {

@@ -16,7 +16,7 @@
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_HR_SERVICE
 /* Characteristic values */
-static uint8_t ble_svc_hr_measurement;
+static uint8_t ble_svc_hr_measurement[2];
 static uint8_t ble_svc_hr_body_sensor_loc;
 static uint8_t ble_svc_hr_ctrl_pt;
 
@@ -25,6 +25,7 @@ static uint16_t ble_svc_hr_measurement_val_handle;
 static uint16_t ble_svc_hr_body_sensor_loc_val_handle;
 static uint16_t ble_svc_hr_ctrl_pt_val_handle;
 
+/* NimBLE assigns sequential handles in [0..BLE_MAX_CONNECTIONS]. */
 static int ble_svc_hr_conn_handle[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
 
 static int
@@ -121,8 +122,7 @@ ble_svc_hr_access(uint16_t conn_handle, uint16_t attr_handle,
             rc = ble_svc_hr_chr_write(ctxt->om, sizeof(ble_svc_hr_ctrl_pt), sizeof(ble_svc_hr_ctrl_pt),
                                       &ble_svc_hr_ctrl_pt,
                                       NULL);
-
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            return rc;
         }
         return BLE_SVC_HS_ERR_CMD_NOT_SUPPORTED;
 
@@ -172,26 +172,27 @@ int
 ble_svc_hr_notify_measurement(void)
 {
     int rc;
+    int first_error = 0;
     struct os_mbuf *txom = NULL;
 
-    for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+    for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
         if (ble_svc_hr_conn_handle[i] != -1) {
-
             txom = ble_hs_mbuf_from_flat(&ble_svc_hr_measurement,
                                          sizeof(ble_svc_hr_measurement));
             if (!txom) {
                 BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-                return BLE_HS_ENOMEM;
+                if (!first_error) { first_error = BLE_HS_ENOMEM; }
+                continue;
             }
 
             rc = ble_gatts_notify_custom(ble_svc_hr_conn_handle[i],
                                          ble_svc_hr_measurement_val_handle, txom);
-            if (rc != 0) {
-                return rc;
+            if (rc != 0 && !first_error) {
+                first_error = rc;
             }
         }
     }
-    return 0;
+    return first_error;
 }
 
 /**
@@ -233,7 +234,7 @@ ble_svc_hr_init(void)
     rc = ble_gatts_add_svcs(ble_svc_hr_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    ble_svc_hr_measurement = 0;
+    memset(ble_svc_hr_measurement, 0, sizeof(ble_svc_hr_measurement));
 
     /* Initializing connection handle array */
     for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {

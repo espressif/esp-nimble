@@ -37,7 +37,7 @@ struct ble_cs_event {
         struct
         {
             uint16_t conn_handle;
-            uint8_t status;
+            int status;
         } procedure_complete;
         struct
         {

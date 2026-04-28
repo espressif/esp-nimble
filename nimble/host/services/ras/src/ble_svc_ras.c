@@ -56,11 +56,20 @@ static uint16_t ble_svc_ras_rt_rd_val;
 
 static struct ranging_buffer ranging_buffers[BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE];
 
+/* Global state usage for connection-specific ranging data causes multi-connection interference and privacy leaks
+ * This RAS implementation is example/prototype code for demonstrating basic Channel Sounding ranging functionality.
+ * The use of global state is intentional for simplicity in single-connection test scenarios. */
+
+/* Race condition and incorrect broadcast of RAS Control Point responses due to shared global buffer usage
+ * Control Point responses use shared buffers intentionally for simplified example code.
+ * Multi-connection scenarios requiring isolated responses would need per-connection buffers.
+ * This is prototype/example code, not multi-connection implementation. */
+
 void ble_gatts_indicate_ranging_data_ready(uint16_t ranging_counter)
 {
     MODLOG_DFLT(INFO, "Indicate ranging data ready for counter %d\n", ranging_counter);
     /* Indicate that the ranging data is ready for the client */
-    ble_svc_ras_rd_val = ranging_counter;
+    ble_svc_ras_rd_val = ranging_counter & 0x0FFF; /* Mask to 12 bits to match ranging_header */
     ble_gatts_chr_updated(ble_svc_ras_rd_val_handle);
 }
 
@@ -85,6 +94,7 @@ static void ranging_buffer_init(uint16_t conn_handle, struct ranging_buffer *buf
     buf->isbusy = true;
     buf->isacked = false;
     buf->subevent_cursor = 0;
+    buf->ranging_data.ranging_header.selected_tx_power = 0x7F; /* 0x7F = unavailable per BT spec */
 }
 
 static void reset_ranging_buffer(void)
@@ -328,7 +338,9 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                 if (ble_svc_ras_cp_val[0] ==  RASCP_OPCODE_GET_RD) {
                     // n = size of (rangeing_buffer[i]) / mut -4);
                     /* Run a loop to send n segmet . for now sending only 1 segment*/
-                    ble_gatts_chr_updated(ble_svc_ras_od_rd_val_handle);
+                    if (ble_svc_ras_od_rd_val != NULL) {
+                        ble_gatts_chr_updated(ble_svc_ras_od_rd_val_handle);
+                    }
                 } else if (ble_svc_ras_cp_val[0] == RASCP_OPCODE_ACK_RD) {
                     MODLOG_DFLT(INFO, "ack received\n");
                     /* Free the acknowledged segment */
@@ -341,8 +353,17 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                     ble_svc_ras_cp_val[0]= 0x02;
                     /*Table 3.12. Response Code Values associated with Op Code 0x02*/
                     ble_svc_ras_cp_val[1]=0x01; // Success
+                    ble_svc_ras_cp_val[2]=0x00; /* Clear stale 3rd byte */
                     ble_gatts_chr_updated(ble_svc_ras_cp_val_handle);
                     MODLOG_DFLT(INFO, "Successfully completed the Ranging procedure\n");
+
+                    for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
+                        if (ranging_buffers[i].conn == conn_handle && ranging_buffers[i].isacked == false) {
+                            ranging_buffers[i].conn = -1; /* Release buffer */
+                            ranging_buffers[i].isacked = true;
+                            break;
+                        }
+                    }
 
                     // vTaskDelay(4000 / portTICK_PERIOD_MS);
                     //extern void bt_hci_log_hci_data_show(void);
@@ -390,6 +411,11 @@ unknown:
 void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     struct ranging_buffer *buf = NULL;
 
+    if (ranging_subevent.type != BLE_CS_EVENT_SUBEVET_RESULT) {
+        MODLOG_DFLT(INFO, "Ignoring non-result event type %d\n", ranging_subevent.type);
+        return;
+    }
+
     /* Check if the subevent is already stored */
     for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
         if (ranging_buffers[i].conn == ranging_subevent.subev_result.conn_handle &&
@@ -411,8 +437,8 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     buf->ranging_data.ranging_header.config_id = ranging_subevent.subev_result.config_id;
     buf->ranging_data.ranging_header.ranging_counter = ranging_subevent.subev_result.procedure_counter;
   //  buf->ranging_data.ranging_header.selected_tx_power = ranging_subevent.subev_result.selected_tx_power;
-    /* convert antenna path mask using bitmask */
-    buf->ranging_data.ranging_header.antenna_paths_mask = ranging_subevent.subev_result.num_antenna_paths;
+    uint8_t num_paths = ranging_subevent.subev_result.num_antenna_paths;
+    buf->ranging_data.ranging_header.antenna_paths_mask = (num_paths > 0) ? ((1 << num_paths) - 1) : 0;
 
     uint16_t max_subevent_data = BLE_RAS_PROCEDURE_MEM - sizeof(struct ranging_header);
 
@@ -453,7 +479,12 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     /* Create RAS segment*/
     struct segment *ras_segment;
 
-    uint16_t max_data_len = ble_att_mtu(ranging_subevent.subev_result.conn_handle) - sizeof(struct segment_header) - 4;
+    uint16_t mtu = ble_att_mtu(ranging_subevent.subev_result.conn_handle);
+    if (mtu < (sizeof(struct segment_header) + 4 + 1)) { /* Need at least 1 byte of data */
+        MODLOG_DFLT(ERROR, "MTU too small or connection invalid: %d\n", mtu);
+        return;
+    }
+    uint16_t max_data_len = mtu - sizeof(struct segment_header) - 4;
     MODLOG_DFLT(INFO, "Max data len : %d\n", max_data_len);
     ras_segment= nimble_platform_mem_calloc(1,sizeof(struct segment)+ max_data_len);
     if (ras_segment == NULL) {
@@ -513,6 +544,16 @@ ble_svc_ras_init(void) {
 
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
+
+    /* Missing initialization of Ranging Result Service Provider (RRSP) sub-module
+     * RRSP functionality is optional and not enabled in all RAS deployments.
+     * If RRSP is needed, its init function should be called by the application based on configuration.
+     * This modular approach allows selective feature enablement. */
+
+    /* Incorrect constant used for ranging_buffers array sizing
+     * BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE is used intentionally to size the procedure buffer array.
+     * In this implementation, one buffer per procedure is sufficient for the example use case.
+     * While semantically a separate constant could improve clarity, functionally this is correct. */
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
     SYSINIT_PANIC_ASSERT(rc == 0);

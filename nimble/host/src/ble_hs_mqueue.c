@@ -39,6 +39,7 @@ ble_mqueue_deinit(struct ble_mqueue *mq)
         os_mbuf_free_chain(om);
     }
 
+    ble_npl_eventq_remove(ble_hs_evq_get(), &mq->ev);
     ble_npl_event_deinit(&mq->ev);
 }
 

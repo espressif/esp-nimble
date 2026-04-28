@@ -260,38 +260,37 @@ os_msys_buf_free(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (os_msys_ctx) {
 #if OS_MSYS_1_BLOCK_COUNT > 0
+        os_mempool_unregister(&os_msys_ctx->init_1_mempool);
         if (os_msys_ctx->init_1_data) {
             nimble_platform_mem_free(os_msys_ctx->init_1_data);
             os_msys_ctx->init_1_data = NULL;
         }
-        os_mempool_unregister(&os_msys_ctx->init_1_mempool);
 #endif
 #if OS_MSYS_2_BLOCK_COUNT > 0
+        os_mempool_unregister(&os_msys_ctx->init_2_mempool);
         if (os_msys_ctx->init_2_data) {
             nimble_platform_mem_free(os_msys_ctx->init_2_data);
             os_msys_ctx->init_2_data = NULL;
         }
-        os_mempool_unregister(&os_msys_ctx->init_2_mempool);
 #endif
         nimble_platform_mem_free(os_msys_ctx);
         os_msys_ctx = NULL;
     }
-    STAILQ_INIT(&g_msys_pool_list);
+    os_msys_reset();
 
 #else
 #if OS_MSYS_1_BLOCK_COUNT > 0
-
+    os_mempool_unregister(&os_msys_init_1_mempool);
     nimble_platform_mem_free(os_msys_init_1_data);
     os_msys_init_1_data = NULL;
-    os_mempool_unregister(&os_msys_init_1_mempool);
 #endif
 
 #if OS_MSYS_2_BLOCK_COUNT > 0
+    os_mempool_unregister(&os_msys_init_2_mempool);
     nimble_platform_mem_free(os_msys_init_2_data);
     os_msys_init_2_data = NULL;
-    os_mempool_unregister(&os_msys_init_2_mempool);
 #endif
-    STAILQ_INIT(&g_msys_pool_list);
+    os_msys_reset();
 #endif
 }
 

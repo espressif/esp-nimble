@@ -215,11 +215,13 @@ ble_hs_startup_read_buf_sz(void)
     }
 
 #if MYNEWT_VAL(BLE_ISO)
-    ble_hs_lock();
-    rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
-    ble_hs_unlock();
-    if (rc != 0) {
-        return rc;
+    if (iso_pktlen > 0 && iso_max_pkts > 0) {
+        ble_hs_lock();
+        rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
+        ble_hs_unlock();
+        if (rc != 0) {
+            return rc;
+        }
     }
 #endif /* MYNEWT_VAL(BLE_ISO) */
 
@@ -566,7 +568,10 @@ ble_hs_startup_go(void)
                                          BLE_HS_CONN_HANDLE_NONE);
 #if MYNEWT_VAL(BLE_HS_PVCY)
         if (key_rc == 0) {
-            ble_hs_pvcy_set_our_irk(gen_key.irk);
+            rc = ble_hs_pvcy_set_our_irk(gen_key.irk);
+            if (rc != 0) {
+                BLE_HS_LOG(WARN, "ble_hs_pvcy_set_our_irk (stored) rc=%d\n", rc);
+            }
         }
 #endif
     } else {
@@ -577,7 +582,10 @@ ble_hs_startup_go(void)
     if (key_rc != 0) {
         ble_hs_pvcy_set_default_irk();
 
-        ble_hs_pvcy_set_our_irk(NULL);
+        rc = ble_hs_pvcy_set_our_irk(NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(WARN, "ble_hs_pvcy_set_our_irk (default) rc=%d\n", rc);
+        }
     }
 #endif
 

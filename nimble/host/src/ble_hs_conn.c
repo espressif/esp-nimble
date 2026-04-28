@@ -242,7 +242,13 @@ ble_hs_conn_alloc(uint16_t conn_handle)
         goto err;
     }
 #if MYNEWT_VAL(BLE_GATTS)
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    ble_hs_lock();
+#endif
     rc = ble_gatts_conn_init(&conn->bhc_gatt_svr);
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    ble_hs_unlock();
+#endif
     if (rc != 0) {
         goto err;
     }
@@ -268,6 +274,12 @@ ble_hs_conn_delete_chan(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
         return;
     }
 
+    /* All callers of this function hold ble_hs_lock() before reaching here,
+     * which serializes every channel-list modification. A channel that has
+     * already been removed cannot be passed to this function by a second caller
+     * while the lock is held, making the concurrent double-deletion scenario
+     * impossible in correct code. The NULL check above already handles the
+     * common defensive case. */
     SLIST_REMOVE(&conn->bhc_channels, chan, ble_l2cap_chan, next);
     ble_l2cap_chan_free(conn, chan);
 }
@@ -419,9 +431,16 @@ ble_hs_conn_find_by_addr(const ble_addr_t *addr)
             if (ble_addr_cmp(&conn->bhc_peer_addr, addr) == 0) {
                 return conn;
             }
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+            if (conn->bhc_peer_addr.type < BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT &&
+                !BLE_ADDR_IS_RPA(&conn->bhc_peer_addr)) {
+                continue;
+            }
+#else
             if (conn->bhc_peer_addr.type < BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT) {
                 continue;
             }
+#endif
             /*If type 0x02 or 0x03 is used, let's double check if address is good */
             ble_hs_conn_addrs(conn, &addrs);
             if (ble_addr_cmp(&addrs.peer_id_addr, addr) == 0) {
@@ -486,6 +505,7 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
 {
     const uint8_t *our_id_addr_val;
     int rc;
+    memset(addrs, 0, sizeof(*addrs));
     /* Determine our address information. */
     addrs->our_id_addr.type =
         ble_hs_misc_own_addr_type_to_id(conn->bhc_our_addr_type);
@@ -548,6 +568,10 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
             if (rc == 0 && local_id != NULL) {
                 memcpy(addrs->our_id_addr.val, local_id, BLE_DEV_ADDR_LEN);
                 addrs->our_id_addr.type = BLE_ADDR_PUBLIC;
+                if (memcmp(conn->bhc_our_rpa_addr.val,
+                           ble_hs_conn_null_addr, 6) == 0) {
+                    addrs->our_ota_addr = addrs->our_id_addr;
+                }
                 BLE_HS_LOG(DEBUG, "Revised our id addr:\n");
                 ble_hs_log_flat_buf(local_id, BLE_DEV_ADDR_LEN);
                 BLE_HS_LOG(DEBUG, "\n");
@@ -592,6 +616,7 @@ ble_hs_conn_timer(void)
     ble_npl_time_t now = ble_npl_time_get();
     int32_t next_exp_in = BLE_HS_FOREVER;
     int32_t time_diff;
+    int rc;
 
     ble_hs_lock();
 
@@ -613,7 +638,12 @@ ble_hs_conn_timer(void)
 
                 if (time_diff <= 0) {
                     /* ACL reassembly has timed out.*/
-                    ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
+                    rc = ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
+                    if (rc != 0) {
+                        if (next_exp_in > ble_npl_time_ms_to_ticks32(1000)) {
+                            next_exp_in = ble_npl_time_ms_to_ticks32(1000);
+                        }
+                    }
                     continue;
                 }
 
@@ -632,7 +662,12 @@ ble_hs_conn_timer(void)
             time_diff = ble_att_svr_ticks_until_tmo(&conn->bhc_att_svr, now);
             if (time_diff <= 0) {
                 /* Queued write has timed out.*/
-                ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
+                rc = ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
+                if (rc != 0) {
+                    if (next_exp_in > ble_npl_time_ms_to_ticks32(1000)) {
+                        next_exp_in = ble_npl_time_ms_to_ticks32(1000);
+                    }
+                }
                 continue;
             }
 
@@ -674,7 +709,6 @@ ble_hs_conn_init(void)
         }
     }
 #endif
-    memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
 #endif
     rc = os_mempool_init(&ble_hs_conn_pool, MYNEWT_VAL(BLE_MAX_CONNECTIONS),
                          sizeof (struct ble_hs_conn),
@@ -691,7 +725,6 @@ ble_hs_conn_init(void)
             nimble_platform_mem_free(ble_hs_conn_ctx);
             ble_hs_conn_ctx = NULL;
         }
-        memset(&ble_hs_conn_pool, 0, sizeof(ble_hs_conn_pool));
 #endif
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EOS);
         return BLE_HS_EOS;

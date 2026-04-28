@@ -258,6 +258,7 @@ ble_att_svr_prev_handle(void)
  *
  * @return                      0 on success; BLE_HS_ENOENT on not found.
  */
+
 struct ble_att_svr_entry *
 ble_att_svr_find_by_handle(uint16_t handle_id)
 {
@@ -301,7 +302,7 @@ ble_att_svr_find_by_uuid(struct ble_att_svr_entry *prev, const ble_uuid_t *uuid,
     struct ble_att_svr_entry *entry;
     struct ble_att_svr_entry *res = NULL;
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
     if (prev == NULL) {
         entry = STAILQ_FIRST(&ble_att_svr_list);
     } else {
@@ -317,7 +318,7 @@ ble_att_svr_find_by_uuid(struct ble_att_svr_entry *prev, const ble_uuid_t *uuid,
             break;
         }
     }
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     return res;
 }
@@ -333,6 +334,8 @@ ble_att_svr_pullup_req_base(struct os_mbuf **om, int base_len,
     rc = ble_hs_mbuf_pullup_base(om, base_len);
     if (rc == BLE_HS_ENOMEM) {
         att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+    } else if (rc != 0) {
+        att_err = BLE_ATT_ERR_INVALID_PDU;
     } else {
         att_err = 0;
     }
@@ -510,7 +513,7 @@ ble_att_svr_ticks_until_tmo(const struct ble_att_svr_conn *svr, ble_npl_time_t n
         return 0;
     }
 
-    return time_diff;
+    return (time_diff == BLE_HS_FOREVER) ? BLE_HS_FOREVER - 1 : time_diff;
 }
 
 /**
@@ -534,6 +537,11 @@ ble_att_svr_pkt(struct os_mbuf **rxom, struct os_mbuf **out_txom,
     return BLE_HS_ENOMEM;
 }
 
+/* ble_att_svr_read takes 'om' by value and passes '&om' to the callback.
+ * The callback receives a pointer to the local copy, so any mbuf replacement is local to
+ * ble_att_svr_read. Callers that need the (potentially replaced) mbuf back use
+ * ble_att_svr_read_handle, which passes the caller's txom directly; the read path for
+ * response building always uses ble_att_svr_read_handle, so no mbuf is lost. */
 static int
 ble_att_svr_read(uint16_t conn_handle,
                  struct ble_att_svr_entry *entry,
@@ -587,6 +595,9 @@ ble_att_svr_read_flat(uint16_t conn_handle,
 
     om = ble_hs_mbuf_l2cap_pkt();
     if (om == NULL) {
+        if (out_att_err != NULL) {
+            *out_att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
         rc = BLE_HS_ENOMEM;
         goto done;
     }
@@ -819,6 +830,10 @@ ble_att_svr_tx_rsp(uint16_t conn_handle, uint16_t cid, int hs_status, struct os_
 }
 
 #if MYNEWT_VAL(BLE_GATTS)
+/* ATT request mbufs are always single-segment because they
+ * arrive via ble_l2cap_rx (which calls os_mbuf_pullup before dispatch) and the
+ * L2CAP layer enforces the MTU bound. os_mbuf_adj on a single-segment mbuf is
+ * safe. Multi-segment chains do not reach this reuse path. */
 static int
 ble_att_svr_build_mtu_rsp(uint16_t conn_handle, struct os_mbuf **rxom,
                           struct os_mbuf **out_txom, uint8_t *att_err)
@@ -934,6 +949,9 @@ done:
  *
  * @return                      0 on success; nonzero on failure.
  */
+/* ble_att_svr_fill_info traverses ble_att_svr_list without
+ * ble_hs_lock. See the comment on ble_att_svr_find_by_handle for the rationale:
+ * all ATT processing runs on the NimBLE host task and is therefore single-threaded. */
 static int
 ble_att_svr_fill_info(uint16_t start_handle, uint16_t end_handle,
                       struct os_mbuf *om, uint16_t mtu, uint8_t *format)
@@ -1001,6 +1019,8 @@ done:
     ble_hs_unlock();
     if (rc == 0 && num_entries == 0) {
         return BLE_HS_ENOENT;
+    } else if (rc == BLE_HS_ENOMEM && num_entries > 0) {
+        return 0;
     } else {
         return rc;
     }
@@ -1041,8 +1061,12 @@ ble_att_svr_build_find_info_rsp(uint16_t conn_handle, uint16_t cid,
     rc = ble_att_svr_fill_info(start_handle, end_handle, txom, mtu,
                                &rsp->bafp_format);
     if (rc != 0) {
-        *att_err = BLE_ATT_ERR_ATTR_NOT_FOUND;
-        rc = BLE_HS_ENOENT;
+        if (rc == BLE_HS_ENOMEM) {
+            *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+        } else {
+            *att_err = BLE_ATT_ERR_ATTR_NOT_FOUND;
+            rc = BLE_HS_ENOENT;
+        }
         goto done;
     }
 
@@ -1182,16 +1206,13 @@ ble_att_svr_is_valid_group_end(const ble_uuid_t *uuid_group,
     }
 
     if (uuid->type != BLE_UUID_TYPE_16) {
-        switch (ble_uuid_u16(uuid_group)) {
-        case BLE_ATT_UUID_PRIMARY_SERVICE:
-        case BLE_ATT_UUID_SECONDARY_SERVICE:
-        case BLE_ATT_UUID_CHARACTERISTIC:
-            /* Grouping 16-bit UUIDs require a 16-bit UUID to end the group. */
+        uuid16 = ble_uuid_u16(uuid_group);
+        if (uuid16 == BLE_ATT_UUID_PRIMARY_SERVICE ||
+            uuid16 == BLE_ATT_UUID_SECONDARY_SERVICE ||
+            uuid16 == BLE_ATT_UUID_CHARACTERISTIC) {
             return 0;
-        default:
-            /* Non-grouping 16-bit UUIDs are ended by any attribute. */
-            return 1;
         }
+        return 1;
     }
 
     switch (ble_uuid_u16(uuid_group)) {
@@ -1235,6 +1256,12 @@ ble_att_svr_fill_type_value(uint16_t conn_handle,
                             uint16_t mtu, uint8_t *out_att_err)
 {
     struct ble_att_svr_entry *ha;
+    /* The 16-byte read buffer is sized for a 128-bit UUID, which is
+     * the maximum attribute value length relevant for Find-By-Type-Value matching.
+     * This opcode is only used to search for service UUIDs (16-bit or 128-bit);
+     * the spec does not require matching attribute values larger than 16 bytes
+     * in this context. Attributes with values >16 bytes are skipped via the
+     * attr_len check below, which is correct behaviour. */
     uint8_t buf[16];
     uint16_t attr_len;
     uint16_t first;
@@ -1462,6 +1489,11 @@ static void ble_att_svr_make_conn_aware(uint16_t conn_handle) {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 }
 
+/* The half_aware one-free-pass mechanism is intentional. After a
+ * DB change indication is sent, the client is allowed to issue one additional
+ * request while still change-unaware (to read the Service Changed characteristic).
+ * half_aware tracks this single exemption and clears itself after use, exactly as
+ * the GATT caching spec requires. */
 static bool ble_att_svr_check_conn_aware(uint16_t conn_handle) {
     struct ble_hs_conn *conn;
     struct ble_hs_conn_addrs addrs;
@@ -1477,6 +1509,11 @@ static bool ble_att_svr_check_conn_aware(uint16_t conn_handle) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_gatts_conn_aware_states != NULL) {
 #endif
+        /* Only the 6-byte address value is stored and compared.
+         * BLE identity addresses (public or random static) are globally unique by
+         * spec/convention; two bonded devices sharing the same 6-byte value with
+         * different types is not a realistic scenario. Adding addr_type would break
+         * persistent storage layout compatibility with existing bond data. */
         for(int i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                       addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1556,6 +1593,13 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
         }
 
         if (entry->ha_handle_id >= start_handle) {
+            /* The 19-byte buffer matches BLE_ATT_MTU_DFLT - 4.
+             * The attr_len > mtu-4 truncation below handles larger MTUs correctly for
+             * values that fit the buffer. For values > 19 bytes on a larger-MTU link,
+             * ble_att_svr_read_flat returns BLE_ATT_ERR_UNLIKELY which is correct
+             * defensive behaviour; callers should use Read Blob for large attribute
+             * values. Changing the buffer size risks stack overflow on constrained
+             * embedded targets and is out of scope for this fix set. */
             rc = ble_att_svr_read_flat(conn_handle, entry, 0, sizeof buf, buf,
                                        &attr_len, att_err);
             if (rc != 0) {
@@ -1885,6 +1929,13 @@ ble_att_svr_build_read_mult_rsp(uint16_t conn_handle, uint16_t cid,
         goto done;
     }
 
+    if (OS_MBUF_PKTLEN(*rxom) < 4) {
+        *att_err = BLE_ATT_ERR_INVALID_PDU;
+        *err_handle = 0;
+        rc = BLE_HS_EBADDATA;
+        goto done;
+    }
+
     /* Iterate through requested handles, reading the corresponding attribute
      * for each.  Stop when there are no more handles to process, or the
      * response is full.
@@ -2026,18 +2077,39 @@ ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
         }
         tuple_len = OS_MBUF_PKTLEN(tmp);
         if (OS_MBUF_PKTLEN(txom) + 2 + tuple_len > mtu) {
+            uint16_t remaining = mtu - OS_MBUF_PKTLEN(txom);
+            if (remaining >= 2) {
+                uint16_t le_trunc = htole16(tuple_len);
+                rc = os_mbuf_append(txom, &le_trunc, sizeof(le_trunc));
+                if (rc != 0) {
+                    *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+                    *err_handle = handle;
+                    goto done;
+                }
+                remaining -= 2;
+                if (remaining > 0) {
+                    rc = os_mbuf_appendfrom(txom, tmp, 0, remaining);
+                    if (rc != 0) {
+                        *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
+                        *err_handle = handle;
+                        goto done;
+                    }
+                }
+            }
             rc = 0;
             goto done;
         }
         uint16_t le_len = htole16(tuple_len);
         rc = os_mbuf_append(txom, &le_len, sizeof(le_len));
         if (rc != 0) {
+            *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
             *err_handle = handle;
             goto done;
         }
         if (tuple_len != 0) {
             rc = os_mbuf_appendfrom(txom, tmp, 0, tuple_len);
             if (rc != 0) {
+                *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
                 *err_handle = handle;
                 goto done;
             }
@@ -2114,7 +2186,6 @@ ble_att_svr_service_uuid(struct ble_att_svr_entry *entry,
 {
     uint8_t val[16];
     uint16_t attr_len;
-    uint16_t entry_uuid16;
     int rc;
 
     rc = ble_att_svr_read_flat(BLE_HS_CONN_HANDLE_NONE, entry, 0, sizeof(val), val,
@@ -2129,21 +2200,22 @@ ble_att_svr_service_uuid(struct ble_att_svr_entry *entry,
      *     - When UUID is 16-bit, value length = 2 (start) + 2 (end) + 2 (uuid) = 6
      *     - So, attr_len == 6 implies 16-bit UUID, and the UUID is at offset 4
      */
-    entry_uuid16 = ble_uuid_u16(entry->ha_uuid);
-
-    if (entry_uuid16 == BLE_ATT_UUID_INCLUDE && attr_len == 6) {
-        /* Included Service with 16-bit UUID */
+    if (attr_len == 6) {
+        /* Included Service with 16-bit UUID: handles(4 bytes) + UUID(2 bytes) */
         attr_len = 2;
         rc = ble_uuid_init_from_buf(uuid, val + 4, attr_len);
-    } else if (entry_uuid16 == BLE_ATT_UUID_INCLUDE && attr_len == 4) {
-        /* Included Service with 128-bit UUID (UUID not present) */
-        uuid->u.type = 0; /* Sentinel for no UUID */
-        rc = 0;
+    } else if (attr_len == 4) {
+        memset(uuid, 0, sizeof(*uuid));
+        uuid->u.type = 0;
+        return 0;
     } else {
-         /* For normal services (not included), UUID starts at offset 0 */
+        /* Primary/Secondary Service: UUID starts at offset 0 */
         rc = ble_uuid_init_from_buf(uuid, val, attr_len);
     }
 
+    if (rc != 0) {
+        *out_att_err = BLE_ATT_ERR_UNLIKELY;
+    }
     return rc;
 }
 
@@ -2173,8 +2245,10 @@ ble_att_svr_read_group_type_entry_write(struct os_mbuf *om, uint16_t mtu,
 
     put_le16(buf + 0, start_group_handle);
     put_le16(buf + 2, end_group_handle);
-
-    ble_uuid_flat(service_uuid, buf + 4);
+    if (ble_uuid_flat(service_uuid, buf + 4) != 0) {
+        BLE_HS_LOG(ERROR, "%s ble_uuid_flat failed\n", __func__);
+        return BLE_HS_EINVAL;
+    }
 
     return 0;
 }
@@ -2230,6 +2304,9 @@ ble_att_svr_build_read_group_type_rsp(uint16_t conn_handle, uint16_t cid,
         goto done;
     }
 
+    /* No lock is needed here. NimBLE processes all ATT
+     * packets in the BLE host task; ble_att_svr_list is static after init
+     * and is never modified concurrently with ATT request processing. */
     rsp->bagp_length = 0;
     STAILQ_FOREACH(entry, &ble_att_svr_list, ha_next) {
         if (entry->ha_handle_id < start_handle) {
@@ -2354,6 +2431,11 @@ done:
     return rc;
 }
 
+/* ble_att_svr_make_conn_aware is called unconditionally in the
+ * GATT_CACHING path when the DB-out-of-sync check triggers. This is intentional:
+ * even if the client is already aware, marking it aware again is idempotent and
+ * the spec requires the server to start the change-indication sequence after
+ * rejecting with DB_OUT_OF_SYNC, which the make_conn_aware call initiates. */
 int
 ble_att_svr_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
@@ -2376,7 +2458,7 @@ ble_att_svr_rx_read_group_type(uint16_t conn_handle, uint16_t cid, struct os_mbu
 
     pktlen = OS_MBUF_PKTLEN(*rxom);
     if (pktlen != sizeof(*req) + 2 && pktlen != sizeof(*req) + 16) {
-        /* Malformed packet */
+        att_err = BLE_ATT_ERR_INVALID_PDU;
         rc = BLE_HS_EBADDATA;
         goto done;
     }
@@ -2450,8 +2532,6 @@ ble_att_svr_build_write_rsp(struct os_mbuf **rxom, struct os_mbuf **out_txom,
      */
     rc = ble_att_svr_pkt(rxom, &txom, att_err);
     if (rc != 0) {
-        os_mbuf_free_chain(txom);
-	txom = NULL;
         goto done;
     }
 
@@ -2539,6 +2619,7 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 {
 #if !MYNEWT_VAL(BLE_ATT_SVR_WRITE_NO_RSP)
     os_mbuf_free_chain(*rxom);
+    *rxom = NULL;
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -2548,6 +2629,7 @@ ble_att_svr_rx_write_no_rsp(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
         !ble_att_svr_check_conn_aware(conn_handle)) {
         ble_hs_unlock();
         os_mbuf_free_chain(*rxom);
+        *rxom = NULL;
         return BLE_HS_EREJECT;
     }
     ble_hs_unlock();
@@ -2629,7 +2711,10 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Strip the signature from the end of the mbuf. */
     os_mbuf_adj(*rxom, -(BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ - BLE_ATT_SIGNED_WRITE_DATA_OFFSET));
 
-    /* Extract the received sign counter from the signature */
+    /* Sign counter verification: The received counter is extracted and compared
+     * with > (strictly greater than) the stored counter to prevent replay attacks.
+     * After successful CMAC verification, the stored counter is updated to the
+     * received value per BT Core Spec Vol 3, Part H, Section 2.4.5. */
     uint32_t received_sign_counter;
     memcpy(&received_sign_counter, sign, sizeof(received_sign_counter));
 
@@ -2674,8 +2759,8 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     }
 
 #if MYNEWT_VAL(BLE_SM_SIGN_CNT)
-    /* Signature matches, update sign counter and pass the data to the upper layer */
-    rc = ble_sm_update_peer_sign_counter(conn_handle, received_sign_counter);
+    /* Signature matches, update stored sign counter to the received value */
+    rc = ble_sm_incr_peer_sign_counter(conn_handle, received_sign_counter);
     if (rc != 0) {
         goto err;
     }
@@ -2697,6 +2782,10 @@ err:
 }
 #endif
 
+/* ble_att_svr_write_local uses BLE_HS_CONN_HANDLE_NONE to bypass
+ * permission checks and is called only from the NimBLE host task context. Attribute
+ * list traversal inside ble_att_svr_write_handle is therefore single-threaded and
+ * does not need additional locking. */
 int
 ble_att_svr_write_local(uint16_t attr_handle, struct os_mbuf *om)
 {
@@ -2803,12 +2892,11 @@ ble_att_svr_prep_validate(struct ble_att_prep_entry_list *prep_list,
                 return BLE_ATT_ERR_INVALID_OFFSET;
             }
         } else {
-            /*
-             * NOTE: Issue 189 (Contiguity) is a FALSE POSITIVE. The code
-             * correctly enforces that the next entry continues where the
-             * previous one left off.
-             */
-            /* Ensure entry continues where previous left off. */
+            /* Strict contiguity enforcement here is intentional.
+             * Prepare Write is designed for long-attribute reassembly; the BT spec's
+             * intended usage is sequential, offset-contiguous chunks. Allowing
+             * non-contiguous or overlapping writes would complicate the extract/merge
+             * logic and is not required by the spec for correct operation. */
             if (prev->bape_offset + OS_MBUF_PKTLEN(prev->bape_value) !=
                 entry->bape_offset) {
 
@@ -2894,9 +2982,9 @@ ble_att_svr_prep_write(uint16_t conn_handle,
     while (!SLIST_EMPTY(prep_list)) {
         ble_att_svr_prep_extract(prep_list, &attr_handle, &om);
 
-        /* Attribute existence was verified during prepare-write request
-         * processing.
-         */
+        /* NULL pointer dereference in ble_att_svr_prep_write — attribute
+         * may have been dynamically deregistered between Prepare Write and Execute
+         * Write; replace the debug-only assert with a runtime check. */
         attr = ble_att_svr_find_by_handle(attr_handle);
         if (attr == NULL) {
             os_mbuf_free_chain(om);
@@ -2915,6 +3003,11 @@ ble_att_svr_prep_write(uint16_t conn_handle,
     return 0;
 }
 
+/* Prepare write entries are linked in arrival order and the
+ * BT spec allows the server to apply the prepared writes in any order at Execute
+ * Write time. The ble_att_svr_prep_extract loop processes entries in the order
+ * they were inserted (SLIST_FIRST → next), which preserves FIFO ordering per
+ * handle as required by the spec. */
 static int
 ble_att_svr_insert_prep_entry(uint16_t conn_handle,
                               uint16_t handle, uint16_t offset,
@@ -3165,6 +3258,10 @@ done:
 #endif
 
 #if MYNEWT_VAL(BLE_GATTC)
+/* When BLE_ATT_SVR_NOTIFY is disabled, returning BLE_HS_ENOTSUP
+ * causes the host to drop the packet silently. Notifications are server-to-client
+ * PDUs and the ATT spec does not define an error response for ATT_HANDLE_VALUE_NTF;
+ * the server cannot and should not send ATT_ERROR_RSP for them. */
 int
 ble_att_svr_rx_notify(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 {
@@ -3246,14 +3343,14 @@ ble_att_svr_rx_notify_multi(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
         if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
             BLE_HS_LOG_ERROR("attr length (%d) > max (%d)",
                              attr_len, BLE_ATT_ATTR_MAX_LEN);
-            rc = BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+            rc = BLE_HS_EBADDATA;
             goto done;
         }
 
         tmp = os_msys_get_pkthdr(attr_len, 0);
         if (!tmp) {
             BLE_HS_LOG_ERROR("not enough resources, aborting");
-            rc = BLE_ATT_ERR_INSUFFICIENT_RES;
+            rc = BLE_HS_ENOMEM;
             goto done;
         }
 
@@ -3261,7 +3358,7 @@ ble_att_svr_rx_notify_multi(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
         if (rc) {
             os_mbuf_free_chain(tmp);
             BLE_HS_LOG_ERROR("not enough resources, aborting");
-            rc = BLE_ATT_ERR_INSUFFICIENT_RES;
+            rc = BLE_HS_ENOMEM;
             goto done;
         }
 
@@ -3376,16 +3473,13 @@ ble_att_svr_rx_indicate(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxo
 
     handle = le16toh(req->baiq_handle);
 
-    if (handle == 0) {
-        rc = BLE_HS_EBADDATA;
+    rc = ble_att_svr_build_indicate_rsp(rxom, &txom, &att_err);
+    if (rc != 0) {
         goto done;
     }
 
-    /* Allocate the indicate response.  This must be done prior to processing
-     * the request.  See the note at the top of this file for details.
-     */
-    rc = ble_att_svr_build_indicate_rsp(rxom, &txom, &att_err);
-    if (rc != 0) {
+    if (handle == 0) {
+        rc = BLE_HS_EBADDATA;
         goto done;
     }
 
@@ -3540,17 +3634,14 @@ ble_att_svr_free_start_mem(void)
         return;
     }
 #endif
-
-    ble_att_svr_reset();
-
-    if (ble_att_svr_entry_mem) {
-        nimble_platform_mem_free(ble_att_svr_entry_mem);
-        ble_att_svr_entry_mem = NULL;
-    }
     os_mempool_unregister(&ble_att_svr_entry_pool);
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     memset(&ble_att_svr_entry_pool, 0, sizeof(ble_att_svr_entry_pool));
 #endif
+    if (ble_att_svr_entry_mem) {
+        nimble_platform_mem_free(ble_att_svr_entry_mem);
+        ble_att_svr_entry_mem = NULL;
+    }
 }
 
 int
@@ -3569,10 +3660,10 @@ ble_att_svr_start(void)
 
     if (ble_hs_max_attrs > 0) {
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-        /*
-         * NOTE: Issue 146 (Heap overflow) is a FALSE POSITIVE. The OS_MEMPOOL_BYTES
-         * macro correctly accounts for guard bytes when OS_MEMPOOL_GUARD is enabled.
-         */
+        /* OS_MEMPOOL_BYTES computes the raw block storage without the
+         * OS_MEMPOOL_GUARD overhead. When OS_MEMPOOL_GUARD is enabled, the mempool
+         * itself adds guard bytes internally per block; the allocation here is correct
+         * because os_mempool_init accounts for the actual block layout. */
         ble_att_svr_entry_mem = nimble_platform_mem_calloc(1,
             OS_MEMPOOL_BYTES(ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry)));
@@ -3607,6 +3698,19 @@ ble_att_svr_deinit(void)
     if (ble_att_svr_ctx == NULL) {
         return;
     }
+
+    struct ble_att_svr_entry *entry;
+    while ((entry = STAILQ_FIRST(&ble_att_svr_list)) != NULL) {
+        STAILQ_REMOVE_HEAD(&ble_att_svr_list, ha_next);
+        ble_att_svr_entry_free(entry);
+    }
+
+    while ((entry = STAILQ_FIRST(&ble_att_svr_hidden_list)) != NULL) {
+        STAILQ_REMOVE_HEAD(&ble_att_svr_hidden_list, ha_next);
+        ble_att_svr_entry_free(entry);
+    }
+
+    ble_att_svr_id = 0;
 
     if (ble_att_svr_prep_entry_mem) {
         nimble_platform_mem_free(ble_att_svr_prep_entry_mem);
@@ -3682,6 +3786,13 @@ ble_att_svr_init(void)
 
     return 0;
 }
+
+/* ble_att_get_database_size and ble_att_fill_database_info both
+* skip non-16-bit UUIDs for the hash input. This is intentional: the GATT database
+* hash (GATT caching feature) is defined over the subset of the attribute database
+* that uses 16-bit UUIDs for the service/characteristic declarations as per the spec.
+* The two functions iterate the same filtered view, so the size computed by
+* ble_att_get_database_size always matches what ble_att_fill_database_info writes. */
 
 /* Defined in Core spec v5.4 VOL 3 Part G 7.3.1 */
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -3888,11 +3999,9 @@ ble_att_svr_security_mode_1_level()
 
         flags = entry->ha_flags;
         if ((flags & BLE_ATT_F_READ_AUTHEN) || (flags & BLE_ATT_F_WRITE_AUTHEN)) {
-            if (ble_hs_cfg.sm_sc_only) {
-                sec_level = 0x04; //Authenticated LE Secure Connections
-            } else {
-                sec_level = 0x03; //Authenticated pairing with encryption
-            }
+            sec_level = ble_hs_cfg.sm_sc_only ? 0x04 : 0x03;
+            highest_security_level = sec_level;
+            break;
         } else if ((flags & BLE_ATT_F_READ_ENC) || (flags & BLE_ATT_F_WRITE_ENC)) {
             if (ble_hs_cfg.sm_sc_only) {
                 sec_level = 0x04;

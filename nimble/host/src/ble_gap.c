@@ -10619,6 +10619,8 @@ ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
     ble_gap_call_conn_event_cb(&event, conn_handle);
 
     os_mbuf_free_chain(event.notify_rx.om);
+#else
+    os_mbuf_free_chain(om);
 #endif
 }
 

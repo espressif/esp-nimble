@@ -636,7 +636,7 @@ ble_eatt_tx(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom)
         BLE_EATT_LOG_DEBUG("ble_eatt_tx: Message queued");
         STAILQ_INSERT_HEAD(&eatt->eatt_tx_q, OS_MBUF_PKTHDR(txom), omp_next);
         ble_npl_eventq_put(ble_hs_evq_get(), &eatt->wakeup_ev);
-        return rc;
+        return BLE_HS_EBUSY;
     } else {
         BLE_EATT_LOG_ERROR("eatt: %s, ERROR %d ", __func__, rc);
         /* Free mbuf and return error gracefully instead of crashing */

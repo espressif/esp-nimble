@@ -603,6 +603,15 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
     int rc;
 
     ble_hs_hci_lock();
+    if (l_ble_hs_hci_ack != NULL) {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, (uint8_t *)l_ble_hs_hci_ack);
+#else
+        ble_transport_free((uint8_t *)l_ble_hs_hci_ack);
+#endif
+        l_ble_hs_hci_ack = NULL;
+        ble_npl_sem_pend(&ble_hs_hci_sem, 0);
+    }
     BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
 
     rc = ble_hs_hci_cmd_send_buf(opcode, cmd, cmd_len);
@@ -689,7 +698,8 @@ ble_hs_hci_rx_ack(uint8_t *ack_ev)
 bool host_recv_adv_packet(uint8_t *data)
 {
     assert(data);
-    if(data[0] == BLE_HCI_EVCODE_LE_META) {
+
+    if(data[0] == BLE_HCI_EVCODE_LE_META && data[1] >= 1) {
         if((data[2] ==  BLE_HCI_LE_SUBEV_ADV_RPT) || (data[2] == BLE_HCI_LE_SUBEV_DIRECT_ADV_RPT) ||
         (data[2] == BLE_HCI_LE_SUBEV_EXT_ADV_RPT) || (data[2] == BLE_HCI_LE_SUBEV_PERIODIC_ADV_RPT)
 #if (BLE_ADV_REPORT_FLOW_CONTROL == TRUE)

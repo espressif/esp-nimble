@@ -61,7 +61,7 @@ ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    if (pktlen == 0 || max_pkts == 0) {
+    if (pktlen < BLE_HCI_ISO_DATA_LOAD_HDR_SZ || max_pkts == 0) {
         return BLE_HS_EINVAL;
     }
 
@@ -112,17 +112,22 @@ ble_hs_hci_add_iso_avail_pkts(uint16_t conn_handle, uint16_t delta)
 #endif /* MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) */
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
-static uint8_t
+static uint16_t
 ble_hs_hci_iso_buf_needed(uint16_t sdu_len, bool ts_flag)
 {
     uint16_t sdu_offset;
     uint16_t dl_len;
     uint8_t dlh_len;
-    uint8_t count;
+    uint16_t count;
 
     dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) + BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
+
+    if (ble_hs_iso_buf_sz < dlh_len) {
+        return 0; /* Indicate inability to buffer */
+    }
+    
     sdu_offset = 0;
-    count = 1;  /* 1 extra since framed pdu may be used */
+    count = 0;
 
     while (1) {
         dl_len = min(dlh_len + sdu_len - sdu_offset, ble_hs_iso_buf_sz);
@@ -158,7 +163,7 @@ ble_hs_hci_iso_hdr_append(uint16_t conn_handle, uint16_t sdu_len,
         pb_flag == BLE_HCI_ISO_PB_COMP_SDU) {
         pkt_hdr |= (ts_flag << 14);
     }
-    pkt_hdr |= (dl_len << 16);
+    pkt_hdr |= ((dl_len & 0x3FFF) << 16);
     pkt_hdr = htole32(pkt_hdr);
 
     memcpy(frag, &pkt_hdr, BLE_HCI_ISO_DATA_HDR_SZ);
@@ -174,7 +179,7 @@ ble_hs_hci_iso_hdr_append(uint16_t conn_handle, uint16_t sdu_len,
         memcpy(frag + BLE_HCI_ISO_DATA_HDR_SZ, &time_stamp, BLE_HCI_ISO_DATA_LOAD_TS_SZ);
     }
 
-    dl_hdr = (sdu_len << 16) | pkt_seq_num;
+    dl_hdr = ((sdu_len & 0x0FFF) << 16) | pkt_seq_num;
     dl_hdr = htole32(dl_hdr);
 
     memcpy(frag + BLE_HCI_ISO_DATA_HDR_SZ + (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0),
@@ -190,8 +195,7 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
     int rc;
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
-    /* Get the Controller ISO buffer needed for the SDU */
-    uint8_t count = ble_hs_hci_iso_buf_needed(sdu_len, ts_flag);
+    uint16_t count = ble_hs_hci_iso_buf_needed(sdu_len, ts_flag);
 
     /* Make sure the Controller ISO buffer can accommodate the SDU completely */
     if (count > ble_hs_iso_avail_pkts) {
@@ -228,15 +232,14 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
      */
     rc = ble_hci_trans_hs_iso_tx(frag, BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len, NULL);
     if (rc) {
-        return BLE_HS_EDONE;
+        nimble_platform_mem_free(frag);
+        return BLE_HS_ECONTROLLER;
     }
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
-    /* If an ISO SDU is fragmented into fragments, flow control is not supported.
-     *
-     * Currently even if an SDU is larger than the ISO buffer size, fragmentation
-     * will not happen here, the SDU will be posted to Controller completely.
-     */
+    /* Host always sends a complete SDU as one HCI COMP_SDU packet
+     * (no host-side fragmentation); decrement by 1 correctly mirrors actual controller
+     * buffer usage regardless of ble_hs_hci_iso_buf_needed's fragment count estimate. */
     ble_hs_iso_avail_pkts -= 1;
 #endif /* MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) */
 
@@ -257,14 +260,6 @@ static ble_hs_iso_pkt_rx_fn ble_hs_iso_pkt_rx_cb;
 int
 ble_hs_iso_pkt_rx_cb_set(ble_hs_iso_pkt_rx_fn cb)
 {
-    if (cb == NULL) {
-        return BLE_HS_EINVAL;
-    }
-
-    if (ble_hs_iso_pkt_rx_cb) {
-        return BLE_HS_EALREADY;
-    }
-
     ble_hs_iso_pkt_rx_cb = cb;
 
     return 0;
@@ -279,8 +274,6 @@ ble_hs_rx_iso_data(const uint8_t *data, uint16_t len, void *arg)
         BLE_HS_LOG(WARN, "ISO RX: no callback registered");
     }
 
-    /* The `data` is dynamically allocated by Controller, free it here */
-    // TODO: add adapter for controller free.
     free((void *)data);
 
     return 0;
