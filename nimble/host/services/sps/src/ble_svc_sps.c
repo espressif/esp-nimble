@@ -53,6 +53,10 @@ static ble_svc_sps_static_vars_t * ble_svc_sps_static_vars = NULL;
 #define ble_scan_refresh (ble_svc_sps_static_vars->_ble_scan_refresh)
 #define ble_svc_sps_cb_fn (ble_svc_sps_static_vars->_ble_svc_sps_cb_fn)
 
+/* Forward declaration needed because ble_svc_sps_scan_refresh calls this
+ * before the definition appears in the BLE_STATIC_TO_DYNAMIC block below. */
+static int ble_svc_sps_ensure_static_vars(void);
+
 #endif /* !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
 /* Access function */
@@ -114,6 +118,12 @@ ble_svc_sps_chr_write(struct os_mbuf *om, uint16_t min_len,
 }
 
 void ble_svc_sps_scan_refresh() {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* ble_scan_refresh is a macro that dereferences ble_svc_sps_static_vars.
+     * Ensure the dynamic backing structure is allocated before use, matching
+     * the pattern in ble_svc_sps_set_cb and ble_svc_sps_init. */
+    ble_svc_sps_ensure_static_vars();
+#endif
     /* spec allows only value 0 to send */
     ble_scan_refresh = 0;
     ble_gatts_chr_updated(ble_scan_refresh_handle);
@@ -203,7 +213,14 @@ void ble_svc_sps_deinit(void)
 {
     ble_gatts_free_svcs();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ble_svc_sps_reset();
+    /* ble_scan_itvl and ble_scan_window are macros that dereference
+     * ble_svc_sps_static_vars. Guard against NULL in case the service was
+     * never initialized or ble_svc_sps_reset was already called.
+     * ble_svc_sps_reset frees the dynamic structure and sets the pointer to
+     * NULL, preventing a memory leak when deinit is the last call made. */
+    if (ble_svc_sps_static_vars != NULL) {
+        ble_svc_sps_reset();
+    }
 #else
     ble_scan_itvl = 0;
     ble_scan_window = 0;

@@ -280,7 +280,13 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
         }
     }
 
-    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
+    int rc;
+    /* apply the changes: acquire host lock before ble_l2cap_sig_coc_reconfig which calls
+     * ble_hs_conn_find (asserts lock held) and ble_l2cap_sig_proc_start (requires lock) */
+    ble_hs_lock();
+    rc = ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
+    ble_hs_unlock();
+    return rc;
 }
 #if MYNEWT_VAL(BLE_RECONFIG_MTU)
 int
@@ -288,6 +294,7 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num,
                            uint16_t new_mtu, uint16_t new_mps)
 {
     int i;
+    int rc;
     uint16_t conn_handle;
 
     if (num == 0 || !chans) {
@@ -304,7 +311,11 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num,
         }
     }
 
-    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
+    /* apply the changes: acquire host lock before ble_l2cap_sig_coc_reconfig which requires it */
+    ble_hs_lock();
+    rc = ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
+    ble_hs_unlock();
+    return rc;
 }
 #endif
 

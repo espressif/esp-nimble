@@ -78,18 +78,27 @@
 #define SERVICE_ERROR_WRITE_REQUEST_REJECTED    0xFC
 #define SERVICE_ERROR_OUT_OF_RANGE              0xFF
 
-/* Structure to store CTE settings per connection */
+/* Per-connection CTE state (connection-specific only) */
 typedef struct {
     uint16_t conn_handle;
     uint8_t cte_enable;
+} cte_instance_config_t;
+
+/* Global advertising CTE configuration — independent of individual GATT connections.
+ * Advertising CTE parameters (min length, transmit count, duration, interval, PHY)
+ * represent per-advertising-set state, not per-connection state. Storing them here
+ * prevents settings from being lost on disconnection and ensures all connected
+ * clients share a consistent view. */
+typedef struct {
     uint8_t cte_min_length;
     uint8_t cte_min_transmit_count;
     uint8_t cte_transmit_duration;
     uint16_t cte_interval;
     uint8_t cte_phy;
-} cte_instance_config_t;
+} adv_cte_config_t;
 
-/* Structure to store CTE settings per client */
+static adv_cte_config_t adv_cte_config;
+
 static cte_instance_config_t cte_config[MYNEWT_VAL(BLE_MAX_CONNECTIONS)];
 
 
@@ -190,6 +199,11 @@ static const struct ble_gatt_svc_def ble_svc_cte_defs[] = {
  * @return A pointer to the matching CTE configuration instance, or NULL if not found.
  */
 static cte_instance_config_t* cte_find_config_by_conn_handle(uint16_t conn_handle) {
+    /* BLE_HS_CONN_HANDLE_NONE (0xffff) is the sentinel for unused slots; matching
+     * it would return a pointer to an unassigned entry, corrupting its data. */
+    if (conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        return NULL;
+    }
     for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
         if (cte_config[i].conn_handle == conn_handle) {
             return &cte_config[i];
@@ -298,18 +312,20 @@ ble_svc_cte_two_octet_chr_write(struct os_mbuf *om,
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
 
-    // Flatten the mbuf data into the value buffer
+    /* ble_hs_mbuf_to_flat copies the raw BLE wire bytes into &value. The BT spec
+     * mandates Little-Endian on the wire, and all supported ESP targets (Xtensa,
+     * RISC-V) are also Little-Endian, so no byte-swap is needed. Endianness
+     * conversion (le16toh / htole16) would only be required on Big-Endian hosts,
+     * which are not supported by this platform. */
     rc = ble_hs_mbuf_to_flat(om, &value, target_len, NULL);
     if (rc != 0) {
         return BLE_ATT_ERR_UNLIKELY;
     }
 
-    // Check if the value is within the allowed range
     if (value < min_value || value > max_value) {
         return SERVICE_ERROR_OUT_OF_RANGE;
     }
 
-    // Update the destination with the validated value
     memcpy(dst, &value, target_len);
     if (len != NULL) {
         *len = target_len;
@@ -363,6 +379,7 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                 if (rc == 0) {
                     if(((config->cte_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) &&
                        ((old_enable & CTE_ENABLE_AOA_CONNECTION) != CTE_ENABLE_AOA_CONNECTION)) {
+                        /* 0->1 transition: enable AoA CTE response on this connection */
                         if(ble_gap_set_conn_cte_transmit_param(conn_handle, BLE_GAP_CTE_RSP_ALLOW_AOA_MASK, 0, NULL) != 0)
                         {
                             config->cte_enable = old_enable;
@@ -374,7 +391,12 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                             rc = 0xFC;
                             break;
                         }
-                    } else if ((old_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) {
+                    } else if (((old_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) &&
+                               ((config->cte_enable & CTE_ENABLE_AOA_CONNECTION) != CTE_ENABLE_AOA_CONNECTION)) {
+                        /* 1->0 transition only: disable AoA CTE response.
+                         * The previous else-if fired on any write where old bit was 1 (including
+                         * redundant 1->1 writes and multi-bit changes like 1->3), incorrectly
+                         * disabling CTE when it should remain enabled. */
                         if(ble_gap_conn_cte_rsp_enable(conn_handle, false) != 0) {
                             config->cte_enable = old_enable;
                             rc = 0xFC;
@@ -382,7 +404,24 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                         }
                     }
                     if((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) {
-                        // TODO: Add Start advertising with CTE
+                        /* Apply the current advertising CTE parameters to the controller
+                         * using advertising instance 0 (default periodic advertising set). */
+                        struct ble_gap_periodic_adv_cte_params cte_params = {
+                            .cte_length  = adv_cte_config.cte_min_length,
+                            .cte_type    = adv_cte_config.cte_phy,
+                            .cte_count   = adv_cte_config.cte_min_transmit_count,
+                            .switching_pattern_length = 0,
+                            .antenna_ids  = NULL,
+                        };
+                        if (ble_gap_set_connless_cte_transmit_params(0, &cte_params) != 0 ||
+                            ble_gap_set_connless_cte_transmit_enable(0, 1) != 0) {
+                            config->cte_enable = old_enable;
+                            rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
+                            break;
+                        }
+                    } else if ((old_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) {
+                        /* 1->0 transition: disable connless CTE transmission */
+                        ble_gap_set_connless_cte_transmit_enable(0, 0);
                     }
                 }
             }
@@ -398,28 +437,19 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
 static int ble_svc_cte_adv_cte_min_length_access(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg) {
     int rc = BLE_ATT_ERR_UNLIKELY;
-    // Find the CTE configuration instance for the given connection handle
-    cte_instance_config_t *config = cte_find_config_by_conn_handle(conn_handle);
-
-    // Return an error if no matching configuration instance is found
-    if (config == NULL) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
 
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_READ_CHR:
-            // Handle read characteristic request
-            rc = os_mbuf_append(ctxt->om, &config->cte_min_length, sizeof(config->cte_min_length)) == 0 ?
+            rc = os_mbuf_append(ctxt->om, &adv_cte_config.cte_min_length,
+                                sizeof(adv_cte_config.cte_min_length)) == 0 ?
                     0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             break;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            // Handle write characteristic request
             rc = ble_svc_cte_one_octet_chr_write(ctxt->om,
                                     CTE_MIN_LEN_MIN_VALUE,
                                     CTE_MIN_LEN_MAX_VALUE,
-                                    &config->cte_min_length, NULL);
-
+                                    &adv_cte_config.cte_min_length, NULL);
             break;
 
         default:
@@ -432,28 +462,19 @@ static int ble_svc_cte_adv_cte_min_length_access(uint16_t conn_handle, uint16_t 
 static int ble_svc_cte_adv_cte_min_transmit_count_access(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg) {
     int rc = BLE_ATT_ERR_UNLIKELY;
-    // Find the CTE configuration instance for the given connection handle
-    cte_instance_config_t *config = cte_find_config_by_conn_handle(conn_handle);
-
-    // Return an error if no matching configuration instance is found
-    if (config == NULL) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
 
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_READ_CHR:
-            // Handle read characteristic request
-            rc = os_mbuf_append(ctxt->om, &config->cte_min_transmit_count, sizeof(config->cte_min_transmit_count)) == 0 ?
+            rc = os_mbuf_append(ctxt->om, &adv_cte_config.cte_min_transmit_count,
+                                sizeof(adv_cte_config.cte_min_transmit_count)) == 0 ?
                     0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             break;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            // Handle write characteristic request
             rc = ble_svc_cte_one_octet_chr_write(ctxt->om,
                                     CTE_MIN_TX_COUNT_MIN_VALUE,
                                     CTE_MIN_TX_COUNT_MAX_VALUE,
-                                    &config->cte_min_transmit_count, NULL);
-
+                                    &adv_cte_config.cte_min_transmit_count, NULL);
             break;
 
         default:
@@ -466,28 +487,19 @@ static int ble_svc_cte_adv_cte_min_transmit_count_access(uint16_t conn_handle, u
 static int ble_svc_cte_adv_cte_transmit_duration_access(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg) {
     int rc = BLE_ATT_ERR_UNLIKELY;
-    // Find the CTE configuration instance for the given connection handle
-    cte_instance_config_t *config = cte_find_config_by_conn_handle(conn_handle);
-
-    // Return an error if no matching configuration instance is found
-    if (config == NULL) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
 
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_READ_CHR:
-            // Handle read characteristic request
-            rc = os_mbuf_append(ctxt->om, &config->cte_transmit_duration, sizeof(config->cte_transmit_duration)) == 0 ?
+            rc = os_mbuf_append(ctxt->om, &adv_cte_config.cte_transmit_duration,
+                                sizeof(adv_cte_config.cte_transmit_duration)) == 0 ?
                     0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             break;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            // Handle write characteristic request
             rc = ble_svc_cte_one_octet_chr_write(ctxt->om,
                                     CTE_TX_DURATION_MIN_VALUE,
                                     CTE_TX_DURATION_MAX_VALUE,
-                                    &config->cte_transmit_duration, NULL);
-
+                                    &adv_cte_config.cte_transmit_duration, NULL);
             break;
 
         default:
@@ -500,28 +512,19 @@ static int ble_svc_cte_adv_cte_transmit_duration_access(uint16_t conn_handle, ui
 static int ble_svc_cte_adv_cte_interval_access(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg) {
     int rc = BLE_ATT_ERR_UNLIKELY;
-    // Find the CTE configuration instance for the given connection handle
-    cte_instance_config_t *config = cte_find_config_by_conn_handle(conn_handle);
 
-    // Return an error if no matching configuration instance is found
-    if (config == NULL) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
-    
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_READ_CHR:
-            // Handle read characteristic request
-            rc = os_mbuf_append(ctxt->om, &config->cte_interval, sizeof(config->cte_interval)) == 0 ?
+            rc = os_mbuf_append(ctxt->om, &adv_cte_config.cte_interval,
+                                sizeof(adv_cte_config.cte_interval)) == 0 ?
                     0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             break;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            // Handle write characteristic request
             rc = ble_svc_cte_two_octet_chr_write(ctxt->om,
                                     CTE_INTERVAL_MIN_VALUE,
                                     CTE_INTERVAL_MAX_VALUE,
-                                    &config->cte_interval, NULL);
-
+                                    &adv_cte_config.cte_interval, NULL);
             break;
 
         default:
@@ -534,27 +537,19 @@ static int ble_svc_cte_adv_cte_interval_access(uint16_t conn_handle, uint16_t at
 static int ble_svc_cte_adv_cte_phy_access(uint16_t conn_handle, uint16_t attr_handle,
                          struct ble_gatt_access_ctxt *ctxt, void *arg) {
     int rc = BLE_ATT_ERR_UNLIKELY;
-    // Find the CTE configuration instance for the given connection handle
-    cte_instance_config_t *config = cte_find_config_by_conn_handle(conn_handle);
-
-    // Return an error if no matching configuration instance is found
-    if (config == NULL) {
-        return BLE_ATT_ERR_UNLIKELY;
-    }
 
     switch (ctxt->op) {
         case BLE_GATT_ACCESS_OP_READ_CHR:
-            // Handle read characteristic request
-            rc = os_mbuf_append(ctxt->om, &config->cte_phy, sizeof(config->cte_phy)) == 0 ?
+            rc = os_mbuf_append(ctxt->om, &adv_cte_config.cte_phy,
+                                sizeof(adv_cte_config.cte_phy)) == 0 ?
                     0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             break;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            // Handle write characteristic request
             rc = ble_svc_cte_one_octet_chr_write(ctxt->om,
                                     CTE_PHY_MIN_VALUE,
                                     CTE_PHY_MAX_VALUE,
-                                    &config->cte_phy, NULL);
+                                    &adv_cte_config.cte_phy, NULL);
             break;
 
         default:
@@ -575,8 +570,12 @@ cte_gap_event(struct ble_gap_event *event, void *arg)
     case BLE_GAP_EVENT_CONNECT:
         if (event->connect.status == 0) {
             for (i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
-                if (cte_config[i].conn_handle == 0xffff) {
+                if (cte_config[i].conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+                    /* Reset all per-connection fields so a new client never
+                     * inherits state from a previous session or an unconnected
+                     * write that slipped through the 0xffff sentinel. */
                     cte_config[i].conn_handle = event->connect.conn_handle;
+                    cte_config[i].cte_enable = 0;
                     break;
                 }
             }
@@ -584,15 +583,15 @@ cte_gap_event(struct ble_gap_event *event, void *arg)
         break;
 
     case BLE_GAP_EVENT_DISCONNECT:
+        /* Skip events with an invalid handle — 0xffff is the unused-slot sentinel
+         * and matching it would spuriously reset an already-empty entry. */
+        if (event->disconnect.conn.conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+            break;
+        }
         for (i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
             if (cte_config[i].conn_handle == event->disconnect.conn.conn_handle) {
-                cte_config[i].conn_handle = 0xffff;
+                cte_config[i].conn_handle = BLE_HS_CONN_HANDLE_NONE;
                 cte_config[i].cte_enable = 0;
-                cte_config[i].cte_min_length = CTE_MIN_LEN_MIN_VALUE;
-                cte_config[i].cte_min_transmit_count = CTE_MIN_TX_COUNT_MIN_VALUE;
-                cte_config[i].cte_transmit_duration = CTE_TX_DURATION_MIN_VALUE;
-                cte_config[i].cte_interval = CTE_INTERVAL_MIN_VALUE;
-                cte_config[i].cte_phy = CTE_PHY_MIN_VALUE;
                 break;
             }
         }
@@ -604,14 +603,14 @@ cte_gap_event(struct ble_gap_event *event, void *arg)
 
 static void cte_init_config(void) {
     for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
-        cte_config[i].conn_handle = 0xffff;
+        cte_config[i].conn_handle = BLE_HS_CONN_HANDLE_NONE;
         cte_config[i].cte_enable = 0;
-        cte_config[i].cte_min_length = CTE_MIN_LEN_MIN_VALUE;
-        cte_config[i].cte_min_transmit_count = CTE_MIN_TX_COUNT_MIN_VALUE;
-        cte_config[i].cte_transmit_duration = CTE_TX_DURATION_MIN_VALUE;
-        cte_config[i].cte_interval = CTE_INTERVAL_MIN_VALUE;
-        cte_config[i].cte_phy = CTE_PHY_MIN_VALUE;
     }
+    adv_cte_config.cte_min_length = CTE_MIN_LEN_MIN_VALUE;
+    adv_cte_config.cte_min_transmit_count = CTE_MIN_TX_COUNT_MIN_VALUE;
+    adv_cte_config.cte_transmit_duration = CTE_TX_DURATION_MIN_VALUE;
+    adv_cte_config.cte_interval = CTE_INTERVAL_MIN_VALUE;
+    adv_cte_config.cte_phy = CTE_PHY_MIN_VALUE;
 }
 
 /**
@@ -621,6 +620,15 @@ void
 ble_svc_cte_init(void)
 {
     int rc;
+    /* Guard against repeated calls: ble_gatts_count_cfg and ble_gatts_add_svcs
+     * are additive, so calling them more than once inflates resource counters
+     * and inserts duplicate GATT service entries. */
+    static int initialized = 0;
+    if (initialized) {
+        return;
+    }
+    initialized = 1;
+
     cte_init_config();
     ble_gap_event_listener_register(&cte_gap_listener, cte_gap_event, NULL);
 

@@ -3036,7 +3036,7 @@ struct ble_gap_adv_const_did_cmd_params {
     uint16_t handle;
     uint8_t enable;
     uint16_t did;
-};
+} __attribute__((packed));
 #endif // MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
 
 /**

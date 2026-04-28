@@ -108,10 +108,10 @@ static __thread char tls_key_buffer[GATT_CACHE_KEY_NAME_MAX_LEN];
 
 char *getKeyname(const ble_addr_t *addr)
 {
-    snprintf(tls_key_buffer, GATT_CACHE_KEY_NAME_MAX_LEN, "%s%02X%02X%02X%02X%02X%02X",
+    snprintf(tls_key_buffer, GATT_CACHE_KEY_NAME_MAX_LEN, "%s%02X%02X%02X%02X%02X%02X%02X",
              cache_key,
              addr->val[5], addr->val[4], addr->val[3],
-             addr->val[2], addr->val[1], addr->val[0]);
+             addr->val[2], addr->val[1], addr->val[0], addr->type);
 
     return tls_key_buffer;
 }
@@ -138,19 +138,33 @@ cacheEraseItem(cache_handle_t handle, const char *key)
 static int
 cacheErase(cache_handle_t handle)
 {
+    int rc = -1;
     if (cache_fn.erase_all) {
-        return cache_fn.erase_all(handle);
+        rc = cache_fn.erase_all(handle);
+        if (rc != 0) {
+            return rc;
+        }
+        if (cache_fn.commit) {
+            rc = cache_fn.commit(handle);
+        }
     }
-    return -1;
+    return rc;
 }
 
 static int
 cacheWrite(cache_handle_t handle, const char * key, const void* value, size_t length)
 {
+    int rc = -1;
     if (cache_fn.write) {
-        return cache_fn.write(handle, key, value, length);
+        rc = cache_fn.write(handle, key, value, length);
+        if (rc != 0) {
+            return rc;
+        }
+        if (cache_fn.commit) {
+            rc = cache_fn.commit(handle);
+        }
     }
-    return -1;
+    return rc;
 }
 
 static int
@@ -340,13 +354,17 @@ ble_gattc_cache_find_addr(ble_addr_t addr)
 
 void ble_gattc_cache_get_addr_list(ble_addr_t *addr_list, uint8_t *out_num)
 {
-    uint8_t num = cache_env->num_addr;
-
     if (addr_list == NULL || out_num == NULL) {
         BLE_HS_LOG(WARN, "Invalid input to ble_gattc_cache_get_addr_list.");
         return;
     }
 
+    if (cache_env == NULL) {
+        *out_num = 0;
+        return;
+    }
+
+    uint8_t num = cache_env->num_addr;
     for (uint8_t i = 0; i < num; i++) {
         memcpy(&addr_list[i], &cache_env->cache_addr[i].addr, sizeof(ble_addr_t));
     }
@@ -366,8 +384,13 @@ static uint8_t
 ble_gattc_cache_find_hash(uint8_t * hash_key)
 {
     uint8_t index = 0;
-    uint8_t num = cache_env->num_addr;
+    uint8_t num;
     cache_addr_info_t *addr_info;
+
+    if (cache_env == NULL) {
+        return INVALID_ADDR_NUM;
+    }
+    num = cache_env->num_addr;
     for (index = 0; index < num; index++) {
         addr_info = &cache_env->cache_addr[index];
         if (memcmp(addr_info->hash_key, hash_key, sizeof(uint8_t) * 16) == 0) {
@@ -508,7 +531,7 @@ ble_gattc_cache_addr_save(uint8_t *out_index, ble_addr_t addr, uint8_t * hash_ke
             insert_ind = index;
         } else {
             /* Address not found - need to allocate a new slot */
-            if(cache_env->num_addr >= MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) {
+            if (cache_env->num_addr >= MAX_DEVICE_IN_CACHE) {
                 nimble_platform_mem_free(p_buf);
                 BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
                 return BLE_HS_ENOMEM;
@@ -519,13 +542,17 @@ ble_gattc_cache_addr_save(uint8_t *out_index, ble_addr_t addr, uint8_t * hash_ke
         }
     } else {
         BLE_HS_LOG(DEBUG, "Hash key not present, saving new data");
-        if(cache_env->num_addr >= MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) {
-            nimble_platform_mem_free(p_buf);
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-            return BLE_HS_ENOMEM;
+        /* Address may exist with a different hash - update in place rather than add duplicate */
+        if ((index = ble_gattc_cache_find_addr(addr)) != INVALID_ADDR_NUM) {
+            insert_ind = index;
+        } else {
+            if (cache_env->num_addr >= MAX_DEVICE_IN_CACHE) {
+                nimble_platform_mem_free(p_buf);
+                return BLE_HS_ENOMEM;
+            }
+            insert_ind = cache_env->num_addr;
+            cache_env->num_addr++;
         }
-        insert_ind = cache_env->num_addr;
-        cache_env->num_addr++; /* Increment only when adding new address */
     }
 
     print_hash_key(hash_key);
@@ -647,15 +674,24 @@ ble_gattc_cache_load_nv_attr(uint8_t index, int *num_attr)
     }
 
     *num_attr = length / (sizeof(ble_gatt_nv_attr));
+    if (*num_attr == 0) {
+        return NULL;
+    }
 
-    nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_calloc(1,(*num_attr) * sizeof(struct ble_gatt_nv_attr));
+    size_t alloc_len = (*num_attr) * sizeof(struct ble_gatt_nv_attr);
+    nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_calloc(1, alloc_len);
     if (nv_attr == NULL) {
         return NULL;
     }
 
-    rc = cacheRead(cache_env->cache_addr[index].cache_fp, getKeyname(&cache_env->cache_addr[index].addr), nv_attr, &length);
+    rc = cacheRead(cache_env->cache_addr[index].cache_fp, getKeyname(&cache_env->cache_addr[index].addr), nv_attr, &alloc_len);
 
-    BLE_HS_LOG(INFO, "%s, rc = %d, length = %d index = %d", __func__, rc, length, index);
+    BLE_HS_LOG(INFO, "%s, rc = %d, length = %zu index = %d", __func__, rc, alloc_len, index);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s cacheRead failed, rc = %d", __func__, rc);
+        nimble_platform_mem_free(nv_attr);
+        return NULL;
+    }
     return nv_attr;
 }
 
@@ -809,8 +845,14 @@ int
 ble_gattc_cache_find_source(struct ble_gattc_cache_conn *cache_conn, uint8_t *database_hash)
 {
     uint8_t addr_index = 0;
-    uint8_t num = cache_env->num_addr;
-    cache_addr_info_t *addr_info = &cache_env->cache_addr[0];
+    uint8_t num;
+    cache_addr_info_t *addr_info;
+
+    if (cache_env == NULL) {
+        return ESP_FAIL;
+    }
+    num = cache_env->num_addr;
+    addr_info = &cache_env->cache_addr[0];
     int rc = ESP_FAIL;
 
     /* Iterate through all cached addresses to find a matching database hash */
@@ -877,6 +919,11 @@ ble_gattc_cache_load(ble_addr_t peer_addr)
         default:
             break;
         }
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s: failed to add attr[%d] type=%d rc=%d",
+                       __func__, i, nv_attr[i].attr_type, rc);
+            break;
+        }
     }
     nimble_platform_mem_free(nv_attr);
     cache_index = ble_gattc_cache_find_addr(peer_addr);
@@ -893,11 +940,17 @@ ble_gattc_cache_load(ble_addr_t peer_addr)
 int
 ble_gattc_cache_check_hash(struct ble_gattc_cache_conn *peer, struct os_mbuf *om)
 {
-    if (peer == NULL || om == NULL || om->om_len != 16) {
+    uint8_t hash_buf[16];
+
+    if (peer == NULL || om == NULL || OS_MBUF_PKTLEN(om) != 16) {
         BLE_HS_LOG(ERROR, "Check hash failed");
         return -1;
     }
-    if (memcmp(peer->database_hash, om->om_data, om->om_len) == 0) {
+    /* Use os_mbuf_copydata to handle chained mbufs correctly */
+    if (os_mbuf_copydata(om, 0, 16, hash_buf) != 0) {
+        return -1;
+    }
+    if (memcmp(peer->database_hash, hash_buf, 16) == 0) {
         return 0;
     }
     return -1;
@@ -1026,8 +1079,8 @@ ble_gattc_cache_init(void *storage_cb)
             }
         }
     } else {
-        BLE_HS_LOG(ERROR, "%s, Line = %d, storage flash open fail, err_code = %x", __func__, __LINE__,
-                   rc);
+        BLE_HS_LOG(ERROR, "%s, Line = %d, cache_fn.open not registered", __func__, __LINE__);
+        rc = BLE_HS_EUNKNOWN;
         goto error;
     }
 
@@ -1038,11 +1091,7 @@ error:
         nimble_platform_mem_free(p_buf);
         p_buf = NULL;
     }
-    if (cache_env && cache_env->is_open && cache_fn.close) {
-        cache_fn.close(cache_env->addr_fp);
-    }
     if (cache_env) {
-        /* Close NVS handle if it was opened before freeing cache_env */
         if (cache_env->is_open && cache_fn.close) {
             cache_fn.close(cache_env->addr_fp);
             cache_env->is_open = false;

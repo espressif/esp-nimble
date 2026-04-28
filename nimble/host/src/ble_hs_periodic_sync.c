@@ -105,6 +105,13 @@ ble_hs_periodic_sync_free(struct ble_hs_periodic_sync *psync)
         return;
     }
 
+    /* Remove the event from the host event queue before deinitializing it.
+     * If psync is freed while its lost_ev is still pending (e.g., via
+     * ble_hs_atomic_conn_delete or the sync_receive disable path), the host
+     * task would later dispatch the event and dereference freed memory. */
+    if (ble_npl_event_is_queued(&psync->lost_ev)) {
+        ble_npl_eventq_remove(ble_hs_evq_get(), &psync->lost_ev);
+    }
     ble_npl_event_deinit(&psync->lost_ev);
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
@@ -154,6 +161,7 @@ struct ble_hs_periodic_sync *
 ble_hs_periodic_sync_find(const ble_addr_t *addr, uint8_t sid)
 {
     struct ble_hs_periodic_sync *psync;
+    ble_addr_t norm_addr;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
@@ -161,10 +169,28 @@ ble_hs_periodic_sync_find(const ble_addr_t *addr, uint8_t sid)
         return NULL;
     }
 
+    /* Normalize identity address types so that BLE_ADDR_PUBLIC_ID matches
+     * BLE_ADDR_PUBLIC and BLE_ADDR_RANDOM_ID matches BLE_ADDR_RANDOM. Without
+     * this, a caller passing an identity-type address fails to find a sync
+     * that was stored with the corresponding base type, and vice-versa.
+     * Note: full RPA-to-identity resolution is not performed here; a lookup
+     * using an unresolved RPA will still miss a sync stored by identity
+     * address. */
+    norm_addr = *addr;
+    if (norm_addr.type == BLE_ADDR_PUBLIC_ID) {
+        norm_addr.type = BLE_ADDR_PUBLIC;
+    } else if (norm_addr.type == BLE_ADDR_RANDOM_ID) {
+        norm_addr.type = BLE_ADDR_RANDOM;
+    }
+
     SLIST_FOREACH(psync, &g_ble_hs_periodic_sync_handles, next) {
-        if ((ble_addr_cmp(&psync->advertiser_addr, addr) == 0) &&
-            (psync->adv_sid == sid))
-        {
+        ble_addr_t stored = psync->advertiser_addr;
+        if (stored.type == BLE_ADDR_PUBLIC_ID) {
+            stored.type = BLE_ADDR_PUBLIC;
+        } else if (stored.type == BLE_ADDR_RANDOM_ID) {
+            stored.type = BLE_ADDR_RANDOM;
+        }
+        if ((ble_addr_cmp(&stored, &norm_addr) == 0) && (psync->adv_sid == sid)) {
             return psync;
         }
     }
@@ -189,6 +215,13 @@ ble_hs_periodic_sync_first(void)
     ble_hs_unlock();
 
     return psync;
+}
+
+struct ble_hs_periodic_sync *
+ble_hs_periodic_sync_first_locked(void)
+{
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+    return SLIST_FIRST(&g_ble_hs_periodic_sync_handles);
 }
 
 void

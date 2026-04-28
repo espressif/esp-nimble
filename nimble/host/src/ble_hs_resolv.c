@@ -726,6 +726,15 @@ ble_hs_resolv_list_clear_all(bool preserve_local)
     ble_rpa_peer_dev_rec_clear_all();
 }
 
+void
+ble_hs_resolv_update_local_irk(const uint8_t *irk)
+{
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+    if (g_ble_hs_resolv_data.rl_cnt > 0) {
+        swap_buf(g_ble_hs_resolv_list[0].rl_local_irk, irk, 16);
+    }
+}
+
 /**
 * Called by host stack to enable NRPA privacy flag for future reference
 */

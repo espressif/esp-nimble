@@ -33,15 +33,24 @@ ble_hs_atomic_conn_delete(uint16_t conn_handle)
 #if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
         if (conn->psync) {
-            ble_hs_periodic_sync_remove(conn->psync);
+            /* conn->psync is a pending PAST object: it is only inserted into
+             * g_ble_hs_periodic_sync_handles when the transfer succeeds, at
+             * which point conn->psync is immediately cleared. If conn->psync
+             * is still set here the transfer never completed, so the object is
+             * NOT in the global list. Calling ble_hs_periodic_sync_remove
+             * (which uses SLIST_REMOVE) on a missing element crashes. */
             ble_hs_periodic_sync_free(conn->psync);
+            conn->psync = NULL;
         }
 #endif
 #else
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
         if (conn->psync) {
-            ble_hs_periodic_sync_remove(conn->psync);
+            /* Same reasoning as above: pending PAST psync is not in the global
+             * list, so skip ble_hs_periodic_sync_remove to avoid SLIST_REMOVE
+             * crash on a missing element. */
             ble_hs_periodic_sync_free(conn->psync);
+            conn->psync = NULL;
         }
 #endif
 #endif

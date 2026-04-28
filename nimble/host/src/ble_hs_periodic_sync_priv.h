@@ -46,6 +46,7 @@ struct ble_hs_periodic_sync *ble_hs_periodic_sync_find_by_handle(uint16_t sync_h
 struct ble_hs_periodic_sync *ble_hs_periodic_sync_find(const ble_addr_t *addr,
                                                        uint8_t sid);
 struct ble_hs_periodic_sync *ble_hs_periodic_sync_first(void);
+struct ble_hs_periodic_sync *ble_hs_periodic_sync_first_locked(void);
 int ble_hs_periodic_sync_init(void);
 void ble_hs_periodic_sync_deinit(void);
 #ifdef __cplusplus

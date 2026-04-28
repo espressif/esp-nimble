@@ -212,6 +212,13 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     BLE_HS_DBG_ASSERT(addr != NULL);
     BLE_HS_DBG_ASSERT(irk != NULL);
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
+    }
+#endif
+
     if (addr_type > BLE_ADDR_RANDOM) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
@@ -241,10 +248,10 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
         return rc;
     }
 
-    /* FIXME Controller is BT5.0 and default privacy mode is network which
-     * can cause problems for apps which are not aware of it. We need to
-     * sort it out somehow. For now we set device mode for all of the peer
-     * devices and application should change it to network if needed
+    /* Controller is BT5.0 and default privacy mode is network which
+     * can cause problems for apps which are not aware of it. We set device
+     * mode for all peer devices; the app can change it to network if needed.
+     * BT4.2 controllers do not support LE Set Privacy Mode; ignore that error.
      */
     peer_addr.type = addr_type;
     memcpy(peer_addr.val, addr, sizeof peer_addr.val);
@@ -422,6 +429,12 @@ ble_hs_pvcy_irk_deinit(void)
         ble_hs_pvcy_ctx = NULL;
     }
 }
+#else
+void
+ble_hs_pvcy_irk_deinit(void)
+{
+    ble_hs_pvcy_started = 0;
+}
 #endif
 
 int
@@ -587,7 +600,9 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
         }
 
         /* Generate local RPA address and set it in controller */
+        ble_gap_preempt();
         rc = ble_hs_gen_own_private_rnd();
+        ble_gap_preempt_done();
     } else {
         ble_hs_resolv_enable(false);
     }

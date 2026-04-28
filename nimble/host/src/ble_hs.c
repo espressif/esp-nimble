@@ -690,6 +690,11 @@ ble_hs_event_rx_data(struct ble_npl_event *ev)
 static void
 ble_hs_event_reset(struct ble_npl_event *ev)
 {
+    /* Do not attempt to re-sync if the host has been intentionally stopped. */
+    if (ble_hs_enabled_state == BLE_HS_ENABLED_STATE_OFF) {
+        ble_hs_reset_reason = 0;
+        return;
+    }
     ble_hs_reset();
 }
 
