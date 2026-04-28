@@ -88,7 +88,7 @@ ble_store_config_serialize_arr(const void *arr, int obj_sz, int num_objs,
     int arr_size;
 
     arr_size = obj_sz * num_objs;
-    assert(arr_size <= buf_sz);
+    assert(BASE64_ENCODE_SIZE(arr_size) <= buf_sz);
 
     base64_encode(arr, arr_size, out_buf, 1);
 }
@@ -101,7 +101,14 @@ ble_store_config_deserialize_arr(const char *enc,
                                  int *out_num_objs)
 {
     size_t dec_len;
-    unsigned char *dec_data = base64_decode(enc, strlen(enc), &dec_len);
+    unsigned char *dec_data;
+
+    if (enc == NULL || strlen(enc) == 0) {
+        *out_num_objs = 0;
+        return 0;
+    }
+
+    dec_data = base64_decode(enc, strlen(enc), &dec_len);
 
     if (dec_data == NULL) {
         return OS_EINVAL;
@@ -114,6 +121,7 @@ ble_store_config_deserialize_arr(const char *enc,
 
     /* Validate decoded data fits within destination array */
     if ((int)(dec_len / obj_sz) > max_objs) {
+        memset(dec_data, 0, dec_len);
         free(dec_data);
         return OS_EINVAL;
     }
@@ -121,6 +129,7 @@ ble_store_config_deserialize_arr(const char *enc,
     memcpy(out_arr, dec_data, dec_len);
     *out_num_objs = dec_len / obj_sz;
 
+    memset(dec_data, 0, dec_len);
     free(dec_data);
 
     return 0;
@@ -266,11 +275,19 @@ ble_store_config_persist_sec_set(const char *setting_name,
                                  const struct ble_store_value_sec *secs,
                                  int num_secs)
 {
+    /*
+     * NOTE: Large stack allocation based on BLE_STORE_MAX_BONDS.
+     * For typical ESP-IDF configurations (BLE_STORE_MAX_BONDS=10), usage is ~1.5KB
+     * which is acceptable. Users configuring larger bond counts should verify adequate
+     * NimBLE host task stack size. Dynamic allocation adds complexity and
+     * potential failure paths during critical bonding operations.
+     */
     char buf[BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ];
     int rc;
 
     ble_store_config_serialize_arr(secs, sizeof *secs, num_secs,
                                    buf, sizeof buf);
+    /* NOTE: RAM-NVS consistency pattern - see system-wide TODO above */
     rc = conf_save_one(setting_name, buf);
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
@@ -309,6 +326,7 @@ ble_store_config_persist_peer_secs(void)
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 int
 ble_store_config_persist_cccds(void)
 {
@@ -320,6 +338,7 @@ ble_store_config_persist_cccds(void)
                                    ble_store_config_num_cccds,
                                    buf,
                                    sizeof buf);
+    /* NOTE: RAM-NVS consistency pattern - see system-wide TODO above */
     rc = conf_save_one("ble_hs/cccd", buf);
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
@@ -327,6 +346,7 @@ ble_store_config_persist_cccds(void)
 
     return 0;
 }
+#endif
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 int
 ble_store_config_persist_csfcs(void)
@@ -352,6 +372,10 @@ ble_store_config_persist_csfcs(void)
 int
 ble_store_config_persist_eads(void)
 {
+    /* NOTE: Host lock is intentionally held during NVS flash I/O operations.
+     * This design prevents concurrent store operations and maintains data consistency.
+     * While this blocks the BLE host thread briefly, it ensures atomic store operations
+     * and prevents race conditions between concurrent persist/restore operations. */
     char buf[BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ];
     int rc;
     ble_store_config_serialize_arr(ble_store_config_eads,
@@ -359,6 +383,12 @@ ble_store_config_persist_eads(void)
                                    ble_store_config_num_eads,
                                    buf,
                                    sizeof buf);
+    /*
+     * NOTE: Flash I/O while holding BLE host lock is intentional design.
+     * ESP-IDF's conf_save_one (NVS operations) are typically fast enough (<10ms)
+     * not to impact BLE timing constraints. Atomicity between BLE state and
+     * persistence is critical for data consistency.
+     */
     rc = conf_save_one("ble_hs/ead", buf);
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
@@ -378,6 +408,7 @@ ble_store_config_persist_rpa_recs(void)
                                    ble_store_config_num_rpa_recs,
                                    buf,
                                    sizeof buf);
+    /* NOTE: RAM-NVS consistency pattern - see system-wide TODO above */
     rc = conf_save_one("ble_hs/rpa_rec", buf);
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;

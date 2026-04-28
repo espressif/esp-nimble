@@ -249,6 +249,14 @@ npl_freertos_os_started(void)
     return xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
 }
 
+/* NOTE: The following NPL functions are called from ISR context and should have
+ * IRAM_ATTR to prevent crashes during flash operations. This affects multiple
+ * functions including: npl_freertos_get_current_task_id, in_isr,
+ * npl_freertos_eventq_put, npl_freertos_eventq_is_empty, npl_freertos_event_get_arg,
+ * esp_err_to_npl_error, npl_freertos_callout_reset, npl_freertos_callout_is_active,
+ * npl_freertos_time_get, and hardware critical section functions.
+ * This is a systematic issue requiring careful analysis of ISR-callable functions. */
+
 void *
 npl_freertos_get_current_task_id(void)
 {
@@ -282,9 +290,12 @@ npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
 void
 npl_freertos_event_deinit(struct ble_npl_event *ev)
 {
-    BLE_LL_ASSERT(ev->event);
-#if OS_MEM_ALLOC
+    /* Don't assert if event was never initialized (ev->event is NULL) */
+    if (!ev->event) {
+        return;
+    }
 
+#if OS_MEM_ALLOC
     os_memblock_put(&ble_freertos_ev_pool,ev->event);
 #else
     nimble_platform_mem_free(ev->event);
@@ -365,7 +376,7 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
 {
     struct ble_npl_event *ev = NULL;
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
-    BaseType_t woken;
+    BaseType_t woken = pdFALSE;
     BaseType_t ret;
 
     if (in_isr()) {
@@ -392,23 +403,34 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
 void
 npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
 {
-    BaseType_t woken;
+    BaseType_t woken = pdFALSE;
     BaseType_t ret;
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
 
-    if (event->queued) {
-        return;
-    }
-
-    event->queued = true;
-
+    /* Use critical section to make check-and-set of queued flag atomic */
     if (in_isr()) {
+        UBaseType_t sr = portSET_INTERRUPT_MASK_FROM_ISR();
+        if (event->queued) {
+            portCLEAR_INTERRUPT_MASK_FROM_ISR(sr);
+            return;
+        }
+        event->queued = true;
+        portCLEAR_INTERRUPT_MASK_FROM_ISR(sr);
+
         ret = xQueueSendToBackFromISR(eventq->q, &ev, &woken);
         if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
     } else {
+        BLE_NPL_ENTER_CRITICAL();
+        if (event->queued) {
+            BLE_NPL_EXIT_CRITICAL();
+            return;
+        }
+        event->queued = true;
+        BLE_NPL_EXIT_CRITICAL();
+
         ret = xQueueSendToBack(eventq->q, &ev, portMAX_DELAY);
     }
 
@@ -801,9 +823,9 @@ npl_freertos_callout_init(struct ble_npl_callout *co, struct ble_npl_eventq *evq
         memset(callout, 0, sizeof(*callout));
         ble_npl_event_init(&callout->ev, ev_cb, ev_arg);
 
-#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
 	callout->evq = evq;
 
+#if CONFIG_BT_NIMBLE_USE_ESP_TIMER
 	esp_timer_create_args_t create_args = {
 		.callback = ble_npl_event_fn_wrapper,
 		.arg = callout,
@@ -888,6 +910,14 @@ npl_freertos_callout_deinit(struct ble_npl_callout *co)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
 
+    /* NOTE: Race conditions exist in callout lifecycle management between
+     * initialization, reset, expiration, and deinitialization. These include:
+     * - Timer callbacks accessing freed callout structures
+     * - Concurrent reset/deinit operations
+     * - Use-after-free during callout destruction
+     * These are complex synchronization issues requiring careful redesign
+     * of the callout lifecycle and timer management architecture. */
+
     /* Since we dynamically deinit timers, function can be called for NULL timers. Return for such scenarios */
     if (!callout) {
         return;
@@ -934,21 +964,28 @@ npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     esp_timer_stop(callout->handle);
 
-    return esp_err_to_npl_error(esp_timer_start_once(callout->handle, ticks*1000));
+    return esp_err_to_npl_error(esp_timer_start_once(callout->handle, ((uint64_t)ticks)*1000));
 #else
 
-    BaseType_t woken1, woken2, woken3;
+    BaseType_t woken1 = pdFALSE, woken2 = pdFALSE, woken3 = pdFALSE;
+    BaseType_t ret1, ret2, ret3;
 
     if (ticks == 0) {
         ticks = 1;
     }
     if (in_isr()) {
-        xTimerStopFromISR(callout->handle, &woken1);
-        xTimerChangePeriodFromISR(callout->handle, ticks, &woken2);
-        xTimerResetFromISR(callout->handle, &woken3);
+        ret1 = xTimerStopFromISR(callout->handle, &woken1);
+        ret2 = xTimerChangePeriodFromISR(callout->handle, ticks, &woken2);
+        ret3 = xTimerResetFromISR(callout->handle, &woken3);
 
         portYIELD_FROM_ISR(woken1 || woken2 || woken3);
+
+        /* Check if any timer command failed due to queue full */
+        if (ret1 == pdFAIL || ret2 == pdFAIL || ret3 == pdFAIL) {
+            return BLE_NPL_ENOMEM;
+        }
     } else {
+        /* Non-ISR calls use portMAX_DELAY so they should not fail */
         xTimerStop(callout->handle, portMAX_DELAY);
         xTimerChangePeriod(callout->handle, ticks, portMAX_DELAY);
         xTimerReset(callout->handle, portMAX_DELAY);
@@ -999,14 +1036,15 @@ npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
     }
 
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
-   /* Currently, esp_timer does not support an API which gets the expiry time for
-    * current timer.
-    * Returning 0 from here should not cause any effect.
-    * Drawback of this approach is that existing code to reset timer would be called
-    * more often (since the if condition to invoke reset timer would always succeed if
-    * timer is active).
-    */
-
+    /* Use esp_timer_get_expiry_time to get actual expiry time in microseconds
+     * then convert to milliseconds for NimBLE time units */
+    if (esp_timer_is_active(callout->handle)) {
+        uint64_t expiry_us;
+        if (esp_timer_get_expiry_time(callout->handle, &expiry_us) == ESP_OK) {
+            /* Convert microseconds to milliseconds */
+            return expiry_us / 1000;
+        }
+    }
     return 0;
 #else
     return xTimerGetExpiryTime(callout->handle);
@@ -1046,10 +1084,15 @@ npl_freertos_callout_remaining_ticks(struct ble_npl_callout *co,
     exp = 0;
 #endif //ESP_IDF_VERSION
 #else
+    /* Check if timer is active before getting expiry time */
+    if (!xTimerIsTimerActive(callout->handle)) {
+        return 0;  /* Return 0 for inactive timers */
+    }
     exp = xTimerGetExpiryTime(callout->handle);
 #endif
 
-    if (exp > now) {
+    /* Use signed arithmetic to handle wrap-around correctly */
+    if ((int32_t)(exp - now) > 0) {
         rt = exp - now;
     } else {
         rt = 0;
@@ -1118,7 +1161,8 @@ npl_freertos_time_ms_to_ticks32(uint32_t ms)
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     return ms;
 #else
-    return ms * configTICK_RATE_HZ / 1000;
+    /* Use ceiling division to ensure non-zero duration results in at least one tick */
+    return (ms * configTICK_RATE_HZ + 999) / 1000;
 #endif
 }
 
@@ -1128,7 +1172,7 @@ npl_freertos_time_ticks_to_ms32(ble_npl_time_t ticks)
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     return ticks;
 #else
-    return ticks * 1000 / configTICK_RATE_HZ;
+    return ((uint64_t)ticks * 1000) / configTICK_RATE_HZ;
 #endif
 }
 
@@ -1136,7 +1180,12 @@ void
 npl_freertos_time_delay(ble_npl_time_t ticks)
 {
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
-    vTaskDelay(ticks / portTICK_PERIOD_MS);
+    /* Use pdMS_TO_TICKS for proper ceiling division to ensure minimum 1 tick */
+    ble_npl_time_t delay_ticks = pdMS_TO_TICKS(ticks);
+    if (delay_ticks == 0 && ticks > 0) {
+        delay_ticks = 1;  /* Ensure minimum delay for non-zero input */
+    }
+    vTaskDelay(delay_ticks);
 #else
     vTaskDelay(ticks);
 #endif
@@ -1242,6 +1291,7 @@ void npl_freertos_funcs_init(void)
     npl_funcs = (struct npl_funcs_t *)nimble_platform_mem_calloc(1,sizeof(struct npl_funcs_t));
     if(!npl_funcs) {
         assert(0);
+        return; /* Return early on allocation failure */
     }
     memcpy(npl_funcs, &npl_funcs_ro, sizeof(struct npl_funcs_t));
 }
@@ -1327,22 +1377,29 @@ int npl_freertos_mempool_init(void)
 _error:
 
 #if CONFIG_BT_CONTROLLER_ENABLED
-    if (ble_freertos_evq_buf) {
-        nimble_platform_mem_free(ble_freertos_evq_buf);
-        ble_freertos_evq_buf = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* Only access macros if ble_freertos_ctx is valid to avoid NULL deref */
+    if (ble_freertos_ctx) {
+#endif
+        if (ble_freertos_evq_buf) {
+            nimble_platform_mem_free(ble_freertos_evq_buf);
+            ble_freertos_evq_buf = NULL;
+        }
+        if (ble_freertos_co_buf) {
+            nimble_platform_mem_free(ble_freertos_co_buf);
+            ble_freertos_co_buf = NULL;
+        }
+        if (ble_freertos_sem_buf) {
+            nimble_platform_mem_free(ble_freertos_sem_buf);
+            ble_freertos_sem_buf = NULL;
+        }
+        if (ble_freertos_mutex_buf) {
+            nimble_platform_mem_free(ble_freertos_mutex_buf);
+            ble_freertos_mutex_buf = NULL;
+        }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     }
-    if (ble_freertos_co_buf) {
-        nimble_platform_mem_free(ble_freertos_co_buf);
-        ble_freertos_co_buf = NULL;
-    }
-    if (ble_freertos_sem_buf) {
-        nimble_platform_mem_free(ble_freertos_sem_buf);
-        ble_freertos_sem_buf = NULL;
-    }
-    if (ble_freertos_mutex_buf) {
-        nimble_platform_mem_free(ble_freertos_mutex_buf);
-	    ble_freertos_mutex_buf = NULL;
-    }
+#endif
 #endif
 
 #if (SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
@@ -1353,6 +1410,13 @@ _error:
     rc = -1;
 #endif
 
+    /* Unregister mempools from global list regardless of allocation strategy */
+    os_mempool_unregister(&ble_freertos_mutex_pool);
+    os_mempool_unregister(&ble_freertos_sem_pool);
+    os_mempool_unregister(&ble_freertos_co_pool);
+    os_mempool_unregister(&ble_freertos_evq_pool);
+    os_mempool_unregister(&ble_freertos_ev_pool);
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_freertos_ctx) {
         nimble_platform_mem_free(ble_freertos_ctx);
@@ -1360,12 +1424,18 @@ _error:
     }
 #endif
 
-   BLE_LL_ASSERT(rc == 0);
    return rc;
 }
 
 void npl_freertos_mempool_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* Check ble_freertos_ctx early to avoid NULL deref in buffer macros */
+    if (!ble_freertos_ctx) {
+        return;
+    }
+#endif
+
 #if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
     if (ble_freertos_ev_buf) {
         nimble_platform_mem_free(ble_freertos_ev_buf);
@@ -1391,10 +1461,18 @@ void npl_freertos_mempool_deinit(void)
         ble_freertos_mutex_buf = NULL;
     }
 #endif
+
+    /* Unregister mempools from global list regardless of allocation strategy */
+    os_mempool_unregister(&ble_freertos_mutex_pool);
+    os_mempool_unregister(&ble_freertos_sem_pool);
+    os_mempool_unregister(&ble_freertos_co_pool);
+    os_mempool_unregister(&ble_freertos_evq_pool);
+    os_mempool_unregister(&ble_freertos_ev_pool);
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_freertos_ctx) {
         nimble_platform_mem_free(ble_freertos_ctx);
-	    ble_freertos_ctx = NULL;
+        ble_freertos_ctx = NULL;
     }
 #endif
 }

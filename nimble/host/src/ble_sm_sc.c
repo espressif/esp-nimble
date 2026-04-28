@@ -178,7 +178,8 @@ ble_sm_sc_io_action(struct ble_sm_proc *proc, uint8_t *action)
         *action = BLE_SM_IOACT_NONE;
     } else if (pair_req->io_cap >= BLE_SM_IO_CAP_RESERVED ||
                pair_rsp->io_cap >= BLE_SM_IO_CAP_RESERVED) {
-        *action = BLE_SM_IOACT_NONE;
+        /* Reserved IO capability values are not allowed */
+        return BLE_HS_EINVAL;
     } else if (proc->flags & BLE_SM_PROC_F_INITIATOR) {
         *action = ble_sm_sc_init_ioa[pair_rsp->io_cap][pair_req->io_cap];
     } else {
@@ -1011,18 +1012,25 @@ ble_sm_sc_oob_generate_data(struct ble_sm_sc_oob_data *oob_data)
 {
     int rc;
 
+    ble_hs_lock();
+
     rc = ble_sm_sc_ensure_keys_generated();
     if (rc) {
+        ble_hs_unlock();
         return rc;
     }
 
     rc = ble_hs_hci_util_rand(oob_data->r, 16);
     if (rc) {
+        ble_hs_unlock();
         return rc;
     }
 
     rc = ble_sm_alg_f4(ble_sm_sc_pub_key, ble_sm_sc_pub_key, oob_data->r, 0,
                        oob_data->c);
+
+    ble_hs_unlock();
+
     if (rc) {
         return rc;
     }
@@ -1035,6 +1043,9 @@ ble_sm_sc_init(void)
 {
     ble_sm_alg_ecc_init();
     ble_sm_sc_keys_generated = 0;
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    ble_sm_dbg_sc_keys_set = 0;
+#endif
 }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)

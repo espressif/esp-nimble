@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-void nimble_port_freertos_init(TaskFunction_t host_task_fn);
+esp_err_t nimble_port_freertos_init(TaskFunction_t host_task_fn);
 
 void nimble_port_freertos_deinit(void);
 

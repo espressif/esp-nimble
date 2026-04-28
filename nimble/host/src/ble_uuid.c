@@ -124,6 +124,17 @@ ble_uuid_init_from_buf(ble_uuid_any_t *uuid, const void *buf, size_t len)
 int
 ble_uuid_cmp(const ble_uuid_t *uuid1, const ble_uuid_t *uuid2)
 {
+    /* Validate UUID pointers to prevent NULL pointer dereference */
+    if (uuid1 == NULL && uuid2 == NULL) {
+        return 0;
+    }
+    if (uuid1 == NULL) {
+        return -1;
+    }
+    if (uuid2 == NULL) {
+        return 1;
+    }
+
     VERIFY_UUID(uuid1);
     VERIFY_UUID(uuid2);
 
@@ -206,21 +217,35 @@ ble_uuid_to_str(const ble_uuid_t *uuid, char *dst)
 static int
 ble_uuid_base_init(void)
 {
-    if (ble_uuid_base == NULL) {
-        ble_uuid_base = nimble_platform_mem_calloc(1, sizeof(uint8_t) * 16);
-        if (ble_uuid_base == NULL) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-            return BLE_HS_ENOMEM;
-        }
+    uint8_t *temp;
+
+    /* Check again after potential memory barrier - double-checked locking pattern */
+    if (ble_uuid_base != NULL) {
+        return 0;
     }
 
-    ble_uuid_base[0] = 0xfb;
-    ble_uuid_base[1] = 0x34;
-    ble_uuid_base[2] = 0x9b;
-    ble_uuid_base[3] = 0x5f;
-    ble_uuid_base[4] = 0x80;
-    ble_uuid_base[7] = 0x80;
-    ble_uuid_base[9] = 0x10;
+    temp = nimble_platform_mem_calloc(1, sizeof(uint8_t) * 16);
+    if (temp == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
+    }
+
+    /* Initialize the base UUID before publishing the pointer */
+    temp[0] = 0xfb;
+    temp[1] = 0x34;
+    temp[2] = 0x9b;
+    temp[3] = 0x5f;
+    temp[4] = 0x80;
+    temp[7] = 0x80;
+    temp[9] = 0x10;
+
+    /* Only set the pointer if it's still NULL (handles race condition) */
+    if (ble_uuid_base == NULL) {
+        ble_uuid_base = temp;
+    } else {
+        /* Another thread beat us to it - free our allocation */
+        nimble_platform_mem_free(temp);
+    }
 
     return 0;
 }
@@ -396,18 +421,19 @@ ble_uuid_to_any(const ble_uuid_t *uuid, ble_uuid_any_t *uuid_any)
 {
     VERIFY_UUID(uuid);
 
-    uuid_any->u.type = uuid->type;
-
     switch (uuid->type) {
     case BLE_UUID_TYPE_16:
+        uuid_any->u.type = uuid->type;
         uuid_any->u16.value = BLE_UUID16(uuid)->value;
         break;
 
     case BLE_UUID_TYPE_32:
+        uuid_any->u.type = uuid->type;
         uuid_any->u32.value = BLE_UUID32(uuid)->value;
         break;
 
     case BLE_UUID_TYPE_128:
+        uuid_any->u.type = uuid->type;
         memcpy(uuid_any->u128.value, BLE_UUID128(uuid)->value, 16);
         break;
     default:
@@ -439,7 +465,13 @@ ble_uuid_to_mbuf(const ble_uuid_t *uuid, struct os_mbuf *om)
         return BLE_HS_ENOMEM;
     }
 
-    ble_uuid_flat(uuid, buf);
+    int rc = ble_uuid_flat(uuid, buf);
+    if (rc != 0) {
+        /* Trim the extended buffer since UUID flattening failed */
+        os_mbuf_adj(om, -len);
+        BLE_HS_LOG(ERROR, "%s ble_uuid_flat failed rc=%d\n", __func__, rc);
+        return rc;
+    }
 
     return 0;
 }
@@ -478,13 +510,24 @@ ble_uuid_flat(const ble_uuid_t *uuid, void *dst)
 int
 ble_uuid_length(const ble_uuid_t *uuid)
 {
-    VERIFY_UUID(uuid);
-
-    if (uuid->type == BLE_UUID_TYPE_32) {
-        return 16;
+    if (uuid == NULL) {
+        return -1;
     }
 
-    return uuid->type >> 3;
+    VERIFY_UUID(uuid);
+
+    /* Validate UUID type before using it in calculations */
+    switch (uuid->type) {
+    case BLE_UUID_TYPE_16:
+        return 2;
+    case BLE_UUID_TYPE_32:
+        return 16;  /* 32-bit UUIDs expand to 128-bit format */
+    case BLE_UUID_TYPE_128:
+        return 16;
+    default:
+        /* Invalid UUID type */
+        return -1;
+    }
 }
 
 

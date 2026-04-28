@@ -2587,8 +2587,18 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Strip the signature from the end of the mbuf. */
     os_mbuf_adj(*rxom, -(BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ - BLE_ATT_SIGNED_WRITE_DATA_OFFSET));
 
-    /* Authentication procedure */
-    len = OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter) + 1;
+    /* Extract the received sign counter from the signature */
+    uint32_t received_sign_counter;
+    memcpy(&received_sign_counter, sign, sizeof(received_sign_counter));
+
+    /* Validate that received counter is greater than stored counter to prevent replay attacks */
+    if (received_sign_counter <= value_sec.sign_counter) {
+        rc = BLE_HS_EAUTHEN;
+        goto err;
+    }
+
+    /* Authentication procedure - use received sign counter for MAC calculation */
+    len = OS_MBUF_PKTLEN(*rxom) + sizeof(received_sign_counter) + 1;
     message = nimble_platform_mem_calloc(1,len);
     if (message == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -2597,7 +2607,7 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 
     message[0] = BLE_ATT_OP_SIGNED_WRITE_CMD;
     os_mbuf_copydata(*rxom, 0, OS_MBUF_PKTLEN(*rxom), &message[1]);
-    memcpy(&message[1 + OS_MBUF_PKTLEN(*rxom)], &value_sec.sign_counter, sizeof(value_sec.sign_counter));
+    memcpy(&message[1 + OS_MBUF_PKTLEN(*rxom)], &received_sign_counter, sizeof(received_sign_counter));
 
     /* Converting message into little endian format */
     swap_in_place(message, len);
@@ -2615,13 +2625,7 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Converting cmac to little endian */
     swap_in_place(cmac, sizeof cmac);
 
-    /* Comparing sign counter */
-    if(memcmp(sign, &value_sec.sign_counter, sizeof(value_sec.sign_counter)) != 0) {
-        rc = BLE_HS_EAUTHEN;
-        goto err;
-    }
-
-    /* Comparing signature */
+    /* Comparing signature (sign counter validation already done above) */
     if(memcmp(&sign[sizeof(value_sec.sign_counter)], &cmac[sizeof(cmac) / 2], sizeof(cmac) / 2) != 0) {
         rc = BLE_HS_EAUTHEN;
         goto err;

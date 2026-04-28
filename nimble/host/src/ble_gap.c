@@ -1289,6 +1289,9 @@ ble_gap_master_conn_matches_slave_complete(const struct ble_gap_conn_complete *e
 static void
 ble_gap_slave_reset_state(uint8_t instance)
 {
+    /* NOTE: This function modifies bitfields shared with other GAP functions.
+     * All callers must ensure ble_hs_lock() is held to prevent data races
+     * on concurrent bitfield access from different contexts. */
     ble_gap_slave[instance].op = BLE_GAP_OP_NULL;
 
 #if !MYNEWT_VAL(BLE_EXT_ADV)
@@ -4931,7 +4934,7 @@ ble_gap_ext_adv_params_tx_v2(uint8_t instance,
 
     memset(&cmd, 0, sizeof(cmd));
 
-    rc = ble_gap_set_ext_adv_params(&(cmd.params_v1), instance, params, selected_tx_power);
+    rc = ble_gap_set_ext_adv_params(&(cmd.cmd), instance, params, selected_tx_power);
 
     if (rc != 0) {
         return rc;
@@ -6397,6 +6400,12 @@ ble_gap_periodic_adv_sync_terminate(uint16_t sync_handle)
          * simplify application error handling
          */
         ble_npl_eventq_put(ble_hs_evq_get(), &psync->lost_ev);
+    } else if (rc == BLE_ERR_UNK_ADV_INDENT) {
+        /* If controller says handle is unknown/already terminated,
+         * clean up local state to prevent ghost syncs */
+        ble_hs_periodic_sync_remove(psync);
+        ble_npl_eventq_put(ble_hs_evq_get(), &psync->lost_ev);
+        /* Still return the error to inform caller of the controller state */
     }
 
     ble_hs_unlock();
@@ -8834,6 +8843,11 @@ int
 ble_gap_conn_active(void)
 {
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gap_vars == NULL) {
+        return 0;
+    }
+#endif
     /* Assume read is atomic; mutex not necessary. */
     return ble_gap_master.op == BLE_GAP_OP_M_CONN;
 #else

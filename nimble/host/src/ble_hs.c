@@ -640,7 +640,18 @@ ble_hs_sched_start(void)
     ble_npl_eventq_put((struct ble_npl_eventq *)os_eventq_dflt_get(),
                        &ble_hs_ev_start_stage1);
 #else
-    ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &ble_hs_ev_start_stage1);
+    struct ble_npl_eventq *eventq = nimble_port_get_dflt_eventq();
+    if (eventq == NULL) {
+        BLE_HS_LOG(ERROR, "Failed to start host: event queue not initialized\n");
+        return;
+    }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "Failed to start host: host context not initialized\n");
+        return;
+    }
+#endif
+    ble_npl_eventq_put(eventq, &ble_hs_ev_start_stage1);
 #endif
 }
 
@@ -1160,7 +1171,6 @@ ble_hs_deinit(void)
 #if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
     ble_hs_resolv_deinit();
 #endif
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx) {
         ble_hs_ctx->parent_task = NULL;
@@ -1168,6 +1178,8 @@ ble_hs_deinit(void)
             nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
             ble_hs_ctx->hci_os_event_buf = NULL;
         }
+        os_mempool_unregister(&ble_hs_hci_ev_pool);
+
         nimble_platform_mem_free(ble_hs_ctx);
         ble_hs_ctx = NULL;
     }

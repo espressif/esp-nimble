@@ -29,33 +29,44 @@ static TaskHandle_t host_task_h = NULL;
 
 /**
  * @brief esp_nimble_enable - Initialize the NimBLE host
- * 
- * @param host_task 
- * @return esp_err_t 
+ *
+ * @param host_task
+ * @return esp_err_t
  */
 esp_err_t esp_nimble_enable(void *host_task)
 {
+    /* Check if already enabled to ensure idempotency */
+    if (host_task_h != NULL) {
+        return ESP_OK;
+    }
+
     /*
      * Create task where NimBLE host will run. It is not strictly necessary to
      * have separate task for NimBLE host, but since something needs to handle
      * default queue it is just easier to make separate task which does this.
      */
-    xTaskCreatePinnedToCore(host_task, "nimble_host", NIMBLE_HS_STACK_SIZE,
-                            NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
-    return ESP_OK;
+    BaseType_t ret = xTaskCreatePinnedToCore(host_task, "nimble_host", NIMBLE_HS_STACK_SIZE,
+                                             NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
 
+    if (ret != pdPASS) {
+        host_task_h = NULL;  /* Ensure handle is NULL on failure */
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
 }
 
 /**
  * @brief esp_nimble_disable - Disable the NimBLE host
- * 
- * @return esp_err_t 
+ *
+ * @return esp_err_t
  */
 esp_err_t esp_nimble_disable(void)
 {
     if (host_task_h) {
-        vTaskDelete(host_task_h);
-        host_task_h = NULL;
+        TaskHandle_t task_to_delete = host_task_h;
+        host_task_h = NULL;  /* Clear handle before deletion to handle self-deletion */
+        vTaskDelete(task_to_delete);
     }
     return ESP_OK;
 }
@@ -63,18 +74,18 @@ esp_err_t esp_nimble_disable(void)
 
 /**
  * @brief nimble_port_freertos_init - Adapt to native nimble api
- * 
- * @param host_task_fn 
+ *
+ * @param host_task_fn
  */
-void
+esp_err_t
 nimble_port_freertos_init(TaskFunction_t host_task_fn)
 {
-    esp_nimble_enable(host_task_fn);
+    return esp_nimble_enable(host_task_fn);
 }
 
 /**
  * @brief nimble_port_freertos_deinit - Adapt to native nimble api
- * 
+ *
  */
 void
 nimble_port_freertos_deinit(void)

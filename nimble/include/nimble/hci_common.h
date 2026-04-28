@@ -1431,6 +1431,7 @@ struct ble_hci_le_cs_wr_cached_rem_supp_cap_cp {
     uint16_t optional_t_fcs_times_supported;
     uint16_t optional_t_pm_times_supported;
     uint8_t t_sw_time_supported;
+    uint8_t tx_snr_capability;  /* TX_SNR_Capability field required by BT 6.0 spec */
 } __attribute__((packed));
 struct ble_hci_le_cs_wr_cached_rem_supp_cap_rp {
     uint16_t conn_handle;
@@ -1485,7 +1486,7 @@ struct ble_hci_le_cs_create_config_cp {
     uint8_t channel_selection_type;
     uint8_t ch3c_shape;
     uint8_t ch3c_jump;
-//    uint8_t companion_signal_enable;
+    uint8_t companion_signal_enable;  /* Reserved/Companion_Signal_Enable field required by BT 6.0 spec */
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_CS_REMOVE_CONFIG                  (0x0091)

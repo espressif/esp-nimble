@@ -482,31 +482,68 @@ ble_gatts_chr_def_access(uint16_t conn_handle, uint16_t attr_handle,
 {
     const struct ble_gatt_chr_def *chr;
     uint8_t *buf;
+    uint16_t uuid_len;
+    uint16_t total_len;
 
     STATS_INC(ble_gatts_stats, chr_def_reads);
 
     BLE_HS_DBG_ASSERT(op == BLE_ATT_ACCESS_OP_READ);
 
     chr = arg;
+    uuid_len = ble_uuid_length(chr->uuid);
+    total_len = 3 + uuid_len; /* properties(1) + handle(2) + uuid */
 
-    buf = os_mbuf_extend(*om, 3);
-    if (buf == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
-        return BLE_ATT_ERR_INSUFFICIENT_RES;
+    /* Validate offset */
+    if (offset >= total_len) {
+        return BLE_ATT_ERR_INVALID_OFFSET;
     }
 
-    buf[0] = ble_gatts_chr_properties(chr);
 
-    /* The value attribute is always immediately after the declaration. */
-    put_le16(buf + 1, attr_handle + 1);
+    if (offset == 0) {
+        /* Normal case - read from beginning */
+        buf = os_mbuf_extend(*om, 3);
+        if (buf == NULL) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
 
-    buf = os_mbuf_extend(*om, ble_uuid_length(chr->uuid));
-    if (buf == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
-        return BLE_ATT_ERR_INSUFFICIENT_RES;
+        buf[0] = ble_gatts_chr_properties(chr);
+        put_le16(buf + 1, attr_handle + 1);
+
+        buf = os_mbuf_extend(*om, uuid_len);
+        if (buf == NULL) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        ble_uuid_flat(chr->uuid, buf);
+    } else if (offset < 3) {
+        /* Offset within properties/handle section */
+        uint8_t temp_buf[3];
+        temp_buf[0] = ble_gatts_chr_properties(chr);
+        put_le16(temp_buf + 1, attr_handle + 1);
+
+        buf = os_mbuf_extend(*om, 3 - offset);
+        if (buf == NULL) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        memcpy(buf, temp_buf + offset, 3 - offset);
+
+        /* Add UUID portion */
+        buf = os_mbuf_extend(*om, uuid_len);
+        if (buf == NULL) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        ble_uuid_flat(chr->uuid, buf);
+    } else {
+        /* Offset within UUID section */
+        uint16_t uuid_offset = offset - 3;
+        buf = os_mbuf_extend(*om, uuid_len - uuid_offset);
+        if (buf == NULL) {
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+
+        uint8_t temp_uuid[16]; /* Max UUID length */
+        ble_uuid_flat(chr->uuid, temp_uuid);
+        memcpy(buf, temp_uuid + uuid_offset, uuid_len - uuid_offset);
     }
-
-    ble_uuid_flat(chr->uuid, buf);
 
     return 0;
 }
@@ -3483,8 +3520,13 @@ done:
     return rc;
 }
 
-void ble_gatts_free_svcs(void)
+void
+ble_gatts_free_svcs(void)
 {
+    /* NOTE: Caller must hold ble_hs_lock() before calling this function.
+     * This function does not acquire the lock internally to avoid deadlocks
+     * when called from deinit sequences that may already hold the lock. */
+
     /* Ensure the memory is freed only if it was previously allocated */
     if (ble_gatts_svc_defs != NULL) {
         /* Free the memory for the service definitions */
@@ -3829,4 +3871,4 @@ ble_gatts_init(void)
     return 0;
 }
 
-#endif 
+#endif

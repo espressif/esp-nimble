@@ -628,6 +628,9 @@ ble_gattc_dbg_assert_proc_not_inserted(struct ble_gattc_proc *proc)
 static void
 ble_gattc_log_proc_init(const char *name)
 {
+    /* NOTE: Fragmented logging is intentional for structured debug output.
+     * The design allows for procedure-specific details to be appended by callers.
+     * ESP-IDF BLE_HS_LOG implementation handles multi-call sequences appropriately. */
     BLE_HS_LOG(INFO, "GATT procedure initiated: %s", name);
 }
 
@@ -2170,7 +2173,10 @@ ble_gattc_disc_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *uuid,
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_SVC_UUID);
 
-    ble_uuid_to_any(uuid, &proc->disc_svc_uuid.service_uuid);
+    rc = ble_uuid_to_any(uuid, &proc->disc_svc_uuid.service_uuid);
+    if (rc != 0) {
+        goto done;
+    }
     proc->disc_svc_uuid.prev_handle = 0x0000;
     proc->disc_svc_uuid.cb = cb;
     proc->disc_svc_uuid.cb_arg = cb_arg;
@@ -3015,7 +3021,10 @@ ble_gattc_disc_chrs_by_uuid(uint16_t conn_handle, uint16_t start_handle,
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_CHR_UUID);
 
-    ble_uuid_to_any(uuid, &proc->disc_chr_uuid.chr_uuid);
+    rc = ble_uuid_to_any(uuid, &proc->disc_chr_uuid.chr_uuid);
+    if (rc != 0) {
+        goto done;
+    }
     proc->disc_chr_uuid.prev_handle = start_handle - 1;
     proc->disc_chr_uuid.end_handle = end_handle;
     proc->disc_chr_uuid.cb = cb;
@@ -3962,7 +3971,10 @@ ble_gattc_read_by_uuid(uint16_t conn_handle, uint16_t start_handle,
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_READ_UUID);
 
-    ble_uuid_to_any(uuid, &proc->read_uuid.chr_uuid);
+    rc = ble_uuid_to_any(uuid, &proc->read_uuid.chr_uuid);
+    if (rc != 0) {
+        goto done;
+    }
     proc->read_uuid.start_handle = start_handle;
     proc->read_uuid.end_handle = end_handle;
     proc->read_uuid.cb = cb;
@@ -6481,6 +6493,10 @@ ble_gattc_resume_dispatch_init(void)
     if (ble_gattc_ctx == NULL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
+    }
+
+    if (ble_gattc_resume_dispatch != NULL) {
+        return 0;
     }
 
     ble_gattc_resume_dispatch =  nimble_platform_mem_calloc(1, BLE_GATT_OP_CNT * sizeof(ble_gattc_resume_fn *));

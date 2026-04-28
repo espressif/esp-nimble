@@ -151,17 +151,21 @@ os_msys_register(struct os_mbuf_pool *new_pool)
     os_msys_pool_list_ensure_init();
 #endif
 
-    pool = NULL;
+    /* Find correct insertion point to maintain ascending order by omp_databuf_len */
+    struct os_mbuf_pool *prev_pool = NULL;
     STAILQ_FOREACH(pool, &g_msys_pool_list, omp_next) {
-        if (new_pool->omp_databuf_len > pool->omp_databuf_len) {
+        if (new_pool->omp_databuf_len < pool->omp_databuf_len) {
+            /* Insert before this pool to maintain ascending order */
             break;
         }
+        prev_pool = pool;
     }
 
-    if (pool) {
-        STAILQ_INSERT_AFTER(&g_msys_pool_list, pool, new_pool, omp_next);
+    if (prev_pool) {
+        STAILQ_INSERT_AFTER(&g_msys_pool_list, prev_pool, new_pool, omp_next);
     } else {
-        STAILQ_INSERT_TAIL(&g_msys_pool_list, new_pool, omp_next);
+        /* Insert at head - new pool is smallest */
+        STAILQ_INSERT_HEAD(&g_msys_pool_list, new_pool, omp_next);
     }
 
     return (0);
@@ -617,6 +621,11 @@ os_mbuf_copydata(const struct os_mbuf *m, int off, int len, void *dst)
 {
     unsigned int count;
     uint8_t *udst;
+
+    /* Validate parameters to prevent buffer under-read and invalid operations */
+    if (off < 0 || len < 0) {
+        return -1;
+    }
 
     if (!len) {
         return 0;
@@ -1202,8 +1211,16 @@ os_mbuf_widen(struct os_mbuf *om, uint16_t off, uint16_t len)
     }
     edge_om->om_len = sub_off;
 
-    /* Insert the gap into the chain. */
-    SLIST_NEXT(prev, om_next) = SLIST_NEXT(edge_om, om_next);
+    /* Insert the gap into the chain. Find the tail of the gap chain
+     * (which may have grown due to os_mbuf_append) to properly link it.
+     */
+    struct os_mbuf *gap_tail = prev;
+    while (SLIST_NEXT(gap_tail, om_next) != NULL) {
+        gap_tail = SLIST_NEXT(gap_tail, om_next);
+    }
+
+    /* Link the gap chain into the original chain */
+    SLIST_NEXT(gap_tail, om_next) = SLIST_NEXT(edge_om, om_next);
     SLIST_NEXT(edge_om, om_next) = first_new;
 
     if (OS_MBUF_IS_PKTHDR(om)) {
