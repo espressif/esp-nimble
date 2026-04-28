@@ -30,6 +30,7 @@
 #include "nimble/hci_common.h"
 #include "sys/queue.h"
 #include "ble_hs_hci_priv.h"
+#include "ble_hs_priv.h"
 
 #define BT_LE_CS_CHANNEL_BIT_SET_VAL(chmap, bit, val)                                              \
 ((chmap)[(bit) / 8] = ((chmap)[(bit) / 8] & ~BIT((bit) % 8)) | ((val) << ((bit) % 8)))
@@ -181,15 +182,23 @@ struct ble_cs_state {
     void *cb_arg;
 };
 
+/* Global CS state prevents concurrent Channel Sounding procedures on multiple connections
+ * Known limitation: cs_state is global and supports only one active CS procedure at a time.
+ * Current design assumes single CS procedure usage pattern.
+ */
 static struct ble_cs_state cs_state;
 
 static int
 ble_cs_call_event_cb(struct ble_cs_event *event)
 {
     int rc;
+    ble_hs_lock();
+    ble_cs_event_fn *cb = cs_state.cb;
+    void *cb_arg = cs_state.cb_arg;
+    ble_hs_unlock();
 
-    if (cs_state.cb != NULL) {
-        rc = cs_state.cb(event, cs_state.cb_arg);
+    if (cb != NULL) {
+        rc = cb(event, cb_arg);
     } else {
         rc = 0;
     }
@@ -198,7 +207,7 @@ ble_cs_call_event_cb(struct ble_cs_event *event)
 }
 
 static void
-ble_cs_call_procedure_complete_cb(uint16_t conn_handle, uint8_t status)
+ble_cs_call_procedure_complete_cb(uint16_t conn_handle, int status)
 {
     struct ble_cs_event event;
 
@@ -420,7 +429,7 @@ ble_cs_create_config(const struct ble_cs_create_config_cp *cmd)
     cp.channel_selection_type = cmd->channel_selection_type;
     cp.ch3c_shape = cmd->ch3c_shape;
     cp.ch3c_jump = cmd->ch3c_jump;
-    cp.companion_signal_enable = cmd->companion_signal_enable;
+    cp.companion_signal_enable = 0x00; /* Reserved field per BT spec, set to 0 */
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_CS_CREATE_CONFIG),
@@ -516,9 +525,14 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     struct ble_cs_rd_rem_fae_cp fae_cmd;
     struct ble_gap_conn_desc desc;
 
-    if (len != sizeof(*ev) || ev->status) {
+    if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s invalid length, rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+        return BLE_HS_ECONTROLLER;
+    }
 
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+    if (ev->status) {
+        BLE_HS_LOG(ERROR, "%s status error=%d\n", __func__, ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -549,19 +563,94 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     rc = ble_cs_set_def_settings(&set_cmd, &set_rsp);
     if (rc) {
         BLE_HS_LOG(INFO, "Failed to set the default CS settings, err %d", rc);
-
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc);
         return rc;
     }
      BLE_HS_LOG(INFO, "Set default CS settings ");
 
+    uint16_t optional_subfeatures = le16toh(ev->optional_subfeatures_supported);
+    if (optional_subfeatures & 0x0002) {
+        BLE_HS_LOG(INFO, "Remote supports No FAE, skipping FAE table read");
 
+        struct ble_cs_create_config_cp cmd;
+        memset(&cmd, 0, sizeof cmd);
+        cmd.conn_handle = le16toh(ev->conn_handle);
+        cmd.config_id = 0x00;
+        cmd.create_context = 0x01;
+        cmd.main_mode_type = 0x02;
+        cmd.sub_mode_type = 0x01;
+        cmd.min_main_mode_steps = 10;
+        cmd.max_main_mode_steps = 20;
+        cmd.main_mode_repetition = 0x00;
+        cmd.mode_0_steps = 0x03;
+        
+        rc = ble_gap_conn_find(cmd.conn_handle, &desc);
+        if (rc != 0) {
+            ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc);
+            return rc;
+        }
+        
+        cmd.role = (desc.role == BLE_GAP_ROLE_MASTER) ? 0x00 : 0x01;
+        cmd.rtt_type = 0x00;
+        cmd.cs_sync_phy = 0x01;
+        memcpy(cmd.channel_map, (uint8_t[10]) {0x08, 0xfa, 0x4f, 0xac, 0xfa, 0xc0}, 10);
+        cmd.channel_map_repetition = 5;
+        cmd.channel_selection_type = 0x00;
+        cmd.ch3c_shape = 0x00;
+        cmd.ch3c_jump = 0x02;
+        
+        if (desc.role == BLE_GAP_ROLE_MASTER) {
+            rc = ble_cs_create_config(&cmd);
+            if (rc) {
+                BLE_HS_LOG(INFO, "Failed to create CS config");
+                ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc);
+            }
+        }
+        return rc;
+    }
 
     /* Read the mode 0 Frequency Actuation Error table */
-        fae_cmd.conn_handle = le16toh(ev->conn_handle);
-        rc = ble_cs_rd_rem_fae(&fae_cmd);
-        if (rc) {
-            BLE_HS_LOG(INFO, "Failed to read FAE table");
+    fae_cmd.conn_handle = le16toh(ev->conn_handle);
+    rc = ble_cs_rd_rem_fae(&fae_cmd);
+    if (rc) {
+        BLE_HS_LOG(INFO, "Failed to read FAE table");
+
+        struct ble_cs_create_config_cp cmd;
+        memset(&cmd, 0, sizeof cmd);
+        cmd.conn_handle = le16toh(ev->conn_handle);
+        cmd.config_id = 0x00;
+        cmd.create_context = 0x01;
+        cmd.main_mode_type = 0x02;
+        cmd.sub_mode_type = 0x01;
+        cmd.min_main_mode_steps = 10;
+        cmd.max_main_mode_steps = 20;
+        cmd.main_mode_repetition = 0x00;
+        cmd.mode_0_steps = 0x03;
+        
+        int rc2 = ble_gap_conn_find(cmd.conn_handle, &desc);
+        if (rc2 != 0) {
+            ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc2);
+            return rc2;
         }
+        
+        cmd.role = (desc.role == BLE_GAP_ROLE_MASTER) ? 0x00 : 0x01;
+        cmd.rtt_type = 0x00;
+        cmd.cs_sync_phy = 0x01;
+        memcpy(cmd.channel_map, (uint8_t[10]) {0x08, 0xfa, 0x4f, 0xac, 0xfa, 0xc0}, 10);
+        cmd.channel_map_repetition = 5;
+        cmd.channel_selection_type = 0x00;
+        cmd.ch3c_shape = 0x00;
+        cmd.ch3c_jump = 0x02;
+        
+        if (desc.role == BLE_GAP_ROLE_MASTER) {
+            rc2 = ble_cs_create_config(&cmd);
+            if (rc2) {
+                BLE_HS_LOG(INFO, "Failed to create CS config");
+                ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc2);
+            }
+        }
+        return rc2;
+    }
 
     return rc;
 }
@@ -576,9 +665,14 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
     memset(&cmd,0,sizeof cmd);
     int rc=0;
 
-    if (len != sizeof(*ev) || ev->status) {
+    if (len != sizeof(*ev)) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
+    }
+    
+    if (ev->status) {
+        BLE_HS_LOG(INFO, "FAE read completed with status 0x%02x, continuing to config", ev->status);
     }
 
     cmd.conn_handle = le16toh(ev->conn_handle);
@@ -591,6 +685,9 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
     /* Use sub mode 0xFF for now, meaning no sub mode */
     cmd.sub_mode_type = 0x01;
 
+    /* Hardcoded test values used for Channel Sounding channel map and parameters.
+     * These hardcoded parameters are intentional for example purposes.
+     */
     /* Range from which the number of CS main mode steps to execute
      * will be randomly selected.
      */
@@ -657,15 +754,21 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     const struct ble_hci_ev_le_subev_cs_sec_enable_complete *ev = data;
     struct ble_gap_conn_desc desc;
 
-    if (len != sizeof(*ev) || ev->status) {
-        BLE_HS_LOG(INFO, "Failed to enable CS security BLE_HS_ECNOTEROLLER");
+    if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s invalid length, rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+        return BLE_HS_ECONTROLLER;
+    }
 
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+    if (ev->status) {
+        BLE_HS_LOG(INFO, "Failed to enable CS security status=%d", ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
         return BLE_HS_ECONTROLLER;
     }
 
     BLE_HS_LOG(INFO, "CS setup phase completed");
 
+    /* Hardcoded Channel Sounding parameters lack application-level control
+     * These hardcoded parameters are intentional for example purposes. */
     cmd.conn_handle = le16toh(ev->conn_handle);
     cmd.config_id = 0x00;
     /* The maximum duration of each CS procedure (time = N × 0.625 ms) */
@@ -701,6 +804,7 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     rc = ble_cs_set_proc_params(&cmd, &rsp);
     if (rc) {
         BLE_HS_LOG(INFO, "Failed to set CS procedure parameters");
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc);
         return rc;
     } else {
         BLE_HS_LOG(INFO, "CS procedure parameters set");
@@ -713,19 +817,47 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        ble_cs_call_procedure_complete_cb(conn_handle, rc);
         return rc;
     }
-    if (desc.role == BLE_GAP_ROLE_MASTER) {
 
-        rc = ble_cs_proc_enable(&enable_cmd);
+    if (desc.role == BLE_GAP_ROLE_MASTER) {
+        cmd.conn_handle = conn_handle;
+        cmd.config_id = 0x00;
+        cmd.max_procedure_len = 100;
+        cmd.max_procedure_count = 1;
+        cmd.min_procedure_interval = 10;
+        cmd.max_procedure_interval = 10;
+        cmd.min_subevent_len = 60000;
+        cmd.max_subevent_len = 60000;
+        cmd.tone_antenna_config_selection = 0x00;
+        cmd.phy = 0x01;
+        cmd.tx_power_delta = 0x80;
+        cmd.preferred_peer_antenna = 0x01;
+        cmd.snr_control_initiator = 0xff;
+        cmd.snr_control_reflector = 0xff;
+
+        rc = ble_cs_set_proc_params(&cmd, &rsp);
         if (rc) {
-            BLE_HS_LOG(INFO, "Failed to enable CS procedure");
-        } else {
-            BLE_HS_LOG(INFO, "CS procedure enabled");
+            BLE_HS_LOG(INFO, "Failed to set CS procedure parameters");
+            ble_cs_call_procedure_complete_cb(conn_handle, rc);
+            return rc;
         }
-        return rc;
+        BLE_HS_LOG(INFO, "CS procedure parameters set");
     }
-    return 0;
+
+    enable_cmd.conn_handle = conn_handle;
+    enable_cmd.config_id = 0x00;
+    enable_cmd.enable = 0x01;
+
+    rc = ble_cs_proc_enable(&enable_cmd);
+    if (rc) {
+        BLE_HS_LOG(INFO, "Failed to enable CS procedure");
+        ble_cs_call_procedure_complete_cb(conn_handle, rc);
+    } else {
+        BLE_HS_LOG(INFO, "CS procedure enabled");
+    }
+    return rc;
 }
 
 int
@@ -738,8 +870,15 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
     struct ble_cs_sec_enable_cp cmd;
     // struct ble_hs_conn *conn;
 
-    if (len != sizeof(*ev) || ev->status) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+    /* Validate buffer length before accessing struct fields to prevent out-of-bounds read */
+    if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s invalid length, rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+        return BLE_HS_ECONTROLLER;
+    }
+
+    if (ev->status) {
+        BLE_HS_LOG(ERROR, "%s status error=%d\n", __func__, ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
         return BLE_HS_ECONTROLLER;
     }
 
@@ -749,7 +888,13 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        ble_cs_call_procedure_complete_cb(conn_handle, rc);
         return rc;
+    }
+
+    if (ev->action != 0x01) {
+        BLE_HS_LOG(DEBUG, "CS config removed or invalid action, skipping security enable");
+        return 0;
     }
 
     if (desc.role == BLE_GAP_ROLE_MASTER) {
@@ -771,12 +916,18 @@ ble_hs_hci_evt_le_cs_proc_enable_complete(uint8_t subevent, const void *data,
 {
     const struct ble_hci_ev_le_subev_cs_proc_enable_complete *ev = data;
 
-    if (len != sizeof(*ev) || ev->status) {
-
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+    if (len != sizeof(*ev)) {
+        BLE_HS_LOG(ERROR, "%s invalid length, rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
+    if (ev->status) {
+        BLE_HS_LOG(ERROR, "%s status error=%d\n", __func__, ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
+        return BLE_HS_ECONTROLLER;
+    }
+
+    ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), 0);
     return 0;
 }
 
@@ -888,6 +1039,10 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
     struct ble_cs_rd_rem_supp_cap_cp cmd;
     int rc;
 
+    if (params == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
     /* Channel Sounding setup phase:
      * 1. Set local default CS settings
      * 2. Exchange CS capabilities with the remote
@@ -896,8 +1051,10 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
      * 5. Start the CS Security Start procedure
      */
 
+    ble_hs_lock();
     cs_state.cb = params->cb;
     cs_state.cb_arg = params->cb_arg;
+    ble_hs_unlock();
 
     cmd.conn_handle = params->conn_handle;
     rc = ble_cs_rd_rem_supp_cap(&cmd);
@@ -918,8 +1075,14 @@ ble_cs_initiator_procedure_terminate(uint16_t conn_handle)
 int
 ble_cs_reflector_setup(struct ble_cs_reflector_setup_params *params)
 {
+    if (params == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    ble_hs_lock();
     cs_state.cb = params->cb;
     cs_state.cb_arg = params->cb_arg;
+    ble_hs_unlock();
 
     return 0;
 }

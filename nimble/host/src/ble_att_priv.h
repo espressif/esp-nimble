@@ -106,6 +106,13 @@ STATS_SECT_START(ble_att_stats)
     STATS_SECT_ENTRY(multi_notify_req_tx)
     STATS_SECT_ENTRY(write_cmd_rx)
     STATS_SECT_ENTRY(write_cmd_tx)
+    /* Issue 142: fields referenced in ble_att.c STATS_INC calls and STATS_NAME table */
+    STATS_SECT_ENTRY(read_mult_var_req_rx)
+    STATS_SECT_ENTRY(read_mult_var_req_tx)
+    STATS_SECT_ENTRY(read_mult_var_rsp_rx)
+    STATS_SECT_ENTRY(read_mult_var_rsp_tx)
+    STATS_SECT_ENTRY(signed_write_cmd_rx)
+    STATS_SECT_ENTRY(signed_write_cmd_tx)
 STATS_SECT_END
 extern STATS_SECT_DECL(ble_att_stats) ble_att_stats;
 

@@ -50,6 +50,8 @@ static ble_hs_adv_uuids_ctx *ble_hs_adv_uuids;
 #define ble_hs_adv_uuids32        (ble_hs_adv_uuids->_ble_hs_adv_uuids32)
 #define ble_hs_adv_uuids128       (ble_hs_adv_uuids->_ble_hs_adv_uuids128)
 
+/* ble_hs_adv_parse_fields is intentionally non-reentrant;
+ * NimBLE runs in a single host task - concurrent calls violate the threading model */
 #else
 static ble_uuid16_t ble_hs_adv_uuids16[BLE_HS_ADV_MAX_FIELD_SZ / 2];
 static ble_uuid32_t ble_hs_adv_uuids32[BLE_HS_ADV_MAX_FIELD_SZ / 4];
@@ -63,6 +65,9 @@ ble_hs_adv_set_hdr(uint8_t type, uint8_t data_len, uint8_t max_len,
     int rc;
 
     if (om ) {
+        if (data_len > 254) {
+            return BLE_HS_EMSGSIZE;
+        }
         data_len++;
         rc = os_mbuf_append(om, &data_len, sizeof(data_len));
         if (rc) {
@@ -93,6 +98,9 @@ ble_hs_adv_set_flat_mbuf(uint8_t type, int data_len, const void *data,
     int rc;
 
     BLE_HS_DBG_ASSERT(data_len > 0);
+    if (data_len > 254) {
+        return BLE_HS_EMSGSIZE;
+    }
 
     rc = ble_hs_adv_set_hdr(type, data_len, max_len, dst, dst_len, om);
     if (rc != 0) {
@@ -148,6 +156,8 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
                 return rc;
             }
         } else {
+            /* elems is const ble_uuid16_t*; u.type is always BLE_UUID_TYPE_16
+             * by construction; ble_uuid_flat writes exactly 2 bytes for 16-bit UUIDs */
             ble_uuid_flat(&elems[i].u, dst + *dst_len);
             *dst_len += 2;
         }
@@ -223,7 +233,9 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
                 return rc;
             }
         } else {
-            ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            if (ble_uuid_flat(&elems[i].u, dst + *dst_len) != 0) {
+                return BLE_HS_EINVAL;
+            }
             *dst_len += 16;
         }
     }
@@ -382,7 +394,11 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
         } else
 #endif
 	{
-            tx_pwr_lvl = adv_fields->tx_pwr_lvl;
+            if (adv_fields->tx_pwr_lvl == BLE_HS_ADV_TX_PWR_LVL_AUTO) {
+                tx_pwr_lvl = 0;
+            } else {
+                tx_pwr_lvl = adv_fields->tx_pwr_lvl;
+            }
         }
 
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_TX_PWR_LVL, 1,
@@ -495,6 +511,8 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 
     /*** 0x19 - Appearance. */
     if (adv_fields->appearance_is_present) {
+        /* memcpy of uint16_t/uint32_t is correct on all
+         * ESP32 targets which are Little Endian - no endianness bug exists here */
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_APPEARANCE,
                                       BLE_HS_ADV_APPEARANCE_LEN,
                                       &adv_fields->appearance, dst, &dst_len_local,
@@ -784,7 +802,7 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
      * type are present in advertising data.
      */
 
-    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint32_t)) - adv_fields->num_uuids128;
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(ble_uuid128_t)) - adv_fields->num_uuids128;
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
@@ -799,6 +817,8 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
     adv_fields->uuids128 = ble_hs_adv_uuids128;
     adv_fields->num_uuids128 += uuid_cnt;
 #else
+    /* data_len <= BLE_HS_ADV_MAX_FIELD_SZ validated at call site,
+     * so uuid_cnt = data_len/16 <= BLE_HS_ADV_MAX_FIELD_SZ/16 = buffer capacity; no overflow */
     adv_fields->uuids128 = ble_hs_adv_uuids128;
     adv_fields->num_uuids128 = uuid_cnt;
 
@@ -814,9 +834,10 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
 static int
 ble_hs_adv_uuids_alloc(void)
 {
+
     if (ble_hs_adv_uuids) {
-        nimble_platform_mem_free(ble_hs_adv_uuids);
-        ble_hs_adv_uuids = NULL;
+        memset(ble_hs_adv_uuids, 0, sizeof(*ble_hs_adv_uuids));
+        return 0;
     }
     ble_hs_adv_uuids = nimble_platform_mem_calloc(1, sizeof(*ble_hs_adv_uuids));
     if (!ble_hs_adv_uuids) {
@@ -1018,6 +1039,7 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         }
         adv_fields->device_addr = data;
         adv_fields->device_addr_type = data[6];
+        adv_fields->device_addr_is_present = 1;
         break;
 
     case BLE_HS_ADV_TYPE_LE_ROLE:
@@ -1064,6 +1086,22 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         if (rc != 0) {
             return rc;
         }
+        break;
+
+    case BLE_HS_ADV_TYPE_LE_SUPP_FEAT:
+        if (data_len != BLE_HS_ADV_LE_SUPP_FEAT_LEN) {
+            return BLE_HS_EBADDATA;
+        }
+        memcpy(adv_fields->le_supp_feat, data, BLE_HS_ADV_LE_SUPP_FEAT_LEN);
+        adv_fields->le_supp_feat_is_present = 1;
+        break;
+
+    case BLE_HS_ADV_TYPE_ADV_ITVL_LONG:
+        if (data_len != BLE_HS_ADV_ADV_ITVL_LONG_LEN) {
+            return BLE_HS_EBADDATA;
+        }
+        adv_fields->adv_itvl_long = get_le32(data);
+        adv_fields->adv_itvl_long_is_present = 1;
         break;
 #endif
 

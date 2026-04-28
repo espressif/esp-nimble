@@ -41,7 +41,7 @@ extern "C" {
 /** Max field payload size (account for 2-byte header). */
 #define BLE_HS_ADV_MAX_FIELD_SZ     (BLE_HS_ADV_MAX_SZ - 2)
 
-#define BLE_HS_ADV_LE_SUPP_FEAT_LEN             6
+#define BLE_HS_ADV_LE_SUPP_FEAT_LEN             8
 
 /** Represents advertising data packet in BLE advertisement or scan response. */
 struct ble_hs_adv_field {
