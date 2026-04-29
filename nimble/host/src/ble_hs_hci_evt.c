@@ -1848,7 +1848,7 @@ ble_hs_hci_evt_le_conn_upd_complete(uint8_t subevent, const void *data,
     }
 
     if (ev->status == 0) {
-        BLE_HS_DBG_ASSERT(le16toh(ev->conn_itvl) >= BLE_HCI_CONN_ITVL_MIN);
+        BLE_HS_DBG_ASSERT(le16toh(ev->conn_itvl) >= BLE_HOST_CONN_PARAM_ITVL_MIN);
         BLE_HS_DBG_ASSERT(le16toh(ev->conn_itvl) <= BLE_HCI_CONN_ITVL_MAX);
 
         BLE_HS_DBG_ASSERT(le16toh(ev->conn_latency) >= BLE_HCI_CONN_LATENCY_MIN);
@@ -1888,7 +1888,7 @@ ble_hs_hci_evt_le_conn_parm_req(uint8_t subevent, const void *data, unsigned int
         return BLE_HS_ECONTROLLER;
     }
 
-    BLE_HS_DBG_ASSERT(le16toh(ev->min_interval) >= BLE_HCI_CONN_ITVL_MIN);
+    BLE_HS_DBG_ASSERT(le16toh(ev->min_interval) >= BLE_HOST_CONN_PARAM_ITVL_MIN);
     BLE_HS_DBG_ASSERT(le16toh(ev->max_interval) <= BLE_HCI_CONN_ITVL_MAX);
     BLE_HS_DBG_ASSERT(le16toh(ev->max_interval) >= le16toh(ev->min_interval));
 

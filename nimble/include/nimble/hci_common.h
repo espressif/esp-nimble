@@ -1825,7 +1825,20 @@ struct ble_hci_vs_set_event_mask_cp {
 #define BLE_HCI_CONN_FILT_NO_WL             (0)
 #define BLE_HCI_CONN_FILT_USE_WL            (1)
 #define BLE_HCI_CONN_FILT_MAX               (1)
+/* Bluetooth Core Spec minimum connection interval (7.5 ms in 1.25 ms units). */
 #define BLE_HCI_CONN_ITVL_MIN               (0x0006)
+/* Host-side validation floor for connection interval (1.25 ms units). When
+ * CONFIG_BT_BLE_HOST_ALLOW_SUB_SPEC_MIN_CONN_INT is enabled, the host accepts
+ * sub-spec intervals and defers the real lower bound to the controller; 0x0001
+ * is used instead of 0 so uint16_t range checks stay well-defined under
+ * -Wtype-limits. For spec-visible values (e.g. PPCP) use BLE_HCI_CONN_ITVL_MIN.
+ */
+#if defined(CONFIG_BT_BLE_HOST_ALLOW_SUB_SPEC_MIN_CONN_INT) && \
+    (CONFIG_BT_BLE_HOST_ALLOW_SUB_SPEC_MIN_CONN_INT)
+#define BLE_HOST_CONN_PARAM_ITVL_MIN        (0x0001)
+#else
+#define BLE_HOST_CONN_PARAM_ITVL_MIN        BLE_HCI_CONN_ITVL_MIN
+#endif
 #define BLE_HCI_CONN_ITVL_MAX               (0x0c80)
 #define BLE_HCI_CONN_LATENCY_MIN            (0x0000)
 #define BLE_HCI_CONN_LATENCY_MAX            (0x01f3)

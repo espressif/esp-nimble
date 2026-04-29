@@ -7591,12 +7591,12 @@ ble_gap_check_conn_params(uint8_t phy, const struct ble_gap_conn_params *params)
         }
     }
         /* Check connection interval min */
-    if ((params->itvl_min < BLE_HCI_CONN_ITVL_MIN) ||
+    if ((params->itvl_min < BLE_HOST_CONN_PARAM_ITVL_MIN) ||
         (params->itvl_min > BLE_HCI_CONN_ITVL_MAX)) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
     /* Check connection interval max */
-    if ((params->itvl_max < BLE_HCI_CONN_ITVL_MIN) ||
+    if ((params->itvl_max < BLE_HOST_CONN_PARAM_ITVL_MIN) ||
         (params->itvl_max > BLE_HCI_CONN_ITVL_MAX) ||
         (params->itvl_max < params->itvl_min)) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
@@ -8976,7 +8976,8 @@ ble_gap_validate_conn_params(const struct ble_gap_upd_params *params)
         return false;
     }
 
-    if (params->itvl_min < 0x0006 || params->itvl_max > 0x0C80) {
+    if (params->itvl_min < BLE_HOST_CONN_PARAM_ITVL_MIN ||
+        params->itvl_max > BLE_HCI_CONN_ITVL_MAX) {
         return false;
     }
 
