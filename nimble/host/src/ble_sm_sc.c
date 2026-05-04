@@ -107,6 +107,10 @@ static const uint8_t ble_sm_sc_resp_ioa[5 /*resp*/ ][5 /*init*/ ] =
 int
 ble_sm_sc_ensure_ctx (void)
 {
+    /* This context is normally created during SM initialization or while the
+     * host lock is held by the caller.  The debug-key setter may also call this
+     * during single-threaded test setup before pairing starts.
+     */
     if (ble_sm_sc_ctx) {
         return 0;
     }
@@ -146,6 +150,7 @@ ble_sm_dbg_set_sc_keys(uint8_t *pubkey, uint8_t *privkey)
     memcpy(ble_sm_dbg_sc_priv_key, privkey,
            sizeof_ble_sm_dbg_sc_priv_key);
     ble_sm_dbg_sc_keys_set = 1;
+    ble_sm_sc_keys_generated = 0;
 }
 
 #endif
@@ -158,27 +163,30 @@ ble_sm_sc_io_action(struct ble_sm_proc *proc, uint8_t *action)
     pair_req = (struct ble_sm_pair_cmd *) &proc->pair_req[1];
     pair_rsp = (struct ble_sm_pair_cmd *) &proc->pair_rsp[1];
 
+    if ((pair_req->oob_data_flag != BLE_SM_PAIR_OOB_NO &&
+         pair_req->oob_data_flag != BLE_SM_PAIR_OOB_YES) ||
+        (pair_rsp->oob_data_flag != BLE_SM_PAIR_OOB_NO &&
+         pair_rsp->oob_data_flag != BLE_SM_PAIR_OOB_YES)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    } else if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES ||
+        pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
+        *action = BLE_SM_IOACT_OOB_SC;
 #if MYNEWT_VAL(STATIC_PASSKEY)
-    /* Check if static passkey is enabled - if so, use static passkey action */
-    if (ble_hs_cfg.sm_static_passkey)
-    {
+    } else if (ble_hs_cfg.sm_static_passkey) {
         *action = BLE_SM_IOACT_STATIC;
         proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
         proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
         return 0;
-    }
 #endif
-
-    if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES ||
-        pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
-        *action = BLE_SM_IOACT_OOB_SC;
     } else if (!(pair_req->authreq & BLE_SM_PAIR_AUTHREQ_MITM) &&
                !(pair_rsp->authreq & BLE_SM_PAIR_AUTHREQ_MITM)) {
 
         *action = BLE_SM_IOACT_NONE;
     } else if (pair_req->io_cap >= BLE_SM_IO_CAP_RESERVED ||
                pair_rsp->io_cap >= BLE_SM_IO_CAP_RESERVED) {
-        *action = BLE_SM_IOACT_NONE;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     } else if (proc->flags & BLE_SM_PROC_F_INITIATOR) {
         *action = ble_sm_sc_init_ioa[pair_rsp->io_cap][pair_req->io_cap];
     } else {
@@ -249,6 +257,10 @@ ble_sm_sc_ensure_keys_generated(void)
 {
     int rc;
 
+    /* Key generation is serialized by the host task during pairing.  Public OOB
+     * generation takes the host lock before calling here and copies the public
+     * key out before releasing it.
+     */
     if (!ble_sm_sc_keys_generated) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 	if (ble_sm_sc_ensure_ctx()) {
@@ -263,13 +275,6 @@ ble_sm_sc_ensure_keys_generated(void)
 
         ble_sm_sc_keys_generated = 1;
     }
-
-    BLE_HS_LOG(DEBUG, "our pubkey=");
-    ble_hs_log_flat_buf(ble_sm_sc_pub_key, 64);
-    BLE_HS_LOG(DEBUG, "\n");
-    BLE_HS_LOG(DEBUG, "our privkey=");
-    ble_hs_log_flat_buf(ble_sm_sc_priv_key, 32);
-    BLE_HS_LOG(DEBUG, "\n");
 
     return 0;
 }
@@ -561,7 +566,11 @@ ble_sm_sc_random_rx(struct ble_sm_proc *proc, struct ble_sm_result *res)
         }
     }
 
-    /* Calculate the mac key and ltk. */
+    /* Calculate the MacKey and LTK from the currently validated nonces.  During
+     * passkey pairing this may run before the final round, but the intermediate
+     * values stay within the procedure object and are discarded if the procedure
+     * does not complete.
+     */
     ble_sm_ia_ra(proc, &iat, ia, &rat, ra);
     rc = ble_sm_alg_f5(proc->dhkey, proc->randm, proc->rands,
                        iat, ia, rat, ra, proc->mackey, proc->ltk);
@@ -1009,19 +1018,24 @@ ble_sm_sc_oob_data_check(struct ble_sm_proc *proc,
 int
 ble_sm_sc_oob_generate_data(struct ble_sm_sc_oob_data *oob_data)
 {
+    uint8_t pub_key[64];
     int rc;
 
+    ble_hs_lock();
     rc = ble_sm_sc_ensure_keys_generated();
     if (rc) {
+        ble_hs_unlock();
         return rc;
     }
+    memcpy(pub_key, ble_sm_sc_pub_key, sizeof(pub_key));
+    ble_hs_unlock();
 
     rc = ble_hs_hci_util_rand(oob_data->r, 16);
     if (rc) {
         return rc;
     }
 
-    rc = ble_sm_alg_f4(ble_sm_sc_pub_key, ble_sm_sc_pub_key, oob_data->r, 0,
+    rc = ble_sm_alg_f4(pub_key, pub_key, oob_data->r, 0,
                        oob_data->c);
     if (rc) {
         return rc;
@@ -1035,6 +1049,9 @@ ble_sm_sc_init(void)
 {
     ble_sm_alg_ecc_init();
     ble_sm_sc_keys_generated = 0;
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    ble_sm_dbg_sc_keys_set = 0;
+#endif
 }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)

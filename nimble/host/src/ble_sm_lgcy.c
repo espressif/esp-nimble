@@ -61,6 +61,17 @@ static const uint8_t ble_sm_lgcy_resp_ioa[5 /*resp*/ ][5 /*init*/ ] =
     {IOACT_INPUT,   IOACT_INPUT,  IOACT_DISP,  IOACT_NONE, IOACT_INPUT},
 };
 
+static void
+ble_sm_lgcy_zero_mem(void *mem, size_t len)
+{
+    volatile uint8_t *p;
+
+    p = mem;
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
 int
 ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
 {
@@ -69,7 +80,13 @@ ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
     pair_req = (struct ble_sm_pair_cmd *) &proc->pair_req[1];
     pair_rsp = (struct ble_sm_pair_cmd *) &proc->pair_rsp[1];
 
-    if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES &&
+    if ((pair_req->oob_data_flag != BLE_SM_PAIR_OOB_NO &&
+         pair_req->oob_data_flag != BLE_SM_PAIR_OOB_YES) ||
+        (pair_rsp->oob_data_flag != BLE_SM_PAIR_OOB_NO &&
+         pair_rsp->oob_data_flag != BLE_SM_PAIR_OOB_YES)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    } else if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES &&
         pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
         /* OOB takes precedence over static passkey per BLE spec */
         *action = BLE_SM_IOACT_OOB;
@@ -86,7 +103,8 @@ ble_sm_lgcy_io_action(struct ble_sm_proc *proc, uint8_t *action)
         *action = BLE_SM_IOACT_NONE;
     } else if (pair_req->io_cap >= BLE_SM_IO_CAP_RESERVED ||
                pair_rsp->io_cap >= BLE_SM_IO_CAP_RESERVED) {
-        *action = BLE_SM_IOACT_NONE;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     } else if (proc->flags & BLE_SM_PROC_F_INITIATOR) {
         *action = ble_sm_lgcy_init_ioa[pair_rsp->io_cap][pair_req->io_cap];
     } else {
@@ -182,7 +200,9 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
                       proc->key_size <= BLE_SM_PAIR_KEY_SZ_MAX);
 
     rc = ble_sm_alg_s1(proc->tk, proc->rands, proc->randm, key);
+    ble_sm_lgcy_zero_mem(proc->tk, sizeof proc->tk);
     if (rc != 0) {
+        ble_sm_lgcy_zero_mem(key, sizeof key);
         return rc;
     }
 
@@ -192,7 +212,7 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
     memset(proc->ltk + proc->key_size, 0, sizeof key - proc->key_size);
 
     /* Zero sensitive key material from stack */
-    memset(key, 0, sizeof(key));
+    ble_sm_lgcy_zero_mem(key, sizeof key);
 
     return 0;
 }
