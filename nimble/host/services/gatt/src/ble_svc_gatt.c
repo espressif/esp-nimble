@@ -220,7 +220,6 @@ ble_svc_gatt_changed(uint16_t start_handle, uint16_t end_handle)
 {
     ble_svc_gatt_start_handle = start_handle;
     ble_svc_gatt_end_handle = end_handle;
-    ble_gatts_chr_updated(ble_svc_gatt_changed_val_handle);
 }
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -240,6 +239,13 @@ void
 ble_svc_gatt_init(void)
 {
     int rc;
+    ble_uuid_t *gatt_uuid = NULL;
+
+    gatt_uuid = BLE_UUID16_DECLARE(BLE_GATT_SVC_UUID16);
+    rc = ble_gatts_find_svc(gatt_uuid, NULL);
+    if (rc == 0) {
+        return;
+    }
 
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();

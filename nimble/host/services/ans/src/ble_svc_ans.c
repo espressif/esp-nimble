@@ -23,6 +23,7 @@
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
 #include "host/ble_hs.h"
+#include "../../../src/ble_hs_priv.h"
 #include "host/ble_gap.h"
 #include "services/ans/ble_svc_ans.h"
 #include "host/ble_hs_log.h"
@@ -40,6 +41,10 @@
 /* Supported categories bitmasks */
 static uint8_t ble_svc_ans_new_alert_cat;
 static uint8_t ble_svc_ans_unr_alert_cat;
+
+/* Notification state bitmasks */
+static uint8_t ble_svc_ans_new_alert_notif_state;
+static uint8_t ble_svc_ans_unr_alert_notif_state;
 
 /* Characteristic values */
 static uint8_t ble_svc_ans_new_alert_val[BLE_SVC_ANS_NEW_ALERT_MAX_LEN];
@@ -185,21 +190,27 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
         if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
             return BLE_ATT_ERR_UNLIKELY;
         }
+        ble_hs_lock();
         rc = os_mbuf_append(ctxt->om, &ble_svc_ans_new_alert_cat,
                             sizeof ble_svc_ans_new_alert_cat);
+        ble_hs_unlock();
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
     case BLE_SVC_ANS_CHR_UUID16_NEW_ALERT:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            ble_hs_lock();
             rc = ble_svc_ans_chr_write(ctxt->om, 0,
                                        sizeof ble_svc_ans_new_alert_val,
                                        ble_svc_ans_new_alert_val,
                                        &ble_svc_ans_new_alert_val_len);
+            ble_hs_unlock();
             return rc;
 
         } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+            ble_hs_lock();
             rc = os_mbuf_append(ctxt->om, &ble_svc_ans_new_alert_val,
                                 sizeof ble_svc_ans_new_alert_val);
+            ble_hs_unlock();
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
@@ -208,21 +219,27 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
         if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
             return BLE_ATT_ERR_UNLIKELY;
         }
+        ble_hs_lock();
         rc = os_mbuf_append(ctxt->om, &ble_svc_ans_unr_alert_cat,
                             sizeof ble_svc_ans_unr_alert_cat);
+        ble_hs_unlock();
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
     case BLE_SVC_ANS_CHR_UUID16_UNR_ALERT_STAT:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            ble_hs_lock();
             rc = ble_svc_ans_chr_write(ctxt->om,
                                        sizeof ble_svc_ans_unr_alert_stat,
                                        sizeof ble_svc_ans_unr_alert_stat,
                                        &ble_svc_ans_unr_alert_stat,
                                        NULL);
+            ble_hs_unlock();
             return rc;
         } else {
+            ble_hs_lock();
             rc = os_mbuf_append(ctxt->om, &ble_svc_ans_unr_alert_stat,
                                 sizeof ble_svc_ans_unr_alert_stat);
+            ble_hs_unlock();
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
@@ -254,39 +271,67 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
 
             switch (cmd_id) {
             case BLE_SVC_ANS_CMD_EN_NEW_ALERT_CAT:
-                ble_svc_ans_new_alert_cat |= cat_bit_mask;
+                ble_hs_lock();
+                ble_svc_ans_new_alert_notif_state |= (cat_bit_mask & ble_svc_ans_new_alert_cat);
+                ble_hs_unlock();
                 break;
             case BLE_SVC_ANS_CMD_EN_UNR_ALERT_CAT:
-                ble_svc_ans_unr_alert_cat |= cat_bit_mask;
+                ble_hs_lock();
+                ble_svc_ans_unr_alert_notif_state |= (cat_bit_mask & ble_svc_ans_unr_alert_cat);
+                ble_hs_unlock();
                 break;
             case BLE_SVC_ANS_CMD_DIS_NEW_ALERT_CAT:
-                ble_svc_ans_new_alert_cat &= ~cat_bit_mask;
+                ble_hs_lock();
+                ble_svc_ans_new_alert_notif_state &= ~cat_bit_mask;
+                ble_hs_unlock();
                 break;
             case BLE_SVC_ANS_CMD_DIS_UNR_ALERT_CAT:
-                ble_svc_ans_unr_alert_cat &= ~cat_bit_mask;
+                ble_hs_lock();
+                ble_svc_ans_unr_alert_notif_state &= ~cat_bit_mask;
+                ble_hs_unlock();
                 break;
             case BLE_SVC_ANS_CMD_NOT_NEW_ALERT_IMMEDIATE:
                 if (cat_id == BLE_SVC_ANS_CAT_ID_ALL) {
                     /* If cat_id is 0xff, notify on all enabled categories */
                     for (i = BLE_SVC_ANS_CAT_NUM - 1; i >= 0; --i) {
-                        if ((ble_svc_ans_new_alert_cat >> i) & 0x01) {
+                        ble_hs_lock();
+                        if ((ble_svc_ans_new_alert_notif_state >> i) & 0x01) {
+                            ble_hs_unlock();
                             ble_svc_ans_new_alert_notify(i, NULL);
+                        } else {
+                            ble_hs_unlock();
                         }
                     }
-                } else if ((ble_svc_ans_new_alert_cat >> cat_id) & 0x01){
-                    ble_svc_ans_new_alert_notify(cat_id, NULL);
+                } else {
+                    ble_hs_lock();
+                    if ((ble_svc_ans_new_alert_notif_state >> cat_id) & 0x01){
+                        ble_hs_unlock();
+                        ble_svc_ans_new_alert_notify(cat_id, NULL);
+                    } else {
+                        ble_hs_unlock();
+                    }
                 }
                 break;
             case BLE_SVC_ANS_CMD_NOT_UNR_ALERT_IMMEDIATE:
                 if (cat_id == BLE_SVC_ANS_CAT_ID_ALL) {
                     /* If cat_id is 0xff, notify on all enabled categories */
                     for (i = BLE_SVC_ANS_CAT_NUM - 1; i >= 0; --i) {
-                        if ((ble_svc_ans_unr_alert_cat >> i) & 0x01) {
+                        ble_hs_lock();
+                        if ((ble_svc_ans_unr_alert_notif_state >> i) & 0x01) {
+                            ble_hs_unlock();
                             ble_svc_ans_unr_alert_notify(i);
+                        } else {
+                            ble_hs_unlock();
                         }
                     }
-                } else if ((ble_svc_ans_unr_alert_cat >> cat_id) & 0x01) {
-                    ble_svc_ans_unr_alert_notify(cat_id);
+                } else {
+                    ble_hs_lock();
+                    if ((ble_svc_ans_unr_alert_notif_state >> cat_id) & 0x01) {
+                        ble_hs_unlock();
+                        ble_svc_ans_unr_alert_notify(cat_id);
+                    } else {
+                        ble_hs_unlock();
+                    }
                 }
                 break;
             default:
@@ -314,7 +359,9 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_ans_on_gap_connect(uint16_t conn_handle)
 {
+    ble_hs_lock();
     ble_svc_ans_conn_handle = conn_handle;
+    ble_hs_unlock();
 }
 
 /**
@@ -332,6 +379,7 @@ int
 ble_svc_ans_new_alert_add(uint8_t cat_id, const char * info_str)
 {
     uint8_t cat_bit_mask;
+    int rc = 0;
 
     if (cat_id < BLE_SVC_ANS_CAT_NUM) {
         cat_bit_mask = (1 << cat_id);
@@ -340,7 +388,9 @@ ble_svc_ans_new_alert_add(uint8_t cat_id, const char * info_str)
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
     if ((cat_bit_mask & ble_svc_ans_new_alert_cat) == 0) {
+        ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
@@ -349,7 +399,14 @@ ble_svc_ans_new_alert_add(uint8_t cat_id, const char * info_str)
         ble_svc_ans_new_alert_cnt[cat_id] += 1;
     }
 
-    return ble_svc_ans_new_alert_notify(cat_id, info_str);
+    if ((cat_bit_mask & ble_svc_ans_new_alert_notif_state) != 0) {
+        ble_hs_unlock();
+        rc = ble_svc_ans_new_alert_notify(cat_id, info_str);
+    } else {
+        ble_hs_unlock();
+    }
+
+    return rc;
 }
 
 /**
@@ -365,6 +422,7 @@ int
 ble_svc_ans_unr_alert_add(uint8_t cat_id)
 {
     uint8_t cat_bit_mask;
+    int rc = 0;
 
     if (cat_id < BLE_SVC_ANS_CAT_NUM) {
         cat_bit_mask = 1 << cat_id;
@@ -373,7 +431,9 @@ ble_svc_ans_unr_alert_add(uint8_t cat_id)
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
     if ((cat_bit_mask & ble_svc_ans_unr_alert_cat) == 0) {
+        ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
@@ -382,7 +442,14 @@ ble_svc_ans_unr_alert_add(uint8_t cat_id)
         ble_svc_ans_unr_alert_cnt[cat_id] += 1;
     }
 
-    return ble_svc_ans_unr_alert_notify(cat_id);
+    if ((cat_bit_mask & ble_svc_ans_unr_alert_notif_state) != 0) {
+        ble_hs_unlock();
+        rc = ble_svc_ans_unr_alert_notify(cat_id);
+    } else {
+        ble_hs_unlock();
+    }
+
+    return rc;
 }
 
 /**
@@ -400,7 +467,10 @@ static int
 ble_svc_ans_new_alert_notify(uint8_t cat_id, const char * info_str)
 {
     int info_str_len;
+    int rc;
+    uint16_t conn_handle;
 
+    ble_hs_lock();
     /* Clear notification to remove old information that may persist */
     memset(&ble_svc_ans_new_alert_val, '\0',
            BLE_SVC_ANS_NEW_ALERT_MAX_LEN);
@@ -420,12 +490,16 @@ ble_svc_ans_new_alert_notify(uint8_t cat_id, const char * info_str)
             memcpy(&ble_svc_ans_new_alert_val[2], info_str, info_str_len);
         }
     }
+    conn_handle = ble_svc_ans_conn_handle;
+    ble_hs_unlock();
+
 #if NIMBLE_BLE_CONNECT
-    return ble_gatts_notify(ble_svc_ans_conn_handle,
-                            ble_svc_ans_new_alert_val_handle);
+    rc = ble_gatts_notify(conn_handle,
+                          ble_svc_ans_new_alert_val_handle);
 #else
-    return 0;
+    rc = 0;
 #endif
+    return rc;
 }
 
 /**
@@ -439,14 +513,22 @@ ble_svc_ans_new_alert_notify(uint8_t cat_id, const char * info_str)
 static int
 ble_svc_ans_unr_alert_notify(uint8_t cat_id)
 {
+    int rc;
+    uint16_t conn_handle;
+
+    ble_hs_lock();
     ble_svc_ans_unr_alert_stat[0] = cat_id;
     ble_svc_ans_unr_alert_stat[1] = ble_svc_ans_unr_alert_cnt[cat_id];
+    conn_handle = ble_svc_ans_conn_handle;
+    ble_hs_unlock();
+
 #if NIMBLE_BLE_CONNECT
-    return ble_gatts_notify(ble_svc_ans_conn_handle,
-                            ble_svc_ans_unr_alert_val_handle);
+    rc = ble_gatts_notify(conn_handle,
+                          ble_svc_ans_unr_alert_val_handle);
 #else
-    return 0;
+    rc = 0;
 #endif
+    return rc;
 }
 
 /**

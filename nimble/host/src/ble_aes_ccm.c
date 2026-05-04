@@ -112,18 +112,24 @@ int
 ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
     struct tc_aes_key_sched_struct s = {0};
+    int rc = 0;
 
     if (tc_aes128_set_encrypt_key(&s, key) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     if (tc_aes_encrypt(enc_data, plaintext, &s) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
 
-    return 0;
+done:
+    /* Securely erase sensitive key material from stack */
+    memset(&s, 0, sizeof(s));
+    return rc;
 }
 #endif
 
@@ -337,6 +343,13 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
     rc = ble_aes_ccm_auth(key_reversed, nonce, out_msg, msg_len, aad, aad_len, mic, mic_size);
     if (rc != 0) {
         return rc;
+    }
+
+    /* Compare calculated MIC with received MIC */
+    if (memcmp(mic, enc_msg + msg_len, mic_size) != 0) {
+        /* Zero out the decrypted plaintext on authentication failure */
+        memset(out_msg, 0, msg_len);
+        return BLE_HS_EAUTHEN;
     }
 
     return 0;

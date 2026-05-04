@@ -22,6 +22,7 @@
 
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
+#include "../../../src/ble_hs_priv.h"
 #include "services/gap/ble_svc_gap.h"
 #include "os/endian.h"
 #include "esp_nimble_cfg.h"
@@ -192,6 +193,7 @@ ble_svc_gap_device_name_read_access(struct ble_gatt_access_ctxt *ctxt)
     size_t read_len;
     int rc;
 
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!ble_hs_gap_svc_ctx || !ble_hs_gap_svc_ctx->svc_gap_name) {
         name = "";
@@ -203,11 +205,13 @@ ble_svc_gap_device_name_read_access(struct ble_gatt_access_ctxt *ctxt)
 #endif
     name_len = strlen(name);
     if (ctxt->offset > name_len) {
+        ble_hs_unlock();
         return BLE_ATT_ERR_INVALID_OFFSET;
     }
     read_len = name_len - ctxt->offset;
 
     rc = os_mbuf_append(ctxt->om, name + ctxt->offset, read_len);
+    ble_hs_unlock();
 
     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
@@ -227,17 +231,21 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
 
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!ble_hs_gap_svc_ctx) {
+        ble_hs_unlock();
         return BLE_ATT_ERR_UNLIKELY;
     }
     // Free old name if already allocated
     if (ble_hs_gap_svc_ctx->svc_gap_name) {
         nimble_platform_mem_free(ble_hs_gap_svc_ctx->svc_gap_name);
+        ble_hs_gap_svc_ctx->svc_gap_name = NULL;
     }
 
     ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, om_len + 1);
     if (!ble_hs_gap_svc_ctx->svc_gap_name) {
+        ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
@@ -246,6 +254,7 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
     rc = ble_hs_mbuf_to_flat(ctxt->om, ble_svc_gap_name, om_len, NULL);
 
     if (rc != 0) {
+        ble_hs_unlock();
         return BLE_ATT_ERR_UNLIKELY;
     }
 
@@ -254,6 +263,7 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
     if (ble_svc_gap_chr_changed_cb_fn) {
         ble_svc_gap_chr_changed_cb_fn(BLE_SVC_GAP_CHR_UUID16_DEVICE_NAME);
     }
+    ble_hs_unlock();
 
     return rc;
 #endif
@@ -262,8 +272,12 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
 static int
 ble_svc_gap_appearance_read_access(struct ble_gatt_access_ctxt *ctxt)
 {
-    uint16_t appearance = htole16(ble_svc_gap_appearance);
+    uint16_t appearance;
     int rc;
+
+    ble_hs_lock();
+    appearance = htole16(ble_svc_gap_appearance);
+    ble_hs_unlock();
 
     rc = os_mbuf_append(ctxt->om, &appearance, sizeof(appearance));
 
@@ -285,8 +299,10 @@ ble_svc_gap_appearance_write_access(struct ble_gatt_access_ctxt *ctxt)
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
 
+    ble_hs_lock();
     rc = ble_hs_mbuf_to_flat(ctxt->om, &ble_svc_gap_appearance, om_len, NULL);
     if (rc != 0) {
+        ble_hs_unlock();
         return BLE_ATT_ERR_UNLIKELY;
     }
 
@@ -295,6 +311,7 @@ ble_svc_gap_appearance_write_access(struct ble_gatt_access_ctxt *ctxt)
     if (ble_svc_gap_chr_changed_cb_fn) {
         ble_svc_gap_chr_changed_cb_fn(BLE_SVC_GAP_CHR_UUID16_APPEARANCE);
     }
+    ble_hs_unlock();
 
     return rc;
 #endif
@@ -408,7 +425,9 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
 #if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
     case BLE_SVC_GAP_CHR_UUID16_LE_GATT_SECURITY_LEVELS:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
+        ble_hs_lock();
         rc = ble_svc_gap_security_level_read_access(conn_handle, ctxt->om);
+        ble_hs_unlock();
         return rc;
 #endif
 
@@ -422,12 +441,17 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
 const char *
 ble_svc_gap_device_name(void)
 {
+    const char *name;
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!ble_hs_gap_svc_ctx || !ble_hs_gap_svc_ctx->svc_gap_name) {
+        ble_hs_unlock();
         return "";
     }
 #endif
-    return ble_svc_gap_name;
+    name = ble_svc_gap_name;
+    ble_hs_unlock();
+    return name;
 }
 
 int
@@ -446,11 +470,13 @@ ble_svc_gap_device_name_set(const char *name)
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_gap_svc_ctx == NULL) {
         ble_hs_gap_svc_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_gap_svc_ctx));
 
         if (!ble_hs_gap_svc_ctx) {
+            ble_hs_unlock();
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
@@ -458,10 +484,12 @@ ble_svc_gap_device_name_set(const char *name)
     // Free old name if already allocated
     if (ble_hs_gap_svc_ctx->svc_gap_name) {
         nimble_platform_mem_free(ble_hs_gap_svc_ctx->svc_gap_name);
+        ble_hs_gap_svc_ctx->svc_gap_name = NULL;
     }
 
     ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, len + 1);
     if (!ble_hs_gap_svc_ctx->svc_gap_name) {
+        ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
@@ -469,6 +497,7 @@ ble_svc_gap_device_name_set(const char *name)
 
     memcpy(ble_svc_gap_name, name, len);
     ble_svc_gap_name[len] = '\0';
+    ble_hs_unlock();
 
     return 0;
 }
@@ -476,30 +505,38 @@ ble_svc_gap_device_name_set(const char *name)
 uint16_t
 ble_svc_gap_device_appearance(void)
 {
+    uint16_t appearance;
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!ble_hs_gap_svc_ctx) {
         int rc = ble_svc_gap_appearance_init();
         if (rc != 0) {
+            ble_hs_unlock();
             return 0; /* Safe default on allocation failure */
         }
     }
 #endif
-    return ble_svc_gap_appearance;
+    appearance = ble_svc_gap_appearance;
+    ble_hs_unlock();
+    return appearance;
 }
 
 int
 ble_svc_gap_device_appearance_set(uint16_t appearance)
 {
 
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!ble_hs_gap_svc_ctx) {
         int rc = ble_svc_gap_appearance_init();
         if (rc != 0) {
+            ble_hs_unlock();
             return rc;
         }
     }
 #endif
     ble_svc_gap_appearance = appearance;
+    ble_hs_unlock();
 
     return 0;
 }
@@ -507,7 +544,9 @@ ble_svc_gap_device_appearance_set(uint16_t appearance)
 void
 ble_svc_gap_set_chr_changed_cb(ble_svc_gap_chr_changed_fn *cb)
 {
+    ble_hs_lock();
     ble_svc_gap_chr_changed_cb_fn = cb;
+    ble_hs_unlock();
 }
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
@@ -518,9 +557,22 @@ ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv)
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
+
+    ble_hs_lock();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_gap_svc_ctx) {
+        int rc = ble_svc_gap_appearance_init();
+        if (rc != 0) {
+            ble_hs_unlock();
+            return rc;
+        }
+    }
+#endif
+
     memcpy(&ble_svc_gap_km.session_key, session_key, BLE_EAD_KEY_SIZE);
     memcpy(&ble_svc_gap_km.iv, iv, BLE_EAD_IV_SIZE);
     ble_gatts_chr_updated(ble_svc_gap_enc_adv_data_handle);
+    ble_hs_unlock();
     return 0;
 }
 #endif
@@ -618,11 +670,13 @@ ble_svc_gap_deinit(void)
 {
     ble_gatts_free_svcs();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_hs_lock();
     if (ble_hs_gap_svc_ctx) {
         ble_svc_gap_deinit_name();
         nimble_platform_mem_free(ble_hs_gap_svc_ctx);
         ble_hs_gap_svc_ctx = NULL;
     }
+    ble_hs_unlock();
 #endif
 }
 #endif

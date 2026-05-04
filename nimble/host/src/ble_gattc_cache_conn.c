@@ -1334,6 +1334,7 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
     }
 
     ble_gattc_db_elem_t *curr_db_attr = buffer;
+    size_t filled = 0;
     struct ble_gattc_cache_conn_svc *svc;
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
     struct ble_gattc_cache_conn_incl_svc *included_svc;
@@ -1350,6 +1351,11 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
         if (svc->svc.start_handle > end_handle) {
             break;
         }
+        if (filled >= db_size) {
+            *db = buffer;
+            *count = db_size;
+            return;
+        }
         ble_gattc_fill_gatt_db_el(curr_db_attr,
                                   svc->type == BLE_GATT_SVC_TYPE_PRIMARY ? /* attr type */
                                   BLE_GATT_DB_PRIMARY_SERVICE:
@@ -1360,6 +1366,7 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                                   0,                                      /* property    */
                                   svc->svc.uuid);                         /* uuid        */
         curr_db_attr++;
+        filled++;
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
         // Iterate over included services
         SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
@@ -1373,6 +1380,11 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                 return;
             }
 
+            if (filled >= db_size) {
+                *db = buffer;
+                *count = db_size;
+                return;
+            }
             ble_gattc_fill_gatt_db_el(curr_db_attr,
                                       BLE_GATT_DB_INCLUDED_SERVICE,    /* attr type   */
                                       included_svc->svc.handle,        /* attr handle */
@@ -1381,6 +1393,7 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                                       0,                               /* property    */
                                       included_svc->svc.uuid);         /* uuid        */
             curr_db_attr++;
+            filled++;
         }
 #endif
         // Iterate over characterstic
@@ -1394,6 +1407,11 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                 *count = db_size;
                 return;
             }
+            if (filled >= db_size) {
+                *db = buffer;
+                *count = db_size;
+                return;
+            }
             ble_gattc_fill_gatt_db_el(curr_db_attr,
                                       BLE_GATT_DB_CHARACTERISTIC,     /* attr type   */
                                       chr->chr.val_handle,            /* attr handle */
@@ -1402,6 +1420,7 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                                       chr->chr.properties,            /* property    */
                                       chr->chr.uuid);                 /* uuid        */
               curr_db_attr++;
+              filled++;
                // Iterate over descriptors
                SLIST_FOREACH(dsc, &chr->dscs, next) {
                     if (dsc->dsc.handle < start_handle) {
@@ -1409,6 +1428,11 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                     }
 
                     if (dsc->dsc.handle > end_handle) {
+                        *db = buffer;
+                        *count = db_size;
+                        return;
+                    }
+                    if (filled >= db_size) {
                         *db = buffer;
                         *count = db_size;
                         return;
@@ -1421,12 +1445,13 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
                                               0,                        /* property    */
                                               dsc->dsc.uuid);           /* uuid        */
                     curr_db_attr++;
+                    filled++;
               }
         }
     }
 
     *db = buffer;
-    *count = db_size;
+    *count = filled;
 
     return;
 }

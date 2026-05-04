@@ -520,7 +520,7 @@ ble_l2cap_event_coc_unstalled(struct ble_l2cap_chan *chan, int status)
 /* WARNING: this function is called from different task contexts. We expect the
  * host to be locked (ble_hs_lock()) before entering this function! */
 static int
-ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
+ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan, bool free_on_err)
 {
     struct ble_l2cap_coc_endpoint *tx;
     uint16_t len;
@@ -635,7 +635,9 @@ ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
     return 0;
 
 failed:
-    os_mbuf_free_chain(tx->sdus[0]);
+    if (free_on_err) {
+        os_mbuf_free_chain(tx->sdus[0]);
+    }
     tx->sdus[0] = NULL;
 
     os_mbuf_free_chain(txom);
@@ -681,7 +683,7 @@ ble_l2cap_coc_le_credits_update(uint16_t conn_handle, uint16_t dcid,
     chan->coc_tx.credits += credits;
 
     /* leave the host locked on purpose when ble_l2cap_coc_continue_tx() */
-    ble_l2cap_coc_continue_tx(chan);
+    ble_l2cap_coc_continue_tx(chan, true);
 }
 
 int
@@ -697,9 +699,7 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
 
     ble_hs_lock();
 
-    if (chan->coc_rx.sdus[0] != NULL &&
-        chan->coc_rx.next_sdu_alloc_idx == chan->coc_rx.current_sdu_idx &&
-        BLE_L2CAP_SDU_BUFF_CNT != 1) {
+    if (chan->coc_rx.sdus[chan->coc_rx.next_sdu_alloc_idx] != NULL) {
         ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBUSY);
         return BLE_HS_EBUSY;
@@ -777,7 +777,7 @@ ble_l2cap_coc_send(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_tx)
 
 
     /* leave the host locked on purpose when ble_l2cap_coc_continue_tx() */
-    return ble_l2cap_coc_continue_tx(chan);
+    return ble_l2cap_coc_continue_tx(chan, false);
 }
 
 int

@@ -104,8 +104,8 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
-        memcpy(ble_eddystone_uuids16 + 1, adv_fields->uuids16,
-               adv_fields->num_uuids16 * sizeof(ble_uuid16_t));
+        memmove(ble_eddystone_uuids16 + 1, adv_fields->uuids16,
+                adv_fields->num_uuids16 * sizeof(ble_uuid16_t));
     }
     adv_fields->uuids16 = ble_eddystone_uuids16;
     adv_fields->num_uuids16++;
@@ -144,6 +144,8 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
+
     /* Eddystone UUID and frame type (0). */
     svc_data = ble_eddystone_set_svc_data_base(BLE_EDDYSTONE_FRAME_TYPE_UID);
 
@@ -158,11 +160,10 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
     svc_data[1 + BLE_EDDYSTONE_UID_LEN + 1] = 0x00;
 
     rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
-    if (rc != 0) {
-        return rc;
-    }
 
-    return 0;
+    ble_hs_unlock();
+
+    return rc;
 }
 
 int
@@ -206,6 +207,8 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
+
     svc_data = ble_eddystone_set_svc_data_base(BLE_EDDYSTONE_FRAME_TYPE_URL);
 
     /* Measured Power ranging data (Calibrated tx power at 0 meters). */
@@ -220,9 +223,8 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
     }
 
     rc = ble_eddystone_set_adv_data_gen(adv_fields, url_len + 2);
-    if (rc != 0) {
-        return rc;
-    }
 
-    return 0;
+    ble_hs_unlock();
+
+    return rc;
 }
