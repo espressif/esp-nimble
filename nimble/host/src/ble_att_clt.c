@@ -83,7 +83,6 @@ ble_att_clt_tx_mtu(uint16_t conn_handle, uint16_t mtu)
     } else if (chan->flags & BLE_L2CAP_CHAN_F_TXED_MTU) {
         rc = BLE_HS_EALREADY;
     } else {
-        chan->flags |= BLE_L2CAP_CHAN_F_TXED_MTU;
         rc = 0;
     }
     ble_hs_unlock();
@@ -105,6 +104,13 @@ ble_att_clt_tx_mtu(uint16_t conn_handle, uint16_t mtu)
     }
 
     req->bamc_mtu = htole16(mtu);
+
+    ble_hs_lock();
+    rc = ble_att_conn_chan_find(conn_handle, BLE_L2CAP_CID_ATT, &conn, &chan);
+    if (rc == 0) {
+        chan->flags |= BLE_L2CAP_CHAN_F_TXED_MTU;
+    }
+    ble_hs_unlock();
 
     rc = ble_att_tx(conn_handle, BLE_L2CAP_CID_ATT, txom);
     if (rc != 0) {
@@ -612,6 +618,11 @@ ble_att_clt_tx_read_mult(uint16_t conn_handle, uint16_t cid,
 
     for(i = 0; i < num_handles; i++) {
         req->handles[i] = htole16(handles[i]);
+    }
+
+    if (OS_MBUF_PKTLEN(txom) > ble_att_mtu_by_cid(conn_handle, cid)) {
+        os_mbuf_free_chain(txom);
+        return BLE_HS_EMSGSIZE;
     }
 
     return ble_att_tx(conn_handle, cid, txom);
@@ -1124,7 +1135,7 @@ ble_att_clt_tx_notify(uint16_t conn_handle, uint16_t handle,
     cid = ble_eatt_get_available_chan_cid(conn_handle, BLE_GATT_OP_DUMMY);
     rc = ble_att_tx(conn_handle, cid, txom2);
     if (cid != BLE_L2CAP_CID_ATT) {
-        ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
+        ble_eatt_release_chan(conn_handle, cid);
     }
     return rc;
 
@@ -1158,7 +1169,7 @@ ble_att_clt_tx_multi_notify(uint16_t conn_handle, struct os_mbuf * om)
     cid = ble_eatt_get_available_chan_cid(conn_handle, BLE_GATT_OP_DUMMY);
     rc = ble_att_tx(conn_handle, cid, txom);
     if (cid != BLE_L2CAP_CID_ATT) {
-        ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
+        ble_eatt_release_chan(conn_handle, cid);
     }
     return rc;
 }

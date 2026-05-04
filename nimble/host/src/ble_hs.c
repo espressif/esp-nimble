@@ -304,8 +304,8 @@ ble_hs_lock_nested(void)
     ble_hs_task_handle = xTaskGetCurrentTaskHandle();
     if (ble_hs_task_handle_index < MAX_NESTED_LOCKS) {
         ble_hs_task_handles[ble_hs_task_handle_index] = xTaskGetCurrentTaskHandle();
+        ble_hs_task_handle_index++;
     }
-    ble_hs_task_handle_index++;
 #endif
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -328,14 +328,14 @@ ble_hs_unlock_nested(void)
         if (counter_lock == 0) {
             ble_hs_mutex_locked = 0;
         }
-        if (ble_hs_task_handle_index > MAX_NESTED_LOCKS) {
-            ble_hs_task_handle_index--;
-        } else if (ble_hs_task_handle_index > 0 &&
-            ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
+        if (ble_hs_task_handle_index > 0 && ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
             ble_hs_task_handle_index--;
             ble_hs_task_handles[ble_hs_task_handle_index] = NULL;
-            ble_hs_task_handle = (ble_hs_task_handle_index > 0) ?
-                ble_hs_task_handles[ble_hs_task_handle_index - 1] : NULL;
+            if (ble_hs_task_handle_index > 0) {
+                ble_hs_task_handle = ble_hs_task_handles[ble_hs_task_handle_index - 1];
+            } else {
+                ble_hs_task_handle = NULL;
+            }
         }
     }
 #endif
@@ -478,15 +478,7 @@ ble_hs_clear_rx_queue(void)
 int
 ble_hs_is_enabled(void)
 {
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ble_hs_state_ctx_t *ctx = ble_hs_state_ctx;
-    if (!ctx) {
-        return 0;
-    }
-    return ctx->enabled_state == BLE_HS_ENABLED_STATE_ON;
-#else
-    return ble_hs_enabled_state == BLE_HS_ENABLED_STATE_ON;
-#endif
+    return ble_hs_get_enabled_state() == BLE_HS_ENABLED_STATE_ON;
 }
 
 int
@@ -632,6 +624,7 @@ static void
 ble_hs_timer_sched(int32_t ticks_from_now)
 {
     ble_npl_time_t abs_time;
+    ble_npl_time_t expiry;
 
     if (ticks_from_now == BLE_HS_FOREVER) {
         return;
@@ -641,14 +634,15 @@ ble_hs_timer_sched(int32_t ticks_from_now)
      * sooner than the previous expiration time.
      */
     abs_time = ble_npl_time_get() + ticks_from_now;
+    expiry = ble_npl_callout_get_ticks(&ble_hs_timer);
+
     if (!ble_npl_callout_is_active(&ble_hs_timer) ||
-            ((ble_npl_stime_t)(abs_time -
-                               ble_npl_callout_get_ticks(&ble_hs_timer))) < 0) {
+            ((ble_npl_stime_t)(abs_time - expiry)) < 0) {
         ble_hs_timer_reset(ticks_from_now);
     }
-    else if ((ble_npl_stime_t)(ble_npl_callout_get_ticks(&ble_hs_timer) -
-                               ble_npl_time_get()) <= 0) {
-        BLE_HS_LOG(DEBUG,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
+    else if (expiry != 0 && expiry <= ble_npl_time_get()) {
+        /* Reset timer if currect time is later than expiration time. */
+        BLE_HS_LOG(DEBUG,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",expiry,ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
         ble_hs_timer_reset(ticks_from_now);
     }
 }
@@ -714,7 +708,9 @@ ble_hs_event_rx_hci_ev(struct ble_npl_event *ev)
 static void
 ble_hs_event_tx_notify(struct ble_npl_event *ev)
 {
+    ble_hs_lock();
     ble_gatts_tx_notifications();
+    ble_hs_unlock();
 }
 #endif
 
@@ -765,7 +761,7 @@ ble_hs_event_start_stage2(struct ble_npl_event *ev)
 
     rc = ble_hs_start();
     if (rc != 0 && rc != BLE_HS_EALREADY) {
-        assert(0);
+        BLE_HS_LOG(ERROR, "Failed to start host; rc=%d\n", rc);
     }
 }
 
@@ -773,6 +769,10 @@ void
 ble_hs_enqueue_hci_event(uint8_t *hci_evt)
 {
     struct ble_npl_event *ev;
+
+    if (ble_hs_ctx == NULL || ble_hs_evq == NULL) {
+        goto free_evt;
+    }
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
 
@@ -785,6 +785,7 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
         if (ev) {
             os_memblock_put(&ble_hs_hci_ev_pool, ev);
         }
+free_evt:
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_transport_free(BLE_HCI_EVT, hci_evt);
 #else
@@ -807,19 +808,22 @@ ble_hs_notifications_sched(void)
     }
 #endif
 
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_hs_ctx && ble_hs_evq) {
-#else
-    if (ble_hs_evq) {
-#endif
+#if MYNEWT_VAL(BLE_GATTS)
+    if (ble_hs_ctx != NULL && ble_hs_evq != NULL) {
         ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_tx_notifications);
     }
+#endif
 }
 
 void
 ble_hs_sched_reset(int reason)
 {
     ble_hs_lock_nested();
+    if (ble_hs_ctx == NULL) {
+        ble_hs_unlock_nested();
+        return;
+    }
+
     if (ble_hs_reset_reason != 0) {
         ble_hs_unlock_nested();
         return;
@@ -828,7 +832,7 @@ ble_hs_sched_reset(int reason)
     ble_hs_reset_reason = reason;
     ble_hs_unlock_nested();
 
-    if (ble_hs_evq) {
+    if (ble_hs_evq != NULL) {
         ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_reset);
     }
 }
@@ -864,9 +868,9 @@ ble_hs_start(void)
         rc = BLE_HS_EUNKNOWN;
         break;
     }
-    ble_hs_unlock();
 
     if (rc != 0) {
+        ble_hs_unlock();
         return rc;
     }
 
@@ -885,6 +889,7 @@ ble_hs_start(void)
 #endif
 
     ble_npl_callout_init(&ble_hs_timer, ble_hs_evq, ble_hs_timer_exp, NULL);
+    ble_hs_unlock();
 
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_GATTS)
@@ -984,10 +989,7 @@ ble_hs_init(void)
 
     if (!ble_hs_ctx) {
         ble_hs_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_ctx));
-        if (!ble_hs_ctx) {
-            MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_ctx (%zu bytes)\n", sizeof(*ble_hs_ctx));
-            return;
-        }
+        SYSINIT_PANIC_ASSERT(ble_hs_ctx != NULL);
     }
 
     if (!ble_hs_ctx->hci_os_event_buf) {
@@ -996,7 +998,7 @@ ble_hs_init(void)
             MODLOG_DFLT(ERROR, "Failed to allocate memory for hci_os_event_buf (%zu bytes)\n", event_buf_size);
             nimble_platform_mem_free(ble_hs_ctx);
             ble_hs_ctx = NULL;
-            return;
+            SYSINIT_PANIC_ASSERT(0);
         }
     }
 
@@ -1157,15 +1159,6 @@ ble_transport_to_hs_evt_impl(void *buf)
 int
 ble_transport_to_hs_acl_impl(struct os_mbuf *om)
 {
-    /* Buffer ownership — this function unconditionally transfers om
-     * to ble_hs_rx_data. ble_hs_rx_data enqueues om via ble_mqueue_put; on
-     * failure it frees om and returns error. Either way the mbuf is consumed
-     * here and the caller must not reference it afterward.
-     *
-     * Any concern about a missing critical section in the
-     * HCI transport receive path has already been addressed in
-     * esp_nimble_hci.c, which serialises controller-to-host delivery before
-     * calling this function. No additional locking is required here. */
     return ble_hs_rx_data(om, NULL);
 }
 #endif
@@ -1174,10 +1167,6 @@ int
 ble_transport_to_hs_iso_impl(struct os_mbuf *om)
 {
 #if MYNEWT_VAL(BLE_ISO_BROADCAST_SINK)
-    /* ble_iso_rx_data must be provided by the ISO broadcast sink
-     * module. If BLE_ISO_BROADCAST_SINK is enabled without that symbol being
-     * linked in, this produces a linker error. The else branch below is the
-     * safe fallback for non-sink builds. */
     return ble_iso_rx_data(om, NULL);
 #else
     os_mbuf_free_chain(om);
@@ -1190,7 +1179,15 @@ ble_transport_to_hs_iso_impl(struct os_mbuf *om)
 int
 ble_transport_to_hs_iso_impl_v2(const uint8_t *data, uint16_t len)
 {
-    return ble_hs_rx_iso_data(data, len, NULL);
+    int rc;
+    rc = ble_hs_rx_iso_data(data, len, NULL);
+    if (rc != 0) {
+        /* Ownership transferred to host, but if it fails, we should
+         * ensure the caller knows it was consumed or handle it.
+         * For now, just return rc.
+         */
+    }
+    return rc;
 }
 #endif /* MYNEWT_VAL(BLE_ISO) */
 

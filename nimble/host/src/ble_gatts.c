@@ -3543,14 +3543,15 @@ void
 ble_gatts_free_svcs(void)
 {
     /* Ensure the memory is freed only if it was previously allocated */
+    ble_hs_lock();
+
     if (ble_gatts_svc_defs != NULL) {
-        /* Free the memory for the service definitions */
         nimble_platform_mem_free(ble_gatts_svc_defs);
-        /* Set the pointer to NULL to avoid dangling pointer */
         ble_gatts_svc_defs = NULL;
-        /* Reset the number of service definitions to 0 */
         ble_gatts_num_svc_defs = 0;
     }
+
+    ble_hs_unlock();
 }
 
 int

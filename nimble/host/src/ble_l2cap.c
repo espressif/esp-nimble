@@ -257,6 +257,12 @@ ble_l2cap_enhanced_connect(uint16_t conn_handle,
                                            cb, cb_arg);
     ble_hs_unlock();
 
+    if (rc != 0) {
+        /* Ownership of sdu_rx mbufs is not transferred to the stack on failure.
+         * The caller is responsible for freeing them.
+         */
+    }
+
     return rc;
 }
 
@@ -265,22 +271,29 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
 {
     int i;
     uint16_t conn_handle;
+    int rc;
 
     if (num == 0 || !chans) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
+
     conn_handle = chans[0]->conn_handle;
 
     for (i = 1; i < num; i++) {
         if (conn_handle != chans[i]->conn_handle) {
+            ble_hs_unlock();
             BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
             return BLE_HS_EINVAL;
         }
     }
 
-    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
+    rc = ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
+    ble_hs_unlock();
+
+    return rc;
 }
 #if MYNEWT_VAL(BLE_RECONFIG_MTU)
 int
@@ -289,22 +302,29 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num,
 {
     int i;
     uint16_t conn_handle;
+    int rc;
 
     if (num == 0 || !chans) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
+
     conn_handle = chans[0]->conn_handle;
 
     for (i = 1; i < num; i++) {
         if (conn_handle != chans[i]->conn_handle) {
+            ble_hs_unlock();
             BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
             return BLE_HS_EINVAL;
         }
     }
 
-    return ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
+    rc = ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
+    ble_hs_unlock();
+
+    return rc;
 }
 #endif
 
@@ -447,11 +467,36 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         rc = ble_l2cap_parse_hdr(conn->rx_frags, &hdr);
         if (rc) {
             /* Incomplete header, wait for continuation */
+#if MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT) != 0
+            conn->rx_frag_tmo =
+                ble_npl_time_get() +
+                ble_npl_time_ms_to_ticks32(MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT));
+
+            ble_hs_timer_resched();
+#endif
             rc = BLE_HS_EAGAIN;
             goto done;
         }
 
         os_mbuf_adj(conn->rx_frags, BLE_L2CAP_HDR_SZ);
+
+        chan = ble_hs_conn_chan_find_by_scid(conn, hdr.cid);
+        if (chan) {
+            if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
+                chan->dcid <= BLE_L2CAP_COC_CID_END && hdr.len > chan->my_coc_mps) {
+                ble_l2cap_disconnect(chan);
+                ble_l2cap_rx_free(conn);
+                rc = BLE_HS_EBADDATA;
+                goto done;
+            }
+
+            if (hdr.len > ble_l2cap_get_mtu(chan)) {
+                ble_l2cap_disconnect(chan);
+                ble_l2cap_rx_free(conn);
+                rc = BLE_HS_EBADDATA;
+                goto done;
+            }
+        }
 
         conn->rx_len = hdr.len;
         conn->rx_cid = hdr.cid;

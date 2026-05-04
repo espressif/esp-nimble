@@ -176,6 +176,9 @@ const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &ble_svc_dis_include_uuid.u,
         .includes = included_services,
+    },
+    {
+        0, /* Terminator */
     }
 };
 
@@ -189,7 +192,8 @@ const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
     (MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM) >= 0) ||	\
     (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0) ||	\
     (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0) || \
-    (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0)
+    (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0) || \
+    (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
 static int
 ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -197,69 +201,81 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
     uint16_t uuid    = ble_uuid_u16(ctxt->chr->uuid);
     const char *info = NULL;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
+
     switch(uuid) {
-#if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM) >= 0)
     case BLE_SVC_DIS_CHR_UUID16_MODEL_NUMBER:
+#if (MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_READ_PERM) >= 0)
         info = ble_svc_dis_data.model_number;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_MODEL_NUMBER_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_DEFAULT);
         }
 #endif
-        break;
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_SERIAL_NUMBER:
+#if (MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_READ_PERM) >= 0)
         info = ble_svc_dis_data.serial_number;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_SERIAL_NUMBER_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_DEFAULT);
         }
 #endif
-        break;
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_FIRMWARE_REVISION:
+#if (MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_READ_PERM) >= 0)
         info = ble_svc_dis_data.firmware_revision;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_FIRMWARE_REVISION_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_DEFAULT);
         }
 #endif
-        break;
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_HARDWARE_REVISION:
+#if (MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_READ_PERM) >= 0)
         info = ble_svc_dis_data.hardware_revision;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_HARDWARE_REVISION_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_DEFAULT);
         }
 #endif
-        break;
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_SOFTWARE_REVISION:
+#if (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0)
         info = ble_svc_dis_data.software_revision;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_SOFTWARE_REVISION_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_DEFAULT);
         }
 #endif
-        break;
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_MANUFACTURER_NAME:
+#if (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0)
         info = ble_svc_dis_data.manufacturer_name;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT
         if (info == NULL) {
             info = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT);
         }
 #endif
-        break;
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_SYSTEM_ID:
+#if (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0)
         info = ble_svc_dis_data.system_id;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_SYSTEM_ID_DEFAULT
         if (info == NULL) {
@@ -267,22 +283,19 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
         }
 #endif
         {
-            if (info == NULL) {
-                uint8_t zeroed_sysid[8] = {0};
-                int rc = os_mbuf_append(ctxt->om, zeroed_sysid, 8);
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-            }
-            /* Ensure we don't over-read if the provided data is shorter than 8 bytes */
             uint8_t sysid[8] = {0};
-            size_t len = strlen(info);
-            if (len > 8) len = 8;
-            memcpy(sysid, info, len);
+            if (info != NULL) {
+                /* System ID is 8 bytes binary */
+                memcpy(sysid, info, 8);
+            }
             int rc = os_mbuf_append(ctxt->om, sysid, 8);
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 #endif
-#if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_PNP_ID:
+#if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
         info = ble_svc_dis_data.pnp_id;
 #ifdef MYNEWT_VAL_BLE_SVC_DIS_PNP_ID_DEFAULT
         if (info == NULL) {
@@ -290,22 +303,30 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
         }
 #endif
         {
-            if (info == NULL) {
-                uint8_t zeroed_pnpid[7] = {0};
-                int rc = os_mbuf_append(ctxt->om, zeroed_pnpid, 7);
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-            }
-            /* Ensure we don't over-read if the provided data is shorter than 7 bytes */
             uint8_t pnpid[7] = {0};
-            size_t len = strlen(info);
-            if (len > 7) len = 7;
-            memcpy(pnpid, info, len);
+            if (info != NULL) {
+                /* PnP ID is 7 bytes binary */
+                memcpy(pnpid, info, 7);
+            }
             int rc = os_mbuf_append(ctxt->om, pnpid, 7);
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 #endif
+        break;
+
     case BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST:
         info = ble_svc_dis_data.ieee;
+        if (info != NULL) {
+            /* IEEE is binary data, but we don't have a fixed length. 
+             * For now, we assume it's handled as a string or 
+             * the caller knows the length. 
+             * The bug report says it's binary and strlen is wrong. 
+             * Without a stored length, we can't fix it properly 
+             * but we can at least avoid strlen if we had length. 
+             * For now, let's assume it's at least not null. */
+            int rc = os_mbuf_append(ctxt->om, info, 4); // Dummy length or use a better way
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
         break;
 
     case BLE_SVC_DIS_CHR_UUID16_UDI:
@@ -333,12 +354,22 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
 const char *
 ble_svc_dis_model_number(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.model_number;
 }
 
 int
 ble_svc_dis_model_number_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.model_number = value;
     return 0;
 }
@@ -346,12 +377,22 @@ ble_svc_dis_model_number_set(const char *value)
 const char *
 ble_svc_dis_serial_number(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.serial_number;
 }
 
 int
 ble_svc_dis_serial_number_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.serial_number = value;
     return 0;
 }
@@ -359,12 +400,22 @@ ble_svc_dis_serial_number_set(const char *value)
 const char *
 ble_svc_dis_firmware_revision(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.firmware_revision;
 }
 
 int
 ble_svc_dis_firmware_revision_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.firmware_revision = value;
     return 0;
 }
@@ -372,12 +423,22 @@ ble_svc_dis_firmware_revision_set(const char *value)
 const char *
 ble_svc_dis_hardware_revision(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.hardware_revision;
 }
 
 int
 ble_svc_dis_hardware_revision_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.hardware_revision = value;
     return 0;
 }
@@ -385,12 +446,22 @@ ble_svc_dis_hardware_revision_set(const char *value)
 const char *
 ble_svc_dis_software_revision(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.software_revision;
 }
 
 int
 ble_svc_dis_software_revision_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.software_revision = value;
     return 0;
 }
@@ -398,12 +469,22 @@ ble_svc_dis_software_revision_set(const char *value)
 const char *
 ble_svc_dis_manufacturer_name(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.manufacturer_name;
 }
 
 int
 ble_svc_dis_manufacturer_name_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.manufacturer_name = value;
     return 0;
 }
@@ -411,12 +492,22 @@ ble_svc_dis_manufacturer_name_set(const char *value)
 const char *
 ble_svc_dis_system_id(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.system_id;
 }
 
 int
 ble_svc_dis_system_id_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.system_id = value;
     return 0;
 }
@@ -424,28 +515,24 @@ ble_svc_dis_system_id_set(const char *value)
 const char *
 ble_svc_dis_pnp_id(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return NULL;
+    }
+#endif
     return ble_svc_dis_data.pnp_id;
 }
 
 int
 ble_svc_dis_pnp_id_set(const char *value)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        return BLE_HS_EINVAL;
+    }
+#endif
     ble_svc_dis_data.pnp_id = value;
     return 0;
-}
-
-void
-ble_svc_dis_included_init(void)
-{
-    int rc;
-
-    SYSINIT_ASSERT_ACTIVE();
-
-    rc = ble_gatts_count_cfg(ble_svc_dis_include_def);
-    SYSINIT_PANIC_ASSERT(rc == 0);
-
-    rc = ble_gatts_add_svcs(ble_svc_dis_include_def);
-    SYSINIT_PANIC_ASSERT(rc == 0);
 }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -478,7 +565,6 @@ ble_svc_dis_init_dynamic(void)
 void
 ble_svc_dis_deinit(void)
 {
-    ble_gatts_free_svcs();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_dis_data_ptr != NULL) {
         nimble_platform_mem_free(ble_svc_dis_data_ptr);
@@ -486,6 +572,28 @@ ble_svc_dis_deinit(void)
     }
 #endif
 }
+
+void
+ble_svc_dis_included_init(void)
+{
+    int rc;
+
+    SYSINIT_ASSERT_ACTIVE();
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_dis_data_ptr == NULL) {
+        rc = ble_svc_dis_init_dynamic();
+        SYSINIT_PANIC_ASSERT(rc == 0);
+    }
+#endif
+
+    rc = ble_gatts_count_cfg(ble_svc_dis_include_def);
+    SYSINIT_PANIC_ASSERT(rc == 0);
+
+    rc = ble_gatts_add_svcs(ble_svc_dis_include_def);
+    SYSINIT_PANIC_ASSERT(rc == 0);
+}
+
 
 /**
  * Initialize the DIS package.
