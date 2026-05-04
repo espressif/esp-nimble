@@ -243,10 +243,6 @@ static uint8_t ble_sm_dbg_next_ltk_set;
 static uint8_t ble_sm_dbg_next_csrk[16];
 static uint8_t ble_sm_dbg_next_csrk_set;
 
-#endif // BLE_HS_DEBUG
-#endif // BLE_STATIC_TO_DYNAMIC
-
-#if MYNEWT_VAL(BLE_HS_DEBUG)
 void
 ble_sm_dbg_set_next_pair_rand(uint8_t *next_pair_rand)
 {
@@ -285,6 +281,7 @@ ble_sm_dbg_set_next_csrk(uint8_t *next_csrk)
     ble_sm_dbg_next_csrk_set = 1;
 }
 #endif // BLE_HS_DEBUG
+#endif // BLE_STATIC_TO_DYNAMIC
 
 static void
 ble_sm_dbg_assert_no_cycles(void)
@@ -471,9 +468,6 @@ ble_sm_proc_alloc(void)
 
     if (proc != NULL) {
         memset(proc, 0, sizeof *proc);
-        /* Initialize with safe future timeout to prevent race condition with timer */
-        proc->exp_os_ticks = ble_npl_time_get() +
-                             ble_npl_time_ms_to_ticks32(BLE_SM_TIMEOUT_MS);
     }
 
     return proc;
@@ -524,9 +518,13 @@ ble_sm_update_sec_state(uint16_t conn_handle, int encrypted,
     if (conn != NULL) {
         conn->bhc_sec_state.encrypted = encrypted;
 
-        /* Security flags must reflect current session properties to prevent MITM bypass */
-        conn->bhc_sec_state.authenticated = authenticated ? 1 : 0;
-        conn->bhc_sec_state.bonded = bonded ? 1 : 0;
+        /* Authentication and bonding are never revoked from a secure link */
+        if (authenticated) {
+            conn->bhc_sec_state.authenticated = 1;
+        }
+        if (bonded) {
+            conn->bhc_sec_state.bonded = 1;
+        }
 
         if (key_size) {
             conn->bhc_sec_state.key_size = key_size;
@@ -579,11 +577,7 @@ ble_sm_ia_ra(struct ble_sm_proc *proc,
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    conn = ble_hs_conn_find(proc->conn_handle);
-    if (conn == NULL) {
-        /* Connection no longer exists, cannot proceed with SM procedure */
-        return;
-    }
+    conn = ble_hs_conn_find_assert(proc->conn_handle);
 
     ble_hs_conn_addrs(conn, &addrs);
 
@@ -852,18 +846,8 @@ ble_sm_rx_noop(uint16_t conn_handle, struct os_mbuf **om,
 static uint8_t
 ble_sm_build_authreq(void)
 {
-    uint8_t mitm = ble_hs_cfg.sm_mitm;
-
-    /* Per Bluetooth Core Spec Vol 3, Part C, Section 10.3.1:
-     * A device shall not require authenticated pairing (MITM) if it does not
-     * support the required IO capabilities or OOB data */
-    if (mitm && ble_hs_cfg.sm_io_cap == BLE_SM_IO_CAP_NO_IO &&
-        !ble_hs_cfg.sm_oob_data_flag) {
-        mitm = 0;
-    }
-
     return ble_hs_cfg.sm_bonding << 0  |
-           mitm << 2                   |
+           ble_hs_cfg.sm_mitm << 2     |
            ble_hs_cfg.sm_sc << 3       |
            ble_hs_cfg.sm_keypress << 4;
 }
@@ -1129,9 +1113,7 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
         if (res->enc_cb &&
             res->app_status != BLE_HS_ENOTCONN) {
             /* Do not send this event on broken connection */
-            /* Pass app_status (host error code) instead of sm_err (raw SM error)
-             * to maintain consistency with GAP event structure requirements */
-            ble_gap_pairing_complete_event(conn_handle, res->app_status);
+            ble_gap_pairing_complete_event(conn_handle, res->sm_err);
         }
         /* Persist keys if bonding has successfully completed. */
         if (res->app_status == 0    &&
@@ -1597,13 +1579,7 @@ ble_sm_ltk_req_rx(const struct ble_hci_ev_le_subev_lt_key_req *ev)
     }
 
     if (restore) {
-        conn = ble_hs_conn_find(conn_handle);
-        if (conn == NULL) {
-            /* Connection not found - send negative reply and return error */
-            ble_hs_unlock();
-            ble_sm_ltk_req_neg_reply_tx(conn_handle);
-            return BLE_HS_ENOTCONN;
-        }
+        conn = ble_hs_conn_find_assert(conn_handle);
         ble_hs_conn_addrs(conn, &addrs);
         memcpy(peer_id_addr, addrs.peer_id_addr.val, 6);
     }
@@ -2051,11 +2027,8 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
         proc->pair_req[0] = BLE_SM_OP_PAIR_REQ;
         memcpy(proc->pair_req + 1, req, sizeof(*req));
 
-        conn = ble_hs_conn_find(proc->conn_handle);
-        if (conn == NULL) {
-            res->sm_err = BLE_SM_ERR_UNSPECIFIED;
-            res->app_status = BLE_HS_ENOTCONN;
-        } else if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
+        conn = ble_hs_conn_find_assert(proc->conn_handle);
+        if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
             res->sm_err = BLE_SM_ERR_CMD_NOT_SUPP;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CMD_NOT_SUPP);
         } else if (ble_hs_cfg.sm_sec_lvl == 1) {
@@ -2238,12 +2211,7 @@ ble_sm_sec_req_rx(uint16_t conn_handle, struct os_mbuf **om,
 
     ble_hs_lock();
 
-    conn = ble_hs_conn_find(conn_handle);
-    if (conn == NULL) {
-        ble_hs_unlock();
-        res->app_status = BLE_HS_ENOTCONN;
-        return;
-    }
+    conn = ble_hs_conn_find_assert(conn_handle);
 
     /* Check if pairing procedure is already in progress */
     if (ble_sm_proc_find(conn_handle, BLE_SM_PROC_STATE_PAIR, 1, NULL)) {
@@ -2486,11 +2454,7 @@ ble_sm_key_exch_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
             goto err;
         }
 
-        conn = ble_hs_conn_find(proc->conn_handle);
-        if (conn == NULL) {
-            rc = BLE_HS_ENOTCONN;
-            goto err;
-        }
+        conn = ble_hs_conn_find_assert(proc->conn_handle);
         ble_hs_conn_addrs(conn, &addrs);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -2624,20 +2588,6 @@ ble_sm_enc_info_rx(uint16_t conn_handle, struct os_mbuf **om,
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
-    } else if ((proc->flags & BLE_SM_PROC_F_SC)) {
-        /* Encryption info PDU should not be sent in Secure Connections */
-        BLE_HS_LOG(INFO, "SMP: encryption info PDU invalid in Secure Connections; "
-                   "conn_handle=0x%04x\n", conn_handle);
-        res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_UNSPECIFIED);
-        res->sm_err = BLE_SM_ERR_UNSPECIFIED;
-        res->enc_cb = 1;
-    } else if (!(proc->rx_key_flags & BLE_SM_KE_F_ENC_INFO)) {
-        /* Encryption info PDU was not negotiated */
-        BLE_HS_LOG(INFO, "SMP: unexpected encryption info PDU; not negotiated; "
-                   "conn_handle=0x%04x\n", conn_handle);
-        res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_UNSPECIFIED);
-        res->sm_err = BLE_SM_ERR_UNSPECIFIED;
-        res->enc_cb = 1;
     } else {
         proc->rx_key_flags &= ~BLE_SM_KE_F_ENC_INFO;
         proc->peer_keys.ltk_valid = 1;
@@ -2833,11 +2783,7 @@ ble_sm_fail_rx(uint16_t conn_handle, struct os_mbuf **om,
         cmd = (struct ble_sm_pair_fail *)(*om)->om_data;
 
         res->app_status = BLE_HS_SM_PEER_ERR(cmd->reason);
-        /* Ensure pairing is terminated even if reason is 0 */
-        res->sm_err = (cmd->reason == 0) ? BLE_SM_ERR_UNSPECIFIED : cmd->reason;
-    } else {
-        /* Failed to process PAIR_FAIL packet - set appropriate error */
-        res->sm_err = BLE_SM_ERR_UNSPECIFIED;
+        res->sm_err =  cmd->reason;
     }
 }
 
@@ -2978,15 +2924,12 @@ ble_sm_timer(void)
     ticks_until_exp = ble_sm_extract_expired(&exp_list);
 
     /* Notify application of each failure and free the corresponding procedure
-     * object. Per Bluetooth spec, SMP timeout requires link termination.
+     * object.
+     * XXX: Mark connection as tainted; don't allow any subsequent SMP
+     * procedures without reconnect.
      */
     while ((proc = STAILQ_FIRST(&exp_list)) != NULL) {
-        /* Send encryption failure event to application */
         ble_gap_enc_event(proc->conn_handle, BLE_HS_ETIMEOUT, 0, 0);
-
-        /* Per Bluetooth Core Specification Vol 3, Part H, Section 3.4:
-         * SMP timeout shall result in link termination */
-        ble_gap_terminate(proc->conn_handle, BLE_ERR_REM_USER_CONN_TERM);
 
         STAILQ_REMOVE_HEAD(&exp_list, next);
         ble_sm_proc_free(proc);
@@ -3036,12 +2979,6 @@ ble_sm_pair_initiate(uint16_t conn_handle)
         proc->flags |= BLE_SM_PROC_F_INITIATOR;
 
         ble_hs_lock();
-        /* Re-check for existing procedure after potential callback in overflow check */
-        if (ble_sm_proc_find(conn_handle, BLE_SM_PROC_STATE_NONE, -1, NULL) != NULL) {
-            ble_hs_unlock();
-            ble_sm_proc_free(proc);
-            return BLE_HS_EALREADY;
-        }
         ble_sm_insert(proc);
         ble_hs_unlock();
 
@@ -3271,9 +3208,6 @@ ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey)
                 res.sm_err = BLE_SM_ERR_OOB;
             } else {
                 proc->flags |= BLE_SM_PROC_F_IO_INJECTED;
-                /* SECURITY WARNING: Storing direct pointers to OOB data creates use-after-free risk.
-                 * Application must ensure OOB data remains valid for entire pairing procedure duration.
-                 * TODO: Consider copying OOB data instead of storing pointers. */
                 proc->oob_data_local = pkey->oob_sc_data.local;
                 proc->oob_data_remote = pkey->oob_sc_data.remote;
 
@@ -3517,11 +3451,6 @@ ble_sm_configure_static_passkey(uint32_t passkey, bool enable)
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
-    }
-
-    /* Protect configuration updates with host lock to prevent race conditions */
-    ble_hs_lock();
-    if (enable) {
         /* Passkey authentication requires MITM; ensure it is enabled. */
         ble_hs_cfg.sm_mitm = 1;
         ble_hs_cfg.sm_static_passkey = 1;
@@ -3532,7 +3461,6 @@ ble_sm_configure_static_passkey(uint32_t passkey, bool enable)
         ble_hs_cfg.sm_static_passkey_val = 0;
         BLE_HS_LOG(INFO, "static passkey disabled\n");
     }
-    ble_hs_unlock();
 
     return 0;
 }
@@ -3545,11 +3473,8 @@ ble_sm_get_static_passkey_config(uint32_t *passkey, bool *enabled)
         return BLE_HS_EINVAL;
     }
 
-    /* Protect configuration reads with host lock to prevent race conditions */
-    ble_hs_lock();
     *enabled = ble_hs_cfg.sm_static_passkey;
     *passkey = ble_hs_cfg.sm_static_passkey_val;
-    ble_hs_unlock();
 
     return 0;
 }
@@ -3627,7 +3552,7 @@ ble_sm_csis_encrypt_sirk(const uint8_t *ltk, const uint8_t *plaintext_sirk, uint
 int
 ble_sm_csis_generate_rsi(const uint8_t *sirk, uint8_t *out)
 {
-    const uint8_t prand_check_all_set[3] = {0xff, 0xff, 0x7f};
+    const uint8_t prand_check_all_set[3] = {0xff, 0xff, 0xef};
     const uint8_t prand_check_all_reset[3] = {0x0, 0x0, 0x40};
     uint8_t prand[3] = {0};
     uint8_t hash[3] = {0};
@@ -3643,8 +3568,8 @@ ble_sm_csis_generate_rsi(const uint8_t *sirk, uint8_t *out)
         prand[2] |= 0x40;
 
         /* prand's random part shall not be all 0s nor all 1s */
-    } while (memcmp(prand, prand_check_all_set, 3) == 0 ||
-             memcmp(prand, prand_check_all_reset, 3) == 0);
+    } while (memcmp(prand, prand_check_all_set, 3) ||
+             memcmp(prand, prand_check_all_reset, 3));
 
     rc = ble_sm_alg_csis_sih(sirk, prand, hash);
     if (rc != 0) {
