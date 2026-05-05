@@ -1029,7 +1029,6 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
     uint16_t scid;
     uint16_t result;
     unsigned int num_of_scids;
-    uint8_t chan_created = 0;
     int i;
     uint8_t len;
 

@@ -46,6 +46,9 @@
 uint32_t
 os_cputime_usecs_to_ticks(uint32_t usecs)
 {
+#if MYNEWT_VAL(OS_CPUTIME_FREQ) == 32000
+    return ((uint64_t)usecs * MYNEWT_VAL(OS_CPUTIME_FREQ)) / 1000000;
+#else
     uint64_t ticks;
 
     /*
@@ -59,6 +62,7 @@ os_cputime_usecs_to_ticks(uint32_t usecs)
     //ticks += ((uint64_t)usecs * (1526122139+1)) >> 32;
 
     return ticks >> 32;
+#endif
 }
 
 /**
@@ -77,6 +81,9 @@ os_cputime_usecs_to_ticks(uint32_t usecs)
 uint32_t
 os_cputime_ticks_to_usecs(uint32_t ticks)
 {
+#if MYNEWT_VAL(OS_CPUTIME_FREQ) == 32000
+    return ((uint64_t)ticks * 1000000) / MYNEWT_VAL(OS_CPUTIME_FREQ);
+#else
     uint32_t usecs;
     uint32_t shift;
 
@@ -85,6 +92,7 @@ os_cputime_ticks_to_usecs(uint32_t ticks)
     usecs = ((ticks >> shift) * 15625) +
             (((ticks & ~(~0U << shift)) * 15625) >> shift);
     return usecs;
+#endif
 }
 
 /**

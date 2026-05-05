@@ -368,7 +368,7 @@ ble_host_rpa_enabled(void)
 static int
 ble_hs_rand_prand_get(uint8_t *prand)
 {
-    uint16_t sum;
+    uint32_t prand_rand;
     int rc;
     int retry = 100;
 
@@ -379,14 +379,14 @@ ble_hs_rand_prand_get(uint8_t *prand)
             return rc;
         }
 
-        /* Prand cannot be all zeros or 1's. */
-        sum = prand[0] + prand[1] + prand[2];
-        if ((sum != 0) && (sum != (3 * 0xff))) {
+        /* The 22-bit random part of prand cannot be all zeros or all ones. */
+        prand_rand = get_le24(prand) & 0x3fffff;
+        if (prand_rand != 0 && prand_rand != 0x3fffff) {
             break;
         }
     }
 
-    if (retry <= 0) {
+    if (retry < 0) {
         BLE_HS_LOG(ERROR, "Failed to generate random prand\n");
         return BLE_HS_ETIMEOUT;
     }
@@ -421,13 +421,15 @@ is_irk_nonzero(uint8_t *irk)
  * @param rl
  * @param local
  */
-static void
+static int
 ble_hs_resolv_gen_priv_addr(struct ble_hs_resolv_entry *rl, int local)
 {
     uint8_t *irk = NULL;
     uint8_t *prand = NULL;
     struct ble_encryption_block ecb = {0};
     uint8_t *addr = NULL;
+    uint8_t new_addr[BLE_DEV_ADDR_LEN];
+    int rc;
 
     if (local) {
         addr = rl->rl_local_rpa;
@@ -437,10 +439,13 @@ ble_hs_resolv_gen_priv_addr(struct ble_hs_resolv_entry *rl, int local)
         irk = rl->rl_peer_irk;
     }
 
+    memcpy(new_addr, addr, sizeof(new_addr));
+
     /* Get prand */
-    prand = addr + 3;
-    if (ble_hs_rand_prand_get(prand) != 0) {
-        return;
+    prand = new_addr + 3;
+    rc = ble_hs_rand_prand_get(prand);
+    if (rc != 0) {
+        return rc;
     }
 
     /* Calculate hash, hash = ah(local IRK, prand) */
@@ -455,15 +460,18 @@ ble_hs_resolv_gen_priv_addr(struct ble_hs_resolv_entry *rl, int local)
     swap_in_place(ecb.plain_text, 16);
 
     /* Calculate hash */
-    if (ble_sm_alg_encrypt(ecb.key, ecb.plain_text, ecb.cipher_text) != 0) {
-        /* We can't do much here if the encryption fails */
-        return;
+    rc = ble_sm_alg_encrypt(ecb.key, ecb.plain_text, ecb.cipher_text);
+    if (rc != 0) {
+        return rc;
     }
     swap_in_place(ecb.cipher_text, 16);
 
-    addr[0] = ecb.cipher_text[15];
-    addr[1] = ecb.cipher_text[14];
-    addr[2] = ecb.cipher_text[13];
+    new_addr[0] = ecb.cipher_text[15];
+    new_addr[1] = ecb.cipher_text[14];
+    new_addr[2] = ecb.cipher_text[13];
+    memcpy(addr, new_addr, sizeof(new_addr));
+
+    return 0;
 }
 
 /* Called to generate private (RPA/NRPA) address and this address is set in controller as
@@ -472,14 +480,27 @@ ble_hs_resolv_gen_priv_addr(struct ble_hs_resolv_entry *rl, int local)
 int
 ble_hs_gen_own_private_rnd(void)
 {
+    uint8_t addr[BLE_DEV_ADDR_LEN];
+    int rc;
+
     if (nrpa_pvcy) {
         return ble_hs_id_set_nrpa_rnd();
     }
 
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[0];
 
-    ble_hs_resolv_gen_priv_addr(rl, 1);
-    return ble_hs_id_set_pseudo_rnd(rl->rl_local_rpa);
+    ble_hs_lock();
+    rc = ble_hs_resolv_gen_priv_addr(rl, 1);
+    if (rc == 0) {
+        memcpy(addr, rl->rl_local_rpa, sizeof(addr));
+    }
+    ble_hs_unlock();
+
+    if (rc != 0) {
+        return rc;
+    }
+
+    return ble_hs_id_set_pseudo_rnd(addr);
 }
 
 /* Called to fetch local RPA address */
@@ -626,8 +647,11 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
     /* generate a local and peer RPAs now, those will be updated by timer
      * when resolution is enabled
      */
-    ble_hs_resolv_gen_priv_addr(rl, 1);
-    ble_hs_resolv_gen_priv_addr(rl, 0);
+    if (ble_hs_resolv_gen_priv_addr(rl, 1) != 0 ||
+        ble_hs_resolv_gen_priv_addr(rl, 0) != 0) {
+        memset(rl, 0, sizeof(*rl));
+        return BLE_HS_EUNKNOWN;
+    }
     ++(g_ble_hs_resolv_data.rl_cnt);
     BLE_HS_LOG(DEBUG, "Device added to RL, Resolving list count = %d\n", g_ble_hs_resolv_data.rl_cnt);
 
@@ -675,15 +699,17 @@ ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
  * Clear the resolving list
  */
 void
-ble_hs_resolv_list_clear_all(void)
+ble_hs_resolv_list_clear_all(bool preserve_local)
 {
     struct ble_hs_resolv_entry local_entry;
     bool restore_local = false;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    /* Preserve local device entry at index 0 if it exists */
-    if (g_ble_hs_resolv_data.rl_cnt > 0) {
+    /* Index 0 is the local identity. Some callers clear only peer state,
+     * while local IRK replacement must clear it too.
+     */
+    if (preserve_local && g_ble_hs_resolv_data.rl_cnt > 0) {
         memcpy(&local_entry, &g_ble_hs_resolv_list[0], sizeof(local_entry));
         restore_local = true;
     }
@@ -801,7 +827,6 @@ ble_hs_resolv_rpa_addr(uint8_t *addr, uint8_t addr_type) {
     for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
         if(ble_hs_resolv_rpa(addr, rl->rl_peer_irk) == 0) {
             memcpy(g_ble_hs_resolv_list[i].rl_peer_rpa, addr, BLE_DEV_ADDR_LEN);
-            g_ble_hs_resolv_list[i].rl_addr_type = addr_type;
             return rl;
         }
 

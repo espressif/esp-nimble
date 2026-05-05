@@ -18,6 +18,7 @@
  */
 
 #include <assert.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "sysinit/sysinit.h"
@@ -135,23 +136,28 @@ ble_svc_hid_get_chr_block(void)
 }
 
 /*returns current chr index */
-static uint8_t
+static uint16_t
 ble_svc_hid_get_curr_chr_idx(void)
 {
     return ble_svc_hid_chr_index;
 }
 
 /*returns current svc index */
-static uint8_t
+static uint16_t
 get_curr_svc_idx(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_hid_static_vars == NULL) {
+        return 0;
+    }
+#endif
     return ble_svc_hid_svc_index;
 }
 
 struct report *
 find_rpt_by_handle(uint16_t handle)
 {
-    uint8_t instance, instances;
+    uint16_t instance, instances;
     int i;
 
     instances = get_curr_svc_idx();
@@ -194,7 +200,7 @@ fill_proto_mode(uint8_t instance)
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE_NO_RSP |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                  BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                  BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE_AUTHEN |
                  BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
 #endif
@@ -224,7 +230,7 @@ fill_boot_kbd_inp(uint8_t instance)
     write_flags = BLE_GATT_CHR_F_WRITE |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                   BLE_GATT_CHR_F_WRITE_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                   BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN |
 #endif
                   0;
@@ -237,9 +243,10 @@ fill_boot_kbd_inp(uint8_t instance)
         .val_handle = &hid_instances[instance].kbd_inp_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
-                 BLE_GATT_CHR_F_READ_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
-                 BLE_GATT_CHR_F_READ_AUTHEN |
+                 BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC |
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
+                 BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN |
+                 BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC |
                  BLE_GATT_CHR_F_READ_ENC |
 #endif
                  write_flags,
@@ -272,7 +279,7 @@ fill_boot_kbd_out(uint8_t instance)
                  BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                  BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                  BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE_AUTHEN |
                  BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
 #endif
@@ -301,7 +308,7 @@ fill_boot_mouse_inp(uint8_t instance)
     write_flags = BLE_GATT_CHR_F_WRITE |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                   BLE_GATT_CHR_F_WRITE_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                   BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN |
 #endif
                   0;
@@ -315,7 +322,7 @@ fill_boot_mouse_inp(uint8_t instance)
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                  BLE_GATT_CHR_F_READ_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                  BLE_GATT_CHR_F_READ_AUTHEN |
                  BLE_GATT_CHR_F_READ_ENC |
 #endif
@@ -353,7 +360,7 @@ fill_rpt_map(uint8_t instance)
         .flags = BLE_GATT_CHR_F_READ |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                  BLE_GATT_CHR_F_READ_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                  BLE_GATT_CHR_F_READ_AUTHEN |
                  BLE_GATT_CHR_F_READ_ENC |
 #endif
@@ -429,7 +436,7 @@ fill_reports(uint8_t instance)
         demo_chr.flags |= (
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                               BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                               BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_WRITE_AUTHEN |
                               BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_WRITE_ENC |
 #endif
@@ -448,7 +455,7 @@ fill_reports(uint8_t instance)
     return 0;
 }
 
-static void
+static int
 fill_hid_info(uint8_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
@@ -469,12 +476,14 @@ fill_hid_info(uint8_t instance)
     };
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
-        return;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
+    return 0;
 }
 
-static void
+static int
 fill_ctrl_pt(uint8_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
@@ -495,9 +504,11 @@ fill_ctrl_pt(uint8_t instance)
     };
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
-        return;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
+    return 0;
 }
 
 /**
@@ -534,11 +545,11 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
     struct report *rpt;
     uint16_t rpt_ref_val = 0;
     uint16_t out_rpt_len = 0;
-    uint8_t instances = get_curr_svc_idx();
+    uint16_t instances = get_curr_svc_idx();
     uint16_t handle;
     uint8_t val;
 
-    for (int instance = 0; instance < instances; instance++) {
+    for (uint16_t instance = 0; instance < instances; instance++) {
         switch (uuid16) {
         case BLE_SVC_HID_CHR_UUID16_REPORT_MAP:
             if (hid_instances[instance].report_map_handle != attr_handle) {
@@ -585,13 +596,14 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
             }
             assert(ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR);
             /* check if the value is correct */
-            rc = ble_hs_mbuf_to_flat(ctxt->om, &val, sizeof(uint8_t), NULL);
-            if(rc != 0) {
-                return BLE_ATT_ERR_INSUFFICIENT_RES;
+            rc = ble_svc_hid_chr_write(ctxt->om, sizeof(val), sizeof(val),
+                                       &val, NULL);
+            if (rc != 0) {
+                return rc;
             }
             if(val == 0 || val == 1) {
-                rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof hid_instances[instance].ctrl_pt, &hid_instances[instance].ctrl_pt, NULL);
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                hid_instances[instance].ctrl_pt = val;
+                return 0;
             }
             return BLE_ATT_ERR_UNLIKELY;
 
@@ -606,7 +618,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
                 rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof(hid_instances[instance].kbd_out_rpt), &hid_instances[instance].kbd_out_rpt, NULL);
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return rc;
             }
             return 0;
         case BLE_SVC_HID_CHR_UUID16_BOOT_KBD_INP:
@@ -620,10 +632,13 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
                 rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof(hid_instances[instance].kbd_inp_rpt), hid_instances[instance].kbd_inp_rpt, NULL);
+                if (rc != 0) {
+                    return rc;
+                }
                 if (ctxt->chr->flags & BLE_GATT_CHR_F_NOTIFY) {
                     ble_gatts_chr_updated(*(ctxt->chr->val_handle));
                 }
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return 0;
             }
             return 0;
         case BLE_SVC_HID_CHR_UUID16_BOOT_MOUSE_INP:
@@ -638,7 +653,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
                 rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof(hid_instances[instance].mouse_inp_rpt), hid_instances[instance].mouse_inp_rpt, &out_rpt_len);
                 if (rc != 0) {
-                    return BLE_ATT_ERR_INSUFFICIENT_RES;
+                    return rc;
                 }
                 hid_instances[instance].mouse_inp_rpt_len = out_rpt_len;
                 if (ctxt->chr->flags & BLE_GATT_CHR_F_NOTIFY) {
@@ -658,13 +673,14 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
                 /* check if the value is correct */
-                rc = ble_hs_mbuf_to_flat(ctxt->om, &val, sizeof(uint8_t), NULL);
-                if(rc != 0) {
-                    return BLE_ATT_ERR_INSUFFICIENT_RES;
+                rc = ble_svc_hid_chr_write(ctxt->om, sizeof(val), sizeof(val),
+                                           &val, NULL);
+                if (rc != 0) {
+                    return rc;
                 }
                 if(val == 0 || val == 1) {
-                    rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof(hid_instances[instance].proto_mode), &hid_instances[instance].proto_mode, NULL);
-                    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                    hid_instances[instance].proto_mode = val;
+                    return 0;
                 }
                 return BLE_ATT_ERR_UNLIKELY;
             }
@@ -681,15 +697,15 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                                     rpt->len);
                 return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-                rc = ble_svc_hid_chr_write(ctxt->om, 0, RPT_MAX_LEN, rpt->data, &out_rpt_len);
+                rc = ble_svc_hid_chr_write(ctxt->om, 0, UINT8_MAX, rpt->data, &out_rpt_len);
                 if (rc != 0) {
-                    return BLE_ATT_ERR_INSUFFICIENT_RES;
+                    return rc;
                 }
                 rpt->len = out_rpt_len;
                 if (ctxt->chr->flags & BLE_GATT_CHR_F_NOTIFY) {
                     ble_gatts_chr_updated(*(ctxt->chr->val_handle));
                 }
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return 0;
             }
             return 0;
 
@@ -708,10 +724,10 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
-    uint8_t svc_idx;
+    uint16_t svc_idx;
     int rc = 0;
     struct ble_gatt_svc_def *svc;
-    uint8_t chr_idx;
+    uint16_t chr_idx;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_hid_static_vars == NULL) {
@@ -769,9 +785,15 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
     /* Fill the boot mouse input characteristic */
     fill_boot_mouse_inp(svc_idx);
     /* Fill the hid info characteristic */
-    fill_hid_info(svc_idx);
+    rc = fill_hid_info(svc_idx);
+    if (rc != 0) {
+        goto error;
+    }
     /* Fill the control point characteristic */
-    fill_ctrl_pt(svc_idx);
+    rc = fill_ctrl_pt(svc_idx);
+    if (rc != 0) {
+        goto error;
+    }
     /* End the characteristics with the characteristic with empty block */
     rc = ble_svc_hid_end_chrs();
     if (rc != 0){
@@ -789,9 +811,7 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
 
     return 0;
 error:
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     ble_svc_hid_reset();
-#endif
     return rc;
 }
 
@@ -842,6 +862,7 @@ void
 ble_svc_hid_deinit(void)
 {
     ble_gatts_free_svcs();
+    ble_svc_hid_reset();
 }
 
 /**
@@ -854,6 +875,12 @@ ble_svc_hid_init(void)
 
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_hid_static_vars == NULL) {
+        return;
+    }
+#endif
 
     rc = ble_svc_hid_end();
     SYSINIT_PANIC_ASSERT(rc == 0);

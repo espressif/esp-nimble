@@ -504,9 +504,17 @@ ble_monitor_out(int c)
 int
 ble_transport_to_ll_cmd(void *buf)
 {
-    struct ble_hci_cmd *cmd = buf;
+    uint8_t *cmd_buf = buf;
+    struct ble_hci_cmd *cmd;
 
-    ble_monitor_send(BLE_MONITOR_OPCODE_COMMAND_PKT, buf, cmd->length +
+#if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
+    if (cmd_buf[0] == 0x01) {
+        cmd_buf++;
+    }
+#endif
+
+    cmd = (void *)cmd_buf;
+    ble_monitor_send(BLE_MONITOR_OPCODE_COMMAND_PKT, cmd_buf, cmd->length +
                                                           sizeof(*cmd));
 
     return ble_transport_to_ll_cmd_impl(buf);

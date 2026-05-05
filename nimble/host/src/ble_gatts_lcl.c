@@ -29,6 +29,8 @@
 #if NIMBLE_BLE_CONNECT
 static const ble_uuid_t *uuid_ccc =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16);
+static const ble_uuid_t *uuid_cep =
+        BLE_UUID16_DECLARE(BLE_GATT_DSC_EXT_PROP_UUID16);
 
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
 static const ble_uuid_t *uuid_cpfd =
@@ -151,6 +153,23 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
             handle++;
         }
 
+        if (chr->flags & (BLE_GATT_CHR_F_RELIABLE_WRITE |
+                          BLE_GATT_CHR_F_AUX_WRITE)) {
+            console_printf("cep descriptor\n");
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%s\n", " ", "uuid",
+                           ble_uuid_to_str(uuid_cep, uuid_buf));
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%d\n", " ", "handle", handle);
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%d\n", " ", "min_key_size", 0);
+            console_printf("%" FIELD_INDENT "s %" FIELD_NAME_LEN "s "
+                           "%s\n", " ", "flags",
+                           ble_gatts_flags_to_str(BLE_ATT_F_READ,
+                                                  flags_buf, ble_gatt_dsc_f_names));
+            handle++;
+        }
+
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
         cpfd_count = 0;
         for (cpfd = chr->cpfd; cpfd && cpfd->format; ++cpfd) {
@@ -269,7 +288,9 @@ ble_gatt_show_local_svc(const struct ble_gatt_svc_def *svc,
 void
 ble_gatts_show_local(void)
 {
+    ble_hs_lock();
     ble_gatts_lcl_svc_foreach(ble_gatt_show_local_svc, NULL);
+    ble_hs_unlock();
 }
 
 #endif

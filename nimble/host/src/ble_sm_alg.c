@@ -19,6 +19,7 @@
  */
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_opt.h"
@@ -48,6 +49,16 @@ static struct trng_dev *g_trng;
 #endif
 
 static void
+ble_sm_alg_secure_zero(void *buf, size_t len)
+{
+    volatile uint8_t *p = buf;
+
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
+static void
 ble_sm_alg_xor_128(const uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     int i;
@@ -64,6 +75,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     int ret = 0;
     struct mbedtls_aes_context ctx;
     uint8_t tmp[16];
+    int rc = 0;
 
     swap_buf(tmp, key, 16);
 
@@ -203,7 +215,12 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         return BLE_HS_EUNKNOWN;
     }
 
-    return 0;
+    rc = 0;
+
+done:
+    ble_sm_alg_secure_zero(&state, sizeof(state));
+    ble_sm_alg_secure_zero(&sched, sizeof(sched));
+    return rc;
 }
 
 #if MYNEWT_VAL(BLE_SM_SC)
@@ -211,9 +228,24 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
 static void
 ble_sm_alg_log_buf(const char *name, const uint8_t *buf, int len)
 {
+#ifdef ESP_PLATFORM
+    char str[1 + 2 * 80];
+    int i;
+    int pos;
+
+    if (len > 80) {
+        len = 80;
+    }
+
+    for (i = 0, pos = 0; i < len; i++) {
+        pos += snprintf(str + pos, sizeof(str) - pos, "%02x", buf[i]);
+    }
+    BLE_HS_LOG(DEBUG, "    %s=%s\n", name, str);
+#else
     BLE_HS_LOG(DEBUG, "    %s=", name);
     ble_hs_log_flat_buf(buf, len);
     BLE_HS_LOG(DEBUG, "\n");
+#endif
 }
 
 int
