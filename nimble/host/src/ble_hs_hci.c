@@ -34,6 +34,10 @@
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
 #define BLE_HCI_CMD_TIMEOUT_MS  2000
 
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
 #if MYNEWT_VAL(BLE_ERR_NAME)
 /* HCI ERROR */
 #define BLE_ERR_UNKNOWN_HCI_CMD      0x01
@@ -319,6 +323,7 @@ static struct ble_hci_ev *l_ble_hs_hci_ack;
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
 #define BLE_HS_HCI_FRAG_DATABUF_SIZE    \
     (BLE_ACL_MAX_PKT_SIZE +             \
+     1 +                                 \
      BLE_HCI_DATA_HDR_SZ +              \
      sizeof (struct os_mbuf_pkthdr) +   \
      sizeof (struct ble_mbuf_hdr) +     \
@@ -326,6 +331,7 @@ static struct ble_hci_ev *l_ble_hs_hci_ack;
 #else
 #define BLE_HS_HCI_FRAG_DATABUF_SIZE    \
      (BLE_ACL_MAX_PKT_SIZE +            \
+      1 +                                \
       BLE_HCI_DATA_HDR_SZ +             \
       BLE_HS_CTRL_DATA_HDR_SZ +         \
       sizeof (struct os_mbuf_pkthdr) +  \
@@ -410,7 +416,8 @@ ble_hs_hci_add_avail_pkts(uint16_t delta)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    if (ble_hs_hci_avail_pkts + delta > UINT16_MAX) {
+    if (delta > ble_hs_hci_max_pkts ||
+        ble_hs_hci_avail_pkts > ble_hs_hci_max_pkts - delta) {
         ble_hs_sched_reset(BLE_HS_ECONTROLLER);
     } else {
         ble_hs_hci_avail_pkts += delta;
@@ -595,8 +602,8 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
     struct ble_hs_hci_ack ack;
     int rc;
 
-    BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
     ble_hs_hci_lock();
+    BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
 
     rc = ble_hs_hci_cmd_send_buf(opcode, cmd, cmd_len);
     if (rc != 0) {
@@ -660,8 +667,9 @@ ble_hs_hci_send_vs_cmd(uint16_t ocf, const void *cmdbuf, uint8_t cmdlen,
 static void
 ble_hs_hci_rx_ack(uint8_t *ack_ev)
 {
-    if (ble_npl_sem_get_count(&ble_hs_hci_sem) > 0) {
-        /* This ack is unexpected; ignore it. */
+    if (ble_npl_sem_get_count(&ble_hs_hci_sem) > 0 ||
+        l_ble_hs_hci_ack != NULL) {
+        /* This ack is unexpected or duplicated; ignore it. */
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_transport_free(BLE_HCI_EVT, ack_ev);
 #else
@@ -669,7 +677,6 @@ ble_hs_hci_rx_ack(uint8_t *ack_ev)
 #endif
         return;
     }
-    BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
 
     /* Unblock the application now that the HCI command buffer is populated
      * with the acknowledgement.
@@ -709,7 +716,7 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
 #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     uint16_t len = hci_ev[1] + 3;
     if (host_recv_adv_packet(hci_ev)) {
-        bt_hci_log_record_hci_adv(HCI_LOG_DATA_TYPE_ADV, &hci_ev[1], len - 2);
+        bt_hci_log_record_hci_adv(HCI_LOG_DATA_TYPE_ADV, &hci_ev[2], hci_ev[1]);
     } else {
         bt_hci_log_record_hci_data(0x04, &hci_ev[0], len - 1);
     }
@@ -780,7 +787,7 @@ ble_hs_hci_max_acl_payload_sz(void)
      * data portion of HCI LE ACL Data Packets sent from the Host to the
      * Controller.
      */
-    return ble_hs_hci_buf_sz;
+    return MIN(ble_hs_hci_buf_sz, BLE_ACL_MAX_PKT_SIZE - BLE_HCI_DATA_HDR_SZ);
 }
 #endif
 
@@ -800,9 +807,9 @@ ble_hs_hci_frag_alloc(uint16_t frag_size, void *arg)
 #endif
     if (om != NULL) {
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
-        om->om_data += BLE_HCI_DATA_HDR_SZ;
+        om->om_data += 1 + BLE_HCI_DATA_HDR_SZ;
 #else
-        om->om_data += BLE_HCI_DATA_HDR_SZ + BLE_HS_CTRL_DATA_HDR_SZ;
+        om->om_data += 1 + BLE_HCI_DATA_HDR_SZ + BLE_HS_CTRL_DATA_HDR_SZ;
 #endif
         return om;
     }
@@ -894,7 +901,8 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
     /* Send fragments until the entire packet has been sent. */
     while (txom != NULL && ble_hs_hci_avail_pkts > 0) {
 #if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
-        frag = mem_split_frag(&txom, BLE_ACL_MAX_PKT_SIZE, ble_hs_hci_frag_alloc, NULL);
+        frag = mem_split_frag(&txom, BLE_ACL_MAX_PKT_SIZE - BLE_HCI_DATA_HDR_SZ,
+                              ble_hs_hci_frag_alloc, NULL);
 #else
         frag = mem_split_frag(&txom, ble_hs_hci_max_acl_payload_sz(), ble_hs_hci_frag_alloc, NULL);
 #endif
@@ -1068,6 +1076,15 @@ void ble_hs_hci_deinit(void)
         return;
     }
 #endif
+
+    if (l_ble_hs_hci_ack != NULL) {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, (uint8_t *) l_ble_hs_hci_ack);
+#else
+        ble_transport_free((uint8_t *) l_ble_hs_hci_ack);
+#endif
+        l_ble_hs_hci_ack = NULL;
+    }
 
     /* Clean up mempool first to ensure blocks are free */
     os_mempool_clear(&ble_hs_hci_frag_mempool);

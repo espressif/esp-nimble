@@ -18,6 +18,7 @@
  */
 
 #include <assert.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "sysinit/sysinit.h"
@@ -35,6 +36,7 @@ static uint16_t ble_svc_bas_battery_handle;
 
 /* Battery level */
 static uint8_t ble_svc_bas_battery_level;
+static bool ble_svc_bas_initialized;
 
 /* Access function */
 static int
@@ -135,6 +137,7 @@ void
 ble_svc_bas_deinit(void)
 {
     ble_gatts_free_svcs();
+    ble_svc_bas_initialized = false;
 }
 
 /**
@@ -145,17 +148,25 @@ ble_svc_bas_init(void)
 {
     int rc;
 
-    /* Ensure this function only gets called by sysinit. */
-    SYSINIT_ASSERT_ACTIVE();
+    if (ble_svc_bas_initialized) {
+        return;
+    }
 
     ble_svc_bas_battery_level = 0;
 
     rc = ble_gatts_count_cfg(ble_svc_bas_defs);
-    SYSINIT_PANIC_ASSERT(rc == 0);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        return;
+    }
 
     rc = ble_gatts_add_svcs(ble_svc_bas_defs);
-    SYSINIT_PANIC_ASSERT(rc == 0);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        return;
+    }
 
     ble_svc_bas_battery_level = 0;
+    ble_svc_bas_initialized = true;
 }
 #endif

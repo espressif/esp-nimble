@@ -19,6 +19,7 @@
  */
 
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_opt.h"
@@ -59,15 +60,17 @@
 #endif
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+#if !CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #if MYNEWT_VAL(BLE_SM_SC)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
-static mbedtls_ecp_keypair * keypair_ptr = NULL;
+static mbedtls_ecp_keypair *keypair_ptr __attribute__((unused)) = NULL;
 #define keypair (*keypair_ptr)
 #else
 static mbedtls_ecp_keypair keypair;
 #endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 #endif
+#endif /* !CONFIG_MBEDTLS_VER_4_X_SUPPORT */
 #else
 #if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(TRNG)
 static struct trng_dev *g_trng;
@@ -96,6 +99,16 @@ static const char * const TAG = "ble_sm_alg";
 #endif
 
 static void
+ble_sm_alg_secure_zero(void *buf, size_t len)
+{
+    volatile uint8_t *p = buf;
+
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
+static void
 ble_sm_alg_xor_128(const uint8_t *p, const uint8_t *q, uint8_t *r)
 {
     int i;
@@ -110,6 +123,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
                    uint8_t *enc_data)
 {
     uint8_t tmp[16];
+    int rc = 0;
 
     swap_buf(tmp, key, 16);
 
@@ -126,7 +140,8 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to import AES key: %d", status);
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
     psa_reset_key_attributes(&key_attributes);
 
@@ -139,7 +154,8 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
         ESP_LOGE(TAG, "Encryption failed: %d", status);
         psa_destroy_key(key_id);
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
     psa_destroy_key(key_id);
 #else
@@ -149,7 +165,8 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     if (mbedtls_aes_setkey_enc(&s, tmp, 128) != 0) {
         mbedtls_aes_free(&s);
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     swap_buf(tmp, plaintext, 16);
@@ -157,7 +174,8 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, tmp, enc_data) != 0) {
         mbedtls_aes_free(&s);
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     mbedtls_aes_free(&s);
@@ -167,20 +185,27 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
 
     if (tc_aes128_set_encrypt_key(&s, tmp) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        ble_sm_alg_secure_zero(&s, sizeof(s));
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     swap_buf(tmp, plaintext, 16);
 
     if (tc_aes_encrypt(enc_data, tmp, &s) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        ble_sm_alg_secure_zero(&s, sizeof(s));
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
+    ble_sm_alg_secure_zero(&s, sizeof(s));
 #endif
 
     swap_in_place(enc_data, 16);
 
-    return 0;
+done:
+    ble_sm_alg_secure_zero(tmp, sizeof(tmp));
+    return rc;
 }
 
 int
@@ -394,23 +419,29 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
 {
     struct tc_aes_key_sched_struct sched;
     struct tc_cmac_struct state;
+    int rc = BLE_HS_EUNKNOWN;
 
     if (tc_cmac_setup(&state, key, &sched) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     if (tc_cmac_update(&state, in, len) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     if (tc_cmac_final(out, &state) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        goto done;
     }
 
-    return 0;
+    rc = 0;
+
+done:
+    ble_sm_alg_secure_zero(&state, sizeof(state));
+    ble_sm_alg_secure_zero(&sched, sizeof(sched));
+    return rc;
 }
 #endif
 
@@ -419,9 +450,24 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
 static void
 ble_sm_alg_log_buf(const char *name, const uint8_t *buf, int len)
 {
+#ifdef ESP_PLATFORM
+    char str[1 + 2 * 80];
+    int i;
+    int pos;
+
+    if (len > 80) {
+        len = 80;
+    }
+
+    for (i = 0, pos = 0; i < len; i++) {
+        pos += snprintf(str + pos, sizeof(str) - pos, "%02x", buf[i]);
+    }
+    BLE_HS_LOG(DEBUG, "    %s=%s\n", name, str);
+#else
     BLE_HS_LOG(DEBUG, "    %s=", name);
     ble_hs_log_flat_buf(buf, len);
     BLE_HS_LOG(DEBUG, "\n");
+#endif
 }
 
 int
@@ -883,8 +929,9 @@ exit:
     mbedtls_ecp_point_free(&Q);
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
     if (rc != 0) {
-#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if !CONFIG_MBEDTLS_VER_4_X_SUPPORT && MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (keypair_ptr) {
+            mbedtls_ecp_keypair_free(&keypair);
             nimble_platform_mem_free(keypair_ptr);
             keypair_ptr = NULL;
         }
@@ -1044,7 +1091,15 @@ exit:
 void mbedtls_free_keypair(void)
 {
 #ifndef CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#if MYNEWT_VAL(BLE_SM_SC) && MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (keypair_ptr) {
+        mbedtls_ecp_keypair_free(&keypair);
+        nimble_platform_mem_free(keypair_ptr);
+        keypair_ptr = NULL;
+    }
+#else
     mbedtls_ecp_keypair_free(&keypair);
+#endif
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 }
 #endif
@@ -1119,6 +1174,10 @@ ble_sm_alg_rand(uint8_t *dst, unsigned int size)
         size -= num;
     }
 #else
+    if (!ble_hs_is_enabled()) {
+        return 0;
+    }
+
     if (ble_hs_hci_util_rand(dst, size)) {
         return 0;
     }

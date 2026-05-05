@@ -65,6 +65,10 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM_EVT);
         return BLE_HS_ENOMEM_EVT;
 
+    case BLE_HS_ETIMEOUT_HCI:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ETIMEOUT_HCI);
+        return BLE_HS_ETIMEOUT_HCI;
+
     default:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
@@ -108,6 +112,7 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 
 #if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
     buf--;
+    buf[0] = 0x01;
 #endif
 
 #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
@@ -119,7 +124,15 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     if (rc == 0) {
         STATS_INC(ble_hs_stats, hci_cmd);
     } else {
+#if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
+        /* ESP VHCI transport consumes the command buffer even on error. */
+#else
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_CMD, buf);
+#else
         ble_transport_free(buf);
+#endif
+#endif
         BLE_HS_LOG(DEBUG, "ble_hs_hci_cmd_send failure; rc=%d\n", rc);
     }
 

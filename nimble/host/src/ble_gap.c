@@ -10212,7 +10212,7 @@ ble_gap_end_test_evt(const void *buf, uint8_t len)
     status = cmd_complete->status;
     ptr = (uint8_t *)cmd_complete->return_params;
 
-    num_pkt = htole16(*ptr);
+    num_pkt = get_le16(ptr);
 
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_TEST_UPDATE;

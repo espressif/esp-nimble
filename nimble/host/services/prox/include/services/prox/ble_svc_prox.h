@@ -7,6 +7,8 @@
 #ifndef H_BLE_SVC_PROX_
 #define H_BLE_SVC_PROX_
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -32,6 +34,10 @@ struct ble_hs_cfg;
  * @brief  Initializes proximity service.
  */
 void ble_svc_prox_init(void);
+
+void ble_svc_prox_on_disconnect(uint16_t conn_handle);
+
+void ble_svc_prox_set_tx_power_level(int8_t tx_pwr_lvl);
 
 #ifdef __cplusplus
 }

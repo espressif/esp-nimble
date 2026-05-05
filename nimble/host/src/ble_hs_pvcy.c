@@ -412,7 +412,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
             ble_hs_resolv_enable(0);
        }
 
-       ble_hs_resolv_list_clear_all();
+       ble_hs_resolv_list_clear_all(false);
 
        if (rpa_state) {
              ble_hs_resolv_enable(1);

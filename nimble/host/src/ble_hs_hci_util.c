@@ -439,13 +439,14 @@ ble_hs_hci_rd_all_local_supp_features(uint8_t* status, uint8_t* max_page,
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_RD_ALL_LOCAL_SUP_FEAT), NULL, 0,
-                                      &rsp, sizeof(rsp));
+                                      &rsp.max_page,
+                                      sizeof(rsp) - sizeof(rsp.status));
 
     if (rc != 0) {
         return rc;
     }
 
-    *status = rsp.status;
+    *status = 0;
     *max_page = rsp.max_page;
 
     memcpy(le_features, rsp.le_features, sizeof(rsp.le_features));

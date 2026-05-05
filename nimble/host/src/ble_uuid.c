@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include "os/os.h"
 #include "os/os_mbuf.h"
 #include "nimble/ble.h"
 #include "ble_hs_priv.h"
@@ -217,12 +218,19 @@ ble_uuid_to_str(const ble_uuid_t *uuid, char *dst)
 static int
 ble_uuid_base_init(void)
 {
+    static const uint8_t uuid_base_template[16] = {
+        0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
     uint8_t *temp;
+    os_sr_t sr;
 
-    /* Check again after potential memory barrier - double-checked locking pattern */
+    OS_ENTER_CRITICAL(sr);
     if (ble_uuid_base != NULL) {
+        OS_EXIT_CRITICAL(sr);
         return 0;
     }
+    OS_EXIT_CRITICAL(sr);
 
     temp = nimble_platform_mem_calloc(1, sizeof(uint8_t) * 16);
     if (temp == NULL) {
@@ -230,20 +238,16 @@ ble_uuid_base_init(void)
         return BLE_HS_ENOMEM;
     }
 
-    /* Initialize the base UUID before publishing the pointer */
-    temp[0] = 0xfb;
-    temp[1] = 0x34;
-    temp[2] = 0x9b;
-    temp[3] = 0x5f;
-    temp[4] = 0x80;
-    temp[7] = 0x80;
-    temp[9] = 0x10;
+    memcpy(temp, uuid_base_template, sizeof(uuid_base_template));
 
-    /* Only set the pointer if it's still NULL (handles race condition) */
+    OS_ENTER_CRITICAL(sr);
     if (ble_uuid_base == NULL) {
         ble_uuid_base = temp;
-    } else {
-        /* Another thread beat us to it - free our allocation */
+        temp = NULL;
+    }
+    OS_EXIT_CRITICAL(sr);
+
+    if (temp != NULL) {
         nimble_platform_mem_free(temp);
     }
 
@@ -277,8 +281,18 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
     str_ptr = &str[len - 2];
 
     if (len <= BLE_UUID16_STR_MAX_LEN) {
+        if (len == BLE_UUID16_STR_MAX_LEN &&
+            (str[0] != '0' || (str[1] != 'x' && str[1] != 'X'))) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
         uuid->u.type = BLE_UUID_TYPE_16;
     } else if (len <= BLE_UUID32_STR_MAX_LEN) {
+        if (len == BLE_UUID32_STR_MAX_LEN &&
+            (str[0] != '0' || (str[1] != 'x' && str[1] != 'X'))) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
         uuid->u.type = BLE_UUID_TYPE_32;
     } else if (len <= BLE_UUID128_STR_MAX_LEN) {
         uuid->u.type = BLE_UUID_TYPE_128;
@@ -535,9 +549,16 @@ ble_uuid_length(const ble_uuid_t *uuid)
 void
 ble_uuid_deinit(void)
 {
-    if (ble_uuid_base) {
-        nimble_platform_mem_free(ble_uuid_base);
-        ble_uuid_base = NULL;
+    uint8_t *temp;
+    os_sr_t sr;
+
+    OS_ENTER_CRITICAL(sr);
+    temp = ble_uuid_base;
+    ble_uuid_base = NULL;
+    OS_EXIT_CRITICAL(sr);
+
+    if (temp) {
+        nimble_platform_mem_free(temp);
     }
 }
 #endif

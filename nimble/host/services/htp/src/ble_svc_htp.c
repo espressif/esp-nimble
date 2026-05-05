@@ -16,7 +16,7 @@
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_HTP_SERVICE
 /* Characteristic values */
-static uint16_t ble_svc_htp_temp_type;
+static uint8_t ble_svc_htp_temp_type;
 static uint16_t ble_svc_htp_temp_msr_itvl;
 
 /* Health thermometer characteristic value handles */
@@ -25,7 +25,62 @@ static uint16_t ble_svc_htp_temp_type_val_handle;
 static uint16_t ble_svc_htp_intr_temp_val_handle;
 static uint16_t ble_svc_htp_msr_itvl_val_handle;
 
-static struct chr_subscribe conn_chr_subs[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+static struct {
+    uint16_t conn_handle;
+    struct chr_subscribe chr_subs;
+} conn_chr_subs[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+
+#define BLE_SVC_HTP_TEMP_MSR_MIN_ITVL 0x0001
+#define BLE_SVC_HTP_TEMP_MSR_MAX_ITVL 0xffff
+#define BLE_SVC_HTP_CONN_HANDLE_NONE 0xffff
+
+static int
+ble_svc_htp_conn_slot(uint16_t conn_handle)
+{
+    int free_slot;
+    int i;
+
+    free_slot = -1;
+    for (i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+        if (conn_chr_subs[i].conn_handle == conn_handle) {
+            return i;
+        }
+        if (free_slot < 0 &&
+            conn_chr_subs[i].conn_handle == BLE_SVC_HTP_CONN_HANDLE_NONE) {
+            free_slot = i;
+        }
+    }
+
+    if (free_slot >= 0) {
+        conn_chr_subs[free_slot].conn_handle = conn_handle;
+        memset(&conn_chr_subs[free_slot].chr_subs, 0,
+               sizeof(conn_chr_subs[free_slot].chr_subs));
+    }
+
+    return free_slot;
+}
+
+static uint32_t
+ble_svc_htp_temp_to_ieee11073(float temp)
+{
+    int32_t mantissa;
+    uint8_t exponent;
+
+    exponent = (uint8_t)-2;
+    if (temp >= 0) {
+        mantissa = (int32_t)(temp * 100.0f + 0.5f);
+    } else {
+        mantissa = (int32_t)(temp * 100.0f - 0.5f);
+    }
+
+    if (mantissa > 0x7fffff) {
+        mantissa = 0x7fffff;
+    } else if (mantissa < -0x800000) {
+        mantissa = -0x800000;
+    }
+
+    return ((uint32_t)exponent << 24) | ((uint32_t)mantissa & 0x00ffffff);
+}
 
 static int
 ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
@@ -98,7 +153,12 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
     uint16_t uuid16;
     int rc;
 
-    uuid16 = ble_uuid_u16(ctxt->chr->uuid);
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_DSC ||
+        ctxt->op == BLE_GATT_ACCESS_OP_WRITE_DSC) {
+        uuid16 = ble_uuid_u16(ctxt->dsc->uuid);
+    } else {
+        uuid16 = ble_uuid_u16(ctxt->chr->uuid);
+    }
     assert(uuid16 != 0);
 
     switch (uuid16) {
@@ -116,10 +176,11 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
 
     case BLE_SVC_HTP_CHR_UUID16_MEASUREMENT_ITVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            rc = ble_svc_htp_chr_write(ctxt->om, 0, sizeof(ble_svc_htp_temp_msr_itvl),
+            rc = ble_svc_htp_chr_write(ctxt->om, sizeof(ble_svc_htp_temp_msr_itvl),
+                                       sizeof(ble_svc_htp_temp_msr_itvl),
                                        &ble_svc_htp_temp_msr_itvl,
                                        NULL);
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            return rc;
         } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
             rc = os_mbuf_append(ctxt->om, &ble_svc_htp_temp_msr_itvl,
                                 sizeof(ble_svc_htp_temp_msr_itvl));
@@ -128,8 +189,23 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_SVC_HS_ERR_OUT_OF_RANGE;
         }
 
+    case BLE_SVC_HTP_DSC_UUID16_VALID_RANGE: {
+        uint8_t valid_range[4];
+
+        if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_DSC) {
+            return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+        }
+
+        valid_range[0] = BLE_SVC_HTP_TEMP_MSR_MIN_ITVL & 0xff;
+        valid_range[1] = BLE_SVC_HTP_TEMP_MSR_MIN_ITVL >> 8;
+        valid_range[2] = BLE_SVC_HTP_TEMP_MSR_MAX_ITVL & 0xff;
+        valid_range[3] = BLE_SVC_HTP_TEMP_MSR_MAX_ITVL >> 8;
+
+        rc = os_mbuf_append(ctxt->om, valid_range, sizeof(valid_range));
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+
     default:
-        assert(0);
         return BLE_ATT_ERR_UNLIKELY;
     }
 }
@@ -137,12 +213,15 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_htp_on_disconnect(uint16_t conn_handle)
 {
-    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+    int slot = ble_svc_htp_conn_slot(conn_handle);
+
+    if (slot < 0) {
         return;
     }
-    conn_chr_subs[conn_handle].chr_subs[TEMP_MEASUREMENT] = false;
-    conn_chr_subs[conn_handle].chr_subs[INTERMEDIATE_TEMP] = false;
-    conn_chr_subs[conn_handle].chr_subs[MEASUREMENT_ITVL]  = false;
+
+    conn_chr_subs[slot].conn_handle = BLE_SVC_HTP_CONN_HANDLE_NONE;
+    memset(&conn_chr_subs[slot].chr_subs, 0,
+           sizeof(conn_chr_subs[slot].chr_subs));
 }
 
 /**
@@ -151,10 +230,12 @@ ble_svc_htp_on_disconnect(uint16_t conn_handle)
 bool
 ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr)
 {
-    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+    int slot = ble_svc_htp_conn_slot(conn_handle);
+
+    if (chr < TEMP_MEASUREMENT || chr > MEASUREMENT_ITVL || slot < 0) {
         return false;
     }
-    return conn_chr_subs[conn_handle].chr_subs[chr];
+    return conn_chr_subs[slot].chr_subs.chr_subs[chr];
 }
 
 /**
@@ -166,20 +247,30 @@ ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr)
  * @return 0 on success, non-zero error code otherwise.
  */
 void
-ble_svc_htp_subscribe(uint16_t conn_handle, uint16_t attr_handle)
+ble_svc_htp_subscribe_state(uint16_t conn_handle, uint16_t attr_handle,
+                            bool subscribed)
 {
-    if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+    int slot = ble_svc_htp_conn_slot(conn_handle);
+
+    if (slot < 0) {
         return;
     }
+
     if (attr_handle == ble_svc_htp_temp_measurement_val_handle) {
-        conn_chr_subs[conn_handle].chr_subs[TEMP_MEASUREMENT] = true;
+        conn_chr_subs[slot].chr_subs.chr_subs[TEMP_MEASUREMENT] = subscribed;
 
     } else if (attr_handle == ble_svc_htp_intr_temp_val_handle) {
-        conn_chr_subs[conn_handle].chr_subs[INTERMEDIATE_TEMP] = true;
+        conn_chr_subs[slot].chr_subs.chr_subs[INTERMEDIATE_TEMP] = subscribed;
 
     } else if (attr_handle == ble_svc_htp_msr_itvl_val_handle) {
-        conn_chr_subs[conn_handle].chr_subs[MEASUREMENT_ITVL] = true;
+        conn_chr_subs[slot].chr_subs.chr_subs[MEASUREMENT_ITVL] = subscribed;
     }
+}
+
+void
+ble_svc_htp_subscribe(uint16_t conn_handle, uint16_t attr_handle)
+{
+    ble_svc_htp_subscribe_state(conn_handle, attr_handle, true);
 }
 
 /**
@@ -194,31 +285,27 @@ ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit)
     struct os_mbuf *txom = NULL;
 
     /* 0th byte is flag, next 4 bytes is the temperature */
-    uint8_t flags = {0x00};
+    uint8_t measurement[5];
+    uint32_t temp_ieee11073;
 
+    measurement[0] = 0x00;
     if (temp_unit) {
-        flags |= 1 << 0; /* Setting 0 th bit of flags to 1 if temp unit is Fahrenheit */
+        measurement[0] |= 1 << 0; /* Temperature unit is Fahrenheit. */
     }
 
-    txom = ble_hs_mbuf_from_flat(&flags, sizeof(flags));
+    temp_ieee11073 = ble_svc_htp_temp_to_ieee11073(temp);
+    measurement[1] = temp_ieee11073 & 0xff;
+    measurement[2] = (temp_ieee11073 >> 8) & 0xff;
+    measurement[3] = (temp_ieee11073 >> 16) & 0xff;
+    measurement[4] = (temp_ieee11073 >> 24) & 0xff;
+
+    txom = ble_hs_mbuf_from_flat(measurement, sizeof(measurement));
     if (!txom) {
         return ESP_FAIL;
     }
 
-    rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));
-    if (rc != 0) {
-        os_mbuf_free_chain(txom);
-        goto err;
-    }
-
     rc = ble_gatts_notify_custom(conn_handle,
                                  ble_svc_htp_intr_temp_val_handle, txom);
-    if (rc != 0) {
-        goto err;
-    }
-
-    ble_gatts_chr_updated(ble_svc_htp_intr_temp_val_handle);
-err:
     return rc;
 }
 
@@ -235,21 +322,23 @@ ble_svc_htp_indicate(uint16_t conn_handle, float temp, bool temp_unit)
 
     /* 0th byte is flag, next 4 bytes is the temperature */
 
-    uint8_t flags = {0x00};
+    uint8_t measurement[5];
+    uint32_t temp_ieee11073;
 
+    measurement[0] = 0x00;
     if (temp_unit) {
-        flags |= 1 << 0;   /* Setting 0 th bit of flags to 1 if temp unit is Fahrenheit */
+        measurement[0] |= 1 << 0;   /* Temperature unit is Fahrenheit. */
     }
 
-    txom = ble_hs_mbuf_from_flat(&flags, sizeof(flags));
+    temp_ieee11073 = ble_svc_htp_temp_to_ieee11073(temp);
+    measurement[1] = temp_ieee11073 & 0xff;
+    measurement[2] = (temp_ieee11073 >> 8) & 0xff;
+    measurement[3] = (temp_ieee11073 >> 16) & 0xff;
+    measurement[4] = (temp_ieee11073 >> 24) & 0xff;
+
+    txom = ble_hs_mbuf_from_flat(measurement, sizeof(measurement));
     if (!txom) {
         return ESP_FAIL;
-    }
-
-    rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));
-    if (rc != 0) {
-        os_mbuf_free_chain(txom);
-        return rc;
     }
 
     rc = ble_gatts_indicate_custom(conn_handle,
@@ -300,6 +389,9 @@ ble_svc_htp_init(void)
     ble_svc_htp_temp_type = 2;
     ble_svc_htp_temp_msr_itvl = 2; /* 2 sec */
 
-    memset(&conn_chr_subs, 0, sizeof(conn_chr_subs));
+    for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+        conn_chr_subs[i].conn_handle = BLE_SVC_HTP_CONN_HANDLE_NONE;
+        memset(&conn_chr_subs[i].chr_subs, 0, sizeof(conn_chr_subs[i].chr_subs));
+    }
 }
 #endif
