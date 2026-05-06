@@ -52,7 +52,7 @@ uint8_t ble_hs_pvcy_default_irk[16];
 uint16_t l_rpa_timeout;
 #endif
 
-#define BLE_MAX_RPA_TIMEOUT_VAL 0xA1B8
+#define BLE_MAX_RPA_TIMEOUT_VAL 0x0E10
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_store_config_init(void);
@@ -80,7 +80,8 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
     struct ble_hci_le_set_rpa_tmo_cp cmd;
 
     if (timeout == 0 || timeout > BLE_MAX_RPA_TIMEOUT_VAL) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     }
 
     cmd.rpa_timeout = htole16(timeout);
@@ -93,25 +94,39 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
 
 int ble_hs_set_rpa_timeout(uint16_t timeout)
 {
+    int rc;
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_pvcy_ctx == NULL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
-    l_rpa_timeout = timeout;
 
-    return ble_hs_pvcy_set_addr_timeout(l_rpa_timeout);
+    rc = ble_hs_pvcy_set_addr_timeout(timeout);
+    if (rc == 0) {
+        ble_hs_lock();
+        l_rpa_timeout = timeout;
+        ble_hs_unlock();
+    }
+
+    return rc;
 }
 
 uint16_t ble_hs_get_rpa_timeout(void)
 {
+    uint16_t tmo;
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_pvcy_ctx == NULL) {
         return 0;
     }
 #endif
-    return l_rpa_timeout;
+    ble_hs_lock();
+    tmo = l_rpa_timeout;
+    ble_hs_unlock();
+
+    return tmo;
 }
 
 void ble_hs_reset_rpa_timeout(void)
@@ -152,15 +167,19 @@ ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
 
     cmd.peer_addr_type = addr_type;
     memcpy(cmd.peer_id_addr, addr, BLE_DEV_ADDR_LEN);
-#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+
+    ble_gap_preempt();
     ble_hs_lock();
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     rc = ble_hs_resolv_list_rmv(addr_type, &cmd.peer_id_addr[0]);
-    ble_hs_unlock();
 #else
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
                            &cmd, sizeof(cmd), NULL, 0);
 #endif
+    ble_hs_unlock();
+    ble_gap_preempt_done();
+
     return rc;
 }
 
@@ -168,9 +187,17 @@ ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
 static int
 ble_hs_pvcy_clear_entries(void)
 {
-    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
-                                        BLE_HCI_OCF_LE_CLR_RESOLV_LIST),
-                             NULL, 0, NULL, 0);
+    int rc;
+
+    ble_gap_preempt();
+    ble_hs_lock();
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_CLR_RESOLV_LIST),
+                           NULL, 0, NULL, 0);
+    ble_hs_unlock();
+    ble_gap_preempt_done();
+
+    return rc;
 }
 #endif
 
@@ -190,7 +217,9 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
 
     cmd.peer_addr_type = addr_type;
     memcpy(cmd.peer_id_addr, addr, 6);
+    ble_hs_lock();
     memcpy(cmd.local_irk, ble_hs_pvcy_irk, 16);
+    ble_hs_unlock();
     memcpy(cmd.peer_irk, irk, 16);
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -220,6 +249,7 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     memcpy(peer_addr.val, addr, sizeof peer_addr.val);
     rc = ble_hs_pvcy_set_mode(&peer_addr, BLE_GAP_PRIVATE_MODE_DEVICE);
     if (rc != 0) {
+        ble_hs_pvcy_remove_entry(addr_type, addr);
         return rc;
     }
 #endif
@@ -271,7 +301,10 @@ ble_hs_pvcy_ensure_started(void)
     }
 #endif
 
+    ble_hs_lock();
+
     if (ble_hs_pvcy_started) {
+        ble_hs_unlock();
         return 0;
     }
 
@@ -291,10 +324,13 @@ ble_hs_pvcy_ensure_started(void)
     }
 
     if (rc != 0) {
+        ble_hs_unlock();
         return rc;
     }
 
     ble_hs_pvcy_started = 1;
+
+    ble_hs_unlock();
 
     return 0;
 }
@@ -401,7 +437,9 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
         memcpy(new_irk, ble_hs_pvcy_default_irk, 16);
     }
 
+    ble_hs_lock();
     memcpy(ble_hs_pvcy_irk, new_irk, 16);
+    ble_hs_unlock();
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     if (irk != NULL) {
@@ -480,6 +518,9 @@ ble_hs_pvcy_our_irk(const uint8_t **out_irk)
 int
 ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
 {
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    return 0;
+#else
     struct ble_hci_le_set_privacy_mode_cp cmd;
 
     if (addr == NULL) {
@@ -487,17 +528,19 @@ ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
         return BLE_HS_EINVAL;
     }
 
-    if (addr->type > BLE_ADDR_RANDOM) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+    if (addr->type > BLE_ADDR_RANDOM_ID) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     }
 
     cmd.mode = priv_mode;
-    cmd.peer_id_addr_type = addr->type;
+    cmd.peer_id_addr_type = addr->type & 0x01;
     memcpy(cmd.peer_id_addr, addr->val, BLE_DEV_ADDR_LEN);
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SET_PRIVACY_MODE),
                              &cmd, sizeof(cmd), NULL, 0);
+#endif
 }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -517,10 +560,15 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
 {
     int rc = 0;
 
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_preempt();
+#endif
+    ble_hs_lock();
+
     if (enable != NIMBLE_HOST_DISABLE_PRIVACY) {
         rc = ble_hs_pvcy_ensure_started();
         if (rc != 0) {
-            return rc;
+            goto done;
         }
 
         ble_hs_resolv_enable(true);
@@ -537,6 +585,12 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
     } else {
         ble_hs_resolv_enable(false);
     }
+
+done:
+    ble_hs_unlock();
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_preempt_done();
+#endif
 
     return rc;
 }

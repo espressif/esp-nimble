@@ -89,7 +89,7 @@ extern uint16_t ble_hs_hci_avail_pkts;
 int ble_hs_hci_cmd_tx_no_rsp(uint16_t opcode, const void *cmd, uint8_t cmd_len);
 int ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
                       void *rsp, uint8_t rsp_len);
-void ble_hs_hci_init(void);
+int ble_hs_hci_init(void);
 void ble_hs_hci_deinit(void);
 
 void ble_hs_hci_set_le_supported_feat(uint64_t feat);

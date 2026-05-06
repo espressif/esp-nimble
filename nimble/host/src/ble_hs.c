@@ -585,7 +585,6 @@ ble_hs_timer_reset(uint32_t ticks)
 
     if (!ble_hs_is_enabled()) {
         ble_npl_callout_stop(&ble_hs_timer);
-        ble_npl_callout_deinit(&ble_hs_timer);
     } else {
         rc = ble_npl_callout_reset(&ble_hs_timer, ticks);
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
@@ -732,7 +731,7 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
 
-    if (ev && ble_hs_evq->eventq) {
+    if (ev && ble_hs_evq) {
         memset (ev, 0, sizeof *ev);
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
         ble_npl_eventq_put(ble_hs_evq, ev);
@@ -976,7 +975,8 @@ ble_hs_init(void)
     ble_npl_event_init(&ble_hs_ev_start_stage2, ble_hs_event_start_stage2,
                        NULL);
 
-    ble_hs_hci_init();
+    rc = ble_hs_hci_init();
+    SYSINIT_PANIC_ASSERT(rc == 0);
 
 #if NIMBLE_BLE_CONNECT
     rc = ble_hs_conn_init();

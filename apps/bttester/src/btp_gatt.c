@@ -1848,7 +1848,7 @@ get_attr_val(const void *cmd, uint16_t cmd_len,
         }
 
         ble_att_svr_read_handle(BLE_HS_CONN_HANDLE_NONE,
-                                handle, 0, buf,
+                                handle, 0, &buf,
                                 &out_att_err);
 
         rp->att_response = out_att_err;
@@ -1866,7 +1866,7 @@ get_attr_val(const void *cmd, uint16_t cmd_len,
         }
 
         ble_att_svr_read_handle(conn.conn_handle,
-                                handle, 0, buf,
+                                handle, 0, &buf,
                                 &out_att_err);
 
         rp->att_response = out_att_err;

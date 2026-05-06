@@ -1125,6 +1125,10 @@ ble_gattc_proc_matches_expired(struct ble_gattc_proc *proc, void *arg)
 
     criteria = arg;
 
+    if (proc->flags & BLE_GATTC_PROC_F_STALLED) {
+        return 0;
+    }
+
     time_diff = proc->exp_os_ticks - criteria->now;
 
     if (time_diff <= 0) {
@@ -1418,7 +1422,9 @@ ble_gattc_resume_procs(void)
 
     ble_gattc_extract_stalled(&stall_list);
 
-    STAILQ_FOREACH(proc, &stall_list, next) {
+    while ((proc = STAILQ_FIRST(&stall_list)) != NULL) {
+        STAILQ_REMOVE_HEAD(&stall_list, next);
+
         resume_cb = ble_gattc_resume_dispatch_get(proc->op);
         BLE_HS_DBG_ASSERT(resume_cb != NULL);
 
@@ -1587,10 +1593,18 @@ ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status)
                         attrs[i].handle = proc->write_reliable.attrs[i].handle;
                         attrs[i].offset = 0;
                         attrs[i].om = os_mbuf_dup(proc->write_reliable.attrs[i].om);
+                        if (attrs[i].om == NULL) {
+                            /* Failed to duplicate. Free previously duplicated mbufs and abort. */
+                            for (int j = 0; j < i; j++) {
+                                os_mbuf_free_chain(attrs[j].om);
+                            }
+                            goto skip_recovery;
+                        }
                     }
                     ble_gattc_write_reliable(conn_handle, attrs,
                                              proc->write_reliable.num_attrs,
                                              proc->write_reliable.cb, proc->write_reliable.cb_arg);
+skip_recovery:
                     break;
 		}
             } else {
@@ -1964,9 +1978,11 @@ done:
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_svcs_fail);
 #if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-        ble_hs_lock();
-        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
-        ble_hs_unlock();
+        if (proc != NULL) {
+            ble_hs_lock();
+            STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
+            ble_hs_unlock();
+        }
 #endif
     }
 
@@ -2787,9 +2803,11 @@ done:
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_chrs_fail);
 #if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-        ble_hs_lock();
-        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
-        ble_hs_unlock();
+        if (proc != NULL) {
+            ble_hs_lock();
+            STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
+            ble_hs_unlock();
+        }
 #endif
     }
 
@@ -3274,11 +3292,6 @@ done:
 
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_dscs_fail);
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-        ble_hs_lock();
-        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
-        ble_hs_unlock();
-#endif
     }
 
     ble_gattc_process_status(proc, rc, false);
@@ -4223,34 +4236,34 @@ ble_gattc_read_mult_cb_var(struct ble_gattc_proc *proc, int status,
         }
 
         *om = os_mbuf_pullup(*om, 2);
-        assert(*om);
+        if (*om == NULL) {
+            status = BLE_HS_ENOMEM;
+            break;
+        }
 
         attr_len = get_le16((*om)->om_data);
 
         os_mbuf_adj(*om, 2);
 
-        if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
-            /*TODO Figure out what to do here */
+        if (attr_len > BLE_ATT_ATTR_MAX_LEN || attr_len > OS_MBUF_PKTLEN(*om)) {
+            status = BLE_HS_EBADDATA;
             break;
         }
 
         attr[i].om = os_msys_get_pkthdr(attr_len, 0);
         if (!attr[i].om) {
-            /*TODO Figure out what to do here */
+            status = BLE_HS_ENOMEM;
             break;
         }
 
         rc = os_mbuf_appendfrom(attr[i].om, *om, 0, attr_len);
         if (rc) {
-            /*TODO Figure out what to do here */
+            status = BLE_HS_ENOMEM;
             break;
         }
 
         os_mbuf_adj(*om, attr_len);
     }
-
-    /*FIXME Testing assert */
-    assert(i == proc->read_mult.num_handles);
 
     proc->read_mult.cb_mult(proc->conn_handle,
                     ble_gattc_error(status, att_handle), &attr[0],
@@ -5364,7 +5377,7 @@ ble_gatts_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
             goto done;
         }
         rc = ble_att_svr_read_handle(BLE_HS_CONN_HANDLE_NONE,
-                                     chr_val_handle, 0, txom, NULL);
+                                     chr_val_handle, 0, &txom, NULL);
         if (rc != 0) {
             /* Fatal error; application disallowed attribute read. */
             rc = BLE_HS_EAPP;
@@ -5456,6 +5469,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
     if (peer_supports_multi_notify == 0) {
         for (i = 0; i < chr_count; i++) {
             rc = ble_att_clt_tx_notify(conn_handle, tuples[i].handle, tuples[i].value);
+            tuples[i].value = NULL;
             if (rc != 0) {
                 goto done;
             }
@@ -5467,12 +5481,14 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
         if (OS_MBUF_PKTLEN(txom) + OS_MBUF_PKTLEN(tuples[i].value) > mtu && cur_chr_cnt < 2) {
             rc = ble_att_clt_tx_notify(conn_handle, tuples[i].handle,
                                        tuples[i].value);
+            tuples[i].value = NULL;
             if (rc != 0) {
                 goto done;
             }
             continue;
         } else if (OS_MBUF_PKTLEN(txom) + OS_MBUF_PKTLEN(tuples[i].value) > mtu) {
             rc = ble_att_clt_tx_multi_notify(conn_handle, txom);
+            txom = NULL;
             if (rc != 0) {
                 goto done;
             }
@@ -5494,6 +5510,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
 
         /* Value */
         os_mbuf_concat(txom, tuples[i].value);
+        tuples[i].value = NULL;
         cur_chr_cnt++;
         last_appended_idx = i;  /* Track the last appended index */
     }
@@ -5502,8 +5519,10 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
         /* Use the last appended index, not chr_count which may be out of bounds */
         rc = ble_att_clt_tx_notify(conn_handle, tuples[last_appended_idx].handle,
                                    tuples[last_appended_idx].value);
+        tuples[last_appended_idx].value = NULL;
     } else {
         rc = ble_att_clt_tx_multi_notify(conn_handle, txom);
+        txom = NULL;
     }
 
 done:
@@ -5904,7 +5923,7 @@ ble_gatts_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
         }
 
         rc = ble_att_svr_read_handle(BLE_HS_CONN_HANDLE_NONE, chr_val_handle,
-                                     0, txom, NULL);
+                                     0, &txom, NULL);
         if (rc != 0) {
             /* Fatal error; application disallowed attribute read. */
             BLE_HS_DBG_ASSERT(0);

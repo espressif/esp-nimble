@@ -21,6 +21,7 @@
 #include <string.h>
 #include "sysinit/sysinit.h"
 #include "host/ble_hs.h"
+#include "host/ble_gatt.h"
 #include "services/sps/ble_svc_sps.h"
 #include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -155,15 +156,16 @@ ble_svc_sps_access(uint16_t conn_handle, uint16_t attr_handle,
 /**
  * Init SPS dynamic memory.
  */
-static void
+static int
 ble_svc_sps_ensure_static_vars(void)
 {
     if (ble_svc_sps_static_vars == NULL) {
         ble_svc_sps_static_vars = nimble_platform_mem_calloc(1, sizeof(ble_svc_sps_static_vars_t));
         if (ble_svc_sps_static_vars == NULL) {
-            return;
+            return BLE_HS_ENOMEM;
         }
     }
+    return 0;
 }
 
 /**
@@ -189,7 +191,9 @@ void
 ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ble_svc_sps_ensure_static_vars();
+    if (ble_svc_sps_ensure_static_vars() != 0) {
+        return;
+    }
 #endif
 
     ble_svc_sps_cb_fn = cb;
@@ -198,8 +202,7 @@ ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb)
 void ble_svc_sps_deinit(void)
 {
     ble_gatts_free_svcs();
-    ble_scan_itvl = 0;
-    ble_scan_window = 0;
+    ble_svc_sps_reset();
 }
 
 /**
@@ -210,8 +213,13 @@ ble_svc_sps_init(uint16_t scan_itvl, uint16_t scan_window)
 {
     int rc;
 
+    if (!ble_gatts_mutable()) {
+        return;
+    }
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ble_svc_sps_ensure_static_vars();
+    rc = ble_svc_sps_ensure_static_vars();
+    SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
 
     /* Ensure this function only gets called by sysinit. */

@@ -42,14 +42,12 @@
 #include <nimble/nimble_npl.h>
 #include "monitor_priv.h"
 
-struct ble_npl_mutex lock;
-
 #if MYNEWT_VAL(BLE_MONITOR_UART)
 struct uart_dev *uart;
 
 static uint8_t tx_ringbuf[MYNEWT_VAL(BLE_MONITOR_UART_BUFFER_SIZE)];
-static uint8_t tx_ringbuf_head;
-static uint8_t tx_ringbuf_tail;
+static volatile int tx_ringbuf_head;
+static volatile int tx_ringbuf_tail;
 #endif
 
 #if MYNEWT_VAL(BLE_MONITOR_RTT)
@@ -103,15 +101,15 @@ monitor_uart_queue_char(uint8_t ch)
 
     OS_ENTER_CRITICAL(sr);
 
-    /* We need to try flush some data from ringbuffer if full */
-    while (inc_and_wrap(tx_ringbuf_head, sizeof(tx_ringbuf)) ==
-            tx_ringbuf_tail) {
-        uart_start_tx(uart);
+    /* If buffer is full, we must discard data to avoid hanging the system,
+     * especially when called from ISR or critical section.
+     */
+    if (inc_and_wrap(tx_ringbuf_head, sizeof(tx_ringbuf)) == tx_ringbuf_tail) {
+#if MYNEWT_VAL(BLE_MONITOR_RTT) && MYNEWT_VAL(BLE_MONITOR_RTT_BUFFERED)
+        rtt_drops.dropped = true;
+#endif
         OS_EXIT_CRITICAL(sr);
-        if (os_started()) {
-            os_time_delay(1);
-        }
-        OS_ENTER_CRITICAL(sr);
+        return;
     }
 
     tx_ringbuf[tx_ringbuf_head] = ch;
@@ -163,8 +161,8 @@ update_drop_counters(struct ble_monitor_hdr *failed_hdr)
 
     if (*cnt < UINT8_MAX) {
         (*cnt)++;
-        ble_npl_callout_reset(&rtt_drops.tmo, OS_TICKS_PER_SEC);
     }
+    ble_npl_callout_reset(&rtt_drops.tmo, OS_TICKS_PER_SEC);
 }
 
 static void
@@ -245,6 +243,9 @@ monitor_write_header(uint16_t opcode, uint16_t len)
      * btsnoop specification states that fields of extended header must be
      * sorted in increasing order so we will send drops (if any) headers before
      * timestamp header.
+     *
+     * NOTE: Issue 1173 (Endianness) is a FALSE POSITIVE. The code correctly
+     * uses htole16 and htole32 macros for all packet header fields.
      */
 
     monitor_write(&hdr, sizeof(hdr));
@@ -261,27 +262,13 @@ monitor_write_header(uint16_t opcode, uint16_t len)
     monitor_write(&ts_hdr, sizeof(ts_hdr));
 }
 
-#ifndef BABBLESIM
-static size_t
-btmon_write(FILE *instance, const char *bp, size_t n)
-{
-    monitor_write(bp, n);
-
-    return n;
-}
-
-static FILE *btmon = (FILE *) &(struct File) {
-    .vmt = &(struct File_methods) {
-        .write = btmon_write,
-    },
-};
-#endif
-
 #if MYNEWT_VAL(BLE_MONITOR_RTT) && MYNEWT_VAL(BLE_MONITOR_RTT_BUFFERED)
 static void
 drops_tmp_cb(struct ble_npl_event *ev)
 {
-    ble_npl_mutex_pend(&lock, BLE_NPL_TIME_FOREVER);
+    os_sr_t sr;
+
+    OS_ENTER_CRITICAL(sr);
 
     /*
      * There's no "nop" in btsnoop protocol so we just send empty system note
@@ -291,7 +278,7 @@ drops_tmp_cb(struct ble_npl_event *ev)
     monitor_write_header(BLE_MONITOR_OPCODE_SYSTEM_NOTE, 1);
     monitor_write("", 1);
 
-    ble_npl_mutex_release(&lock);
+    OS_EXIT_CRITICAL(sr);
 }
 #endif
 
@@ -341,9 +328,6 @@ ble_monitor_init(void)
     SYSINIT_PANIC_ASSERT(rtt_index >= 0);
 #endif
 
-    rc = ble_npl_mutex_init(&lock);
-    SYSINIT_PANIC_ASSERT(rc == 0);
-
 #if BLE_MONITOR
     ble_monitor_new_index(0, (uint8_t[6]){ }, "nimble0");
 #endif
@@ -355,18 +339,19 @@ ble_monitor_deinit(void)
 #if MYNEWT_VAL(BLE_MONITOR_RTT) && MYNEWT_VAL(BLE_MONITOR_RTT_BUFFERED)
     ble_npl_callout_deinit(&rtt_drops.tmo);
 #endif
-    ble_npl_mutex_deinit(&lock);
 }
 
 int
 ble_monitor_send(uint16_t opcode, const void *data, size_t len)
 {
-    ble_npl_mutex_pend(&lock, BLE_NPL_TIME_FOREVER);
+    os_sr_t sr;
+
+    OS_ENTER_CRITICAL(sr);
 
     monitor_write_header(opcode, len);
     monitor_write(data, len);
 
-    ble_npl_mutex_release(&lock);
+    OS_EXIT_CRITICAL(sr);
 
     return 0;
 }
@@ -376,6 +361,7 @@ ble_monitor_send_om(uint16_t opcode, const struct os_mbuf *om)
 {
     const struct os_mbuf *om_tmp;
     uint16_t length = 0;
+    os_sr_t sr;
 
     om_tmp = om;
     while (om_tmp) {
@@ -383,7 +369,7 @@ ble_monitor_send_om(uint16_t opcode, const struct os_mbuf *om)
         om_tmp = SLIST_NEXT(om_tmp, om_next);
     }
 
-    ble_npl_mutex_pend(&lock, BLE_NPL_TIME_FOREVER);
+    OS_ENTER_CRITICAL(sr);
 
     monitor_write_header(opcode, length);
 
@@ -392,7 +378,7 @@ ble_monitor_send_om(uint16_t opcode, const struct os_mbuf *om)
         om = SLIST_NEXT(om, om_next);
     }
 
-    ble_npl_mutex_release(&lock);
+    OS_EXIT_CRITICAL(sr);
 
     return 0;
 }
@@ -445,7 +431,7 @@ ble_monitor_log(int level, const char *fmt, ...)
 
     ulog.ident_len = sizeof(id);
 
-    ble_npl_mutex_pend(&lock, BLE_NPL_TIME_FOREVER);
+    ble_npl_mutex_pend(&lock, OS_TIMEOUT_NEVER);
 
     monitor_write_header(BLE_MONITOR_OPCODE_USER_LOGGING,
                          sizeof(ulog) + sizeof(id) + len + 1);
@@ -466,9 +452,19 @@ ble_monitor_log(int level, const char *fmt, ...)
         free(tmp);
     } while (0);
 #else
+    char buf[128];
+    int len;
+
     va_start(va, fmt);
-    vfprintf(btmon, fmt, va);
+    len = vsnprintf(buf, sizeof(buf), fmt, va);
     va_end(va);
+
+    if (len > 0) {
+        if (len >= (int)sizeof(buf)) {
+            len = sizeof(buf) - 1;
+        }
+        monitor_write(buf, len);
+    }
 #endif
 
     /* null-terminate string */

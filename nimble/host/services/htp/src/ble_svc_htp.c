@@ -273,6 +273,12 @@ ble_svc_htp_subscribe(uint16_t conn_handle, uint16_t attr_handle)
     ble_svc_htp_subscribe_state(conn_handle, attr_handle, true);
 }
 
+void
+ble_svc_htp_unsubscribe(uint16_t conn_handle, uint16_t attr_handle)
+{
+    ble_svc_htp_subscribe_state(conn_handle, attr_handle, false);
+}
+
 /**
  * Send a notification for intermediate temperature
  *

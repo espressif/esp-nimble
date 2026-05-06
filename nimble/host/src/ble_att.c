@@ -547,10 +547,9 @@ ble_att_rx_handle_unknown_request(uint8_t op, uint16_t conn_handle,
     }
 #if MYNEWT_VAL(BLE_GATTS)
     os_mbuf_adj(*om, OS_MBUF_PKTLEN(*om));
-    if (ble_att_svr_tx_error_rsp(conn_handle, cid, *om, op, 0,
-                                 BLE_ATT_ERR_REQ_NOT_SUPPORTED) == 0) {
-        *om = NULL;
-    }
+    ble_att_svr_tx_error_rsp(conn_handle, cid, *om, op, 0,
+                             BLE_ATT_ERR_REQ_NOT_SUPPORTED);
+    *om = NULL;
 #else
     os_mbuf_free_chain(*om);
     *om = NULL;

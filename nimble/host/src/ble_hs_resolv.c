@@ -35,7 +35,7 @@
 
 /* Resolve list size, additional space to save local device's configuration */
 #define BLE_RESOLV_LIST_SIZE    (MYNEWT_VAL(BLE_STORE_MAX_BONDS) + 1)
-#define BLE_MAX_RPA_TIMEOUT_VAL 0xA1B8
+#define BLE_MAX_RPA_TIMEOUT_VAL 0x0E10
 
 struct ble_hs_resolv_data {
     uint8_t addr_res_enabled;
@@ -245,6 +245,7 @@ ble_rpa_resolv_add_peer_rec(uint8_t *peer_addr)
     p_dev_rec = &peer_dev_rec[ble_store_num_peer_dev_rec];
 
     p_dev_rec->rec_used = 1;
+    p_dev_rec->rand_addr_type = BLE_ADDR_RANDOM;
     memcpy(p_dev_rec->pseudo_addr, peer_addr, BLE_DEV_ADDR_LEN);
     memcpy(p_dev_rec->rand_addr, peer_addr, BLE_DEV_ADDR_LEN);
     memcpy(p_dev_rec->identity_addr, peer_addr, BLE_DEV_ADDR_LEN);
@@ -855,25 +856,15 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
         return BLE_HS_EINVAL;
     }
 
-    /* IRK is already in little-endian format; ble_sm_alg_encrypt will handle byte order */
     memcpy(ecb.key, irk, 16);
-    memset(ecb.plain_text, 0, 16);
+    memcpy(ecb.plain_text, rpa + 3, 3);
 
-    ecb.plain_text[15] = rpa[3];
-    ecb.plain_text[14] = rpa[4];
-    ecb.plain_text[13] = rpa[5];
-
-    swap_in_place(ecb.plain_text, 16);
-
-    /* Send the data to ble_sm_alg_encrypt in little-endian style */
     rc = ble_sm_alg_encrypt(ecb.key, ecb.plain_text, ecb.cipher_text);
     if (rc != 0) {
         return rc;
     }
-    swap_in_place(ecb.cipher_text, 16);
 
-    if ((ecb.cipher_text[15] == rpa[0]) && (ecb.cipher_text[14] == rpa[1]) &&
-            (ecb.cipher_text[13] == rpa[2])) {
+    if (memcmp(ecb.cipher_text, rpa, 3) == 0) {
         rc = 0;
     } else {
         rc = BLE_HS_ENOENT;

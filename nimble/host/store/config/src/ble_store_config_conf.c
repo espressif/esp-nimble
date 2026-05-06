@@ -211,62 +211,80 @@ static int
 ble_store_config_conf_export(void (*func)(char *name, char *val),
                              enum conf_export_tgt tgt)
 {
-    union {
-        char sec[BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ];
-        char cccd[BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ];
-        char rpa_rec[BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ];
+    char *buf;
+    int buf_sz;
+
+    /* Get the largest possible encoding size */
+    buf_sz = BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ;
+    if (BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ > buf_sz) {
+        buf_sz = BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ;
+    }
+    if (BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ > buf_sz) {
+        buf_sz = BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ;
+    }
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
-        char csfc[BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ];
+    if (BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ > buf_sz) {
+        buf_sz = BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ;
+    }
 #endif
 #if MYNEWT_VAL(ENC_ADV_DATA)
-        char ead[BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ];
+    if (BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ > buf_sz) {
+        buf_sz = BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ;
+    }
 #endif
-    } buf;
+
+    buf = nimble_platform_mem_malloc(buf_sz);
+    if (!buf) {
+        return BLE_HS_ENOMEM;
+    }
 
     ble_store_config_serialize_arr(ble_store_config_our_secs,
                                    sizeof *ble_store_config_our_secs,
                                    ble_store_config_num_our_secs,
-                                   buf.sec,
-                                   sizeof buf.sec);
-    func("ble_hs/our_sec", buf.sec);
+                                   buf,
+                                   buf_sz);
+    func("ble_hs/our_sec", buf);
 
     ble_store_config_serialize_arr(ble_store_config_peer_secs,
                                    sizeof *ble_store_config_peer_secs,
                                    ble_store_config_num_peer_secs,
-                                   buf.sec,
-                                   sizeof buf.sec);
-    func("ble_hs/peer_sec", buf.sec);
+                                   buf,
+                                   buf_sz);
+    func("ble_hs/peer_sec", buf);
 
     ble_store_config_serialize_arr(ble_store_config_cccds,
                                    sizeof *ble_store_config_cccds,
                                    ble_store_config_num_cccds,
-                                   buf.cccd,
-                                   sizeof buf.cccd);
-    func("ble_hs/cccd", buf.cccd);
+                                   buf,
+                                   buf_sz);
+    func("ble_hs/cccd", buf);
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
     ble_store_config_serialize_arr(ble_store_config_csfcs,
                                    sizeof *ble_store_config_csfcs,
                                    ble_store_config_num_csfcs,
-                                   buf.csfc,
-                                   sizeof buf.csfc);
-    func("ble_hs/csfc", buf.csfc);
+                                   buf,
+                                   buf_sz);
+    func("ble_hs/csfc", buf);
 #endif
 #if MYNEWT_VAL(ENC_ADV_DATA)
     ble_store_config_serialize_arr(ble_store_config_eads,
                                    sizeof *ble_store_config_eads,
                                    ble_store_config_num_eads,
-                                   buf.ead,
-                                   sizeof buf.ead);
-    func("ble_hs/ead", buf.ead);
+                                   buf,
+                                   buf_sz);
+    func("ble_hs/ead", buf);
 #endif
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     ble_store_config_serialize_arr(ble_store_config_rpa_recs,
                                    sizeof *ble_store_config_rpa_recs,
                                    ble_store_config_num_rpa_recs,
-                                   buf.rpa_rec,
-                                   sizeof buf.rpa_rec);
-    func("ble_hs/rpa_rec", buf.rpa_rec);
+                                   buf,
+                                   buf_sz);
+    func("ble_hs/rpa_rec", buf);
 #endif
+
+    nimble_platform_mem_free(buf);
+
     return 0;
 }
 
@@ -275,20 +293,20 @@ ble_store_config_persist_sec_set(const char *setting_name,
                                  const struct ble_store_value_sec *secs,
                                  int num_secs)
 {
-    /*
-     * NOTE: Large stack allocation based on BLE_STORE_MAX_BONDS.
-     * For typical ESP-IDF configurations (BLE_STORE_MAX_BONDS=10), usage is ~1.5KB
-     * which is acceptable. Users configuring larger bond counts should verify adequate
-     * NimBLE host task stack size. Dynamic allocation adds complexity and
-     * potential failure paths during critical bonding operations.
-     */
-    char buf[BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ];
+    char *buf;
     int rc;
 
+    buf = nimble_platform_mem_malloc(BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ);
+    if (buf == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
     ble_store_config_serialize_arr(secs, sizeof *secs, num_secs,
-                                   buf, sizeof buf);
-    /* NOTE: RAM-NVS consistency pattern - see system-wide TODO above */
+                                   buf, BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ);
+
     rc = conf_save_one(setting_name, buf);
+    nimble_platform_mem_free(buf);
+
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
     }
@@ -330,16 +348,23 @@ ble_store_config_persist_peer_secs(void)
 int
 ble_store_config_persist_cccds(void)
 {
-    char buf[BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ];
+    char *buf;
     int rc;
+
+    buf = nimble_platform_mem_malloc(BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ);
+    if (buf == NULL) {
+        return BLE_HS_ENOMEM;
+    }
 
     ble_store_config_serialize_arr(ble_store_config_cccds,
                                    sizeof *ble_store_config_cccds,
                                    ble_store_config_num_cccds,
                                    buf,
-                                   sizeof buf);
+                                   BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ);
     /* NOTE: RAM-NVS consistency pattern - see system-wide TODO above */
     rc = conf_save_one("ble_hs/cccd", buf);
+    nimble_platform_mem_free(buf);
+
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
     }
@@ -351,15 +376,22 @@ ble_store_config_persist_cccds(void)
 int
 ble_store_config_persist_csfcs(void)
 {
-    char buf[BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ];
+    char *buf;
     int rc;
+
+    buf = nimble_platform_mem_malloc(BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ);
+    if (buf == NULL) {
+        return BLE_HS_ENOMEM;
+    }
 
     ble_store_config_serialize_arr(ble_store_config_csfcs,
                                    sizeof *ble_store_config_csfcs,
                                    ble_store_config_num_csfcs,
                                    buf,
-                                   sizeof buf);
+                                   BLE_STORE_CONFIG_CSFC_SET_ENCODE_SZ);
     rc = conf_save_one("ble_hs/csfc", buf);
+    nimble_platform_mem_free(buf);
+
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
     }
@@ -376,13 +408,19 @@ ble_store_config_persist_eads(void)
      * This design prevents concurrent store operations and maintains data consistency.
      * While this blocks the BLE host thread briefly, it ensures atomic store operations
      * and prevents race conditions between concurrent persist/restore operations. */
-    char buf[BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ];
+    char *buf;
     int rc;
+
+    buf = nimble_platform_mem_malloc(BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ);
+    if (buf == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
     ble_store_config_serialize_arr(ble_store_config_eads,
                                    sizeof *ble_store_config_eads,
                                    ble_store_config_num_eads,
                                    buf,
-                                   sizeof buf);
+                                   BLE_STORE_CONFIG_EAD_SET_ENCODE_SZ);
     /*
      * NOTE: Flash I/O while holding BLE host lock is intentional design.
      * ESP-IDF's conf_save_one (NVS operations) are typically fast enough (<10ms)
@@ -390,6 +428,8 @@ ble_store_config_persist_eads(void)
      * persistence is critical for data consistency.
      */
     rc = conf_save_one("ble_hs/ead", buf);
+    nimble_platform_mem_free(buf);
+
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
     }
@@ -401,18 +441,27 @@ ble_store_config_persist_eads(void)
 int
 ble_store_config_persist_rpa_recs(void)
 {
-    char buf[BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ];
+    char *buf;
     int rc;
+
+    buf = nimble_platform_mem_malloc(BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ);
+    if (buf == NULL) {
+        return BLE_HS_ENOMEM;
+    }
+
     ble_store_config_serialize_arr(ble_store_config_rpa_recs,
                                    sizeof *ble_store_config_rpa_recs,
                                    ble_store_config_num_rpa_recs,
                                    buf,
-                                   sizeof buf);
+                                   BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ);
     /* NOTE: RAM-NVS consistency pattern - see system-wide TODO above */
     rc = conf_save_one("ble_hs/rpa_rec", buf);
+    nimble_platform_mem_free(buf);
+
     if (rc != 0) {
         return BLE_HS_ESTORE_FAIL;
     }
+
     return 0;
 }
 #endif

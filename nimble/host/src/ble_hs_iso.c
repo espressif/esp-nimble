@@ -51,6 +51,12 @@ static uint16_t ble_hs_iso_avail_pkts;
 #endif /* MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) */
 
 int
+ble_iso_init(void)
+{
+    return 0;
+}
+
+int
 ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
