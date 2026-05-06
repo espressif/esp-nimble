@@ -1026,7 +1026,7 @@ ble_hs_hci_get_hci_supported_cmd(void)
     return l_ble_hs_hci_sup_cmd;
 }
 
-void
+int
 ble_hs_hci_init(void)
 {
     int rc;
@@ -1036,8 +1036,7 @@ ble_hs_hci_init(void)
     if (!ble_hs_hci_ctx) {
         ble_hs_hci_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_hci_ctx));
         if (!ble_hs_hci_ctx) {
-            BLE_HS_DBG_ASSERT_EVAL(0);
-            return;
+            return BLE_HS_ENOMEM;
         }
     }
 
@@ -1048,8 +1047,7 @@ ble_hs_hci_init(void)
         if (!ble_hs_hci_frag_data) {
             nimble_platform_mem_free(ble_hs_hci_ctx);
             ble_hs_hci_ctx = NULL;
-            BLE_HS_DBG_ASSERT_EVAL(0);
-            return;
+            return BLE_HS_ENOMEM;
         }
     }
 #endif
@@ -1068,6 +1066,8 @@ ble_hs_hci_init(void)
                             "ble_hs_hci_frag");
 
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+
+    return 0;
 }
 
 void ble_hs_hci_deinit(void)

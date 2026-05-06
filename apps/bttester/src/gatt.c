@@ -1735,7 +1735,7 @@ static void get_attr_val(uint8_t *data, uint16_t len)
 		rp = net_buf_simple_add(buf, sizeof(*rp));
 
 		ble_att_svr_read_handle(BLE_HS_CONN_HANDLE_NONE,
-					handle, 0, buf,
+					handle, 0, &buf,
 					&out_att_err);
 
 		rp->att_response = out_att_err;
@@ -1750,8 +1750,8 @@ static void get_attr_val(uint8_t *data, uint16_t len)
 		rp = net_buf_simple_add(buf, sizeof(*rp));
 
 		ble_att_svr_read_handle(conn.conn_handle,
-		handle, 0, buf,
-		&out_att_err);
+					handle, 0, &buf,
+					&out_att_err);
 
 		rp->att_response = out_att_err;
 		rp->value_length = os_mbuf_len(buf) - sizeof(*rp);

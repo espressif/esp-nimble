@@ -82,6 +82,7 @@ os_mqueue_init(struct os_mqueue *mq, ble_npl_event_fn *ev_cb, void *arg)
 {
     struct ble_npl_event *ev;
 
+    memset(mq, 0, sizeof *mq);
     STAILQ_INIT(&mq->mq_head);
 
     ev = &mq->mq_ev;
@@ -233,6 +234,10 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
     uint16_t total_pkthdr_len;
     struct os_mbuf *m;
     struct os_mbuf_pool *pool;
+
+    if (user_hdr_len > 0xFF00) {
+        goto err;
+    }
 
     total_pkthdr_len =  user_hdr_len + sizeof(struct os_mbuf_pkthdr);
     pool = _os_msys_find_pool(dsize + total_pkthdr_len);
@@ -386,24 +391,22 @@ int
 os_mbuf_free_chain(struct os_mbuf *om)
 {
     struct os_mbuf *next;
-    int rc;
+    int rc = 0;
+    int tmp_rc;
 
     os_trace_api_u32(OS_TRACE_ID_MBUF_FREE_CHAIN, (uint32_t)(uintptr_t)om);
 
     while (om != NULL) {
         next = SLIST_NEXT(om, om_next);
 
-        rc = os_mbuf_free(om);
-        if (rc != 0) {
-            goto done;
+        tmp_rc = os_mbuf_free(om);
+        if (tmp_rc != 0) {
+            rc = tmp_rc;
         }
 
         om = next;
     }
 
-    rc = 0;
-
-done:
     os_trace_api_ret_u32(OS_TRACE_ID_MBUF_FREE_CHAIN, (uint32_t)rc);
     return (rc);
 }
@@ -424,6 +427,9 @@ _os_mbuf_copypkthdr(struct os_mbuf *new_buf, struct os_mbuf *old_buf)
            old_buf->om_pkthdr_len);
     new_buf->om_pkthdr_len = old_buf->om_pkthdr_len;
     new_buf->om_data = new_buf->om_databuf + old_buf->om_pkthdr_len;
+
+    /* Zero out the queue pointer to avoid stale links */
+    OS_MBUF_PKTHDR(new_buf)->omp_next.stqe_next = NULL;
 }
 
 uint16_t
@@ -593,6 +599,10 @@ os_mbuf_off(const struct os_mbuf *om, int off, uint16_t *out_off)
 {
     struct os_mbuf *next;
     struct os_mbuf *cur;
+
+    if (off < 0) {
+        return NULL;
+    }
 
     /* Cast away const. */
     cur = (struct os_mbuf *)om;
@@ -903,6 +913,7 @@ os_mbuf_copyinto(struct os_mbuf *om, int off, const void *src, int len)
     uint16_t cur_off;
     int copylen;
     int rc;
+    int total_len = off + len;
 
     /* Find the mbuf,offset pair for the start of the destination. */
     cur = os_mbuf_off(om, off, &cur_off);
@@ -924,7 +935,8 @@ os_mbuf_copyinto(struct os_mbuf *om, int off, const void *src, int len)
 
         if (len == 0) {
             /* All the source data fit in the existing mbuf chain. */
-            return 0;
+            rc = 0;
+            goto done;
         }
 
         next = SLIST_NEXT(cur, om_next);
@@ -942,13 +954,14 @@ os_mbuf_copyinto(struct os_mbuf *om, int off, const void *src, int len)
         return rc;
     }
 
+done:
     /* Fix up the packet header, if one is present. */
     if (OS_MBUF_IS_PKTHDR(om)) {
         OS_MBUF_PKTHDR(om)->omp_len =
-            max(OS_MBUF_PKTHDR(om)->omp_len, off + len);
+            max(OS_MBUF_PKTHDR(om)->omp_len, (uint16_t)total_len);
     }
 
-    return 0;
+    return rc;
 }
 
 void

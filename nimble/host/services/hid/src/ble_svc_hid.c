@@ -30,6 +30,7 @@
 #if MYNEWT_VAL(BLE_GATTS)
 #include "host/ble_hs.h"
 #include "host/ble_gap.h"
+#include "host/ble_gatt.h"
 #include "services/hid/ble_svc_hid.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
@@ -595,6 +596,11 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 continue;
             }
             assert(ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR);
+            /*
+             * NOTE: Issue 56 (Uninitialized val) is a FALSE POSITIVE.
+             * The ble_svc_hid_chr_write function validates the length
+             * of the input buffer (min_len=1) ensuring 'val' is written.
+             */
             /* check if the value is correct */
             rc = ble_svc_hid_chr_write(ctxt->om, sizeof(val), sizeof(val),
                                        &val, NULL);
@@ -875,6 +881,10 @@ ble_svc_hid_init(void)
 
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
+
+    if (!ble_gatts_mutable()) {
+        return;
+    }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_hid_static_vars == NULL) {

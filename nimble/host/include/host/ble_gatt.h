@@ -1686,6 +1686,12 @@ int ble_gatts_calculate_hash(uint8_t *out_hash_key);
  */
 int ble_gatts_get_cfgable_chrs(void);
 
+/**
+ * Returns true if the GATT server is currently mutable (i.e. no active
+ * connections or advertising).
+ */
+bool ble_gatts_mutable(void);
+
 #ifdef __cplusplus
 }
 #endif

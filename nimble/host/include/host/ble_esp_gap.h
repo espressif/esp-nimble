@@ -7,6 +7,8 @@
 #ifndef H_BLE_ESP_GAP_
 #define H_BLE_ESP_GAP_
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

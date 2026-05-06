@@ -44,6 +44,7 @@ void ble_svc_htp_on_disconnect(uint16_t conn_handle);
 bool ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr);
 
 void ble_svc_htp_subscribe(uint16_t conn_handle, uint16_t attr_handle);
+void ble_svc_htp_unsubscribe(uint16_t conn_handle, uint16_t attr_handle);
 
 void ble_svc_htp_subscribe_state(uint16_t conn_handle, uint16_t attr_handle,
                                  bool subscribed);

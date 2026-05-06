@@ -273,6 +273,8 @@ struct ble_sm_proc {
     struct ble_sm_public_key pub_key_peer;
     uint8_t mackey[16];
     uint8_t dhkey[32];
+    struct ble_sm_sc_oob_data oob_data_local_s;
+    struct ble_sm_sc_oob_data oob_data_remote_s;
     const struct ble_sm_sc_oob_data *oob_data_local;
     const struct ble_sm_sc_oob_data *oob_data_remote;
 #endif

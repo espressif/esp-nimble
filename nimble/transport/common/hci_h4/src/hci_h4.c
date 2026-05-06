@@ -235,21 +235,12 @@ hci_h4_sm_w4_payload(struct hci_h4_sm *h4sm,
 static void
 hci_h4_sm_completed(struct hci_h4_sm *h4sm)
 {
-    int rc;
-
     switch (h4sm->pkt_type) {
     case HCI_H4_CMD:
     case HCI_H4_EVT:
         if (h4sm->buf) {
             assert(h4sm->frame_cb);
-            rc = h4sm->frame_cb(h4sm->pkt_type, h4sm->buf);
-            if (rc != 0) {
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-                ble_transport_free(h4sm->pkt_type, h4sm->buf);
-#else
-                ble_transport_free(h4sm->buf);
-#endif
-            }
+            h4sm->frame_cb(h4sm->pkt_type, h4sm->buf);
             h4sm->buf = NULL;
         }
         break;
@@ -257,10 +248,7 @@ hci_h4_sm_completed(struct hci_h4_sm *h4sm)
     case HCI_H4_ISO:
         if (h4sm->om) {
             assert(h4sm->frame_cb);
-            rc = h4sm->frame_cb(h4sm->pkt_type, h4sm->om);
-            if (rc != 0) {
-                os_mbuf_free_chain(h4sm->om);
-            }
+            h4sm->frame_cb(h4sm->pkt_type, h4sm->om);
             h4sm->om = NULL;
         }
         break;

@@ -23,6 +23,7 @@
 #include "os/os.h"
 #include "nimble/hci_common.h"
 #include "host/ble_gap.h"
+#include "host/ble_esp_gap.h"
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
 #include "esp_nimble_mem.h"
@@ -444,7 +445,11 @@ static inline void
 ble_hs_hci_evt_resolve_rpa(ble_addr_t *addr)
 {
     struct ble_hs_resolv_entry *rl;
+    uint8_t id_addr[BLE_DEV_ADDR_LEN];
+    uint8_t id_addr_type;
+    uint8_t ota_addr_type;
 
+    ota_addr_type = addr->type;
     ble_hs_lock();
     rl = ble_hs_resolv_rpa_addr(addr->val, addr->type);
     if (rl != NULL) {
@@ -453,9 +458,24 @@ ble_hs_hci_evt_resolve_rpa(ble_addr_t *addr)
         }
 
         memcpy(addr->val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
-        addr->type = rl->rl_addr_type;
     }
     ble_hs_unlock();
+
+    if (rl == NULL && ble_gap_rpa_resolve(addr->val, id_addr, &id_addr_type)) {
+        if (ble_hs_is_rpa(addr->val, ota_addr_type)) {
+            ble_hs_lock();
+            rl = ble_hs_resolv_list_find(id_addr);
+            if (rl != NULL) {
+                memcpy(rl->rl_peer_rpa, addr->val, BLE_DEV_ADDR_LEN);
+                rl->rl_isrpa = 1;
+            }
+            ble_hs_unlock();
+        }
+
+        memcpy(addr->val, id_addr, BLE_DEV_ADDR_LEN);
+    }
+
+    addr->type = ota_addr_type;
 }
 #endif
 
