@@ -17,7 +17,6 @@
  * under the License.
  */
 
-#include <stdio.h>
 #include "os/os.h"
 #include "sdkconfig.h"
 #include "host/ble_hs.h"
@@ -30,7 +29,8 @@ struct log ble_hs_log;
 static void
 ble_hs_log_debug_hex_chunk(const uint8_t *bytes, int len)
 {
-    char hex_str[31] = {0}; // 10 bytes * 3 chars ("FF ") + 1 null = 31
+    static const char hex_chars[] = "0123456789abcdef";
+    char hex_str[31] = {0}; // 10 bytes * 3 chars ("ff ") + 1 null = 31
     int offset = 0;
 
     if (len <= 0) {
@@ -42,7 +42,9 @@ ble_hs_log_debug_hex_chunk(const uint8_t *bytes, int len)
     }
 
     for (int i = 0; i < len; i++) {
-        offset += snprintf(hex_str + offset, sizeof(hex_str) - offset, "%02x ", bytes[i]);
+        hex_str[offset++] = hex_chars[bytes[i] >> 4];
+        hex_str[offset++] = hex_chars[bytes[i] & 0x0f];
+        hex_str[offset++] = ' ';
     }
 
     BLE_HS_LOG(DEBUG, "%s", hex_str);
