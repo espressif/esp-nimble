@@ -4474,20 +4474,13 @@ ble_gattc_read_mult_cb_var(struct ble_gattc_proc *proc, int status,
     for (i = 0; i < proc->read_mult.num_handles; i++) {
         attr[i].handle = proc->read_mult.handles[i];
         attr[i].offset = 0;
-        if (om == NULL || *om == NULL || OS_MBUF_PKTLEN(*om) == 0) {
-            continue;
-        }
+    }
 
-        if (OS_MBUF_PKTLEN(*om) < 2) {
-            status = BLE_HS_EBADDATA;
-            break;
-        }
-
-        *om = os_mbuf_pullup(*om, 2);
-        if (*om == NULL) {
-            status = BLE_HS_ENOMEM;
-            break;
-        }
+    if (status == 0) {
+        for (i = 0; i < proc->read_mult.num_handles; i++) {
+            if (OS_MBUF_PKTLEN(*om) < 2) {
+                break;
+            }
 
             *om = os_mbuf_pullup(*om, 2);
             if (*om == NULL) {
@@ -4497,35 +4490,36 @@ ble_gattc_read_mult_cb_var(struct ble_gattc_proc *proc, int status,
             attr_len = get_le16((*om)->om_data);
             os_mbuf_adj(*om, 2);
 
-        if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
-            status = BLE_HS_EBADDATA;
-            break;
+            if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
+                break;
+            }
+
+            attr[i].om = os_msys_get_pkthdr(attr_len, 0);
+            if (!attr[i].om) {
+                /* this is OOM condition*/
+                status = BLE_HS_ENOMEM;
+                break;
+            }
+
+            rc = os_mbuf_appendfrom(attr[i].om, *om, 0, attr_len);
+            if (rc) {
+                break;
+            }
+
+            os_mbuf_adj(*om, attr_len);
         }
 
-        {
-            uint16_t copy_len = attr_len;
-
-            if (copy_len > OS_MBUF_PKTLEN(*om)) {
-                copy_len = OS_MBUF_PKTLEN(*om);
+        /* failed to correctly parse response,
+         * cleanup any partial data and set status if not set already
+         */
+        if (i < proc->read_mult.num_handles || OS_MBUF_PKTLEN(*om) != 0) {
+            for (i = 0; i < proc->read_mult.num_handles; i++) {
+                os_mbuf_free_chain(attr[i].om);
+                attr[i].om = NULL;
             }
 
-            attr[i].om = os_msys_get_pkthdr(copy_len, 0);
-            if (!attr[i].om) {
-                status = BLE_HS_ENOMEM;
-                break;
-            }
-
-            rc = os_mbuf_appendfrom(attr[i].om, *om, 0, copy_len);
-            if (rc) {
-                status = BLE_HS_ENOMEM;
-                break;
-            }
-
-            os_mbuf_adj(*om, copy_len);
-
-            if (copy_len < attr_len) {
-                i++;
-                break;
+            if (status == 0) {
+                status = BLE_HS_EBADDATA;
             }
         }
     }
