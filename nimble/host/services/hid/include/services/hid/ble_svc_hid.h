@@ -110,10 +110,16 @@ struct ble_svc_hid_params{
     uint16_t ctrl_pt_handle;
 };
 
+typedef void (*ble_svc_hid_report_write_cb_t)(uint16_t attr_handle, uint8_t report_type,
+                                              uint8_t report_id, const uint8_t *data, uint16_t len);
+typedef void (*ble_svc_hid_char_write_cb_t)(uint16_t attr_handle, uint16_t char_uuid16, uint8_t value);
+
 void ble_svc_hid_init(void);
 void ble_svc_hid_deinit(void);
 int ble_svc_hid_add(struct ble_svc_hid_params params);
 void ble_svc_hid_reset(void);
+void ble_svc_hid_register_report_write_cb(ble_svc_hid_report_write_cb_t cb);
+void ble_svc_hid_register_char_write_cb(ble_svc_hid_char_write_cb_t cb);
 
 #ifdef __cplusplus
 }
