@@ -4474,67 +4474,62 @@ ble_gattc_read_mult_cb_var(struct ble_gattc_proc *proc, int status,
     for (i = 0; i < proc->read_mult.num_handles; i++) {
         attr[i].handle = proc->read_mult.handles[i];
         attr[i].offset = 0;
-        if (om == NULL || *om == NULL || OS_MBUF_PKTLEN(*om) == 0) {
-            continue;
-        }
+    }
 
-        if (OS_MBUF_PKTLEN(*om) < 2) {
-            status = BLE_HS_EBADDATA;
-            break;
-        }
-
-        *om = os_mbuf_pullup(*om, 2);
-        if (*om == NULL) {
-            status = BLE_HS_ENOMEM;
-            break;
-        }
-
-        attr_len = get_le16((*om)->om_data);
-
-        os_mbuf_adj(*om, 2);
-
-        if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
-            status = BLE_HS_EBADDATA;
-            break;
-        }
-
-        {
-            uint16_t copy_len = attr_len;
-
-            if (copy_len > OS_MBUF_PKTLEN(*om)) {
-                copy_len = OS_MBUF_PKTLEN(*om);
+    if (status == 0) {
+        for (i = 0; i < proc->read_mult.num_handles; i++) {
+            if (OS_MBUF_PKTLEN(*om) < 2) {
+                break;
             }
 
-            attr[i].om = os_msys_get_pkthdr(copy_len, 0);
+            *om = os_mbuf_pullup(*om, 2);
+            if (*om == NULL) {
+                break;
+            }
+
+            attr_len = get_le16((*om)->om_data);
+            os_mbuf_adj(*om, 2);
+
+            if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
+                break;
+            }
+
+            attr[i].om = os_msys_get_pkthdr(attr_len, 0);
             if (!attr[i].om) {
+                /* this is OOM condition*/
                 status = BLE_HS_ENOMEM;
                 break;
             }
 
-            rc = os_mbuf_appendfrom(attr[i].om, *om, 0, copy_len);
+            rc = os_mbuf_appendfrom(attr[i].om, *om, 0, attr_len);
             if (rc) {
-                status = BLE_HS_ENOMEM;
                 break;
             }
 
-            os_mbuf_adj(*om, copy_len);
+            os_mbuf_adj(*om, attr_len);
+        }
 
-            if (copy_len < attr_len) {
-                i++;
-                break;
+        /* failed to correctly parse response,
+         * cleanup any partial data and set status if not set already
+         */
+        if (i < proc->read_mult.num_handles || OS_MBUF_PKTLEN(*om) != 0) {
+            for (i = 0; i < proc->read_mult.num_handles; i++) {
+                os_mbuf_free_chain(attr[i].om);
+                attr[i].om = NULL;
+            }
+
+            if (status == 0) {
+                status = BLE_HS_EBADDATA;
             }
         }
     }
 
     proc->read_mult.cb_mult(proc->conn_handle,
-                    ble_gattc_error(status, att_handle), &attr[0],
-                    i,
-                    proc->read_mult.cb_arg);
+                            ble_gattc_error(status, att_handle), &attr[0],
+                            proc->read_mult.num_handles, proc->read_mult.cb_arg);
 
     for (i = 0; i < proc->read_mult.num_handles; i++) {
-        if (attr[i].om != NULL) {
-            os_mbuf_free_chain(attr[i].om);
-        }
+        os_mbuf_free_chain(attr[i].om);
     }
 
     return 0;
