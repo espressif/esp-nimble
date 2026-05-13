@@ -45,7 +45,7 @@ esp_err_t esp_nimble_disable(void);
 
 esp_err_t nimble_port_freertos_init(TaskFunction_t host_task_fn);
 void nimble_port_freertos_deinit(void);
-void npl_freertos_funcs_init(void);
+int npl_freertos_funcs_init(void);
 void npl_freertos_funcs_deinit(void);
 int npl_freertos_mempool_init(void);
 void npl_freertos_mempool_deinit(void);

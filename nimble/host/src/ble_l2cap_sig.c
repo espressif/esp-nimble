@@ -211,11 +211,11 @@ ble_l2cap_sig_dbg_assert_proc_not_inserted(struct ble_l2cap_sig_proc *proc)
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     struct ble_l2cap_sig_proc *cur;
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
     STAILQ_FOREACH(cur, &ble_l2cap_sig_procs, next) {
         BLE_HS_DBG_ASSERT(cur != proc);
     }
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 #endif
 }
 
@@ -228,14 +228,14 @@ ble_l2cap_sig_next_id(void)
 {
     uint8_t id;
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
     ble_l2cap_sig_cur_id++;
     if (ble_l2cap_sig_cur_id == 0) {
         /* An ID of 0 is illegal. */
         ble_l2cap_sig_cur_id = 1;
     }
     id = ble_l2cap_sig_cur_id;
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     return id;
 }
@@ -649,7 +649,8 @@ ble_l2cap_sig_update_nolock(uint16_t conn_handle,
      *   => timeout * 4 > (1 + slave_latency) * itvl_max
      */
     if (params->itvl_min > params->itvl_max ||
-        params->timeout_multiplier * 4 <= (1 + params->slave_latency) * params->itvl_max) {
+        (uint32_t)params->timeout_multiplier * 4 <=
+        (uint32_t)(1 + params->slave_latency) * params->itvl_max) {
 
         return BLE_HS_EINVAL;
     }
@@ -1189,7 +1190,10 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
     }
 
     ble_hs_unlock();
-    //result = rsp->result;
+    uint16_t local_dcids[BLE_L2CAP_MAX_COC_CONN_REQ];
+    for (i = 0; i < num_of_scids; i++) {
+        local_dcids[i] = le16toh(rsp->dcids[i]);
+    }
     rc = ble_l2cap_sig_tx(conn_handle, txom);
     if (rc != 0) {
         /* Notify application of failure first, then clean up */
@@ -1212,7 +1216,7 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
     /* Notify user about connection status */
     for (i = 0; i < num_of_scids; i++) {
         if (chans[i]) {
-            if (rsp->dcids[i] != 0) {
+            if (local_dcids[i] != 0) {
                 ble_l2cap_event_coc_connected(chans[i], 0);
             } else {
                 ble_l2cap_event_coc_connected(chans[i], BLE_HS_EUNKNOWN);

@@ -186,7 +186,7 @@ ble_svc_get_svc_block(void)
 
 /* fill protocol mode char */
 static int
-fill_proto_mode(uint8_t instance)
+fill_proto_mode(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
 
@@ -219,7 +219,7 @@ fill_proto_mode(uint8_t instance)
 
 /* fill boot keyboard inp char */
 static int
-fill_boot_kbd_inp(uint8_t instance)
+fill_boot_kbd_inp(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
     uint16_t write_flags;
@@ -264,7 +264,7 @@ fill_boot_kbd_inp(uint8_t instance)
 
 /* fill boot keyboard out char */
 static int
-fill_boot_kbd_out(uint8_t instance)
+fill_boot_kbd_out(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
 
@@ -296,14 +296,14 @@ fill_boot_kbd_out(uint8_t instance)
     return 0;
 }
 /* fill boot mouse inp char */
-static void
-fill_boot_mouse_inp(uint8_t instance)
+static int
+fill_boot_mouse_inp(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
     uint16_t write_flags;
 
     if (!hid_instances[instance].mouse_inp_present) {
-        return;
+        return 0;
     }
 
     write_flags = BLE_GATT_CHR_F_WRITE |
@@ -332,13 +332,14 @@ fill_boot_mouse_inp(uint8_t instance)
 
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
-        return;
+        return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
+    return 0;
 }
 /* create report map char */
 static int
-fill_rpt_map(uint8_t instance)
+fill_rpt_map(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
     struct ble_gatt_dsc_def *dsc;
@@ -388,7 +389,7 @@ fill_rpt_map(uint8_t instance)
 
 /* create report chars */
 static int
-fill_reports(uint8_t instance)
+fill_reports(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
     struct ble_gatt_dsc_def *dsc;
@@ -457,7 +458,7 @@ fill_reports(uint8_t instance)
 }
 
 static int
-fill_hid_info(uint8_t instance)
+fill_hid_info(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
 
@@ -485,7 +486,7 @@ fill_hid_info(uint8_t instance)
 }
 
 static int
-fill_ctrl_pt(uint8_t instance)
+fill_ctrl_pt(uint16_t instance)
 {
     struct ble_gatt_chr_def *chr, demo_chr;
 
@@ -570,7 +571,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                                 sizeof hid_instances[instance].external_rpt_ref);
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         case BLE_SVC_HID_DSC_UUID16_RPT_REF:
-            /* this will work without having any instance check
+            /* this will work without any instance check
             because find_rpt_by_handle already checks for the instance */
             assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_DSC);
             rpt = find_rpt_by_handle(*(uint16_t *)ctxt->dsc->arg);
@@ -703,7 +704,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                                     rpt->len);
                 return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-                rc = ble_svc_hid_chr_write(ctxt->om, 0, UINT8_MAX, rpt->data, &out_rpt_len);
+                rc = ble_svc_hid_chr_write(ctxt->om, 0, RPT_MAX_LEN, rpt->data, &out_rpt_len);
                 if (rc != 0) {
                     return rc;
                 }
@@ -789,7 +790,10 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
         goto error;
     }
     /* Fill the boot mouse input characteristic */
-    fill_boot_mouse_inp(svc_idx);
+    rc = fill_boot_mouse_inp(svc_idx);
+    if (rc != 0) {
+        goto error;
+    }
     /* Fill the hid info characteristic */
     rc = fill_hid_info(svc_idx);
     if (rc != 0) {

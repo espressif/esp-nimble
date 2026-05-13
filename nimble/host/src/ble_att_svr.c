@@ -264,7 +264,7 @@ ble_att_svr_find_by_handle(uint16_t handle_id)
     struct ble_att_svr_entry *entry;
     struct ble_att_svr_entry *res = NULL;
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
     for (entry = STAILQ_FIRST(&ble_att_svr_list);
          entry != NULL;
          entry = STAILQ_NEXT(entry, ha_next)) {
@@ -274,7 +274,7 @@ ble_att_svr_find_by_handle(uint16_t handle_id)
             break;
         }
     }
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     return res;
 }
@@ -410,31 +410,13 @@ ble_att_svr_check_perms(uint16_t conn_handle, int is_read,
      * require it on level 4
      */
     if (ble_hs_cfg.sm_sc_only) {
-        if (!sec_state.authenticated || !sec_state.encrypted || sec_state.key_size != 16) {
-            ble_hs_lock();
-            conn = ble_hs_conn_find(conn_handle);
-            if (conn != NULL) {
-                ble_hs_conn_addrs(conn, &addrs);
-
-                memset(&key_sec, 0, sizeof key_sec);
-                key_sec.peer_addr = addrs.peer_id_addr;
-            }
-            ble_hs_unlock();
-
-            if (conn == NULL) {
+        if (!sec_state.sc || !sec_state.authenticated || !sec_state.encrypted || sec_state.key_size != 16) {
+            if (!sec_state.encrypted) {
+                *out_att_err = BLE_ATT_ERR_INSUFFICIENT_ENC;
+            } else if (!sec_state.sc || !sec_state.authenticated) {
                 *out_att_err = BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
-                return BLE_HS_ATT_ERR(*out_att_err);
-            }
-
-            rc = ble_store_read_peer_sec(&key_sec, &value_sec);
-            if (rc == 0 && value_sec.ltk_present && value_sec.authenticated && value_sec.sc) {
-                if (!sec_state.encrypted) {
-                    *out_att_err = BLE_ATT_ERR_INSUFFICIENT_ENC;
-                } else {
-                    *out_att_err = BLE_ATT_ERR_INSUFFICIENT_KEY_SZ;
-                }
             } else {
-                *out_att_err = BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
+                *out_att_err = BLE_ATT_ERR_INSUFFICIENT_KEY_SZ;
             }
             return BLE_HS_ATT_ERR(*out_att_err);
         }
@@ -2180,7 +2162,8 @@ ble_att_svr_service_uuid(struct ble_att_svr_entry *entry,
                          ble_uuid_any_t *uuid, uint8_t *out_att_err)
 {
     uint8_t val[16];
-    uint16_t attr_len = 0;
+    uint16_t attr_len;
+    uint16_t entry_uuid16;
     int rc;
 
     rc = ble_att_svr_read_flat(BLE_HS_CONN_HANDLE_NONE, entry, 0, sizeof(val), val,
@@ -2195,11 +2178,13 @@ ble_att_svr_service_uuid(struct ble_att_svr_entry *entry,
      *     - When UUID is 16-bit, value length = 2 (start) + 2 (end) + 2 (uuid) = 6
      *     - So, attr_len == 6 implies 16-bit UUID, and the UUID is at offset 4
      */
-    if (attr_len == 6) {
+    entry_uuid16 = ble_uuid_u16(entry->ha_uuid);
+
+    if (entry_uuid16 == BLE_ATT_UUID_INCLUDE && attr_len == 6) {
         /* Included Service with 16-bit UUID */
         attr_len = 2;
         rc = ble_uuid_init_from_buf(uuid, val + 4, attr_len);
-    } else if (attr_len == 4) {
+    } else if (entry_uuid16 == BLE_ATT_UUID_INCLUDE && attr_len == 4) {
         /* Included Service with 128-bit UUID (UUID not present) */
         uuid->u.type = 0; /* Sentinel for no UUID */
         rc = 0;
@@ -2218,7 +2203,7 @@ ble_att_svr_read_group_type_entry_write(struct os_mbuf *om, uint16_t mtu,
                                         const ble_uuid_t *service_uuid)
 {
     uint8_t *buf;
-    int rc, len;
+    int len;
 
     if (service_uuid->type == BLE_UUID_TYPE_16) {
         len = BLE_ATT_READ_GROUP_TYPE_ADATA_SZ_16;
@@ -2238,10 +2223,7 @@ ble_att_svr_read_group_type_entry_write(struct os_mbuf *om, uint16_t mtu,
     put_le16(buf + 0, start_group_handle);
     put_le16(buf + 2, end_group_handle);
 
-    rc = ble_uuid_flat(service_uuid, buf + 4);
-    if (rc != 0) {
-        return BLE_HS_EINVAL;
-    }
+    ble_uuid_flat(service_uuid, buf + 4);
 
     return 0;
 }
@@ -2741,8 +2723,8 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     }
 
 #if MYNEWT_VAL(BLE_SM_SIGN_CNT)
-    /* Signature matches, increment sign counter and pass the data to the upper layer */
-    rc = ble_sm_incr_peer_sign_counter(conn_handle);
+    /* Signature matches, update sign counter and pass the data to the upper layer */
+    rc = ble_sm_update_peer_sign_counter(conn_handle, received_sign_counter);
     if (rc != 0) {
         goto err;
     }
@@ -3580,7 +3562,7 @@ ble_att_svr_reset(void)
     }
 #endif
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
     while ((entry = STAILQ_FIRST(&ble_att_svr_list)) != NULL) {
         STAILQ_REMOVE_HEAD(&ble_att_svr_list, ha_next);
         ble_att_svr_entry_free(entry);
@@ -3592,7 +3574,7 @@ ble_att_svr_reset(void)
     }
 
     ble_att_svr_id = 0;
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     /* Note: prep entries do not get freed here because it is assumed there are
      * no established connections.
@@ -3779,7 +3761,7 @@ int ble_att_get_database_size(int *out_size)
            uuid->value == BLE_ATT_UUID_SECONDARY_SERVICE) {
            rc = ble_att_svr_service_uuid(entry, &service_uuid, &att_error);
            if(rc != 0) {
-                return rc;
+                goto done;
            }
            /* handle (2 bytes) + type(2 bytes) + uuid (variable) */
            size += (4 + ble_uuid_length(&service_uuid.u));
@@ -3787,7 +3769,7 @@ int ble_att_get_database_size(int *out_size)
         else if(uuid->value == BLE_ATT_UUID_INCLUDE) {
             rc = ble_att_svr_service_uuid(entry, &service_uuid, &att_error);
             if(rc != 0) {
-                return rc;
+                goto done;
             }
 
             /* handle + type + inc_svc_att_handle + end_grp_handle + [uuid] */
@@ -3800,7 +3782,7 @@ int ble_att_get_database_size(int *out_size)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if (rc != 0) {
-                return rc;
+                goto done;
             }
             size += (4 + attr_len);
 
@@ -3826,6 +3808,7 @@ int ble_att_get_database_size(int *out_size)
     }
     *out_size = size;
 
+done:
     ble_hs_unlock();
     return rc;
 }
@@ -3839,7 +3822,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
     uint8_t *data;
     uint8_t val[20];
     uint16_t attr_len;
-    int rc;
+    int rc = 0;
 
     data = out_data;
     ble_hs_lock();
@@ -3854,7 +3837,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
            uuid->value == BLE_ATT_UUID_SECONDARY_SERVICE) {
             rc = ble_att_svr_service_uuid(entry, &service_uuid, &att_error);
             if(rc != 0) {
-                return rc;
+                goto done;
             }
             /* handle (2 bytes) + type(2 bytes) + uuid (variable) */
             put_le16(data, entry->ha_handle_id);
@@ -3868,7 +3851,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if(rc != 0) {
-                return rc;
+                goto done;
             }
 
             /* handle + type + inc_svc_att_handle + end_grp_handle + uuid */
@@ -3891,7 +3874,7 @@ int ble_att_fill_database_info(uint8_t *out_data)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if(rc != 0) {
-                return rc;
+                goto done;
             }
             memcpy(data + 4, val, attr_len);
             data += (4 + attr_len);
@@ -3921,14 +3904,15 @@ int ble_att_fill_database_info(uint8_t *out_data)
                                        entry, 0, sizeof(val), val,
                                        &attr_len, &att_error);
             if(rc != 0) {
-                return rc;
+                goto done;
             }
             memcpy(data + 4, val, attr_len);
             data += (4 + attr_len);
         }
     }
+done:
     ble_hs_unlock();
-    return 0;
+    return rc;
 }
 #endif
 
@@ -3959,7 +3943,11 @@ ble_att_svr_security_mode_1_level()
                 sec_level = 0x03; //Authenticated pairing with encryption
             }
         } else if ((flags & BLE_ATT_F_READ_ENC) || (flags & BLE_ATT_F_WRITE_ENC)) {
-            sec_level = 0x02; //Unauthenticated pairing with encryption
+            if (ble_hs_cfg.sm_sc_only) {
+                sec_level = 0x04;
+            } else {
+                sec_level = 0x02; //Unauthenticated pairing with encryption
+            }
         } else {
             sec_level = 0x01; //No security (No authentication and no encryption)
         }

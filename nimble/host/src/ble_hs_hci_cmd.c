@@ -65,10 +65,6 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM_EVT);
         return BLE_HS_ENOMEM_EVT;
 
-    case BLE_HS_ETIMEOUT_HCI:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ETIMEOUT_HCI);
-        return BLE_HS_ETIMEOUT_HCI;
-
     default:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;

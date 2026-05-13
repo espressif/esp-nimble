@@ -148,8 +148,8 @@ os_msys_sanity_min_count(int idx)
         return MYNEWT_VAL(MSYS_2_SANITY_MIN_COUNT);
 
     default:
-        BLE_LL_ASSERT(0);
-        return ESP_OK;
+        /* Additional pools have no minimum requirement */
+        return 0;
     }
 }
 
@@ -295,6 +295,11 @@ os_msys_buf_free(void)
 
 void os_msys_init(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc_ctx = ble_os_msys_ensure_ctx();
+    SYSINIT_PANIC_ASSERT(rc_ctx == 0);
+#endif
+
 #if OS_MSYS_SANITY_ENABLED
     int rc;
 #endif

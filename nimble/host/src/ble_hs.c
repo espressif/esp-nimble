@@ -1123,8 +1123,6 @@ ble_hs_deinit(void)
     ble_monitor_deinit();
 #endif
 
-    ble_npl_mutex_deinit(&ble_hs_mutex);
-
     ble_mqueue_deinit(&ble_hs_rx_q);
 
     ble_hs_stop_deinit();
@@ -1182,9 +1180,6 @@ ble_hs_deinit(void)
             ble_hs_ctx->hci_os_event_buf = NULL;
         }
         os_mempool_unregister(&ble_hs_hci_ev_pool);
-
-        nimble_platform_mem_free(ble_hs_ctx);
-        ble_hs_ctx = NULL;
     }
 
     if (ble_hs_state_ctx) {
@@ -1213,5 +1208,13 @@ ble_hs_deinit(void)
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
     ble_svc_gap_deinit();
 #endif
+    if (ble_hs_ctx) {
+        ble_npl_mutex_deinit(&ble_hs_mutex);
+        nimble_platform_mem_free(ble_hs_ctx);
+        ble_hs_ctx = NULL;
+    }
+#endif
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_npl_mutex_deinit(&ble_hs_mutex);
 #endif
 }

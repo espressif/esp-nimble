@@ -24,6 +24,7 @@
 #include "ble_hs_resolv_priv.h"
 #include "host/ble_hs_pvcy.h"
 #include "host/ble_hs_log.h"
+#include "nimble/hci_common.h"
 
 #if MYNEWT_VAL(BLE_HS_PVCY)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -80,8 +81,8 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
     struct ble_hci_le_set_rpa_tmo_cp cmd;
 
     if (timeout == 0 || timeout > BLE_MAX_RPA_TIMEOUT_VAL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
-        return BLE_HS_EINVAL;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS));
+        return BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS);
     }
 
     cmd.rpa_timeout = htole16(timeout);
@@ -249,9 +250,15 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     memcpy(peer_addr.val, addr, sizeof peer_addr.val);
     rc = ble_hs_pvcy_set_mode(&peer_addr, BLE_GAP_PRIVATE_MODE_DEVICE);
     if (rc != 0) {
-        ble_hs_pvcy_remove_entry(addr_type, addr);
+        struct ble_hci_le_rmv_resolve_list_cp rm_cmd;
+        rm_cmd.peer_addr_type = addr_type;
+        memcpy(rm_cmd.peer_id_addr, addr, sizeof rm_cmd.peer_id_addr);
+        ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                     BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
+                          &rm_cmd, sizeof(rm_cmd), NULL, 0);
         return rc;
     }
+
 #endif
 
     return 0;
@@ -314,7 +321,7 @@ ble_hs_pvcy_ensure_started(void)
 #endif
 
     /* Check if user has already set any timeout. If yes, use it */
-    rpa_timeout = ble_hs_get_rpa_timeout();
+    rpa_timeout = l_rpa_timeout;
 
     /* Set up the periodic change of our RPA. */
     if (rpa_timeout) {
@@ -563,7 +570,6 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
 #if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     ble_gap_preempt();
 #endif
-    ble_hs_lock();
 
     if (enable != NIMBLE_HOST_DISABLE_PRIVACY) {
         rc = ble_hs_pvcy_ensure_started();
@@ -587,7 +593,6 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
     }
 
 done:
-    ble_hs_unlock();
 #if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     ble_gap_preempt_done();
 #endif

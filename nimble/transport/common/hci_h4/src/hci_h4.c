@@ -176,7 +176,7 @@ hci_h4_sm_w4_header(struct hci_h4_sm *h4sm, struct hci_h4_input_buffer *ib)
         }
 
         os_mbuf_append(h4sm->om, h4sm->hdr, h4sm->len);
-        h4sm->exp_len = (get_le16(&h4sm->hdr[2]) & 0x3fff) + 4;  /* 14-bit length field, bits 14-15 are RFU */
+        h4sm->exp_len = BLE_HCI_ISO_LENGTH(get_le16(&h4sm->hdr[2])) + 4;  /* 14-bit length field, bits 14-15 are RFU */
         break;
     default:
         assert(0);
@@ -235,12 +235,22 @@ hci_h4_sm_w4_payload(struct hci_h4_sm *h4sm,
 static void
 hci_h4_sm_completed(struct hci_h4_sm *h4sm)
 {
+    int rc;
+
     switch (h4sm->pkt_type) {
     case HCI_H4_CMD:
     case HCI_H4_EVT:
         if (h4sm->buf) {
             assert(h4sm->frame_cb);
-            h4sm->frame_cb(h4sm->pkt_type, h4sm->buf);
+            rc = h4sm->frame_cb(h4sm->pkt_type, h4sm->buf);
+            if (rc != 0) {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+                ble_transport_free(h4sm->pkt_type == HCI_H4_CMD ?
+                                   BLE_HCI_CMD : BLE_HCI_EVT, h4sm->buf);
+#else
+                ble_transport_free(h4sm->buf);
+#endif
+            }
             h4sm->buf = NULL;
         }
         break;
@@ -248,7 +258,10 @@ hci_h4_sm_completed(struct hci_h4_sm *h4sm)
     case HCI_H4_ISO:
         if (h4sm->om) {
             assert(h4sm->frame_cb);
-            h4sm->frame_cb(h4sm->pkt_type, h4sm->om);
+            rc = h4sm->frame_cb(h4sm->pkt_type, h4sm->om);
+            if (rc != 0) {
+                os_mbuf_free_chain(h4sm->om);
+            }
             h4sm->om = NULL;
         }
         break;

@@ -601,7 +601,7 @@ os_mbuf_off(const struct os_mbuf *om, int off, uint16_t *out_off)
     struct os_mbuf *cur;
 
     if (off < 0) {
-        return NULL;
+        off = 0;
     }
 
     /* Cast away const. */
@@ -951,6 +951,9 @@ os_mbuf_copyinto(struct os_mbuf *om, int off, const void *src, int len)
     /* Append the remaining data to the end of the chain. */
     rc = os_mbuf_append(cur, sptr, len);
     if (rc != 0) {
+        if (OS_MBUF_IS_PKTHDR(om)) {
+            OS_MBUF_PKTHDR(om)->omp_len = os_mbuf_len(om);
+        }
         return rc;
     }
 

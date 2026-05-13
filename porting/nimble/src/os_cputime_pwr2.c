@@ -82,6 +82,10 @@ uint32_t
 os_cputime_ticks_to_usecs(uint32_t ticks)
 {
 #if MYNEWT_VAL(OS_CPUTIME_FREQ) == 32000
+    /*
+     * 32000 Hz is not a power of 2, so the shift-based algorithm in the
+     * #else branch does not apply. Use exact arithmetic instead.
+     */
     return ((uint64_t)ticks * 1000000) / MYNEWT_VAL(OS_CPUTIME_FREQ);
 #else
     uint32_t usecs;

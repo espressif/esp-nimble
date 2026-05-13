@@ -440,8 +440,6 @@ ble_hs_resolv_gen_priv_addr(struct ble_hs_resolv_entry *rl, int local)
         irk = rl->rl_peer_irk;
     }
 
-    memcpy(new_addr, addr, sizeof(new_addr));
-
     /* Get prand */
     prand = new_addr + 3;
     rc = ble_hs_rand_prand_get(prand);
@@ -786,8 +784,7 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
     /* Though the check validates smaller timeout values, it is recommended to
      * set it to enough bigger value (~15 minutes). There is no point in
      * changing RPA address aggressively and ending up sacrificing normal BLE
-     * operations. Max RPA_TIMEOUT is ~11.5HRS (Spec v4.2, Vol 2, Part E,
-     * section 7.8.45) */
+     * operations. Max RPA_TIMEOUT is 1 hour (3600 seconds) (Spec Vol 4, Part E, section 7.8.45) */
     if (!((tmo_secs > 0) && (tmo_secs <= BLE_MAX_RPA_TIMEOUT_VAL))) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
@@ -856,7 +853,7 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
         return BLE_HS_EINVAL;
     }
 
-    memcpy(ecb.key, irk, 16);
+    swap_buf(ecb.key, irk, 16);
     memcpy(ecb.plain_text, rpa + 3, 3);
 
     rc = ble_sm_alg_encrypt(ecb.key, ecb.plain_text, ecb.cipher_text);

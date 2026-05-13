@@ -44,7 +44,7 @@ ble_ibeacon_set_adv_data(const void *uuid128, uint16_t major,
                          uint16_t minor, int8_t measured_power)
 {
     struct ble_hs_adv_fields fields;
-    uint8_t buf[BLE_IBEACON_MFG_DATA_SIZE];
+    static uint8_t buf[BLE_IBEACON_MFG_DATA_SIZE];
     int rc;
 
     /* Validate inputs before any buffer writes */

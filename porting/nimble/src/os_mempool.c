@@ -190,6 +190,16 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
         /* Ensure list is initialized before inserting */
         os_mempool_list_ensure_init();
 #endif
+
+        struct os_mempool *cur;
+        /* Check if the mempool is already in the list. */
+        STAILQ_FOREACH(cur, &g_os_mempool_list, mp_list) {
+            if (cur == mp) {
+                os_mempool_unregister(mp);
+                break;
+            }
+        }
+
         STAILQ_INSERT_TAIL(&g_os_mempool_list, mp, mp_list);
         return OS_OK;
     }

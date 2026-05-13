@@ -588,9 +588,14 @@ ble_att_clt_tx_read_mult(uint16_t conn_handle, uint16_t cid,
     int i;
     uint8_t op;
 
+    uint16_t mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    if (mtu == 0) {
+        return BLE_HS_ENOTCONN;
+    }
+
     if (num_handles < 2 ||
         BLE_ATT_READ_MULT_REQ_BASE_SZ +
-        sizeof(req->handles[0]) * num_handles > ble_att_mtu_by_cid(conn_handle, cid)) {
+        sizeof(req->handles[0]) * num_handles > mtu) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }

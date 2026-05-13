@@ -382,6 +382,9 @@ struct ble_gap_sec_state {
     /** Size of a key used for encryption */
     unsigned key_size:5;
 
+    /** If connection uses Secure Connections */
+    unsigned sc:1;
+
     /** Current device security state*/
     unsigned authorize:1;
 };
@@ -640,6 +643,11 @@ struct ble_gap_ext_disc_desc {
      * set (BLE_ADDR_ANY otherwise).
      */
     ble_addr_t direct_addr;
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    /** Original RPA address */
+    ble_addr_t ota_addr;
+#endif
 };
 #endif
 

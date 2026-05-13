@@ -153,6 +153,7 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
             handle++;
         }
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
         if (chr->flags & (BLE_GATT_CHR_F_RELIABLE_WRITE |
                           BLE_GATT_CHR_F_AUX_WRITE)) {
             console_printf("cep descriptor\n");
@@ -169,6 +170,7 @@ ble_gatt_show_local_chr(const struct ble_gatt_svc_def *svc,
                                                   flags_buf, ble_gatt_dsc_f_names));
             handle++;
         }
+#endif
 
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
         cpfd_count = 0;

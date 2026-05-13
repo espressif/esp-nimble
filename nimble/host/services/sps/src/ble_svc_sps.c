@@ -202,7 +202,12 @@ ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb)
 void ble_svc_sps_deinit(void)
 {
     ble_gatts_free_svcs();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     ble_svc_sps_reset();
+#else
+    ble_scan_itvl = 0;
+    ble_scan_window = 0;
+#endif
 }
 
 /**
