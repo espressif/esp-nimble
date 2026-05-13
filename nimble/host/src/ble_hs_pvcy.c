@@ -175,8 +175,8 @@ ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
     rc = ble_hs_resolv_list_rmv(addr_type, &cmd.peer_id_addr[0]);
 #else
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
-                                      BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
-                           &cmd, sizeof(cmd), NULL, 0);
+                               BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
+                               &cmd, sizeof(cmd), NULL, 0);
 #endif
     ble_hs_unlock();
     ble_gap_preempt_done();
@@ -256,13 +256,8 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     peer_addr.type = addr_type;
     memcpy(peer_addr.val, addr, sizeof peer_addr.val);
     rc = ble_hs_pvcy_set_mode(&peer_addr, BLE_GAP_PRIVATE_MODE_DEVICE);
-    if (rc != 0) {
-        struct ble_hci_le_rmv_resolve_list_cp rm_cmd;
-        rm_cmd.peer_addr_type = addr_type;
-        memcpy(rm_cmd.peer_id_addr, addr, sizeof rm_cmd.peer_id_addr);
-        ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
-                                     BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
-                          &rm_cmd, sizeof(rm_cmd), NULL, 0);
+    if (rc != 0 && rc != BLE_HS_HCI_ERR(BLE_ERR_UNKNOWN_HCI_CMD)) {
+        ble_hs_pvcy_remove_entry(addr_type, addr);
         return rc;
     }
 
@@ -434,6 +429,9 @@ void
 ble_hs_pvcy_irk_deinit(void)
 {
     ble_hs_pvcy_started = 0;
+    memset(ble_hs_pvcy_irk, 0, sizeof(ble_hs_pvcy_irk));
+    memset(ble_hs_pvcy_default_irk, 0, sizeof(ble_hs_pvcy_default_irk));
+    l_rpa_timeout = 0;
 }
 #endif
 
@@ -599,15 +597,20 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
             ble_hs_resolv_nrpa_disable();
         }
 
-        /* Generate local RPA address and set it in controller */
-        ble_gap_preempt();
-        rc = ble_hs_gen_own_private_rnd();
-        ble_gap_preempt_done();
     } else {
         ble_hs_resolv_enable(false);
     }
 
 done:
+    ble_hs_unlock();
+
+    if (rc == 0 && enable != NIMBLE_HOST_DISABLE_PRIVACY) {
+        /* Generate local RPA address and set it in controller — must be
+         * done outside the lock since ble_gap_preempt acquires it. */
+        ble_gap_preempt();
+        rc = ble_hs_gen_own_private_rnd();
+        ble_gap_preempt_done();
+    }
 #if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     ble_gap_preempt_done();
 #endif

@@ -528,8 +528,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     if (conn_found) {
-        uint16_t handle;
-	int rc;
+	    int rc;
 
 #if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
         should_reattempt = (!conn_slave && ev->reason == BLE_ERR_CONN_SPVN_TMO);
@@ -556,9 +555,9 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
                                   reattempt_conn.count);
                 reattempt_conn.count += 1;
 
-		handle = le16toh(ev->conn_handle);
-		/* Post event to interested application */
-		ble_gap_reattempt_count(handle, reattempt_conn.count);
+		/* Post event to interested application; pass raw LE value since
+		 * ble_gap_reattempt_count applies le16toh internally. */
+		ble_gap_reattempt_count(ev->conn_handle, reattempt_conn.count);
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
                 rc = ble_gap_master_connect_reattempt(ev->conn_handle);
 		if (rc != 0) {

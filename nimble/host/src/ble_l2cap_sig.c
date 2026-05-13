@@ -1076,6 +1076,7 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
     struct os_mbuf *txom;
     struct ble_l2cap_sig_credit_base_connect_rsp *rsp;
     struct ble_l2cap_chan *chans[BLE_L2CAP_MAX_COC_CONN_REQ] = { 0 };
+    uint16_t dcids_copy[BLE_L2CAP_MAX_COC_CONN_REQ] = { 0 };
     struct ble_hs_conn *conn;
     uint16_t scid;
 //    uint16_t result;
@@ -1220,10 +1221,13 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
     }
 
     ble_hs_unlock();
-    uint16_t local_dcids[BLE_L2CAP_MAX_COC_CONN_REQ];
-    for (i = 0; i < num_of_scids; i++) {
-        local_dcids[i] = le16toh(rsp->dcids[i]);
+
+    /* Copy dcids before txom is consumed by ble_l2cap_sig_tx — rsp points
+     * into txom data and becomes a dangling pointer after the send. */
+    for (i = 0; i < (int)num_of_scids; i++) {
+        dcids_copy[i] = le16toh(rsp->dcids[i]);
     }
+
     rc = ble_l2cap_sig_tx(conn_handle, txom);
     if (rc != 0) {
         /* Notify application of failure first, then clean up */
@@ -1249,7 +1253,7 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
     /* Notify user about connection status */
     for (i = 0; i < num_of_scids; i++) {
         if (chans[i]) {
-            if (local_dcids[i] != 0) {
+            if (dcids_copy[i] != 0) {
                 ble_l2cap_event_coc_connected(chans[i], 0);
             } else {
                 ble_l2cap_event_coc_connected(chans[i], BLE_HS_EUNKNOWN);
@@ -1658,19 +1662,11 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
 
     conn = ble_hs_conn_find(conn_handle);
     if (!conn) {
-        /* apply the changes: free all sdu_rx buffers on early error to take consistent ownership */
-        for (i = 0; i < num && i < BLE_L2CAP_MAX_COC_CONN_REQ; i++) {
-            os_mbuf_free_chain(sdu_rx[i]);
-        }
         return BLE_HS_ENOTCONN;
     }
 
     proc = ble_l2cap_sig_proc_alloc();
     if (!proc) {
-        /* apply the changes: free all sdu_rx buffers on early error to take consistent ownership */
-        for (i = 0; i < num && i < BLE_L2CAP_MAX_COC_CONN_REQ; i++) {
-            os_mbuf_free_chain(sdu_rx[i]);
-        }
         return BLE_HS_ENOMEM;
     }
 
@@ -2177,9 +2173,16 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     /* apply the changes: response opcodes must never trigger a Command Reject per BT spec
      * Vol 3 Part A Section 4.1 */
     int is_rsp_op = (hdr.op == BLE_L2CAP_SIG_OP_REJECT ||
+                     hdr.op == BLE_L2CAP_SIG_OP_CONNECT_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_CONFIG_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_DISCONN_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_ECHO_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_INFO_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_CREATE_CHAN_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_MOVE_CHAN_RSP ||
+                     hdr.op == BLE_L2CAP_SIG_OP_MOVE_CHAN_CONF_RSP ||
                      hdr.op == BLE_L2CAP_SIG_OP_UPDATE_RSP ||
                      hdr.op == BLE_L2CAP_SIG_OP_LE_CREDIT_CONNECT_RSP ||
-                     hdr.op == BLE_L2CAP_SIG_OP_DISCONN_RSP ||
                      hdr.op == BLE_L2CAP_SIG_OP_CREDIT_CONNECT_RSP ||
                      hdr.op == BLE_L2CAP_SIG_OP_CREDIT_RECONFIG_RSP);
 
@@ -2263,7 +2266,6 @@ ble_l2cap_sig_extract_expired(struct ble_l2cap_sig_proc_list *dst_list)
             }
             STAILQ_INSERT_TAIL(dst_list, proc, next);
         } else {
-            prev = proc;
             if (time_diff < next_exp_in) {
                 next_exp_in = time_diff;
             }

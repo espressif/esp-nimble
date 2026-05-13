@@ -849,6 +849,7 @@ ble_gattc_cache_find_source(struct ble_gattc_cache_conn *cache_conn, uint8_t *da
     cache_addr_info_t *addr_info;
 
     if (cache_env == NULL) {
+        ble_gap_assoc_event(cache_conn->conn_handle, ESP_FAIL, cache_conn->cache_state);
         return ESP_FAIL;
     }
     num = cache_env->num_addr;
@@ -1077,6 +1078,9 @@ ble_gattc_cache_init(void *storage_cb)
                 print_addr(cache_env->cache_addr[i].addr);
                 print_hash_key(cache_env->cache_addr[i].hash_key);
             }
+        } else {
+            BLE_HS_LOG(ERROR, "%s, Line = %d, cache_fn.open failed rc=%d", __func__, __LINE__, rc);
+            goto error;
         }
     } else {
         BLE_HS_LOG(ERROR, "%s, Line = %d, cache_fn.open not registered", __func__, __LINE__);
