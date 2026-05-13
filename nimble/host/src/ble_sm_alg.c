@@ -451,7 +451,7 @@ static void
 ble_sm_alg_log_buf(const char *name, const uint8_t *buf, int len)
 {
 #ifdef ESP_PLATFORM
-    char str[1 + 2 * 80];
+    char str[1 + 2 * 80] = {0};
     int i;
     int pos;
 

@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include "syscfg/syscfg.h"
 #include "nimble/nimble_npl.h"
@@ -270,8 +271,6 @@ npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
 {
     struct ble_npl_event_freertos *event = NULL;
 
-    ev->event = NULL;
-
 #if OS_MEM_ALLOC
     if (!ev->event) {
         ev->event = os_memblock_get(&ble_freertos_ev_pool);
@@ -408,9 +407,15 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
     if (ev) {
         struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
         if (event) {
-            BLE_NPL_ENTER_CRITICAL();
-            event->queued = false;
-            BLE_NPL_EXIT_CRITICAL();
+            if (in_isr()) {
+                UBaseType_t sr = portSET_INTERRUPT_MASK_FROM_ISR();
+                event->queued = false;
+                portCLEAR_INTERRUPT_MASK_FROM_ISR(sr);
+            } else {
+                BLE_NPL_ENTER_CRITICAL();
+                event->queued = false;
+                BLE_NPL_EXIT_CRITICAL();
+            }
         }
     }
 
@@ -1179,7 +1184,7 @@ npl_freertos_time_ms_to_ticks32(uint32_t ms)
     return ms;
 #else
     /* Use ceiling division to ensure non-zero duration results in at least one tick */
-    return (ms * configTICK_RATE_HZ + 999) / 1000;
+    return (ble_npl_time_t)(((uint64_t)ms * configTICK_RATE_HZ + 999) / 1000);
 #endif
 }
 
@@ -1303,14 +1308,19 @@ struct npl_funcs_t * npl_freertos_funcs_get(void)
     return npl_funcs;
 }
 
-void npl_freertos_funcs_init(void)
+int npl_freertos_funcs_init(void)
 {
+    if (npl_funcs) {
+        return 0;
+    }
+
     npl_funcs = (struct npl_funcs_t *)nimble_platform_mem_calloc(1,sizeof(struct npl_funcs_t));
     if(!npl_funcs) {
-        assert(0);
-        return; /* Return early on allocation failure */
+        return -1;
     }
     memcpy(npl_funcs, &npl_funcs_ro, sizeof(struct npl_funcs_t));
+
+    return 0;
 }
 
 int npl_freertos_mempool_init(void)
@@ -1427,12 +1437,18 @@ _error:
     rc = -1;
 #endif
 
-    /* Unregister mempools from global list regardless of allocation strategy */
-    os_mempool_unregister(&ble_freertos_mutex_pool);
-    os_mempool_unregister(&ble_freertos_sem_pool);
-    os_mempool_unregister(&ble_freertos_co_pool);
-    os_mempool_unregister(&ble_freertos_evq_pool);
-    os_mempool_unregister(&ble_freertos_ev_pool);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_freertos_ctx) {
+#endif
+        /* Unregister mempools from global list regardless of allocation strategy */
+        os_mempool_unregister(&ble_freertos_mutex_pool);
+        os_mempool_unregister(&ble_freertos_sem_pool);
+        os_mempool_unregister(&ble_freertos_co_pool);
+        os_mempool_unregister(&ble_freertos_evq_pool);
+        os_mempool_unregister(&ble_freertos_ev_pool);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_freertos_ctx) {

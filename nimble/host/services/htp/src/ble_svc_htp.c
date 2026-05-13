@@ -35,7 +35,7 @@ static struct {
 #define BLE_SVC_HTP_CONN_HANDLE_NONE 0xffff
 
 static int
-ble_svc_htp_conn_slot(uint16_t conn_handle)
+ble_svc_htp_conn_slot(uint16_t conn_handle, int allocate)
 {
     int free_slot;
     int i;
@@ -51,7 +51,7 @@ ble_svc_htp_conn_slot(uint16_t conn_handle)
         }
     }
 
-    if (free_slot >= 0) {
+    if (allocate && free_slot >= 0) {
         conn_chr_subs[free_slot].conn_handle = conn_handle;
         memset(&conn_chr_subs[free_slot].chr_subs, 0,
                sizeof(conn_chr_subs[free_slot].chr_subs));
@@ -213,7 +213,9 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_htp_on_disconnect(uint16_t conn_handle)
 {
-    int slot = ble_svc_htp_conn_slot(conn_handle);
+    int slot;
+    slot = ble_svc_htp_conn_slot(conn_handle, 0);
+
 
     if (slot < 0) {
         return;
@@ -224,13 +226,16 @@ ble_svc_htp_on_disconnect(uint16_t conn_handle)
            sizeof(conn_chr_subs[slot].chr_subs));
 }
 
+
 /**
  * Returns if the characteristic is subscribed or not
  */
 bool
 ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr)
 {
-    int slot = ble_svc_htp_conn_slot(conn_handle);
+    int slot;
+
+    slot = ble_svc_htp_conn_slot(conn_handle, 0);
 
     if (chr < TEMP_MEASUREMENT || chr > MEASUREMENT_ITVL || slot < 0) {
         return false;
@@ -250,7 +255,9 @@ void
 ble_svc_htp_subscribe_state(uint16_t conn_handle, uint16_t attr_handle,
                             bool subscribed)
 {
-    int slot = ble_svc_htp_conn_slot(conn_handle);
+    int slot;
+    slot = ble_svc_htp_conn_slot(conn_handle, 1);
+
 
     if (slot < 0) {
         return;

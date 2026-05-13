@@ -451,7 +451,7 @@ ble_nvs_write_key_value(char *key, const void *value, size_t required_size)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS commit operation failed !!");
         nvs_close(nimble_handle);
-        return (err == ESP_ERR_NVS_NOT_ENOUGH_SPACE) ? BLE_HS_ESTORE_CAP : BLE_HS_ESTORE_FAIL;
+        return BLE_HS_ESTORE_FAIL;
     }
 
     nvs_close(nimble_handle);
@@ -941,6 +941,10 @@ int ble_store_config_persist_local_irk(void)
     } else {
         /* Equal counts - this could be an update, sync all entries */
         ESP_LOGD(TAG, "Syncing Local IRK values to NVS...");
+        /* Delete existing entries first to avoid duplication/corruption */
+        for (int i = 1; i <= nvs_count; i++) {
+            ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_LOCAL_IRK, i);
+        }
         for (int i = 0; i < ble_store_config_num_local_irks; i++) {
             val.local_irk = ble_store_config_local_irks[i];
             int rc = ble_store_nvs_write(BLE_STORE_OBJ_TYPE_LOCAL_IRK, &val);

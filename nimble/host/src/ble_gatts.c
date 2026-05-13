@@ -501,37 +501,26 @@ ble_gatts_chr_def_access(uint16_t conn_handle, uint16_t attr_handle,
 
     if (offset == 0) {
         /* Normal case - read from beginning */
-        buf = os_mbuf_extend(*om, 3);
+        buf = os_mbuf_extend(*om, 3 + uuid_len);
         if (buf == NULL) {
             return BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
         buf[0] = ble_gatts_chr_properties(chr);
         put_le16(buf + 1, attr_handle + 1);
-
-        buf = os_mbuf_extend(*om, uuid_len);
-        if (buf == NULL) {
-            return BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        ble_uuid_flat(chr->uuid, buf);
+        ble_uuid_flat(chr->uuid, buf + 3);
     } else if (offset < 3) {
         /* Offset within properties/handle section */
         uint8_t temp_buf[3];
         temp_buf[0] = ble_gatts_chr_properties(chr);
         put_le16(temp_buf + 1, attr_handle + 1);
 
-        buf = os_mbuf_extend(*om, 3 - offset);
+        buf = os_mbuf_extend(*om, 3 - offset + uuid_len);
         if (buf == NULL) {
             return BLE_ATT_ERR_INSUFFICIENT_RES;
         }
         memcpy(buf, temp_buf + offset, 3 - offset);
-
-        /* Add UUID portion */
-        buf = os_mbuf_extend(*om, uuid_len);
-        if (buf == NULL) {
-            return BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        ble_uuid_flat(chr->uuid, buf);
+        ble_uuid_flat(chr->uuid, buf + (3 - offset));
     } else {
         /* Offset within UUID section */
         uint16_t uuid_offset = offset - 3;
@@ -3329,8 +3318,7 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
 
     p = nimble_platform_mem_calloc(1,sizeof *ble_gatts_svc_defs);
     if (p == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        return BLE_HS_ENOMEM;
     }
     ble_hs_lock();
 
@@ -3368,8 +3356,7 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
             arg.rc = 0;
             ble_hs_conn_foreach(ble_gatts_update_conn_clt_cfg, &arg);
             if (arg.rc != 0) {
-                rc = arg.rc;
-                goto done;
+                BLE_HS_LOG(ERROR, "Failed to update all connections for dynamic svc; rc=%d\n", arg.rc);
             }
         }
     }
@@ -3555,10 +3542,6 @@ done:
 void
 ble_gatts_free_svcs(void)
 {
-    /* NOTE: Caller must hold ble_hs_lock() before calling this function.
-     * This function does not acquire the lock internally to avoid deadlocks
-     * when called from deinit sequences that may already hold the lock. */
-
     /* Ensure the memory is freed only if it was previously allocated */
     if (ble_gatts_svc_defs != NULL) {
         /* Free the memory for the service definitions */

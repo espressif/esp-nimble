@@ -1050,10 +1050,14 @@ ble_hs_hci_init(void)
 #endif
 
     rc = ble_npl_sem_init(&ble_hs_hci_sem, 0);
-    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    if (rc != 0) {
+        goto err;
+    }
 
     rc = ble_npl_mutex_init(&ble_hs_hci_mutex);
-    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    if (rc != 0) {
+        goto err;
+    }
 
     rc = mem_init_mbuf_pool(ble_hs_hci_frag_data,
                             &ble_hs_hci_frag_mempool,
@@ -1062,9 +1066,24 @@ ble_hs_hci_init(void)
                             BLE_HS_HCI_FRAG_MEMBLOCK_SIZE,
                             "ble_hs_hci_frag");
 
-    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    if (rc != 0) {
+        goto err;
+    }
 
     return 0;
+
+err:
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_hci_frag_data) {
+        nimble_platform_mem_free(ble_hs_hci_frag_data);
+        ble_hs_hci_frag_data = NULL;
+    }
+    if (ble_hs_hci_ctx) {
+        nimble_platform_mem_free(ble_hs_hci_ctx);
+        ble_hs_hci_ctx = NULL;
+    }
+#endif
+    return rc;
 }
 
 void ble_hs_hci_deinit(void)

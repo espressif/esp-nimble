@@ -62,7 +62,6 @@
 #ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
-
 #if NIMBLE_BLE_SM
 
 /** Procedure timeout; 30 seconds. */
@@ -527,7 +526,8 @@ ble_sm_proc_remove(struct ble_sm_proc *proc,
 
 static void
 ble_sm_update_sec_state(uint16_t conn_handle, int encrypted,
-                        int authenticated, int bonded, int key_size)
+                        int authenticated, int bonded, int key_size,
+                        int sc)
 {
     struct ble_hs_conn *conn;
 
@@ -544,6 +544,10 @@ ble_sm_update_sec_state(uint16_t conn_handle, int encrypted,
 
         if (key_size) {
             conn->bhc_sec_state.key_size = key_size;
+        }
+
+        if (sc >= 0) {
+            conn->bhc_sec_state.sc = sc;
         }
     }
 }
@@ -1001,7 +1005,7 @@ ble_sm_read_bond(uint16_t conn_handle, struct ble_store_value_sec *out_bond)
     if (rc == 0) {
 #if MYNEWT_VAL(BLE_SM_SC) == 0
         if (out_bond->sc) {
-            return BLE_HS_ENOTSUP;
+            return BLE_HS_ENOENT;
         }
 #endif
     }
@@ -1037,9 +1041,7 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
         /* If the peer isn't bonded, indicate that the pairing procedure should
          * continue.
          */
-        ble_hs_lock();
         rc = ble_sm_read_bond(conn_handle, &bond);
-        ble_hs_unlock();
 
         switch (rc) {
         case 0:
@@ -1336,6 +1338,7 @@ ble_sm_enc_event_rx(uint16_t conn_handle, uint8_t evt_status, int encrypted)
     int authenticated;
     int bonded;
     int key_size;
+    int sc;
 
     memset(&res, 0, sizeof res);
 
@@ -1343,6 +1346,7 @@ ble_sm_enc_event_rx(uint16_t conn_handle, uint8_t evt_status, int encrypted)
     authenticated = -1;
     bonded = -1;
     key_size = 0;
+    sc = -1;
 
     ble_hs_lock();
 
@@ -1402,7 +1406,7 @@ ble_sm_enc_event_rx(uint16_t conn_handle, uint8_t evt_status, int encrypted)
          * event.
          */
         ble_sm_update_sec_state(conn_handle, encrypted, authenticated, bonded,
-                                key_size);
+                                key_size, sc);
     }
 
     /* Unless keys need to be exchanged, notify the application of the security
@@ -1416,7 +1420,7 @@ ble_sm_enc_event_rx(uint16_t conn_handle, uint8_t evt_status, int encrypted)
 
     ble_hs_unlock();
 
-    res.bonded = bonded;
+    res.bonded = (bonded == 1);
     ble_sm_process_result(conn_handle, &res, true);
 }
 
@@ -1564,7 +1568,7 @@ ble_sm_ltk_restore_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
             res->sm_err = BLE_SM_ERR_UNSPECIFIED;
             res->enc_cb = 1;  /* Notify application of failure, similar to reply branch */
         } else {
-            res->app_status = 0;
+            res->app_status = BLE_HS_ENOENT;
         }
     }
 
@@ -2142,12 +2146,6 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
             res->sm_err = BLE_SM_ERR_INVAL;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_INVAL);
             res->enc_cb = 1;
-        } else if (ble_hs_cfg.sm_sc_only  && !(req->authreq & BLE_SM_PAIR_AUTHREQ_SC)) {
-            /* Fail if Secure Connections Only mode is on and SC is not supported by peer
-             */
-            res->sm_err = BLE_SM_ERR_AUTHREQ;
-            res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_AUTHREQ);
-            res->enc_cb = 1;
         } else if ((ble_hs_cfg.sm_sc_only || ble_hs_cfg.sm_sec_lvl == 4) &&
                    (req->max_enc_key_size != BLE_SM_PAIR_KEY_SZ_MAX)) {
             /* Fail if Secure Connections Only mode or Security Level 4 is on
@@ -2425,7 +2423,8 @@ ble_sm_key_exch_success(struct ble_sm_proc *proc, struct ble_sm_result *res)
     ble_sm_update_sec_state(proc->conn_handle, 1,
                             !!(proc->flags & BLE_SM_PROC_F_AUTHENTICATED),
                             bonded,
-                            proc->key_size);
+                            proc->key_size,
+                            !!(proc->flags & BLE_SM_PROC_F_SC));
     proc->state = BLE_SM_PROC_STATE_NONE;
 
     res->app_status = 0;
@@ -2800,6 +2799,7 @@ ble_sm_id_info_rx(uint16_t conn_handle, struct os_mbuf **om,
     } else if (!(proc->rx_key_flags & BLE_SM_KE_F_ID_INFO)) {
         res->sm_err = BLE_SM_ERR_KEY_REJ;
         res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_KEY_REJ);
+        res->enc_cb = 1;
     } else {
         proc->rx_key_flags &= ~BLE_SM_KE_F_ID_INFO;
 
@@ -2994,6 +2994,39 @@ ble_sm_incr_our_sign_counter(uint16_t conn_handle)
  *                                whom the CSRK was shared that was used
  *                                to authenticate the signed message.
  */
+int
+ble_sm_update_peer_sign_counter(uint16_t conn_handle, uint32_t sign_counter)
+{
+    struct ble_store_key_sec key_sec;
+    struct ble_store_value_sec value_sec;
+    struct ble_gap_conn_desc desc;
+    int rc;
+
+    rc = ble_gap_conn_find(conn_handle, &desc);
+    if (rc != 0) {
+        return rc;
+    }
+
+    memset(&key_sec, 0, sizeof key_sec);
+    key_sec.peer_addr = desc.peer_id_addr;
+
+    rc = ble_store_read_peer_sec(&key_sec, &value_sec);
+    if (rc != 0) {
+        return rc;
+    }
+    if (value_sec.csrk_present != 1) {
+        return BLE_HS_ENOENT;
+    }
+
+    rc = ble_store_delete_peer_sec(&key_sec);
+    if (rc != 0) {
+        return rc;
+    }
+    value_sec.sign_counter = sign_counter;
+    rc = ble_store_write_peer_sec(&value_sec);
+    return rc;
+}
+
 int
 ble_sm_incr_peer_sign_counter(uint16_t conn_handle)
 {
@@ -3359,6 +3392,8 @@ ble_sm_inject_io(uint16_t conn_handle, struct ble_sm_io *pkey)
                                           (pkey->oob_sc_data.local != NULL),
                                           (pkey->oob_sc_data.remote != NULL))) {
                 res.sm_err = BLE_SM_ERR_OOB;
+                res.app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_OOB);
+                res.enc_cb = 1;
             } else {
                 proc->flags |= BLE_SM_PROC_F_IO_INJECTED;
 

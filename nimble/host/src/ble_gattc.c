@@ -1598,6 +1598,10 @@ ble_gattc_recover_gatt_proc(uint16_t conn_handle, int enc_status)
                             for (int j = 0; j < i; j++) {
                                 os_mbuf_free_chain(attrs[j].om);
                             }
+                            err_cb = ble_gattc_err_dispatch_get(proc->op);
+                            if (err_cb != NULL) {
+                                err_cb(proc, BLE_HS_ENOMEM, 0);
+                            }
                             goto skip_recovery;
                         }
                     }
@@ -2800,15 +2804,16 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
     }
 
 done:
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    if (proc != NULL) {
+        ble_hs_lock();
+        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
+        ble_hs_unlock();
+    }
+#endif
+
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_chrs_fail);
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-        if (proc != NULL) {
-            ble_hs_lock();
-            STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
-            ble_hs_unlock();
-        }
-#endif
     }
 
     ble_gattc_process_status(proc, rc, false);
@@ -5517,9 +5522,10 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
 
     if (cur_chr_cnt == 1) {
         /* Use the last appended index, not chr_count which may be out of bounds */
+        os_mbuf_adj(txom, 4);
         rc = ble_att_clt_tx_notify(conn_handle, tuples[last_appended_idx].handle,
-                                   tuples[last_appended_idx].value);
-        tuples[last_appended_idx].value = NULL;
+                                   txom);
+        txom = NULL;
     } else {
         rc = ble_att_clt_tx_multi_notify(conn_handle, txom);
         txom = NULL;

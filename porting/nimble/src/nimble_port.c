@@ -161,11 +161,15 @@ esp_err_t esp_nimble_init(void)
 #endif
 
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
+    int rc;
     /* Initialize the global memory pool */
     os_mempool_module_init();
 
     /* Initialize the function pointers for OS porting */
-    npl_freertos_funcs_init();
+    rc = npl_freertos_funcs_init();
+    if (rc != 0) {
+        return BLE_HS_ENOMEM;
+    }
 
     npl_freertos_mempool_init();
 

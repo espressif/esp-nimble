@@ -115,6 +115,7 @@ ble_store_config_deserialize_arr(const char *enc,
     }
 
     if (dec_len % obj_sz != 0) {
+        memset(dec_data, 0, dec_len);
         free(dec_data);
         return OS_EINVAL;
     }

@@ -54,7 +54,7 @@ ble_svc_prox_chr_write(struct os_mbuf *om, uint16_t min_len,
                        uint16_t *len);
 
 static int
-ble_svc_prox_conn_slot(uint16_t conn_handle)
+ble_svc_prox_conn_slot(uint16_t conn_handle, int allocate)
 {
     int free_slot;
     int i;
@@ -70,7 +70,7 @@ ble_svc_prox_conn_slot(uint16_t conn_handle)
         }
     }
 
-    if (free_slot >= 0) {
+    if (allocate && free_slot >= 0) {
         ble_svc_prox_conn[free_slot].conn_handle = conn_handle;
         ble_svc_prox_conn[free_slot].link_loss_alert = BLE_SVC_PROX_ALERT_NONE;
         ble_svc_prox_conn[free_slot].immediate_alert = false;
@@ -163,7 +163,7 @@ ble_prox_prph_alert_unalert(uint16_t conn_handle)
 {
     int slot;
 
-    slot = ble_svc_prox_conn_slot(conn_handle);
+    slot = ble_svc_prox_conn_slot(conn_handle, 1);
     if (slot < 0) {
         MODLOG_DFLT(ERROR, "No proximity state slot for conn_handle %d", conn_handle);
         return;
@@ -200,20 +200,24 @@ ble_svc_prox_link_loss_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_ALERT_LVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            int slot = ble_svc_prox_conn_slot(conn_handle);
+            uint8_t alert_lvl;
+            int slot = ble_svc_prox_conn_slot(conn_handle, 1);
             if (slot < 0) {
                 return BLE_ATT_ERR_INSUFFICIENT_RES;
             }
             rc = ble_svc_prox_chr_write(ctxt->om, 1,
-                                        sizeof(ble_svc_prox_conn[slot].link_loss_alert),
-                                        &ble_svc_prox_conn[slot].link_loss_alert, NULL);
-            if (rc == 0 &&
-                ble_svc_prox_conn[slot].link_loss_alert > BLE_SVC_PROX_ALERT_HIGH) {
+                                        sizeof(alert_lvl),
+                                        &alert_lvl, NULL);
+            if (rc != 0) {
+                return rc;
+            }
+            if (alert_lvl > BLE_SVC_PROX_ALERT_HIGH) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
-            return rc;
+            ble_svc_prox_conn[slot].link_loss_alert = alert_lvl;
+            return 0;
         } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-            int slot = ble_svc_prox_conn_slot(conn_handle);
+            int slot = ble_svc_prox_conn_slot(conn_handle, 1);
             if (slot < 0) {
                 return BLE_ATT_ERR_INSUFFICIENT_RES;
             }
@@ -235,6 +239,7 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
                               void *arg)
 {
     uint16_t uuid16;
+    int rc;
 
     uuid16 = ble_uuid_u16(ctxt->chr->uuid);
     assert(uuid16 != 0);
@@ -242,13 +247,16 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_ALERT_LVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            int rc = ble_svc_prox_chr_write(ctxt->om, 1, 1, &ble_svc_prox_alert, NULL);
+            uint8_t alert_lvl;
+            rc = ble_svc_prox_chr_write(ctxt->om, 1, 1, &alert_lvl, NULL);
             if (rc != 0) {
                 return rc;
             }
-            if (ble_svc_prox_alert > BLE_SVC_PROX_ALERT_HIGH) {
+            if (alert_lvl > BLE_SVC_PROX_ALERT_HIGH) {
                 return BLE_ATT_ERR_UNLIKELY;
             }
+            ble_svc_prox_alert = alert_lvl;
+
             MODLOG_DFLT(INFO, "Alert level = %d", ble_svc_prox_alert);
 
             ble_prox_prph_alert_unalert(conn_handle);
@@ -336,7 +344,7 @@ ble_svc_prox_on_disconnect(uint16_t conn_handle)
 {
     int slot;
 
-    slot = ble_svc_prox_conn_slot(conn_handle);
+    slot = ble_svc_prox_conn_slot(conn_handle, 0);
     if (slot < 0) {
         return;
     }

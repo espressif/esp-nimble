@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <syscfg/syscfg.h>
 #include <os/os.h>
@@ -73,11 +74,8 @@ hci_ipc_alloc(struct hci_ipc_sm *sm)
         break;
     }
 
-    /* Set up buffer state only if allocation succeeded */
-    if (sm->buf || sm->om) {
-        sm->rem_len = sm->hdr.length;
-        sm->buf_len = 0;
-    }
+    sm->rem_len = sm->hdr.length;
+    sm->buf_len = 0;
 }
 
 static bool
@@ -92,32 +90,20 @@ hci_ipc_frame(struct hci_ipc_sm *sm)
     int rc;
 
     assert(sm->hdr.type);
-    assert(sm->buf);
+    assert(sm->buf || sm->om);
     assert(sm->rem_len == 0);
 
     switch (sm->hdr.type) {
 #if MYNEWT_VAL(BLE_CONTROLLER)
     case HCI_IPC_TYPE_CMD:
         rc = ble_transport_to_ll_cmd(sm->buf);
-        if (rc != 0) {
-            /* Transport failed to process - buffer may need explicit cleanup */
-            ble_transport_free(BLE_HCI_CMD, sm->buf);
-        }
         break;
 #endif
     case HCI_IPC_TYPE_ACL:
 #if MYNEWT_VAL(BLE_CONTROLLER)
         rc = ble_transport_to_ll_acl(sm->om);
-        if (rc != 0) {
-            /* Transport failed - free the mbuf chain */
-            os_mbuf_free_chain(sm->om);
-        }
 #else
         rc = ble_transport_to_hs_acl(sm->om);
-        if (rc != 0) {
-            /* Transport failed - free the mbuf chain */
-            os_mbuf_free_chain(sm->om);
-        }
 #endif
         break;
 #if !MYNEWT_VAL(BLE_CONTROLLER)
@@ -125,25 +111,13 @@ hci_ipc_frame(struct hci_ipc_sm *sm)
     case HCI_IPC_TYPE_EVT_DISCARDABLE:
     case HCI_IPC_TYPE_EVT_IN_CMD:
         rc = ble_transport_to_hs_evt(sm->buf);
-        if (rc != 0) {
-            /* Transport failed to process - buffer may need explicit cleanup */
-            ble_transport_free(BLE_HCI_EVT, sm->buf);
-        }
         break;
 #endif
     case HCI_IPC_TYPE_ISO:
 #if MYNEWT_VAL(BLE_CONTROLLER)
         rc = ble_transport_to_ll_iso(sm->om);
-        if (rc != 0) {
-            /* Transport failed - free the mbuf chain */
-            os_mbuf_free_chain(sm->om);
-        }
 #else
         rc = ble_transport_to_hs_iso(sm->om);
-        if (rc != 0) {
-            /* Transport failed - free the mbuf chain */
-            os_mbuf_free_chain(sm->om);
-        }
 #endif
         break;
     default:
@@ -190,9 +164,20 @@ hci_ipc_copy_to_buf(struct hci_ipc_sm *sm, const uint8_t *buf, uint16_t len)
     int rc;
 
     assert(sm->hdr.type);
-    assert(sm->buf);
+    assert(sm->buf || sm->om || sm->rem_len);
 
     len = min(len, sm->rem_len);
+
+    if (!sm->buf && !sm->om) {
+        sm->rem_len -= len;
+        if (sm->rem_len == 0) {
+            sm->hdr.type = 0;
+            sm->hdr.length = 0;
+            sm->hdr_len = 0;
+            sm->buf_len = 0;
+        }
+        return len;
+    }
 
     switch (sm->hdr.type) {
 #if MYNEWT_VAL(BLE_CONTROLLER)
@@ -263,7 +248,7 @@ hci_ipc_init(volatile struct hci_ipc_shm *shm, struct hci_ipc_sm *sm)
         }
     }
     if (timeout == 0) {
-        assert(0); /* Timeout waiting for host initialization */
+        abort(); /* Timeout waiting for host initialization */
     }
     /* Memory barrier to ensure we see updated values from host */
     __asm__ __volatile__("dmb" ::: "memory");

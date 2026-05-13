@@ -58,7 +58,7 @@ extern "C" {
 
 struct report {
     uint8_t data[RPT_MAX_LEN];
-    uint8_t len;
+    uint16_t len;
     uint8_t type;
     uint8_t id;
     uint16_t handle;

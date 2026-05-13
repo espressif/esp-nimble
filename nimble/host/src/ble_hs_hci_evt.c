@@ -453,11 +453,12 @@ ble_hs_hci_evt_resolve_rpa(ble_addr_t *addr)
     ble_hs_lock();
     rl = ble_hs_resolv_rpa_addr(addr->val, addr->type);
     if (rl != NULL) {
-        if (addr->type == 1) {
+        if (addr->type == BLE_ADDR_RANDOM) {
             rl->rl_isrpa = 1;
         }
 
         memcpy(addr->val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
+        addr->type = rl->rl_addr_type;
     }
     ble_hs_unlock();
 
@@ -473,9 +474,8 @@ ble_hs_hci_evt_resolve_rpa(ble_addr_t *addr)
         }
 
         memcpy(addr->val, id_addr, BLE_DEV_ADDR_LEN);
+        addr->type = id_addr_type;
     }
-
-    addr->type = ota_addr_type;
 }
 #endif
 
@@ -813,7 +813,7 @@ ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
     }
 
     STATS_INC(ble_hs_stats, hci_unknown_event);
-    return BLE_HS_ENOTSUP;
+    return 0;
 }
 
 
@@ -880,7 +880,7 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
         evt.connection_handle = BLE_HS_CONN_HANDLE_NONE;
 #endif
     }
-#if MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+#if MYNEWT_VAL(BLE_EXT_ADV)
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
 
@@ -1856,54 +1856,34 @@ ble_hs_hci_evt_le_periodic_adv_subev_data_req(uint8_t subevent, const void *data
 static int
 ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data, unsigned int len)
 {
-    //Check properly
-    const uint8_t *ev_data = data;
-    uint8_t num_responses;
-    uint32_t offset;
-
     const struct ble_hci_ev_le_subev_periodic_adv_resp_rep *ev = data;
     const struct periodic_adv_response *response;
     struct ble_gap_periodic_adv_response resp;
+    const uint8_t *payload;
+    unsigned int payload_len;
 
-    if (len < 5) {  // minimum size for fixed fields
+    if (len < sizeof(*ev)) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
-    num_responses = ev_data[4];  // ev->num_responses
-    offset = 5;
-    for (uint8_t i = 0; i < num_responses; i++) {
-        if (offset + 6 > len) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
-            return BLE_HS_ECONTROLLER;
-        }
-        uint8_t data_length = ev_data[offset + 5];  // data_length field position
-        if (offset + 6 + data_length > len) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
-            return BLE_HS_ECONTROLLER;
-        }
-        offset += 6 + data_length;
-    }
-    if (offset != len) {  // exact match
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
-        return BLE_HS_ECONTROLLER;
-    }
-
-    len -= sizeof(*ev);
-    data += sizeof(*ev);
 
     resp.adv_handle = ev->adv_handle;
     resp.subevent = ev->subevent;
     resp.tx_status = ev->tx_status;
 
+    payload = (const uint8_t *)(ev + 1);
+    payload_len = len - sizeof(*ev);
+
     for (uint8_t i = 0; i < ev->num_responses; i++) {
-        response = data;
-        if (len < sizeof(*response) + response->data_length) {
+        if (payload_len < sizeof(*response)) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
-
-        len -= sizeof(*response) + response->data_length;
-        data += sizeof(*response) + response->data_length;
+        response = (const struct periodic_adv_response *)payload;
+        if (payload_len < sizeof(*response) + response->data_length) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+            return BLE_HS_ECONTROLLER;
+        }
 
         resp.tx_power = response->tx_power;
         resp.rssi = response->rssi;
@@ -1914,6 +1894,14 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
         resp.data_status = response->data_status;
 
         ble_gap_rx_periodic_adv_response(resp);
+
+        payload += sizeof(*response) + response->data_length;
+        payload_len -= sizeof(*response) + response->data_length;
+    }
+
+    if (payload_len != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
+        return BLE_HS_ECONTROLLER;
     }
 
     return 0;

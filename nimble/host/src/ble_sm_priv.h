@@ -413,6 +413,7 @@ void ble_sm_ia_ra(struct ble_sm_proc *proc,
 
 int ble_sm_incr_our_sign_counter(uint16_t conn_handle);
 int ble_sm_incr_peer_sign_counter(uint16_t conn_handle);
+int ble_sm_update_peer_sign_counter(uint16_t conn_handle, uint32_t sign_counter);
 int ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
                         uint8_t *out);
 int32_t ble_sm_timer(void);
@@ -432,6 +433,7 @@ void ble_sm_deinit(void);
 
 #define ble_sm_incr_our_sign_counter(conn_handle) BLE_HS_ENOTSUP
 #define ble_sm_incr_peer_sign_counter(conn_handle) BLE_HS_ENOTSUP
+#define ble_sm_update_peer_sign_counter(conn_handle, sign_counter) BLE_HS_ENOTSUP
 #define ble_sm_alg_aes_cmac(key, in, len, out) BLE_HS_ENOTSUP
 #define ble_sm_enc_change_rx(evt) ((void)(evt))
 #define ble_sm_ltk_req_rx(evt) ((void)(evt))

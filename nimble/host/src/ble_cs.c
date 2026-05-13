@@ -60,6 +60,7 @@ struct ble_cs_wr_cached_rem_supp_cap_cp {
     uint16_t optional_t_fcs_times_supported;
     uint16_t optional_t_pm_times_supported;
     uint8_t t_sw_time_supported;
+    uint8_t tx_snr_capability;
 } __attribute__((packed));
 struct ble_cs_wr_cached_rem_supp_cap_rp {
     uint16_t conn_handle;
@@ -315,6 +316,7 @@ ble_cs_wr_cached_rem_supp_cap(const struct ble_cs_wr_cached_rem_supp_cap_cp *cmd
     cp.optional_t_fcs_times_supported = htole16(cmd->optional_t_fcs_times_supported);
     cp.optional_t_pm_times_supported = htole16(cmd->optional_t_pm_times_supported);
     cp.t_sw_time_supported = cmd->t_sw_time_supported;
+    cp.tx_snr_capability = cmd->tx_snr_capability;
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_CS_WR_CACHED_REM_SUPP_CAP),
@@ -418,6 +420,7 @@ ble_cs_create_config(const struct ble_cs_create_config_cp *cmd)
     cp.channel_selection_type = cmd->channel_selection_type;
     cp.ch3c_shape = cmd->ch3c_shape;
     cp.ch3c_jump = cmd->ch3c_jump;
+    cp.companion_signal_enable = cmd->companion_signal_enable;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_CS_CREATE_CONFIG),

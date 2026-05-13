@@ -2884,7 +2884,7 @@ struct hci_data_hdr
 #define BLE_HCI_ISO_CONN_HANDLE_MASK    (0x07ff)
 #define BLE_HCI_ISO_PB_FLAG_MASK        (0x3000)
 #define BLE_HCI_ISO_TS_FLAG_MASK        (0x4000)
-#define BLE_HCI_ISO_LENGTH_MASK         (0x7fff)
+#define BLE_HCI_ISO_LENGTH_MASK         (0x3fff)
 
 #define BLE_HCI_ISO_HANDLE(ch, pb, ts)  ((ch) | ((pb) << 12) | ((ts) << 14))
 

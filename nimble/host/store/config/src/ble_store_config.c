@@ -97,12 +97,8 @@ int ble_store_config_compare_bond_count(const void *a, const void *b) {
  */
 int ble_restore_our_sec_nvs(void)
 {
-    int err;
     struct ble_store_value_sec temp_our_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int temp_count = 0;
-    uint16_t saved_bond_count;
-
-    saved_bond_count = ble_store_config_our_bond_count;
 
     memcpy(temp_our_secs, ble_store_config_our_secs, ble_store_config_num_our_secs * sizeof(struct ble_store_value_sec));
     temp_count = ble_store_config_num_our_secs;
@@ -112,21 +108,10 @@ int ble_restore_our_sec_nvs(void)
     ble_store_config_our_bond_count = 0;
 
     for (int i = 0; i < temp_count; i++) {
-        temp_our_secs[i].bond_count = ++ble_store_config_our_bond_count;
-
-        union ble_store_value val;
-        val.sec = temp_our_secs[i];
-
-        err = ble_store_config_write(BLE_STORE_OBJ_TYPE_OUR_SEC, &val);
-
-        if (err != ESP_OK) {
-            BLE_HS_LOG(DEBUG, "Error updating bond in NVS: %d", err);
-            ble_store_config_our_bond_count = saved_bond_count;
-            return err;
-        }
+        ble_store_config_our_secs[i].bond_count = ++ble_store_config_our_bond_count;
     }
 
-    return 0;
+    return ble_store_config_persist_our_secs();
 }
 
 /* This function gets the stored device records of PEER_SEC object type, arranges them in order of their bond count,
@@ -134,12 +119,8 @@ int ble_restore_our_sec_nvs(void)
  */
 int ble_restore_peer_sec_nvs(void)
 {
-    int err;
     struct ble_store_value_sec temp_peer_secs[MYNEWT_VAL(BLE_STORE_MAX_BONDS)];
     int temp_count = 0;
-    uint16_t saved_bond_count;
-
-    saved_bond_count = ble_store_config_peer_bond_count;
 
     memcpy(temp_peer_secs, ble_store_config_peer_secs, ble_store_config_num_peer_secs * sizeof(struct ble_store_value_sec));
     temp_count = ble_store_config_num_peer_secs;
@@ -149,21 +130,10 @@ int ble_restore_peer_sec_nvs(void)
     ble_store_config_peer_bond_count = 0;
 
     for (int i = 0; i < temp_count; i++) {
-        temp_peer_secs[i].bond_count = ++ble_store_config_peer_bond_count;
-
-        union ble_store_value val;
-        val.sec = temp_peer_secs[i];
-
-        err = ble_store_config_write(BLE_STORE_OBJ_TYPE_PEER_SEC, &val);
-
-        if (err != ESP_OK) {
-            BLE_HS_LOG(DEBUG, "Error updating peer bond in NVS: %d", err);
-            ble_store_config_peer_bond_count = saved_bond_count;
-            return err;
-        }
+        ble_store_config_peer_secs[i].bond_count = ++ble_store_config_peer_bond_count;
     }
 
-    return 0;
+    return ble_store_config_persist_peer_secs();
 }
 #endif
 
@@ -1273,14 +1243,15 @@ ble_store_config_init(void)
     g_ble_store_config_initialized = true;
 }
 
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void
 ble_store_config_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_store_config_vars != NULL) {
         nimble_platform_mem_free(ble_store_config_vars);
         ble_store_config_vars = NULL;
     }
+#endif
 
     ble_hs_cfg.store_read_cb = NULL;
     ble_hs_cfg.store_write_cb = NULL;
@@ -1289,4 +1260,3 @@ ble_store_config_deinit(void)
     /* Reset initialization flag to allow re-initialization */
     g_ble_store_config_initialized = false;
 }
-#endif
