@@ -1214,7 +1214,7 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
 #endif
         // Check for characteristics
         SLIST_FOREACH(chr, &svc->chrs, next) {
-            if (chr->chr.val_handle < start_handle || chr->chr.val_handle > end_handle) {
+            if (chr->chr.def_handle < start_handle || chr->chr.def_handle > end_handle) {
                 continue;
             }
             if ((op == BLE_GATT_OP_GET_ALL_CHAR || op == BLE_GATT_OP_GET_CHAR_BY_UUID) &&
@@ -1385,11 +1385,11 @@ static void ble_gattc_get_gatt_db_impl(struct ble_gattc_cache_conn *peer,
 #endif
         // Iterate over characterstic
         SLIST_FOREACH(chr, &svc->chrs, next) {
-            if (chr->chr.val_handle < start_handle) {
+            if (chr->chr.def_handle < start_handle) {
                  continue;
             }
 
-            if (chr->chr.val_handle > end_handle) {
+            if (chr->chr.def_handle > end_handle) {
                 *db = buffer;
                 *count = db_size;
                 return;
@@ -1496,6 +1496,7 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
      * avoid use-after-free when the event fires after the connection struct
      * has been returned to the pool. */
     ble_npl_eventq_remove((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
+    ble_npl_event_deinit(&conn->disc_ev);
 
     while ((svc = SLIST_FIRST(&conn->svcs)) != NULL) {
         SLIST_REMOVE_HEAD(&conn->svcs, next);
@@ -1798,10 +1799,9 @@ ble_gattc_cache_conn_disc(struct ble_gattc_cache_conn *peer)
 {
     int rc;
 
-    /* TODO(issue-8): Add a re-entrancy guard here. If peer->cache_state is
-     * already SVC_DISC_IN_PROGRESS (or any other _IN_PROGRESS state), return
-     * BLE_HS_EALREADY without calling undisc_all(), which frees services that
-     * peer->cur_svc may still point to, causing a use-after-free in callbacks. */
+    if (peer->cache_state == SVC_DISC_IN_PROGRESS) {
+        return BLE_HS_EALREADY;
+    }
     ble_gattc_cache_conn_undisc_all(peer->ble_gattc_cache_conn_addr);
 
     peer->disc_prev_chr_val = 1;
@@ -1821,11 +1821,9 @@ ble_gattc_cache_conn_on_read(uint16_t conn_handle,
     uint16_t res;
 
     if (error->status == BLE_HS_EDONE) {
-        /* TODO(issue-18): BLE_HS_EDONE means the Read By UUID procedure
-         * completed with no data (hash characteristic not found). Should
-         * initiate full discovery here as a fallback instead of silently
-         * returning 0, which leaves the process hung. */
-        return 0;
+        /* Hash characteristic not found; fall back to full discovery. */
+        res = ble_gattc_cache_conn_disc((struct ble_gattc_cache_conn *)arg);
+        return res;
     }
 
     if (error->status != 0) {
@@ -2729,12 +2727,12 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
 {
     /* return all included services */
     struct ble_gattc_cache_conn *conn;
-    struct ble_gattc_cache_conn_svc *svc;
     struct ble_gattc_cache_conn_op *op;
     int status = 0;
     uint16_t conn_handle;
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    struct ble_gattc_cache_conn_svc *svc;
     struct ble_gattc_cache_conn_incl_svc *incl_svc;
     ble_gatt_disc_incl_svc_fn *dcb;
 #else

@@ -403,7 +403,8 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                             break;
                         }
                     }
-                    if((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) {
+                    if(((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) &&
+                       ((old_enable & CTE_ENABLE_AOD_ADVERTISING) != CTE_ENABLE_AOD_ADVERTISING)) {
                         /* Apply the current advertising CTE parameters to the controller
                          * using advertising instance 0 (default periodic advertising set). */
                         struct ble_gap_periodic_adv_cte_params cte_params = {

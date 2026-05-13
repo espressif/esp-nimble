@@ -122,7 +122,9 @@ void ble_svc_sps_scan_refresh() {
     /* ble_scan_refresh is a macro that dereferences ble_svc_sps_static_vars.
      * Ensure the dynamic backing structure is allocated before use, matching
      * the pattern in ble_svc_sps_set_cb and ble_svc_sps_init. */
-    ble_svc_sps_ensure_static_vars();
+    if (ble_svc_sps_ensure_static_vars() != 0) {
+        return;
+    }
 #endif
     /* spec allows only value 0 to send */
     ble_scan_refresh = 0;

@@ -596,10 +596,6 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
                 }
             }
 
-            /* apply the changes: poison before adding to free list while still
-             * holding the lock; poisoning after the lock release allows another
-             * thread to obtain and corrupt the block before it is marked invalid */
-            os_mempool_poison(mp, block_addr);
             block = (struct os_memblock *)block_addr;
             SLIST_NEXT(block, mb_next) = SLIST_FIRST(mp);
             SLIST_FIRST(mp) = block;
@@ -609,8 +605,10 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
         assert(mp->mp_num_blocks >= mp->mp_num_free);
         OS_EXIT_CRITICAL(sr);
 
-        /* Free outside critical section */
-        if (need_free) {
+        /* Poison and free outside critical section to minimize lock hold time */
+        if (!need_free) {
+            os_mempool_poison(mp, block_addr);
+        } else {
             nimble_platform_mem_free(block_addr);
         }
         return OS_OK;

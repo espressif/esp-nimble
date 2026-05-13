@@ -3156,7 +3156,7 @@ int ble_gap_periodic_adv_sync_create_cancel(void);
  */
 int ble_gap_periodic_adv_sync_terminate(uint16_t sync_handle);
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
 /**
  * Disable or enable periodic reports for specified sync.
@@ -3183,6 +3183,8 @@ int ble_gap_periodic_adv_sync_reporting(uint16_t sync_handle,
 int ble_gap_periodic_adv_sync_reporting(uint16_t sync_handle,
                                         bool enable);
 #endif
+#endif /* BLE_PERIODIC_ADV */
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
 /**
  * Initialize sync transfer procedure for specified handles.
  *
