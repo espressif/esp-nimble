@@ -3660,10 +3660,9 @@ ble_att_svr_start(void)
 
     if (ble_hs_max_attrs > 0) {
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-        /* OS_MEMPOOL_BYTES computes the raw block storage without the
-         * OS_MEMPOOL_GUARD overhead. When OS_MEMPOOL_GUARD is enabled, the mempool
-         * itself adds guard bytes internally per block; the allocation here is correct
-         * because os_mempool_init accounts for the actual block layout. */
+        /* OS_MEMPOOL_BYTES computes the total storage required including guard
+         * bytes per block when OS_MEMPOOL_GUARD is enabled, so the allocation
+         * is always sized correctly for the underlying mempool block layout. */
         ble_att_svr_entry_mem = nimble_platform_mem_calloc(1,
             OS_MEMPOOL_BYTES(ble_hs_max_attrs,
                              sizeof (struct ble_att_svr_entry)));

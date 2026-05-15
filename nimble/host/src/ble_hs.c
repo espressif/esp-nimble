@@ -561,7 +561,7 @@ ble_hs_reset(void)
     ble_hs_id_reset();
 
 #if MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    ble_hs_pvcy_reset();
+    ble_hs_pvcy_irk_deinit();
 #endif
 
     if (ble_hs_cfg.reset_cb != NULL && ble_hs_reset_reason != 0) {
