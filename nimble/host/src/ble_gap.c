@@ -6722,8 +6722,7 @@ ble_gap_periodic_adv_sync_create(const ble_addr_t *addr, uint8_t adv_sid,
     cmd.skip = params->skip;
     cmd.sync_timeout = htole16(params->sync_timeout);
 #if MYNEWT_VAL(BLE_AOA_AOD)
-    /* BLE_GAP_CTE_TYPE_* are indices; HCI sync_cte_type is a bitmask. */
-    cmd.sync_cte_type = (params->sync_cte_type < 8) ? (1 << params->sync_cte_type) : 0;
+    cmd.sync_cte_type = params->sync_cte_type;
 #else
     cmd.sync_cte_type = 0x00;
 #endif
@@ -6995,8 +6994,7 @@ periodic_adv_transfer_enable(uint16_t conn_handle,
 
     if (params != NULL) {
 #if MYNEWT_VAL(BLE_AOA_AOD)
-        /* BLE_GAP_CTE_TYPE_* are indices; HCI sync_cte_type is a bitmask. */
-        cmd.sync_cte_type = (params->sync_cte_type < 8) ? (1 << params->sync_cte_type) : 0;
+        cmd.sync_cte_type = params->sync_cte_type;
 #else
         cmd.sync_cte_type = 0x00;
 #endif
@@ -7036,8 +7034,7 @@ periodic_adv_set_default_sync_params(const struct ble_gap_periodic_sync_params *
 
     if (params != NULL) {
 #if MYNEWT_VAL(BLE_AOA_AOD)
-        /* BLE_GAP_CTE_TYPE_* are indices; HCI sync_cte_type is a bitmask. */
-        cmd.sync_cte_type = (params->sync_cte_type < 8) ? (1 << params->sync_cte_type) : 0;
+        cmd.sync_cte_type = params->sync_cte_type;
 #else
         cmd.sync_cte_type = 0x00;
 #endif
@@ -7248,16 +7245,18 @@ ble_gap_set_periodic_adv_subev_data(uint8_t instance, uint8_t num_subevents,
 
     /* BT spec Vol 4, Part E, 7.8.125: Num_Subevents_With_Data valid range is 0x01–0x0F. */
     if (num_subevents == 0) {
-        rc = BLE_HS_EINVAL;
-        goto done;
+        return BLE_HS_EINVAL;
     }
     if (params == NULL) {
         return BLE_HS_EINVAL;
     }
     for (int i = 0; i < num_subevents; i++) {
         if (params[i].data == NULL) {
-            rc = BLE_HS_EINVAL;
-            goto done;
+            /* Free any mbufs already assigned before this entry. */
+            for (int j = 0; j < num_subevents; j++) {
+                os_mbuf_free_chain(params[j].data);
+            }
+            return BLE_HS_EINVAL;
         }
     }
 
