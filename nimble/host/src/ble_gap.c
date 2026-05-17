@@ -7821,6 +7821,8 @@ ble_gap_disc_cancel_no_lock(void)
     STATS_INC(ble_gap_stats, discover_cancel);
 
 #if !MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
+    /* Without connect-with-scan, disc_active reliably tracks controller scan
+     * state.  Skip the HCI command if the host already knows scan is idle. */
     if (!ble_gap_disc_active()) {
         rc = BLE_HS_EALREADY;
         goto done;
@@ -7828,6 +7830,18 @@ ble_gap_disc_cancel_no_lock(void)
 #endif
 
     rc = ble_gap_disc_disable_tx();
+#if MYNEWT_VAL(BLE_HOST_ALLOW_CONNECT_WITH_SCAN)
+    /* With connect-with-scan enabled, ble_gap_master.op may have been
+     * overwritten to M_CONN while the controller was still scanning, making
+     * disc_active() return false even though scan is active on the
+     * controller.  We therefore skip the disc_active guard above and always
+     * attempt the HCI scan-disable.  If the controller rejects it with
+     * CMD_DISALLOWED the scan was already inactive — treat that as success
+     * so callers observe the same EALREADY-equivalent behavior. */
+    if (rc == BLE_HS_HCI_ERR(BLE_ERR_CMD_DISALLOWED)) {
+        rc = 0;
+    }
+#endif
     if (rc != 0) {
         goto done;
     }
