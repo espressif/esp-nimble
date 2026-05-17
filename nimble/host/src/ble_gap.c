@@ -4386,8 +4386,11 @@ ble_gap_wl_set(const ble_addr_t *addrs, uint8_t white_list_count)
         }
     }
 
-    rc = ble_gap_wl_busy();
-    if (rc) {
+    if (ble_gap_wl_busy()) {
+        /* The filter accept list is currently in use by the controller.
+         * Mirror the CMD_DISALLOWED error the controller would return if the
+         * HCI command were sent. */
+        rc = BLE_HS_HCI_ERR(BLE_ERR_CMD_DISALLOWED);
         goto done;
     }
 
@@ -7794,7 +7797,11 @@ ble_gap_disc_tx_params(uint8_t own_addr_type,
     cmd.scan_itvl = htole16(disc_params->itvl);
     cmd.scan_window = htole16(disc_params->window);
     cmd.own_addr_type = own_addr_type;
-    cmd.filter_policy = disc_params->filter_policy;
+    /* LE_Set_Scan_Parameters only supports filter policies 0 and 1.
+     * Policies 2 and 3 are only valid for extended scanning.  Mask to
+     * bit 0 so policy 2 (NO_WL_INITA) maps to 0 (accept all) and
+     * policy 3 (USE_WL_INITA) maps to 1 (use FAL). */
+    cmd.filter_policy = disc_params->filter_policy & 1;
 
     opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_SCAN_PARAMS);
 
@@ -8017,7 +8024,9 @@ ble_gap_ext_disc(uint8_t own_addr_type, uint16_t duration, uint16_t period,
     }
 
     ble_gap_master.disc.limited = limited;
-    ble_gap_master.disc.using_wl = (filter_policy != 0);
+    /* Scan filter policies 1 (USE_WL) and 3 (USE_WL_INITA) use the FAL;
+     * policy 2 (NO_WL_INITA) handles unresolvable RPAs but does not. */
+    ble_gap_master.disc.using_wl = (filter_policy & 1);
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
 
@@ -8202,7 +8211,9 @@ ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
 
     ble_gap_master.disc.limited = params.limited;
     ble_gap_master.disc.observer = !params.disable_observer_mode;
-    ble_gap_master.disc.using_wl = (params.filter_policy != 0);
+    /* Scan filter policies 1 (USE_WL) and 3 (USE_WL_INITA) use the FAL;
+     * policy 2 (NO_WL_INITA) handles unresolvable RPAs but does not. */
+    ble_gap_master.disc.using_wl = (params.filter_policy & 1);
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
 
