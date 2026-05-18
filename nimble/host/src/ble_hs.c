@@ -478,7 +478,11 @@ ble_hs_clear_rx_queue(void)
 int
 ble_hs_is_enabled(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     return ble_hs_get_enabled_state() == BLE_HS_ENABLED_STATE_ON;
+#else
+    return ble_hs_enabled_state == BLE_HS_ENABLED_STATE_ON;
+#endif
 }
 
 int
@@ -770,9 +774,11 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
 {
     struct ble_npl_event *ev;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx == NULL || ble_hs_evq == NULL) {
         goto free_evt;
     }
+#endif
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
 
@@ -785,7 +791,9 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
         if (ev) {
             os_memblock_put(&ble_hs_hci_ev_pool, ev);
         }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 free_evt:
+#endif
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_transport_free(BLE_HCI_EVT, hci_evt);
 #else
@@ -809,9 +817,13 @@ ble_hs_notifications_sched(void)
 #endif
 
 #if MYNEWT_VAL(BLE_GATTS)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx != NULL && ble_hs_evq != NULL) {
         ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_tx_notifications);
     }
+#else
+    ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_tx_notifications);
+#endif
 #endif
 }
 
@@ -819,10 +831,12 @@ void
 ble_hs_sched_reset(int reason)
 {
     ble_hs_lock_nested();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx == NULL) {
         ble_hs_unlock_nested();
         return;
     }
+#endif
 
     if (ble_hs_reset_reason != 0) {
         ble_hs_unlock_nested();
