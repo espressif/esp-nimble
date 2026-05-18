@@ -88,7 +88,7 @@ ble_npl_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
 
     ev = btdm_osal_eventq_get(&evq->eventq, tmo);
     if (ev) {
-        return (void *)ev - offsetof(struct ble_npl_event, event);
+        return (struct ble_npl_event *)((char *)ev - offsetof(struct ble_npl_event, event));
     }
     return NULL;
 }
@@ -155,49 +155,49 @@ ble_npl_event_set_arg(struct ble_npl_event *ev, void *arg)
 static inline ble_npl_error_t
 ble_npl_mutex_init(struct ble_npl_mutex *mu)
 {
-    return btdm_osal_mutex_init(&mu->mutex);
+    return (ble_npl_error_t)btdm_osal_mutex_init(&mu->mutex);
 }
 
 static inline ble_npl_error_t
 ble_npl_mutex_deinit(struct ble_npl_mutex *mu)
 {
-    return btdm_osal_mutex_deinit(&mu->mutex);
+    return (ble_npl_error_t)btdm_osal_mutex_deinit(&mu->mutex);
 }
 
 static inline ble_npl_error_t
 ble_npl_mutex_pend(struct ble_npl_mutex *mu, ble_npl_time_t timeout)
 {
-    return btdm_osal_mutex_pend(&mu->mutex, timeout);
+    return (ble_npl_error_t)btdm_osal_mutex_pend(&mu->mutex, timeout);
 }
 
 static inline ble_npl_error_t
 ble_npl_mutex_release(struct ble_npl_mutex *mu)
 {
-    return btdm_osal_mutex_release(&mu->mutex);
+    return (ble_npl_error_t)btdm_osal_mutex_release(&mu->mutex);
 }
 
 static inline ble_npl_error_t
 ble_npl_sem_init(struct ble_npl_sem *sem, uint16_t tokens)
 {
-    return btdm_osal_sem_init(&sem->sem, tokens);
+    return (ble_npl_error_t)btdm_osal_sem_init(&sem->sem, tokens);
 }
 
 static inline ble_npl_error_t
 ble_npl_sem_deinit(struct ble_npl_sem *sem)
 {
-    return btdm_osal_sem_deinit(&sem->sem);
+    return (ble_npl_error_t)btdm_osal_sem_deinit(&sem->sem);
 }
 
 static inline ble_npl_error_t
 ble_npl_sem_pend(struct ble_npl_sem *sem, ble_npl_time_t timeout)
 {
-    return btdm_osal_sem_pend(&sem->sem, timeout);
+    return (ble_npl_error_t)btdm_osal_sem_pend(&sem->sem, timeout);
 }
 
 static inline ble_npl_error_t
 ble_npl_sem_release(struct ble_npl_sem *sem)
 {
-    return btdm_osal_sem_release(&sem->sem);
+    return (ble_npl_error_t)btdm_osal_sem_release(&sem->sem);
 }
 
 static inline uint16_t
@@ -222,7 +222,7 @@ ble_npl_callout_deinit(struct ble_npl_callout *co)
 static inline ble_npl_error_t
 ble_npl_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
 {
-    return btdm_osal_callout_reset(&co->co, ticks);
+    return (ble_npl_error_t)btdm_osal_callout_reset(&co->co, ticks);
 }
 
 static inline void
@@ -264,13 +264,13 @@ ble_npl_time_get(void)
 static inline ble_npl_error_t
 ble_npl_time_ms_to_ticks(uint32_t ms, ble_npl_time_t *out_ticks)
 {
-    return btdm_osal_time_ms_to_ticks(ms, out_ticks);
+    return (ble_npl_error_t)btdm_osal_time_ms_to_ticks(ms, out_ticks);
 }
 
 static inline ble_npl_error_t
 ble_npl_time_ticks_to_ms(ble_npl_time_t ticks, uint32_t *out_ms)
 {
-    return btdm_osal_time_ticks_to_ms(ticks, out_ms);
+    return (ble_npl_error_t)btdm_osal_time_ticks_to_ms(ticks, out_ms);
 }
 
 static inline ble_npl_time_t
