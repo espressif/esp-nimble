@@ -139,7 +139,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     status = psa_import_key(&key_attributes, tmp, 16, &key_id);
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to import AES key: %d", status);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         rc = BLE_HS_EUNKNOWN;
         goto done;
     }
@@ -153,7 +153,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     if (status != PSA_SUCCESS || output_len != 16) {
         ESP_LOGE(TAG, "Encryption failed: %d", status);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         rc = BLE_HS_EUNKNOWN;
         goto done;
     }
@@ -164,7 +164,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     mbedtls_aes_init(&s);
     if (mbedtls_aes_setkey_enc(&s, tmp, 128) != 0) {
         mbedtls_aes_free(&s);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         rc = BLE_HS_EUNKNOWN;
         goto done;
     }
@@ -173,7 +173,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
 
     if (mbedtls_aes_crypt_ecb(&s, MBEDTLS_AES_ENCRYPT, tmp, enc_data) != 0) {
         mbedtls_aes_free(&s);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         rc = BLE_HS_EUNKNOWN;
         goto done;
     }
@@ -184,7 +184,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     struct tc_aes_key_sched_struct s;
 
     if (tc_aes128_set_encrypt_key(&s, tmp) == TC_CRYPTO_FAIL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         ble_sm_alg_secure_zero(&s, sizeof(s));
         rc = BLE_HS_EUNKNOWN;
         goto done;
@@ -193,7 +193,7 @@ ble_sm_alg_encrypt(const uint8_t *key, const uint8_t *plaintext,
     swap_buf(tmp, plaintext, 16);
 
     if (tc_aes_encrypt(enc_data, tmp, &s) == TC_CRYPTO_FAIL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         ble_sm_alg_secure_zero(&s, sizeof(s));
         rc = BLE_HS_EUNKNOWN;
         goto done;
@@ -340,7 +340,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     status = psa_import_key(&key_attributes, key, 16, &key_id);
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to import key: %d", status);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__,BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
     psa_reset_key_attributes(&key_attributes);
@@ -350,7 +350,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to setup MAC sign operation: %d", status);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -360,7 +360,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         ESP_LOGE(TAG, "Failed to update MAC operation: %d", status);
         psa_mac_abort(&operation);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -369,10 +369,13 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         ESP_LOGE(TAG, "Failed to finish MAC sign operation: %d", status);
         psa_mac_abort(&operation);
         psa_destroy_key(key_id);
-        return BLE_HS_EUNKNOWN;
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
+        return BLE_HS_EUNKNOWN; 
     }
 
     psa_destroy_key(key_id);
+
+    return 0;
 #else
     int rc = BLE_HS_EUNKNOWN;
     mbedtls_cipher_context_t ctx = {0};
@@ -409,7 +412,6 @@ exit:
     }
     return rc;
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
-    return 0;
 }
 
 #else
@@ -422,17 +424,17 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     int rc = BLE_HS_EUNKNOWN;
 
     if (tc_cmac_setup(&state, key, &sched) == TC_CRYPTO_FAIL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         goto done;
     }
 
     if (tc_cmac_update(&state, in, len) == TC_CRYPTO_FAIL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         goto done;
     }
 
     if (tc_cmac_final(out, &state) == TC_CRYPTO_FAIL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         goto done;
     }
 
@@ -503,7 +505,7 @@ ble_sm_alg_f4(const uint8_t *u, const uint8_t *v, const uint8_t *x,
 
     rc = ble_sm_alg_aes_cmac(xs, m, sizeof(m), out_enc_data);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -635,7 +637,7 @@ ble_sm_alg_f6(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
     memset(ws, 0, sizeof(ws));
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -668,7 +670,7 @@ ble_sm_alg_g2(const uint8_t *u, const uint8_t *v, const uint8_t *x,
     /* reuse xs (key) as buffer for result */
     rc = ble_sm_alg_aes_cmac(xs, m, sizeof(m), xs);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -1033,7 +1035,7 @@ exit:
         psa_destroy_key(key_id);
     }
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 #else
@@ -1123,7 +1125,7 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
         if (mbedtls_gen_keypair(pk, priv) != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+            BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
             return BLE_HS_EUNKNOWN;
         }
 #if CONFIG_MBEDTLS_VER_4_X_SUPPORT
@@ -1136,7 +1138,7 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
         if (uECC_make_key(pk, priv, uECC_secp256r1()) != TC_CRYPTO_SUCCESS) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+            BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
             return BLE_HS_EUNKNOWN;
         }
         // TinyCrypt/uECC: pk[0..31]=X, pk[32..63]=Y (no prefix)
