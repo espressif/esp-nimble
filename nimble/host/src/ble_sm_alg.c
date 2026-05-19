@@ -281,7 +281,7 @@ ble_sm_alg_f4(const uint8_t *u, const uint8_t *v, const uint8_t *x,
 
     rc = ble_sm_alg_aes_cmac(xs, m, sizeof(m), out_enc_data);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -413,7 +413,7 @@ ble_sm_alg_f6(const uint8_t *w, const uint8_t *n1, const uint8_t *n2,
     memset(ws, 0, sizeof(ws));
 
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -446,7 +446,7 @@ ble_sm_alg_g2(const uint8_t *u, const uint8_t *v, const uint8_t *x,
     /* reuse xs (key) as buffer for result */
     rc = ble_sm_alg_aes_cmac(xs, m, sizeof(m), xs);
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
