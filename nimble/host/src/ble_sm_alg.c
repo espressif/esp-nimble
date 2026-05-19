@@ -332,7 +332,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     status = psa_import_key(&key_attributes, key, 16, &key_id);
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to import key: %d", status);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__,BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
     psa_reset_key_attributes(&key_attributes);
@@ -342,7 +342,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to setup MAC sign operation: %d", status);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -352,7 +352,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         ESP_LOGE(TAG, "Failed to update MAC operation: %d", status);
         psa_mac_abort(&operation);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
 
@@ -361,11 +361,13 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         ESP_LOGE(TAG, "Failed to finish MAC sign operation: %d", status);
         psa_mac_abort(&operation);
         psa_destroy_key(key_id);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN; 
     }
 
     psa_destroy_key(key_id);
+
+    return 0;
 #else
     int rc = BLE_HS_EUNKNOWN;
     mbedtls_cipher_context_t ctx = {0};
@@ -402,7 +404,6 @@ exit:
     }
     return rc;
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
-    return 0;
 }
 
 #else
@@ -988,7 +989,7 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 
 #if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
         if (mbedtls_gen_keypair(pk, priv) != 0) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+            BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
             return BLE_HS_EUNKNOWN;
         }
 #if CONFIG_MBEDTLS_VER_4_X_SUPPORT
@@ -1001,7 +1002,7 @@ ble_sm_alg_gen_key_pair(uint8_t *pub, uint8_t *priv)
 #endif // CONFIG_MBEDTLS_VER_4_X_SUPPORT
 #else
         if (uECC_make_key(pk, priv, uECC_secp256r1()) != TC_CRYPTO_SUCCESS) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+            BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
             return BLE_HS_EUNKNOWN;
         }
         // TinyCrypt/uECC: pk[0..31]=X, pk[32..63]=Y (no prefix)
