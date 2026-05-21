@@ -8350,7 +8350,7 @@ ble_gap_subrate_req(uint16_t conn_handle, uint16_t subrate_min, uint16_t subrate
 }
 #endif
 
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) || (MYNEWT_VAL(BLE_EXT_ADV) && MYNEWT_VAL(BLE_ROLE_CENTRAL))
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) || (MYNEWT_VAL(BLE_ROLE_CENTRAL) && NIMBLE_BLE_CONNECT)
 static int
 ble_gap_check_conn_params(uint8_t phy, const struct ble_gap_conn_params *params)
 {
@@ -9143,7 +9143,12 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         goto done;
     }
 
-    /* XXX: Verify conn_params. */
+    if (conn_params != NULL) {
+        rc = ble_gap_check_conn_params(BLE_HCI_LE_PHY_1M, conn_params);
+        if (rc != 0) {
+            goto done;
+        }
+    }
 
     rc = ble_hs_id_use_addr(own_addr_type);
     if (rc != 0) {
