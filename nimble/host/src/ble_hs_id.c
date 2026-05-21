@@ -513,13 +513,12 @@ ble_hs_id_reset(void)
 void
 ble_hs_id_rnd_reset(void)
 {
-    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
-        ble_hs_unlock();
         return;
     }
 #endif
+    ble_hs_lock();
 
     memset(ble_hs_id_rnd, 0, sizeof ble_hs_id_rnd);
     ble_hs_unlock();

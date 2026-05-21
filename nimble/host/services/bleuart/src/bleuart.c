@@ -171,11 +171,8 @@ bleuart_uart_read(void)
     if (off > 0) {
         om = ble_hs_mbuf_from_flat(console_buf, off);
         if (om) {
-            rc = ble_gatts_notify_custom(g_console_conn_handle,
+            ble_gatts_notify_custom(g_console_conn_handle,
                                          g_bleuart_attr_read_handle, om);
-            if (rc != 0) {
-                os_mbuf_free_chain(om);
-            }
         }
     }
 }

@@ -3378,10 +3378,16 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
     end_handle = entry->end_group_handle;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     /* make all bonded connections unaware */
-    for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
-        ble_gatts_conn_aware_states[i].half_aware = 0;
-        ble_gatts_conn_aware_states[i].aware = false;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_conn_aware_states != NULL) {
+#endif
+        for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
+            ble_gatts_conn_aware_states[i].half_aware = 0;
+            ble_gatts_conn_aware_states[i].aware = false;
+        }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     }
+#endif
     ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
 #endif
 
@@ -3481,10 +3487,16 @@ done:
         rc = ble_gatts_remove_svc_entry(uuid);
 #if MYNEWT_VAL(BLE_GATT_CACHING)
         /* make all bonded connections them unaware */
-        for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
-            ble_gatts_conn_aware_states[i].aware = false;
-            ble_gatts_conn_aware_states[i].half_aware = 0;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states != NULL) {
+#endif
+            for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
+                ble_gatts_conn_aware_states[i].aware = false;
+                ble_gatts_conn_aware_states[i].half_aware = 0;
+            }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         }
+#endif
         ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
 #endif
 

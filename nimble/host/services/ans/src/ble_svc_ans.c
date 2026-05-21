@@ -263,7 +263,7 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
             if (cat_id < BLE_SVC_ANS_CAT_NUM) {
                 cat_bit_mask = (1 << cat_id);
             } else if (cat_id == BLE_SVC_ANS_CAT_ID_ALL) {
-                cat_bit_mask = cat_id;
+                cat_bit_mask = UINT8_MAX;
             } else {
                 /* invalid category ID */
                 return BLE_ATT_ERR_UNLIKELY;

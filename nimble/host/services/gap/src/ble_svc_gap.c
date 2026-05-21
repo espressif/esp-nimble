@@ -425,9 +425,7 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
 #if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
     case BLE_SVC_GAP_CHR_UUID16_LE_GATT_SECURITY_LEVELS:
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
-        ble_hs_lock();
         rc = ble_svc_gap_security_level_read_access(conn_handle, ctxt->om);
-        ble_hs_unlock();
         return rc;
 #endif
 

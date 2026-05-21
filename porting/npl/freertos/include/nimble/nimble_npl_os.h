@@ -128,7 +128,7 @@ struct npl_funcs_t {
     ble_npl_time_t (*p_ble_npl_time_ms_to_ticks32)(uint32_t);
     uint32_t (*p_ble_npl_time_ticks_to_ms32)(ble_npl_time_t);
     void (*p_ble_npl_time_delay)(ble_npl_time_t);
-    void (*p_ble_npl_hw_set_isr)(int, uint32_t);
+    void (*p_ble_npl_hw_set_isr)(int, void (*)(void));
     uint32_t (*p_ble_npl_hw_enter_critical)(void);
     void (*p_ble_npl_hw_exit_critical)(uint32_t);
     uint32_t (*p_ble_npl_get_time_forever)(void);

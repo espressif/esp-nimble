@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "syscfg/syscfg.h"
+#include "esp_err.h"
 #include "nimble/nimble_npl.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -794,8 +795,8 @@ ble_npl_event_fn_wrapper(void *arg)
     }
 }
 
-static
-ble_npl_error_t esp_err_to_npl_error(esp_err_t err)
+static ble_npl_error_t IRAM_ATTR
+esp_err_to_npl_error(esp_err_t err)
 {
     switch(err) {
     case ESP_ERR_INVALID_ARG:
@@ -963,7 +964,6 @@ npl_freertos_callout_deinit(struct ble_npl_callout *co)
     nimble_platform_mem_free((void *)callout);
 #endif
 
-    co->co = NULL;
     memset(co, 0, sizeof(struct ble_npl_callout));
 }
 
@@ -1062,10 +1062,15 @@ npl_freertos_callout_get_ticks(struct ble_npl_callout *co)
      * then convert to milliseconds for NimBLE time units */
     if (esp_timer_is_active(callout->handle)) {
         uint64_t expiry_us;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
         if (esp_timer_get_expiry_time(callout->handle, &expiry_us) == ESP_OK) {
             /* Convert microseconds to milliseconds */
             return expiry_us / 1000;
         }
+#else
+        /* esp_timer_get_expiry_time() is only available from IDF 5.0 onwards */
+        (void)expiry_us;
+#endif
     }
     return 0;
 #else
@@ -1215,7 +1220,7 @@ npl_freertos_time_delay(ble_npl_time_t ticks)
 
 #if NIMBLE_CFG_CONTROLLER || CONFIG_NIMBLE_CONTROLLER_MODE
 void
-npl_freertos_hw_set_isr(int irqn, uint32_t addr)
+npl_freertos_hw_set_isr(int irqn, void (*addr)(void))
 {
     //Do nothing
 }
@@ -1403,6 +1408,19 @@ int npl_freertos_mempool_init(void)
 
 _error:
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_freertos_ctx) {
+#endif
+        /* Unregister mempools from global list regardless of allocation strategy */
+        os_mempool_unregister(&ble_freertos_mutex_pool);
+        os_mempool_unregister(&ble_freertos_sem_pool);
+        os_mempool_unregister(&ble_freertos_co_pool);
+        os_mempool_unregister(&ble_freertos_evq_pool);
+        os_mempool_unregister(&ble_freertos_ev_pool);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
+
 #if CONFIG_BT_CONTROLLER_ENABLED
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     /* Only access macros if ble_freertos_ctx is valid to avoid NULL deref */
@@ -1432,22 +1450,9 @@ _error:
 #if (SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     if(ble_freertos_ev_buf) {
         nimble_platform_mem_free(ble_freertos_ev_buf);
-	    ble_freertos_ev_buf = NULL;
+            ble_freertos_ev_buf = NULL;
     }
     rc = -1;
-#endif
-
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_freertos_ctx) {
-#endif
-        /* Unregister mempools from global list regardless of allocation strategy */
-        os_mempool_unregister(&ble_freertos_mutex_pool);
-        os_mempool_unregister(&ble_freertos_sem_pool);
-        os_mempool_unregister(&ble_freertos_co_pool);
-        os_mempool_unregister(&ble_freertos_evq_pool);
-        os_mempool_unregister(&ble_freertos_ev_pool);
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    }
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -1457,8 +1462,9 @@ _error:
     }
 #endif
 
-   return rc;
+    return rc;
 }
+
 
 void npl_freertos_mempool_deinit(void)
 {

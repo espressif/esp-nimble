@@ -317,14 +317,7 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
     case BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST:
         info = ble_svc_dis_data.ieee;
         if (info != NULL) {
-            /* IEEE is binary data, but we don't have a fixed length. 
-             * For now, we assume it's handled as a string or 
-             * the caller knows the length. 
-             * The bug report says it's binary and strlen is wrong. 
-             * Without a stored length, we can't fix it properly 
-             * but we can at least avoid strlen if we had length. 
-             * For now, let's assume it's at least not null. */
-            int rc = os_mbuf_append(ctxt->om, info, 4); // Dummy length or use a better way
+            int rc = os_mbuf_append(ctxt->om, info, strlen(info));
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
         break;

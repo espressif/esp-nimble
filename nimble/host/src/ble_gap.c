@@ -25,6 +25,7 @@
 #include "host/ble_hs_adv.h"
 #include "host/ble_hs_hci.h"
 #include "ble_hs_priv.h"
+#include "ble_hs_periodic_sync_priv.h"
 #include "ble_gap_priv.h"
 #include "ble_hs_resolv_priv.h"
 #include "host/ble_hs_log.h"
@@ -1078,6 +1079,9 @@ ble_gap_set_prefered_le_phy(uint16_t conn_handle, uint8_t tx_phys_mask,
         cmd.tx_phys = tx_phys_mask & (BLE_HCI_LE_PHY_1M_PREF_MASK |
                                       BLE_HCI_LE_PHY_2M_PREF_MASK |
                                       BLE_HCI_LE_PHY_CODED_PREF_MASK);
+        if (cmd.tx_phys == 0) {
+            return BLE_HS_EINVAL;
+        }
     }
 
     if (rx_phys_mask == 0) {
@@ -1086,6 +1090,9 @@ ble_gap_set_prefered_le_phy(uint16_t conn_handle, uint8_t tx_phys_mask,
         cmd.rx_phys = rx_phys_mask & (BLE_HCI_LE_PHY_1M_PREF_MASK |
                                       BLE_HCI_LE_PHY_2M_PREF_MASK |
                                       BLE_HCI_LE_PHY_CODED_PREF_MASK);
+        if (cmd.rx_phys == 0) {
+            return BLE_HS_EINVAL;
+        }
     }
 
     cmd.phy_options = htole16(phy_opts);
@@ -2239,8 +2246,13 @@ ble_gap_reset_state(int reason)
         void *cb_arg;
         uint16_t sync_handle;
 
-        while ((psync = ble_hs_periodic_sync_first()) != NULL) {
+        while (1) {
             ble_hs_lock();
+            psync = ble_hs_periodic_sync_first_locked();
+            if (psync == NULL) {
+                ble_hs_unlock();
+                break;
+            }
             cb = psync->cb;
             cb_arg = psync->cb_arg;
             sync_handle = psync->sync_handle;
@@ -2412,6 +2424,11 @@ ble_gap_rx_cis_disconn(const struct ble_hci_ev_disconn_cmp *ev)
     } else {
         event.type = BLE_GAP_EVENT_DISCONNECT;
         event.disconnect.reason = BLE_HS_HCI_ERR(ev->reason);
+        /* CIS handles are not ACL connections, so no full ble_gap_conn_desc
+         * exists here. Keep the existing GAP disconnect event contract and
+         * provide only the CIS connection handle; CIS-specific details are
+         * delivered through the registered CIS callback below.
+         */
         event.disconnect.conn.conn_handle = handle;
     }
 
@@ -4493,7 +4510,6 @@ ble_gap_adv_stop(void)
         return rc;
     }
 
-    ext_adv_legacy_configured = false;
     return 0;
 #else
     int rc;
@@ -4966,6 +4982,12 @@ ble_gap_adv_set_data(const uint8_t *data, int data_len)
     struct os_mbuf *mbuf;
     int rc;
 
+    STATS_INC(ble_gap_stats, adv_set_data);
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
     if (data_len < 0 ||
         ((data == NULL) && (data_len != 0)) ||
         (data_len > BLE_HCI_MAX_ADV_DATA_LEN)) {
@@ -5031,6 +5053,12 @@ ble_gap_adv_rsp_set_data(const uint8_t *data, int data_len)
     struct os_mbuf *mbuf;
     int rc;
 
+    STATS_INC(ble_gap_stats, adv_rsp_set_data);
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
     if (data_len < 0 ||
         ((data == NULL) && (data_len != 0)) ||
         (data_len > BLE_HCI_MAX_SCAN_RSP_DATA_LEN)) {
@@ -5059,6 +5087,8 @@ ble_gap_adv_rsp_set_data(const uint8_t *data, int data_len)
 #else
     struct ble_hci_le_set_scan_rsp_data_cp cmd = {0};
     uint16_t opcode;
+
+    STATS_INC(ble_gap_stats, adv_rsp_set_data);
 
     if (!ble_hs_is_enabled()) {
         return BLE_HS_EDISABLED;
@@ -5387,6 +5417,7 @@ ble_gap_ext_adv_params_validate(const struct ble_gap_ext_adv_params *params)
 
     /* Min interval must not exceed max interval */
     if (params->itvl_min && params->itvl_max && params->itvl_min > params->itvl_max) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -5426,10 +5457,11 @@ ble_gap_ext_adv_params_validate(const struct ble_gap_ext_adv_params *params)
             return BLE_HS_EINVAL;
         }
 
-        /* BT spec Vol 6, Part B, 4.4.2.10: anonymous advertising shall not be connectable,
+        /* BT spec Vol 4, Part E, 7.8.53: anonymous advertising shall not be connectable,
          * scannable, or directed. */
         if (params->anonymous &&
             (params->connectable || params->scannable || params->directed)) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
     }
@@ -5738,8 +5770,6 @@ ble_gap_ext_adv_stop_no_lock(uint8_t instance)
 
     BLE_HS_LOG(INFO, "GAP procedure initiated: stop extended advertising.\n");
 
-    BLE_HS_LOG(INFO, "GAP procedure initiated: stop extended advertising.\n");
-
     cmd = (void *) buf;
 
     cmd->enable = 0x00;
@@ -5825,6 +5855,7 @@ ble_gap_ext_adv_set_data_validate(uint8_t instance, struct os_mbuf *data)
 
     /* total data must never exceed the configured max regardless of adv state */
     if (len > MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -7543,8 +7574,8 @@ ble_gap_set_connless_cte_transmit_params(uint8_t instance, const struct ble_gap_
     }
 
     /* BT spec (§7.8.80): switching_pattern_length valid range is [0x02, 0x4B]
-     * for AoD types; 0 is reserved/invalid per spec. For AoA (cte_type==0)
-     * the pattern is also required (valid range same). */
+     * for AoD types. For AoA (cte_type==0) the switching pattern parameters
+     * are ignored. */
     if (params->cte_type != 0) {
         if (params->switching_pattern_length < 2 ||
             params->switching_pattern_length > 75 ||
@@ -7570,7 +7601,9 @@ ble_gap_set_connless_cte_transmit_params(uint8_t instance, const struct ble_gap_
     cmd->cte_type = params->cte_type;
     cmd->cte_count = params->cte_count;
     cmd->switching_pattern_len = params->switching_pattern_length;
-    memcpy(cmd->switching_pattern, params->antenna_ids, params->switching_pattern_length);
+    if (params->antenna_ids && params->switching_pattern_length > 0) {
+        memcpy(cmd->switching_pattern, params->antenna_ids, params->switching_pattern_length);
+    }
 
     return ble_hs_hci_cmd_tx(opcode, cmd, len, NULL, 0);
 }
@@ -11484,6 +11517,10 @@ err:
         nimble_platform_mem_free(ble_gap_vars);
         ble_gap_vars = NULL;
     }
+#else
+    if (mutex_initialized) {
+        ble_npl_mutex_deinit(&preempt_done_mutex);
+    }
 #endif
     return rc;
 }
@@ -11509,11 +11546,11 @@ ble_gap_enh_read_transmit_power_level(uint16_t conn_handle, uint8_t phy, uint8_t
     cmd.phy = phy;
 
     rc = ble_hs_hci_cmd_tx(opcode, &cmd, sizeof(cmd), &rsp, sizeof(rsp));
-
-    *out_status = rc;
     if (rc != 0) {
         return rc;
     }
+
+    *out_status = rc;
 
     *out_phy = rsp.phy;
     *out_curr_tx_power_level = rsp.curr_tx_power_level;

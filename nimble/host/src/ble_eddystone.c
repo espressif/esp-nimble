@@ -159,9 +159,9 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
     svc_data[1 + BLE_EDDYSTONE_UID_LEN] = 0x00;
     svc_data[1 + BLE_EDDYSTONE_UID_LEN + 1] = 0x00;
 
-    rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
-
     ble_hs_unlock();
+
+    rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
 
     return rc;
 }
@@ -222,9 +222,9 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
         svc_data[2 + url_body_len] = url_suffix;
     }
 
-    rc = ble_eddystone_set_adv_data_gen(adv_fields, url_len + 2);
-
     ble_hs_unlock();
+
+    rc = ble_eddystone_set_adv_data_gen(adv_fields, url_len + 2);
 
     return rc;
 }

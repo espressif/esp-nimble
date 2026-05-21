@@ -9,6 +9,7 @@
 #ifndef _NIMBLE_PORT_FREERTOS_H
 #define _NIMBLE_PORT_FREERTOS_H
 
+#include "esp_err.h"
 #include "nimble/nimble_npl.h"
 
 #ifdef __cplusplus

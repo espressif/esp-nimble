@@ -170,10 +170,14 @@ ble_svc_ras_rrsp_init(void)
     int rc;
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
-    assert(rc == 0);
+    if (rc != 0) {
+        return rc;
+    }
 
     rc = ble_gatts_add_svcs(gatt_svr_svcs);
-    assert(rc == 0);
+    if (rc != 0) {
+        return rc;
+    }
 
     /* Missing initialization of characteristic values in service init.
      * ble_svc_ras_feat_val intentionally remains 0. RETRIEVE_LST_SEG, ABORT_OP, and

@@ -126,7 +126,7 @@ static const struct ble_gatt_svc_def ble_svc_htp_defs[] = {
                 {
                     {
                         .uuid = BLE_UUID16_DECLARE(BLE_SVC_HTP_DSC_UUID16_VALID_RANGE),
-                        .att_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE,
+                        .att_flags = BLE_ATT_F_READ,
                         .access_cb = ble_svc_htp_access,
                     }, {
                         0,
@@ -256,7 +256,7 @@ ble_svc_htp_subscribe_state(uint16_t conn_handle, uint16_t attr_handle,
                             bool subscribed)
 {
     int slot;
-    slot = ble_svc_htp_conn_slot(conn_handle, 1);
+    slot = ble_svc_htp_conn_slot(conn_handle, subscribed ? 1 : 0);
 
 
     if (slot < 0) {

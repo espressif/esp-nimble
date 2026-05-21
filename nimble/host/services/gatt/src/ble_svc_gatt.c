@@ -220,6 +220,7 @@ ble_svc_gatt_changed(uint16_t start_handle, uint16_t end_handle)
 {
     ble_svc_gatt_start_handle = start_handle;
     ble_svc_gatt_end_handle = end_handle;
+    ble_gatts_chr_updated(ble_svc_gatt_changed_val_handle);
 }
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
@@ -243,18 +244,16 @@ ble_svc_gatt_init(void)
 
     gatt_uuid = BLE_UUID16_DECLARE(BLE_GATT_SVC_UUID16);
     rc = ble_gatts_find_svc(gatt_uuid, NULL);
-    if (rc == 0) {
-        return;
+    if (rc != 0) {
+        /* Ensure this function only gets called by sysinit. */
+        SYSINIT_ASSERT_ACTIVE();
+
+        rc = ble_gatts_count_cfg(ble_svc_gatt_defs);
+        SYSINIT_PANIC_ASSERT(rc == 0);
+
+        rc = ble_gatts_add_svcs(ble_svc_gatt_defs);
+        SYSINIT_PANIC_ASSERT(rc == 0);
     }
-
-    /* Ensure this function only gets called by sysinit. */
-    SYSINIT_ASSERT_ACTIVE();
-
-    rc = ble_gatts_count_cfg(ble_svc_gatt_defs);
-    SYSINIT_PANIC_ASSERT(rc == 0);
-
-    rc = ble_gatts_add_svcs(ble_svc_gatt_defs);
-    SYSINIT_PANIC_ASSERT(rc == 0);
 
     if (MYNEWT_VAL(BLE_EATT_CHAN_NUM) > 0 && ble_hs_cfg.eatt) {
         ble_svc_gatt_local_srv_sup_feat |= (1 << BLE_SVC_GATT_SRV_SUP_FEAT_EATT_BIT);

@@ -322,9 +322,10 @@ fill_boot_mouse_inp(uint16_t instance)
         .val_handle = &hid_instances[instance].mouse_inp_handle,
         .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
-                 BLE_GATT_CHR_F_READ_ENC |
+                 BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC |
 #elif MYNEWT_VAL(BLE_SM_LVL) >= 3
-                 BLE_GATT_CHR_F_READ_AUTHEN |
+                 BLE_GATT_CHR_F_READ_AUTHEN | BLE_GATT_CHR_F_NOTIFY_INDICATE_AUTHEN |
+                 BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC |
                  BLE_GATT_CHR_F_READ_ENC |
 #endif
                  write_flags,
@@ -470,7 +471,7 @@ fill_hid_info(uint16_t instance)
         .flags = BLE_GATT_CHR_F_READ |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                  BLE_GATT_CHR_F_READ_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                  BLE_GATT_CHR_F_READ_AUTHEN |
                  BLE_GATT_CHR_F_READ_ENC |
 #endif
@@ -498,7 +499,7 @@ fill_ctrl_pt(uint16_t instance)
         .flags = BLE_GATT_CHR_F_WRITE_NO_RSP |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                  BLE_GATT_CHR_F_WRITE_ENC |
-#elif MYNEWT_VAL(BLE_SM_LVL) == 3
+#elif MYNEWT_VAL(BLE_SM_LVL) >= 3
                  BLE_GATT_CHR_F_WRITE_AUTHEN |
                  BLE_GATT_CHR_F_WRITE_ENC |
 #endif
@@ -735,18 +736,24 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
     int rc = 0;
     struct ble_gatt_svc_def *svc;
     uint16_t chr_idx;
+    uint16_t saved_dsc_idx;
+    uint16_t saved_chr_idx;
+    uint16_t saved_svc_idx;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_hid_static_vars == NULL) {
         ble_svc_hid_static_vars = nimble_platform_mem_calloc(1, sizeof(ble_svc_hid_static_vars_t));
         if (ble_svc_hid_static_vars == NULL) {
-            rc = BLE_HS_ENOMEM;
-            goto error;
+            return BLE_HS_ENOMEM;
         }
     }
 #endif
 
     svc_idx = get_curr_svc_idx();
+    saved_dsc_idx = ble_svc_hid_dsc_index;
+    saved_chr_idx = ble_svc_hid_chr_index;
+    saved_svc_idx = ble_svc_hid_svc_index;
+
     /* one instance is required for empty service */
     if (HID_MAX_SVC_INSTANCES  - 1 <= svc_idx) {
         /* increase instances count */
@@ -821,7 +828,9 @@ ble_svc_hid_add(struct ble_svc_hid_params params)
 
     return 0;
 error:
-    ble_svc_hid_reset();
+    ble_svc_hid_dsc_index = saved_dsc_idx;
+    ble_svc_hid_chr_index = saved_chr_idx;
+    ble_svc_hid_svc_index = saved_svc_idx;
     return rc;
 }
 

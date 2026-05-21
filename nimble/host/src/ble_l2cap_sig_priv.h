@@ -167,6 +167,20 @@ ble_l2cap_sig_disconnect_nolock(struct ble_l2cap_chan *chan)
 {
     return BLE_HS_ENOTSUP;
 }
+
+static inline int
+ble_l2cap_sig_le_credits_nolock(uint16_t conn_handle, uint16_t scid,
+                                uint16_t credits)
+{
+    return BLE_HS_ENOTSUP;
+}
+
+static inline int
+ble_l2cap_sig_le_credits(uint16_t conn_handle, uint16_t scid,
+                         uint16_t credits)
+{
+    return BLE_HS_ENOTSUP;
+}
 #endif
 
 #if MYNEWT_VAL(BLE_L2CAP_ENHANCED_COC)

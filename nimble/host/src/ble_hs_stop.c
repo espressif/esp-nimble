@@ -83,6 +83,7 @@ ble_hs_stop_done(int status)
 {
     struct ble_hs_stop_listener_slist slist;
     struct ble_hs_stop_listener *listener;
+    int rc;
 
     ble_npl_callout_stop(&ble_hs_stop_terminate_tmo);
 
@@ -93,22 +94,26 @@ ble_hs_stop_done(int status)
         return;
     }
 
-    ble_gap_event_listener_unregister(&ble_hs_stop_gap_listener);
-
     slist = ble_hs_stop_listeners;
     SLIST_INIT(&ble_hs_stop_listeners);
 
-    ble_hs_stop_hci_reset();
+    ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
+
+    ble_hs_unlock();
+
+    ble_gap_event_listener_unregister(&ble_hs_stop_gap_listener);
+
+    /* Reset the controller. */
+    rc = ble_hs_stop_hci_reset();
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "ble_hs_stop: failed to reset controller; rc=%d\n", rc);
+    }
 
     /* Clear advertising, scanning and connection states. */
     ble_gap_reset_state(0);
 
     /* After LL reset the controller loses its random address */
     ble_hs_id_reset();
-
-    ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
-
-    ble_hs_unlock();
 
     SLIST_FOREACH(listener, &slist, link) {
         listener->fn(status, listener->arg);

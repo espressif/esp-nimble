@@ -38,7 +38,7 @@ mem_malloc_mempool_gen(uint16_t num_blocks, uint32_t block_size,
 
     /* Detect overflow in total size calculation using 64-bit arithmetic */
     if (num_blocks > 0) {
-        uint64_t total_size = (uint64_t)OS_MEMPOOL_BYTES(num_blocks, block_size);
+        uint64_t total_size = (uint64_t)num_blocks * (uint64_t)block_size;
 
         /* Check for 32-bit overflow */
         if (total_size > UINT32_MAX) {

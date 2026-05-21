@@ -712,9 +712,7 @@ ble_hs_event_rx_hci_ev(struct ble_npl_event *ev)
 static void
 ble_hs_event_tx_notify(struct ble_npl_event *ev)
 {
-    ble_hs_lock();
     ble_gatts_tx_notifications();
-    ble_hs_unlock();
 }
 #endif
 
@@ -1227,8 +1225,6 @@ ble_hs_deinit(void)
 
     ble_npl_callout_stop(&ble_hs_timer);
     ble_npl_callout_deinit(&ble_hs_timer);
-
-    ble_npl_mutex_deinit(&ble_hs_mutex);
 
     ble_mqueue_deinit(&ble_hs_rx_q);
 

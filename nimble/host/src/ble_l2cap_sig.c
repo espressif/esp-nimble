@@ -585,11 +585,6 @@ ble_l2cap_sig_update_rsp_rx(uint16_t conn_handle,
         goto done;
     }
 
-    if (OS_MBUF_PKTLEN(*om) != BLE_L2CAP_SIG_UPDATE_RSP_SZ) {
-        cb_status = BLE_HS_EBADDATA;
-        goto done;
-    }
-
     rsp = (struct ble_l2cap_sig_update_rsp *)(*om)->om_data;
 
     switch (le16toh(rsp->result)) {
@@ -662,20 +657,6 @@ ble_l2cap_sig_update_nolock(uint16_t conn_handle,
         /* Only the slave can initiate the L2CAP connection update
          * procedure.
          */
-        return BLE_HS_EINVAL;
-    }
-
-    /* Bluetooth Spec Core 6.0, Vol 6, Part B, Section 4.5.2:
-     * - itvl_min <= itvl_max
-     * - timeout >= (1 + slave_latency) * itvl_max * 2 * 1.25
-     *   (timeout unit: 10ms, itvl unit: 1.25ms)
-     *   => timeout * 10 > (1 + slave_latency) * itvl_max * 1.25 * 2
-     *   => timeout * 4 > (1 + slave_latency) * itvl_max
-     */
-    if (params->itvl_min > params->itvl_max ||
-        (uint32_t)params->timeout_multiplier * 4 <=
-        (uint32_t)(1 + params->slave_latency) * params->itvl_max) {
-
         return BLE_HS_EINVAL;
     }
 
@@ -764,10 +745,9 @@ ble_l2cap_sig_coc_err2ble_hs_err(uint16_t l2cap_coc_err)
     case BLE_L2CAP_COC_ERR_UNACCEPTABLE_PARAMETERS:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
-    /* apply the changes */
     case BLE_L2CAP_COC_ERR_INVALID_PARAMETERS:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
-        return BLE_HS_EINVAL;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
+        return BLE_HS_EBADDATA;
     default:
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
@@ -792,6 +772,8 @@ ble_l2cap_sig_ble_hs_err2coc_err(uint16_t ble_hs_err)
         return BLE_L2CAP_COC_ERR_INSUFFICIENT_KEY_SZ;
     case BLE_HS_EINVAL:
         return BLE_L2CAP_COC_ERR_UNACCEPTABLE_PARAMETERS;
+    case BLE_HS_EBADDATA:
+        return BLE_L2CAP_COC_ERR_INVALID_PARAMETERS;
     default:
         return BLE_L2CAP_COC_ERR_NO_RESOURCES;
     }
@@ -978,11 +960,14 @@ ble_l2cap_sig_credit_base_reconfig_req_rx(uint16_t conn_handle,
 
     ble_l2cap_sig_tx_nolock(conn_handle, txom);
 
-    ble_hs_unlock();
-
     for (i = 0; i < cid_cnt; i++) {
         chan[i]->coc_tx.mtu = host_mtu;
         chan[i]->peer_coc_mps = host_mps;
+    }
+
+    ble_hs_unlock();
+
+    for (i = 0; i < cid_cnt; i++) {
         ble_l2cap_event_coc_reconfigured(conn_handle, 0, chan[i], true);
     }
 
@@ -1377,12 +1362,12 @@ done:
             } else {
                 chan = NULL;
             }
-            ble_hs_unlock();
             if (chan != NULL) {
                 /* apply the changes: use separate variable to avoid overwriting connection result rc */
-                disc_rc = ble_l2cap_sig_disconnect(chan);
+                disc_rc = ble_l2cap_sig_disconnect_nolock(chan);
                 (void)disc_rc;
             }
+            ble_hs_unlock();
         }
     }
 
@@ -1581,6 +1566,7 @@ ble_l2cap_sig_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
     int rc;
 
     if (!sdu_rx || !cb) {
+        os_mbuf_free_chain(sdu_rx);
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
@@ -1656,21 +1642,35 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
     int i;
 
     if (!sdu_rx || !cb) {
+        if (sdu_rx) {
+            for (i = 0; i < num; i++) {
+                os_mbuf_free_chain(sdu_rx[i]);
+            }
+        }
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
     conn = ble_hs_conn_find(conn_handle);
     if (!conn) {
+        for (i = 0; i < num; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
         return BLE_HS_ENOTCONN;
     }
 
     proc = ble_l2cap_sig_proc_alloc();
     if (!proc) {
+        for (i = 0; i < num; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
         return BLE_HS_ENOMEM;
     }
 
     if (num == 0 || num > BLE_L2CAP_MAX_COC_CONN_REQ) {
+        for (i = 0; i < num; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
         ble_l2cap_sig_proc_free(proc);
         return BLE_HS_EINVAL;
     }
@@ -1717,10 +1717,10 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
     return 0;
 
 failed:
-    /* apply the changes: NULL check before cb access prevents UAF/NULL-deref for unallocated channels */
     for (i = 0; i < num; i++) {
         if (proc->connect.chan[i]) {
             proc->connect.chan[i]->cb = NULL;
+            proc->connect.chan[i]->coc_rx.sdus[0] = NULL;
             ble_l2cap_chan_free(conn, proc->connect.chan[i]);
             proc->connect.chan[i] = NULL;
         }
@@ -1900,7 +1900,7 @@ ble_l2cap_sig_disc_req_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 static void
 ble_l2cap_sig_coc_disconnect_cb(struct ble_l2cap_sig_proc *proc, int status)
 {
-    struct ble_l2cap_chan *chan;
+    struct ble_l2cap_chan *chan = NULL;
     struct ble_hs_conn *conn;
 
     assert(proc);
@@ -1910,10 +1910,14 @@ ble_l2cap_sig_coc_disconnect_cb(struct ble_l2cap_sig_proc *proc, int status)
     if (conn) {
         chan = ble_hs_conn_chan_find_by_scid(conn, proc->disconnect.scid);
         if (chan) {
-            ble_hs_conn_delete_chan(conn, chan);
+            SLIST_REMOVE(&conn->bhc_channels, chan, ble_l2cap_chan, next);
         }
     }
     ble_hs_unlock();
+
+    if (chan) {
+        ble_l2cap_chan_free(conn, chan);
+    }
 }
 
 static int
@@ -1961,8 +1965,8 @@ ble_l2cap_sig_disc_rsp_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
     rsp = (struct ble_l2cap_sig_disc_rsp *)(*om)->om_data;
     if (chan->dcid != le16toh(rsp->dcid) || chan->scid != le16toh(rsp->scid)) {
         /* This response is incorrect, lets wait for timeout */
-        ble_hs_unlock();
         ble_l2cap_sig_proc_start(proc);
+        ble_hs_unlock();
         return 0;
     }
     ble_hs_unlock();
