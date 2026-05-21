@@ -278,20 +278,16 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
         return BLE_HS_EINVAL;
     }
 
-    ble_hs_lock();
-
     conn_handle = chans[0]->conn_handle;
 
     for (i = 1; i < num; i++) {
         if (conn_handle != chans[i]->conn_handle) {
-            ble_hs_unlock();
             BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
             return BLE_HS_EINVAL;
         }
     }
 
     rc = ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, MYNEWT_VAL(BLE_L2CAP_COC_MPS));
-    ble_hs_unlock();
 
     return rc;
 }
@@ -309,20 +305,16 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num,
         return BLE_HS_EINVAL;
     }
 
-    ble_hs_lock();
-
     conn_handle = chans[0]->conn_handle;
 
     for (i = 1; i < num; i++) {
         if (conn_handle != chans[i]->conn_handle) {
-            ble_hs_unlock();
             BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
             return BLE_HS_EINVAL;
         }
     }
 
     rc = ble_l2cap_sig_coc_reconfig(conn_handle, chans, num, new_mtu, new_mps);
-    ble_hs_unlock();
 
     return rc;
 }
@@ -484,14 +476,14 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         if (chan) {
             if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
                 chan->dcid <= BLE_L2CAP_COC_CID_END && hdr.len > chan->my_coc_mps) {
-                ble_l2cap_disconnect(chan);
+                ble_l2cap_sig_disconnect_nolock(chan);
                 ble_l2cap_rx_free(conn);
                 rc = BLE_HS_EBADDATA;
                 goto done;
             }
 
             if (hdr.len > ble_l2cap_get_mtu(chan)) {
-                ble_l2cap_disconnect(chan);
+                ble_l2cap_sig_disconnect_nolock(chan);
                 ble_l2cap_rx_free(conn);
                 rc = BLE_HS_EBADDATA;
                 goto done;

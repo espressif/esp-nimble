@@ -360,7 +360,11 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                     for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
                         if (ranging_buffers[i].conn == conn_handle && ranging_buffers[i].isacked == false) {
                             ranging_buffers[i].conn = -1; /* Release buffer */
-                            ranging_buffers[i].isacked = true;
+                            ranging_buffers[i].isacked = false;
+                            ranging_buffers[i].isbusy = false;
+                            ranging_buffers[i].isready = false;
+                            ranging_buffers[i].ranging_counter = 0;
+                            ranging_buffers[i].subevent_cursor = 0;
                             break;
                         }
                     }
@@ -482,6 +486,9 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     uint16_t mtu = ble_att_mtu(ranging_subevent.subev_result.conn_handle);
     if (mtu < (sizeof(struct segment_header) + 4 + 1)) { /* Need at least 1 byte of data */
         MODLOG_DFLT(ERROR, "MTU too small or connection invalid: %d\n", mtu);
+        buf->conn = -1;
+        buf->isbusy = false;
+        buf->subevent_cursor = 0;
         return;
     }
     uint16_t max_data_len = mtu - sizeof(struct segment_header) - 4;

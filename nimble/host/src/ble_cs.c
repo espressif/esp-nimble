@@ -548,6 +548,7 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
+        ble_cs_call_procedure_complete_cb(conn_handle, rc);
         return rc;
     }
     if (desc.role == BLE_GAP_ROLE_MASTER) {
@@ -667,12 +668,15 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
 
     if (len != sizeof(*ev)) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
     
-    if (ev->status) {
-        BLE_HS_LOG(INFO, "FAE read completed with status 0x%02x, continuing to config", ev->status);
+    if (ev->status == 0x11) {
+        BLE_HS_LOG(INFO, "Remote has No_FAE, continuing to config");
+    } else if (ev->status) {
+        BLE_HS_LOG(ERROR, "FAE read failed with status 0x%02x, aborting", ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_ECONTROLLER);
+        return BLE_HS_ECONTROLLER;
     }
 
     cmd.conn_handle = le16toh(ev->conn_handle);
@@ -767,53 +771,6 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
 
     BLE_HS_LOG(INFO, "CS setup phase completed");
 
-    /* Hardcoded Channel Sounding parameters lack application-level control
-     * These hardcoded parameters are intentional for example purposes. */
-    cmd.conn_handle = le16toh(ev->conn_handle);
-    cmd.config_id = 0x00;
-    /* The maximum duration of each CS procedure (time = N × 0.625 ms) */
-    cmd.max_procedure_len = 100;
-    /* The maximum number of consecutive CS procedures to be scheduled
-     * as part of this measurement
-     */
-    cmd.max_procedure_count = 1;
-    /* The minimum and maximum number of connection events between
-     * consecutive CS procedures. Ignored if only one CS procedure.
-     */
-    cmd.min_procedure_interval = 10;
-    cmd.max_procedure_interval = 10;
-    /* Minimum/maximum suggested durations for each CS subevent in microseconds.
-     * 1250us and 5000us selected.
-     */
-    cmd.min_subevent_len = 60000;
-    cmd.max_subevent_len = 60000;
-    /* Use ACI 0 as we have only one CS setup phase completedantenna on each side */
-    cmd.tone_antenna_config_selection = 0x00;
-    /* Use LE 1M PHY for CS procedures */
-    cmd.phy = 0x01;
-    /* Transmit power delta set to 0x80 means Host does not have a recommendation. */
-    cmd.tx_power_delta = 0x80;
-    /* Preferred antenna array elements to use. We have only a single antenna here. */
-    cmd.preferred_peer_antenna = 0x01;
-    /* SNR Output Index (SOI) for SNR control adjustment. 0xFF means SNR control
-     * is not to be applied.
-     */
-    cmd.snr_control_initiator = 0xff;
-    cmd.snr_control_reflector = 0xff;
-
-    rc = ble_cs_set_proc_params(&cmd, &rsp);
-    if (rc) {
-        BLE_HS_LOG(INFO, "Failed to set CS procedure parameters");
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), rc);
-        return rc;
-    } else {
-        BLE_HS_LOG(INFO, "CS procedure parameters set");
-    }
-
-    enable_cmd.conn_handle = le16toh(ev->conn_handle);
-    enable_cmd.config_id = 0x00;
-    enable_cmd.enable = 0x01;
-
     uint16_t conn_handle = le16toh(ev->conn_handle);
     rc = ble_gap_conn_find(conn_handle, &desc);
     if (rc != 0) {
@@ -822,18 +779,37 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
     }
 
     if (desc.role == BLE_GAP_ROLE_MASTER) {
+        /* Hardcoded Channel Sounding parameters lack application-level control
+         * These hardcoded parameters are intentional for example purposes. */
         cmd.conn_handle = conn_handle;
         cmd.config_id = 0x00;
+        /* The maximum duration of each CS procedure (time = N × 0.625 ms) */
         cmd.max_procedure_len = 100;
+        /* The maximum number of consecutive CS procedures to be scheduled
+         * as part of this measurement
+         */
         cmd.max_procedure_count = 1;
+        /* The minimum and maximum number of connection events between
+         * consecutive CS procedures. Ignored if only one CS procedure.
+         */
         cmd.min_procedure_interval = 10;
         cmd.max_procedure_interval = 10;
+        /* Minimum/maximum suggested durations for each CS subevent in microseconds.
+         * 1250us and 5000us selected.
+         */
         cmd.min_subevent_len = 60000;
         cmd.max_subevent_len = 60000;
+        /* Use ACI 0 as we have only one CS setup phase completedantenna on each side */
         cmd.tone_antenna_config_selection = 0x00;
+        /* Use LE 1M PHY for CS procedures */
         cmd.phy = 0x01;
+        /* Transmit power delta set to 0x80 means Host does not have a recommendation. */
         cmd.tx_power_delta = 0x80;
+        /* Preferred antenna array elements to use. We have only a single antenna here. */
         cmd.preferred_peer_antenna = 0x01;
+        /* SNR Output Index (SOI) for SNR control adjustment. 0xFF means SNR control
+         * is not to be applied.
+         */
         cmd.snr_control_initiator = 0xff;
         cmd.snr_control_reflector = 0xff;
 
@@ -842,21 +818,23 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
             BLE_HS_LOG(INFO, "Failed to set CS procedure parameters");
             ble_cs_call_procedure_complete_cb(conn_handle, rc);
             return rc;
+        } else {
+            BLE_HS_LOG(INFO, "CS procedure parameters set");
         }
-        BLE_HS_LOG(INFO, "CS procedure parameters set");
+
+        enable_cmd.conn_handle = conn_handle;
+        enable_cmd.config_id = 0x00;
+        enable_cmd.enable = 0x01;
+
+        rc = ble_cs_proc_enable(&enable_cmd);
+        if (rc) {
+            BLE_HS_LOG(INFO, "Failed to enable CS procedure");
+            ble_cs_call_procedure_complete_cb(conn_handle, rc);
+        } else {
+            BLE_HS_LOG(INFO, "CS procedure enabled");
+        }
     }
 
-    enable_cmd.conn_handle = conn_handle;
-    enable_cmd.config_id = 0x00;
-    enable_cmd.enable = 0x01;
-
-    rc = ble_cs_proc_enable(&enable_cmd);
-    if (rc) {
-        BLE_HS_LOG(INFO, "Failed to enable CS procedure");
-        ble_cs_call_procedure_complete_cb(conn_handle, rc);
-    } else {
-        BLE_HS_LOG(INFO, "CS procedure enabled");
-    }
     return rc;
 }
 

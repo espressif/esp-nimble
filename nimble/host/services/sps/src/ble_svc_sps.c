@@ -237,10 +237,6 @@ ble_svc_sps_init(uint16_t scan_itvl, uint16_t scan_window)
 {
     int rc;
 
-    if (!ble_gatts_mutable()) {
-        return;
-    }
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     rc = ble_svc_sps_ensure_static_vars();
     SYSINIT_PANIC_ASSERT(rc == 0);

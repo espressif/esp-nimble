@@ -528,7 +528,11 @@ os_memblock_get(struct os_mempool *mp)
                 mp->mp_num_free++;
                 /* apply the changes: restore pre-incremented mp_alloc_blocks on
                  * malloc failure to keep counter consistent with actual allocations */
-                mp->mp_alloc_blocks--;
+#if MYNEWT_VAL(MP_BLOCK_REUSED)
+                if (mp->mp_flags & OS_MEMPOOL_F_REUSED) {
+                    mp->mp_alloc_blocks--;
+                }
+#endif
                 OS_EXIT_CRITICAL(sr);
                 esp_rom_printf("%s malloc failed, size=%u\n", __func__, alloc_size);
             }
@@ -748,9 +752,17 @@ os_mempool_get(const char *mempool_name, struct os_mempool_info *info)
 {
     struct os_mempool *mp;
 
+    if (mempool_name == NULL) {
+        return NULL;
+    }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_mempool_list_ensure_init();
+#endif
+
     mp = STAILQ_FIRST(&g_os_mempool_list);
     while (mp) {
-        if (strcmp(mempool_name, mp->name) == 0) {
+        if (mp->name != NULL && strcmp(mempool_name, mp->name) == 0) {
             break;
         }
         mp = STAILQ_NEXT(mp, mp_list);

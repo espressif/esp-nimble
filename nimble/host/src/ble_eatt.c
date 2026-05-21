@@ -253,22 +253,28 @@ ble_eatt_alloc(void)
 }
 
 static void
-ble_eatt_free(struct ble_eatt *eatt)
+ble_eatt_free_nolock(struct ble_eatt *eatt)
 {
     struct os_mbuf_pkthdr *omp;
 
     ble_npl_eventq_remove(ble_hs_evq_get(), &eatt->setup_ev);
     ble_npl_eventq_remove(ble_hs_evq_get(), &eatt->wakeup_ev);
 
-    ble_hs_lock();
     while ((omp = STAILQ_FIRST(&eatt->eatt_tx_q)) != NULL) {
         STAILQ_REMOVE_HEAD(&eatt->eatt_tx_q, omp_next);
         os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
     }
 
     SLIST_REMOVE(&g_ble_eatt_list, eatt, ble_eatt, next);
-    ble_hs_unlock();
     os_memblock_put(&ble_eatt_conn_pool, eatt);
+}
+
+static void
+ble_eatt_free(struct ble_eatt *eatt)
+{
+    ble_hs_lock();
+    ble_eatt_free_nolock(eatt);
+    ble_hs_unlock();
 }
 
 static int
@@ -563,7 +569,7 @@ ble_eatt_gap_event(struct ble_gap_event *event, void *arg)
             if (eatt->conn_handle == event->disconnect.conn.conn_handle) {
                 if (eatt->chan == NULL) {
                     /* No active L2CAP channel; safe to free here */
-                    ble_eatt_free(eatt);
+                    ble_eatt_free_nolock(eatt);
                 }
             }
             eatt = next;
@@ -720,7 +726,7 @@ void ble_eatt_deinit(void)
     eatt = SLIST_FIRST(&g_ble_eatt_list);
     while (eatt != NULL) {
         next = SLIST_NEXT(eatt, next);
-        ble_eatt_free(eatt);
+        ble_eatt_free_nolock(eatt);
         eatt = next;
     }
     ble_hs_unlock();

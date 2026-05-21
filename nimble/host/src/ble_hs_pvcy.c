@@ -578,6 +578,7 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
 {
     int rc = 0;
 
+    ble_hs_lock();
 #if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     ble_gap_preempt();
 #endif

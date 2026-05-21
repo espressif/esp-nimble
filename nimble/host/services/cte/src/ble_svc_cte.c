@@ -405,6 +405,12 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                     }
                     if(((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) &&
                        ((old_enable & CTE_ENABLE_AOD_ADVERTISING) != CTE_ENABLE_AOD_ADVERTISING)) {
+                        if (adv_cte_config.cte_phy != CTE_PHY_MIN_VALUE) {
+                            config->cte_enable = old_enable;
+                            rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
+                            break;
+                        }
+
                         /* Apply the current advertising CTE parameters to the controller
                          * using advertising instance 0 (default periodic advertising set). */
                         struct ble_gap_periodic_adv_cte_params cte_params = {
@@ -420,7 +426,8 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                             rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
                             break;
                         }
-                    } else if ((old_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) {
+                    } else if (((old_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) &&
+                               ((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) != CTE_ENABLE_AOD_ADVERTISING)) {
                         /* 1->0 transition: disable connless CTE transmission */
                         ble_gap_set_connless_cte_transmit_enable(0, 0);
                     }

@@ -329,17 +329,15 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
         BLE_HS_LOG(DEBUG, "Received sdu_len=%d, credits left=%d\n",
                    OS_MBUF_PKTLEN(rx->sdus[sdu_idx]), rx->credits);
 
-        rx->sdus[sdu_idx] = NULL;
-        chan->coc_rx.current_sdu_idx =
-            (chan->coc_rx.current_sdu_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
-        rx->data_offset = 0;
-
         /* Lets give os_mbuf control to back application.
          * Since it this callback application might want to set new sdu
          * we need to prepare space for this.
          */
         rx_sdu = rx->sdus[sdu_idx];
         rx->sdus[sdu_idx] = NULL;
+        chan->coc_rx.current_sdu_idx =
+            (chan->coc_rx.current_sdu_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
+        rx->data_offset = 0;
 
         ble_l2cap_event_coc_received_data(chan, rx_sdu);
 
@@ -639,6 +637,10 @@ failed:
         os_mbuf_free_chain(tx->sdus[0]);
     }
     tx->sdus[0] = NULL;
+    if (tx->data_offset > 0) {
+        ble_l2cap_sig_disconnect_nolock(chan);
+    }
+    tx->data_offset = 0;
 
     os_mbuf_free_chain(txom);
     if (tx->flags & BLE_L2CAP_COC_FLAG_STALLED) {
@@ -705,10 +707,6 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
         return BLE_HS_EBUSY;
     }
 
-    chan->coc_rx.sdus[chan->coc_rx.next_sdu_alloc_idx] = sdu_rx;
-    chan->coc_rx.next_sdu_alloc_idx =
-        (chan->coc_rx.next_sdu_alloc_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
-
     conn = ble_hs_conn_find(chan->conn_handle);
     if (!conn) {
         BLE_HS_LOG(DEBUG, "Connection does not exist");
@@ -721,6 +719,10 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
         ble_hs_unlock();
         return BLE_HS_ENOENT;
     }
+
+    chan->coc_rx.sdus[chan->coc_rx.next_sdu_alloc_idx] = sdu_rx;
+    chan->coc_rx.next_sdu_alloc_idx =
+        (chan->coc_rx.next_sdu_alloc_idx + 1) % BLE_L2CAP_SDU_BUFF_CNT;
 
     /* We want to back only that much credits which remote side is missing
      * to be able to send complete SDU.

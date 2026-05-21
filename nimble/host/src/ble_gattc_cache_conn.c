@@ -1177,24 +1177,35 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
         *char_db = NULL;
         return;
     }
+    size_t allocated_size = db_size;
     ble_gattc_db_elem_t *curr_db_attr = buffer;
     db_size = 0;
 
     // Iterate through services in the cache
     SLIST_FOREACH(svc, &cache_conn->svcs, next) {
-        if (svc->svc.end_handle < start_handle || svc->svc.start_handle > end_handle) {
+        if (svc->svc.end_handle < start_handle) {
             continue;
         }
+        if (svc->svc.start_handle > end_handle) {
+            break;
+        }
 
-#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
         // Check for included services
         if (op == BLE_GATT_OP_GET_INCLUDE_SVC) {
             if (SLIST_EMPTY(&svc->incl_svc)) {
                 continue;
             }
             SLIST_FOREACH(included_svc, &svc->incl_svc, next) {
-                if (included_svc->svc.handle < start_handle || included_svc->svc.handle > end_handle) {
+                if (included_svc->svc.handle < start_handle) {
                       continue;
+                }
+                if (included_svc->svc.handle > end_handle) {
+                    goto fill_done;
+                }
+
+                if (db_size >= allocated_size) {
+                    goto fill_done;
                 }
 
                 if (incl_uuid == NULL || ble_uuid_cmp(&included_svc->svc.uuid.u, incl_uuid) == 0) {
@@ -1211,12 +1222,20 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
             }
             continue;
         }
-#endif
+    #endif
         // Check for characteristics
         SLIST_FOREACH(chr, &svc->chrs, next) {
-            if (chr->chr.def_handle < start_handle || chr->chr.def_handle > end_handle) {
+            if (chr->chr.def_handle < start_handle) {
                 continue;
             }
+            if (chr->chr.def_handle > end_handle) {
+                goto fill_done;
+            }
+
+            if (db_size >= allocated_size) {
+                goto fill_done;
+            }
+
             if ((op == BLE_GATT_OP_GET_ALL_CHAR || op == BLE_GATT_OP_GET_CHAR_BY_UUID) &&
                 (char_uuid == NULL || ble_uuid_cmp(&chr->chr.uuid.u, char_uuid) == 0)) {
                     ble_gattc_fill_gatt_db_el(curr_db_attr,
@@ -1233,7 +1252,7 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
 
             if ((op == BLE_GATT_OP_GET_DESC_BY_HANDLE || op == BLE_GATT_OP_GET_ALL_DESC) &&
                 (chr->chr.val_handle != char_handle)) {
-                 continue;
+                  continue;
             }
 
             if ((op == BLE_GATT_OP_GET_DESC_BY_UUID && ble_uuid_cmp(&chr->chr.uuid.u, char_uuid) != 0)) {
@@ -1243,9 +1262,17 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
             // Check for descriptors
             if (!SLIST_EMPTY(&chr->dscs)) {
                 SLIST_FOREACH(dsc, &chr->dscs, next) {
-                    if (dsc->dsc.handle < start_handle || dsc->dsc.handle > end_handle) {
+                    if (dsc->dsc.handle < start_handle) {
                         continue;
                     }
+                    if (dsc->dsc.handle > end_handle) {
+                        goto fill_done;
+                    }
+
+                    if (db_size >= allocated_size) {
+                        goto fill_done;
+                    }
+
                     if (((op == BLE_GATT_OP_GET_ALL_DESC || op == BLE_GATT_OP_GET_DESC_BY_UUID) &&
                         (descr_uuid == NULL || ble_uuid_cmp(&dsc->dsc.uuid.u, descr_uuid) == 0)) ||
                         (op == BLE_GATT_OP_GET_DESC_BY_HANDLE && ble_uuid_cmp(&dsc->dsc.uuid.u, descr_uuid) == 0)) {
@@ -1265,11 +1292,11 @@ void ble_gattc_get_db_with_operation(uint16_t conn_handle,
         }
     }
 
+    fill_done:
     *char_db = buffer;
     *count = db_size;
     return;
-}
-
+    }
 void ble_gattc_get_db_size_with_type_handle(uint16_t conn_handle,
                                             ble_gattc_db_attr_type type,
                                             uint16_t start_handle,

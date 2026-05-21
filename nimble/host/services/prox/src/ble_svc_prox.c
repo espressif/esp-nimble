@@ -212,7 +212,7 @@ ble_svc_prox_link_loss_access(uint16_t conn_handle, uint16_t attr_handle,
                 return rc;
             }
             if (alert_lvl > BLE_SVC_PROX_ALERT_HIGH) {
-                return BLE_ATT_ERR_UNLIKELY;
+                return BLE_ATT_ERR_OUT_OF_RANGE;
             }
             ble_svc_prox_conn[slot].link_loss_alert = alert_lvl;
             return 0;
@@ -253,7 +253,7 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
                 return rc;
             }
             if (alert_lvl > BLE_SVC_PROX_ALERT_HIGH) {
-                return BLE_ATT_ERR_UNLIKELY;
+                return BLE_ATT_ERR_OUT_OF_RANGE;
             }
             ble_svc_prox_alert = alert_lvl;
 
