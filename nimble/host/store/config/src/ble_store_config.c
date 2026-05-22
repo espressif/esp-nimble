@@ -28,6 +28,7 @@
 #include "esp_nimble_mem.h"
 #include "../src/ble_hs_priv.h"
 #include "host/ble_hs_log.h"
+#include "modlog/modlog.h"
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 ble_store_config_vars_t * ble_store_config_vars = NULL;
