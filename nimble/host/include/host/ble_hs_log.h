@@ -38,17 +38,23 @@
 #include "log/log.h"
 #endif
 
-/* Include logcfg to expose all BLE_*_LOG_* module macros (e.g. BLE_EATT_LOG_DEBUG). */
+/* On ESP, logcfg.h defines BLE_HS_LOG_DEBUG/INFO/... as MODLOG macros and
+ * BLE_*_LOG_* module macros (BLE_EATT_LOG_DEBUG, etc.).  It must be included
+ * BEFORE nimble_npl_log.h because nimble_npl_log.h's BLE_NPL_LOG_IMPL would
+ * try to generate static inline functions with the same names, causing a
+ * macro-expansion conflict.  On ESP we skip nimble_npl_log.h entirely and
+ * route BLE_HS_LOG through the logcfg macros directly. */
 #if MYNEWT_VAL(NEWT_FEATURE_LOGCFG)
 #include "logcfg/logcfg.h"
 #endif
 
+#ifndef ESP_PLATFORM
 #ifndef BLE_NPL_LOG_MODULE
 /** Defines the logging module for NimBLE Porting Layer (NPL). */
 #define BLE_NPL_LOG_MODULE BLE_HS_LOG
 #endif
-
 #include <nimble/nimble_npl_log.h>
+#endif /* !ESP_PLATFORM */
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,8 +71,14 @@ struct os_mbuf;
  * @param lvl           The log level of the message.
  * @param ...           The format string and additional arguments for the log message.
  */
+#ifdef ESP_PLATFORM
+/* Use logcfg BLE_HS_LOG_<LVL> macros — avoids conflict with BLE_NPL_LOG_IMPL. */
+#define BLE_HS_LOG(lvl, ...) \
+    BLE_HS_LOG_ ## lvl(__VA_ARGS__)
+#else
 #define BLE_HS_LOG(lvl, ...) \
     BLE_NPL_LOG(lvl, __VA_ARGS__)
+#endif
 
 /**
  * @brief Macro for logging a Bluetooth address at a specified log level.
@@ -77,10 +89,17 @@ struct os_mbuf;
  *  @param lvl          The log level of the message.
  *  @param addr         The Bluetooth address to be logged.
  */
+#ifdef ESP_PLATFORM
+#define BLE_HS_LOG_ADDR(lvl, addr)                              \
+    BLE_HS_LOG_ ## lvl("%02x:%02x:%02x:%02x:%02x:%02x",        \
+                       (addr)[5], (addr)[4], (addr)[3],         \
+                       (addr)[2], (addr)[1], (addr)[0])
+#else
 #define BLE_HS_LOG_ADDR(lvl, addr)                      \
     BLE_NPL_LOG(lvl, "%02x:%02x:%02x:%02x:%02x:%02x", \
                 (addr)[5], (addr)[4], (addr)[3], \
                 (addr)[2], (addr)[1], (addr)[0])
+#endif
 
 
 /**
