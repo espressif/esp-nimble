@@ -23,7 +23,9 @@
 #include <stdio.h>
 
 #include "log_common/log_common.h"
+#ifndef ESP_PLATFORM
 #include "log/log.h"
+#endif
 #include "log_common/log_common.h"
 
 #if CONFIG_BLE_HOST_NIMBLE_COMPRESSED_LOG_ENABLE

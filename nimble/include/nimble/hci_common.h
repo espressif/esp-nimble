@@ -2902,6 +2902,31 @@ struct hci_data_hdr
 #define BLE_HCI_ISO_PB_COMPLETE         (2)
 #define BLE_HCI_ISO_PB_LAST             (3)
 
+#define BLE_HCI_ISO_SDU_LENGTH_MASK         (0x0fff)
+#define BLE_HCI_ISO_PKT_STATUS_FLAG_MASK    (0xC000)
+
+#define BLE_HCI_ISO_PKT_STATUS_FLAG(l)  (((l) & BLE_HCI_ISO_PKT_STATUS_FLAG_MASK) >> 14)
+#define BLE_HCI_ISO_SDU_LENGTH(l)       ((l) & BLE_HCI_ISO_SDU_LENGTH_MASK)
+
+#define BLE_HCI_ISO_PKT_STATUS_VALID    0x00
+#define BLE_HCI_ISO_PKT_STATUS_INVALID  0x01
+#define BLE_HCI_ISO_PKT_STATUS_LOST     0x10
+
+#define BLE_HCI_ISO_BIG_HANDLE_MIN      0x00
+#define BLE_HCI_ISO_BIG_HANDLE_MAX      0xEF
+
+#define BLE_HCI_ISO_BIG_ENCRYPTION_UNENCRYPTED  0x00
+#define BLE_HCI_ISO_BIG_ENCRYPTION_ENCRYPTED    0x01
+
+#define BLE_HCI_ISO_DATA_PATH_DIR_INPUT         0x00
+#define BLE_HCI_ISO_DATA_PATH_DIR_OUTPUT        0x01
+
+#define BLE_HCI_ISO_DATA_PATH_ID_HCI            0x00
+
+#define BLE_HCI_ISO_FRAMING_UNFRAMED            0x00
+#define BLE_HCI_ISO_FRAMING_FRAMED_SEGMENTABLE  0x01
+#define BLE_HCI_ISO_FRAMING_FRAMED_UNSEGMENTED  0x02
+
 struct ble_hci_iso {
     uint16_t handle;
     uint16_t length;
