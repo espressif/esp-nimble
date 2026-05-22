@@ -31,6 +31,7 @@
 #include "sys/queue.h"
 #include "ble_hs_hci_priv.h"
 #include "ble_hs_priv.h"
+#include "modlog/modlog.h"
 
 #define BT_LE_CS_CHANNEL_BIT_SET_VAL(chmap, bit, val)                                              \
 ((chmap)[(bit) / 8] = ((chmap)[(bit) / 8] & ~BIT((bit) % 8)) | ((val) << ((bit) % 8)))

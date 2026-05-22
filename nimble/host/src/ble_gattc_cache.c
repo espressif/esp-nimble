@@ -22,6 +22,7 @@
 #include "host/ble_hs.h"
 #include "ble_hs_conn_priv.h"
 #include "ble_hs_priv.h"
+#include "modlog/modlog.h"
 #include "ble_gattc_cache_priv.h"
 
 #include "nimble/storage_port.h"
