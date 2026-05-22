@@ -33,6 +33,16 @@
  * @{
  */
 
+#include "modlog/modlog.h"
+#ifndef ESP_PLATFORM
+#include "log/log.h"
+#endif
+
+/* Include logcfg to expose all BLE_*_LOG_* module macros (e.g. BLE_EATT_LOG_DEBUG). */
+#if MYNEWT_VAL(NEWT_FEATURE_LOGCFG)
+#include "logcfg/logcfg.h"
+#endif
+
 #ifndef BLE_NPL_LOG_MODULE
 /** Defines the logging module for NimBLE Porting Layer (NPL). */
 #define BLE_NPL_LOG_MODULE BLE_HS_LOG
