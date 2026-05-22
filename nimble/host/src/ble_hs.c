@@ -26,6 +26,7 @@
 #include "host/ble_hs.h"
 #include "ble_hs_priv.h"
 #include "nimble/nimble_npl.h"
+#include "modlog/modlog.h"
 #ifndef MYNEWT
 #include "nimble/nimble_port.h"
 #endif
