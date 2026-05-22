@@ -519,7 +519,7 @@ static int
 ble_att_svr_read(uint16_t conn_handle,
                  struct ble_att_svr_entry *entry,
                  uint16_t offset,
-                 struct os_mbuf *om,
+                 struct os_mbuf **om,
                  uint8_t *out_att_err)
 {
     uint8_t att_err;
@@ -536,7 +536,7 @@ ble_att_svr_read(uint16_t conn_handle,
 
     BLE_HS_DBG_ASSERT(entry->ha_cb != NULL);
     rc = entry->ha_cb(conn_handle, entry->ha_handle_id,
-                      BLE_ATT_ACCESS_OP_READ, offset, &om, entry->ha_cb_arg);
+                      BLE_ATT_ACCESS_OP_READ, offset, om, entry->ha_cb_arg);
     if (rc != 0) {
         att_err = rc;
         rc = BLE_HS_EAPP;
@@ -571,7 +571,7 @@ ble_att_svr_read_flat(uint16_t conn_handle,
         goto done;
     }
 
-    rc = ble_att_svr_read(conn_handle, entry, offset, om, out_att_err);
+    rc = ble_att_svr_read(conn_handle, entry, offset, &om, out_att_err);
     if (rc != 0) {
         goto done;
     }
@@ -596,7 +596,7 @@ done:
 
 int
 ble_att_svr_read_handle(uint16_t conn_handle, uint16_t attr_handle,
-                        uint16_t offset, struct os_mbuf *om,
+                        uint16_t offset, struct os_mbuf **om,
                         uint8_t *out_att_err)
 {
     struct ble_att_svr_entry *entry;
@@ -633,7 +633,7 @@ ble_att_svr_read_local(uint16_t attr_handle, struct os_mbuf **out_om)
         goto err;
     }
 
-    rc = ble_att_svr_read_handle(BLE_HS_CONN_HANDLE_NONE, attr_handle, 0, om,
+    rc = ble_att_svr_read_handle(BLE_HS_CONN_HANDLE_NONE, attr_handle, 0, &om,
                                  NULL);
     if (rc != 0) {
         goto err;
@@ -1719,7 +1719,7 @@ ble_att_svr_rx_read(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
         goto done;
     }
 
-    rc = ble_att_svr_read_handle(conn_handle, err_handle, 0, txom, &att_err);
+    rc = ble_att_svr_read_handle(conn_handle, err_handle, 0, &txom, &att_err);
     if (rc != 0) {
         goto done;
     }
@@ -1785,7 +1785,7 @@ ble_att_svr_rx_read_blob(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
     }
 
     rc = ble_att_svr_read_handle(conn_handle, err_handle, offset,
-                                 txom, &att_err);
+                                 &txom, &att_err);
     if (rc != 0) {
         goto done;
     }
@@ -1845,7 +1845,7 @@ ble_att_svr_build_read_mult_rsp(uint16_t conn_handle, uint16_t cid,
         handle = get_le16((*rxom)->om_data);
         os_mbuf_adj(*rxom, 2);
 
-        rc = ble_att_svr_read_handle(conn_handle, handle, 0, txom, att_err);
+        rc = ble_att_svr_read_handle(conn_handle, handle, 0, &txom, att_err);
         if (rc != 0) {
             *err_handle = handle;
             goto done;
@@ -1959,7 +1959,7 @@ ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
         handle = get_le16((*rxom)->om_data);
         os_mbuf_adj(*rxom, 2);
 
-        rc = ble_att_svr_read_handle(conn_handle, handle, 0, tmp, att_err);
+        rc = ble_att_svr_read_handle(conn_handle, handle, 0, &tmp, att_err);
         if (rc != 0) {
             *err_handle = handle;
             goto done;
@@ -2590,8 +2590,12 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Converting cmac to little endian */
     swap_in_place(cmac, sizeof cmac);
 
-    /* Comparing sign counter */
-    if(memcmp(sign, &value_sec.sign_counter, sizeof(value_sec.sign_counter)) != 0) {
+    /* Extract received sign counter from the signature bytes */
+    uint32_t received_sign_counter;
+    memcpy(&received_sign_counter, sign, sizeof(received_sign_counter));
+
+    /* Comparing sign counter — received must be > stored to prevent replay attacks */
+    if (received_sign_counter <= value_sec.sign_counter) {
         rc = BLE_HS_EAUTHEN;
         goto err;
     }
@@ -2603,8 +2607,8 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     }
 
 #if MYNEWT_VAL(BLE_SM_SIGN_CNT)
-    /* Signature matches, increment sign counter and pass the data to the upper layer */
-    rc = ble_sm_incr_peer_sign_counter(conn_handle);
+    /* Signature matches, update stored sign counter to the received value */
+    rc = ble_sm_incr_peer_sign_counter(conn_handle, received_sign_counter);
     if (rc != 0) {
         goto err;
     }
