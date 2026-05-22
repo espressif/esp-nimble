@@ -28,7 +28,15 @@
 extern "C" {
 #endif
 
+#ifdef ESP_PLATFORM
+/* On ESP-IDF, mynewt-style struct log is unused; provide a stub so that
+ * files that declare "struct log ble_hs_log" still compile. */
+struct log {
+    int dummy;
+};
+#else
 struct log;
+#endif
 
 #define LOG_VERSION_V3  3
 
