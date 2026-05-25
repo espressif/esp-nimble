@@ -613,7 +613,8 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
             }
             if(val == 0 || val == 1) {
                 rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof hid_instances[instance].ctrl_pt, &hid_instances[instance].ctrl_pt, NULL);
-                if (rc == 0 && s_char_write_cb) {
+                if (rc == 0 && conn_handle != BLE_HS_CONN_HANDLE_NONE &&
+                        s_char_write_cb) {
                     s_char_write_cb(attr_handle, BLE_SVC_HID_CHR_UUID16_HID_CTRL_PT, hid_instances[instance].ctrl_pt);
                 }
                 return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -632,7 +633,8 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
             } else if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
                 rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof(hid_instances[instance].kbd_out_rpt),
                                            &hid_instances[instance].kbd_out_rpt, &out_rpt_len);
-                if (rc == 0 && s_report_write_cb) {
+                if (rc == 0 && conn_handle != BLE_HS_CONN_HANDLE_NONE &&
+                        s_report_write_cb) {
                     s_report_write_cb(attr_handle, BLE_SVC_HID_RPT_TYPE_OUTPUT, 0,
                                       &hid_instances[instance].kbd_out_rpt,
                                       out_rpt_len);
@@ -699,7 +701,8 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 }
                 if(val == 0 || val == 1) {
                     rc = ble_svc_hid_chr_write(ctxt->om, 0, sizeof(hid_instances[instance].proto_mode), &hid_instances[instance].proto_mode, NULL);
-                    if (rc == 0 && s_char_write_cb) {
+                    if (rc == 0 && conn_handle != BLE_HS_CONN_HANDLE_NONE &&
+                            s_char_write_cb) {
                         s_char_write_cb(attr_handle, BLE_SVC_HID_CHR_UUID16_PROTOCOL_MODE, hid_instances[instance].proto_mode);
                     }
                     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -724,7 +727,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                     return rc;
                 }
                 rpt->len = out_rpt_len;
-                if (s_report_write_cb) {
+                if (conn_handle != BLE_HS_CONN_HANDLE_NONE && s_report_write_cb) {
                     s_report_write_cb(attr_handle, rpt->type, rpt->id, rpt->data, rpt->len);
                 }
                 if (ctxt->chr->flags & BLE_GATT_CHR_F_NOTIFY) {
