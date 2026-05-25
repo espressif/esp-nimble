@@ -776,7 +776,6 @@ ble_att_clt_tx_write_req(uint16_t conn_handle, uint16_t cid, uint16_t handle,
     req = ble_att_cmd_get(BLE_ATT_OP_WRITE_REQ, sizeof(*req), &txom2);
     if (req == NULL) {
         os_mbuf_free_chain(txom);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -816,7 +815,6 @@ ble_att_clt_tx_write_cmd(uint16_t conn_handle, uint16_t cid,
     cmd = ble_att_cmd_get(BLE_ATT_OP_WRITE_CMD, sizeof(*cmd), &txom2);
     if (cmd == NULL) {
         os_mbuf_free_chain(txom);
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
