@@ -4467,7 +4467,6 @@ ble_gattc_write_no_rsp_flat(uint16_t conn_handle, uint16_t attr_handle,
 
     om = ble_hs_mbuf_from_flat(data, data_len);
     if (om == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
@@ -4666,7 +4665,6 @@ ble_gattc_write_flat(uint16_t conn_handle, uint16_t attr_handle,
 
     om = ble_hs_mbuf_from_flat(data, data_len);
     if (om == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 
