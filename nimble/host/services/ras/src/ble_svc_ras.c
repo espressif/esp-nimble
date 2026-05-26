@@ -28,6 +28,7 @@
 #include "nimble/hci_common.h"
 #include "esp_nimble_mem.h"
 
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_RAS_SERVICE
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
@@ -518,3 +519,4 @@ ble_svc_ras_init(void) {
     reset_ranging_buffer();
 
 }
+#endif

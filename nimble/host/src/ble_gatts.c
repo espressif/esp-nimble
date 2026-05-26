@@ -3641,7 +3641,8 @@ ble_gatts_reset(void)
 #if MYNEWT_VAL(BLE_SVC_HID_SERVICE)
     ble_svc_hid_reset();
 #endif
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) && CONFIG_BT_NIMBLE_SPS_SERVICE
     ble_svc_sps_reset();
 #endif
     ble_hs_unlock();
