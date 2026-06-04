@@ -777,7 +777,7 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
 {
 
     struct ble_att_signed_write_cmd *cmd;
-    struct os_mbuf *txom2;
+    struct os_mbuf *txom2 = NULL;
     uint8_t cmac[16];
     uint8_t *message = NULL;
     uint16_t len;
