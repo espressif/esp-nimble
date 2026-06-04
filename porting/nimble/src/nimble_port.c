@@ -141,7 +141,7 @@ ble_hs_stop_cb(int status, void *arg)
 static void
 nimble_port_stop_cb(struct ble_npl_event *ev)
 {
-    ble_npl_sem_release(&ble_hs_stop_sem);
+    (void)ev;
 }
 
 /**
@@ -414,12 +414,10 @@ nimble_port_stop(void)
                        NULL);
     ble_npl_eventq_put(&g_eventq_dflt, &ble_hs_ev_stop);
 
-    /* Wait till the event is serviced */
+    /* Wait till the host task services and releases the stop event. */
     ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
 
     ble_npl_sem_deinit(&ble_hs_stop_sem);
-
-    ble_npl_event_deinit(&ble_hs_ev_stop);
 
     return ESP_OK;
 }
@@ -442,6 +440,8 @@ void nimble_port_run(void)
         if (ev) {
             ble_npl_event_run(ev);
             if (ev == stop_ev) {
+                ble_npl_event_deinit(&ble_hs_ev_stop);
+                ble_npl_sem_release(&ble_hs_stop_sem);
                 break;
             }
         }
