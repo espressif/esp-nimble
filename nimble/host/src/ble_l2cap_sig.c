@@ -1478,6 +1478,7 @@ ble_l2cap_sig_coc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
 
     if (!conn) {
         ble_hs_unlock();
+        os_mbuf_free_chain(sdu_rx);
         return BLE_HS_ENOTCONN;
     }
 
