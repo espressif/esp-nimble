@@ -2113,8 +2113,11 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
         proc->pair_req[0] = BLE_SM_OP_PAIR_REQ;
         memcpy(proc->pair_req + 1, req, sizeof(*req));
 
-        conn = ble_hs_conn_find_assert(proc->conn_handle);
-        if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
+        conn = ble_hs_conn_find(proc->conn_handle);
+        if (!conn) {
+            res->sm_err = BLE_SM_ERR_UNSPECIFIED;
+            res->app_status = BLE_HS_ENOTCONN;
+        } else if (conn->bhc_flags & BLE_HS_CONN_F_MASTER) {
             res->sm_err = BLE_SM_ERR_CMD_NOT_SUPP;
             res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CMD_NOT_SUPP);
         } else if (ble_hs_cfg.sm_sec_lvl == 1) {

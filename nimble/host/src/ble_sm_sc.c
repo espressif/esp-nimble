@@ -357,7 +357,13 @@ ble_sm_sc_oob_confirm(struct ble_sm_proc *proc, struct ble_sm_result *res)
             return;
         }
 
-        match = (memcmp(c, proc->oob_data_remote->c, sizeof(c)) == 0);
+        {
+            uint8_t diff = 0;
+            for (int j = 0; j < (int)sizeof(c); j++) {
+                diff |= c[j] ^ proc->oob_data_remote->c[j];
+            }
+            match = (diff == 0);
+        }
         if (!match) {
             /* Random number mismatch. */
             res->sm_err = BLE_SM_ERR_CONFIRM_MISMATCH;
@@ -552,12 +558,18 @@ ble_sm_sc_random_rx(struct ble_sm_proc *proc, struct ble_sm_result *res)
             return;
         }
 
-        if (memcmp(proc->confirm_peer, confirm_val, 16) != 0) {
-            /* Random number mismatch. */
-            res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CONFIRM_MISMATCH);
-            res->sm_err = BLE_SM_ERR_CONFIRM_MISMATCH;
-            res->enc_cb = 1;
-            return;
+        {
+            uint8_t diff = 0;
+            for (int j = 0; j < 16; j++) {
+                diff |= proc->confirm_peer[j] ^ confirm_val[j];
+            }
+            if (diff != 0) {
+                /* Random number mismatch. */
+                res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_CONFIRM_MISMATCH);
+                res->sm_err = BLE_SM_ERR_CONFIRM_MISMATCH;
+                res->enc_cb = 1;
+                return;
+            }
         }
     }
 
@@ -916,12 +928,18 @@ ble_sm_dhkey_check_process(struct ble_sm_proc *proc,
         return;
     }
 
-    if (memcmp(cmd->value, exp_value, 16) != 0) {
-        /* Random number mismatch. */
-        res->sm_err = BLE_SM_ERR_DHKEY;
-        res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_DHKEY);
-        res->enc_cb = 1;
-        return;
+    {
+        uint8_t diff = 0;
+        for (int j = 0; j < 16; j++) {
+            diff |= cmd->value[j] ^ exp_value[j];
+        }
+        if (diff != 0) {
+            /* Random number mismatch. */
+            res->sm_err = BLE_SM_ERR_DHKEY;
+            res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_DHKEY);
+            res->enc_cb = 1;
+            return;
+        }
     }
 
     rc = ble_sm_sc_io_action(proc, &ioact);
