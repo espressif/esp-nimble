@@ -2604,16 +2604,21 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Converting cmac to little endian */
     swap_in_place(cmac, sizeof cmac);
 
-    /* Comparing sign counter */
-    if(memcmp(sign, &value_sec.sign_counter, sizeof(value_sec.sign_counter)) != 0) {
-        rc = BLE_HS_EAUTHEN;
-        goto err;
-    }
-
-    /* Comparing signature */
-    if(memcmp(&sign[sizeof(value_sec.sign_counter)], &cmac[sizeof(cmac) / 2], sizeof(cmac) / 2) != 0) {
-        rc = BLE_HS_EAUTHEN;
-        goto err;
+    /* Comparing sign counter and signature using constant-time comparison */
+    {
+        uint8_t diff = 0;
+        const uint8_t *counter_bytes = (const uint8_t *)&value_sec.sign_counter;
+        for (size_t j = 0; j < sizeof(value_sec.sign_counter); j++) {
+            diff |= sign[j] ^ counter_bytes[j];
+        }
+        for (size_t j = 0; j < sizeof(cmac) / 2; j++) {
+            diff |= sign[sizeof(value_sec.sign_counter) + j] ^
+                     cmac[sizeof(cmac) / 2 + j];
+        }
+        if (diff != 0) {
+            rc = BLE_HS_EAUTHEN;
+            goto err;
+        }
     }
 
 #if MYNEWT_VAL(BLE_SM_SIGN_CNT)
@@ -3168,6 +3173,7 @@ ble_att_svr_rx_notify_multi(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
         attr_len = le16toh(req->value_len);
 
         os_mbuf_adj(*rxom, 4);
+        pkt_len = OS_MBUF_PKTLEN(*rxom);
 
         if (attr_len > BLE_ATT_ATTR_MAX_LEN) {
             BLE_HS_LOG_ERROR("attr length (%d) > max (%d)",
