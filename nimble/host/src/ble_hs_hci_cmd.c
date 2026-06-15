@@ -83,7 +83,7 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     if (len != 0) {
         memcpy(buf + BLE_HCI_CMD_HDR_LEN, cmddata, len);
     }
-#if !BLE_MONITOR
+#if !BLE_MONITOR && (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     BLE_HS_LOG(DEBUG, "ble_hs_hci_cmd_send: ogf=0x%02x ocf=0x%04x len=%d\n",
                BLE_HCI_OGF(opcode), BLE_HCI_OCF(opcode), len);
     ble_hs_log_flat_buf(buf, len + BLE_HCI_CMD_HDR_LEN);
