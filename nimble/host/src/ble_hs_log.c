@@ -26,6 +26,7 @@ struct log ble_hs_log;
 void
 ble_hs_log_mbuf(const struct os_mbuf *om)
 {
+#if (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     uint8_t u8;
     int i;
 
@@ -37,11 +38,13 @@ ble_hs_log_mbuf(const struct os_mbuf *om)
         os_mbuf_copydata(om, i, 1, &u8);
         BLE_HS_LOG(DEBUG, "0x%02x ", u8);
     }
+#endif
 }
 
 void
 ble_hs_log_flat_buf(const void *data, int len)
 {
+#if (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     const uint8_t *u8ptr;
     int i;
 
@@ -53,4 +56,5 @@ ble_hs_log_flat_buf(const void *data, int len)
     for (i = 0; i < len; i++) {
         BLE_HS_LOG(DEBUG, "0x%02x ", u8ptr[i]);
     }
+#endif
 }

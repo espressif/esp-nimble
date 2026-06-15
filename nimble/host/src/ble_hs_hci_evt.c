@@ -1699,7 +1699,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
     }
 
 #if (BLETEST_THROUGHPUT_TEST == 0)
-#if !BLE_MONITOR
+#if !BLE_MONITOR && (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     BLE_HS_LOG(DEBUG, "ble_hs_hci_evt_acl_process(): conn_handle=%u pb=%x "
                       "len=%u data=",
                BLE_HCI_DATA_HANDLE(hci_hdr.hdh_handle_pb_bc),

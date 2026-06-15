@@ -1972,7 +1972,7 @@ ble_l2cap_sig_rx(struct ble_l2cap_chan *chan)
 
     STATS_INC(ble_l2cap_stats, sig_rx);
 
-#if !BLE_MONITOR
+#if !BLE_MONITOR && (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     BLE_HS_LOG(DEBUG, "L2CAP - rxed signalling msg: ");
     ble_hs_log_mbuf(*om);
     BLE_HS_LOG(DEBUG, "\n");
