@@ -26,6 +26,7 @@ struct log ble_hs_log;
 
 #define BLE_HS_LOG_HEX_BYTES_PER_LINE 10
 
+#if (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
 static void
 ble_hs_log_debug_hex_chunk(const uint8_t *bytes, int len)
 {
@@ -49,10 +50,12 @@ ble_hs_log_debug_hex_chunk(const uint8_t *bytes, int len)
 
     BLE_HS_LOG(DEBUG, "%s", hex_str);
 }
+#endif
 
 void
 ble_hs_log_mbuf(const struct os_mbuf *om)
 {
+#if (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     uint8_t buf[BLE_HS_LOG_HEX_BYTES_PER_LINE];
     int total_len;
     int offset;
@@ -73,11 +76,13 @@ ble_hs_log_mbuf(const struct os_mbuf *om)
         os_mbuf_copydata(om, offset, chunk_len, buf);
         ble_hs_log_debug_hex_chunk(buf, chunk_len);
     }
+#endif
 }
 
 void
 ble_hs_log_flat_buf(const void *data, int len)
 {
+#if (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
     int offset;
     int chunk_len;
     const uint8_t *u8ptr;
@@ -95,4 +100,5 @@ ble_hs_log_flat_buf(const void *data, int len)
 
         ble_hs_log_debug_hex_chunk(u8ptr + offset, chunk_len);
     }
+#endif
 }

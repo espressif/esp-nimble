@@ -911,7 +911,7 @@ ble_hs_hci_acl_tx_now(struct ble_hs_conn *conn, struct os_mbuf **om)
             goto err;
         }
 
-#if !BLE_MONITOR
+#if !BLE_MONITOR && (MYNEWT_VAL(BLE_HS_LOG_LVL) == LOG_LEVEL_DEBUG)
         BLE_HS_LOG(DEBUG, "ble_hs_hci_acl_tx(): ");
         ble_hs_log_mbuf(frag);
         BLE_HS_LOG(DEBUG, "\n");
