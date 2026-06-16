@@ -1862,6 +1862,7 @@ ble_gatts_start(void)
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     if (ble_gatts_conn_aware_states == NULL) {
         ble_gatts_conn_aware_states = nimble_platform_mem_calloc(1, sizeof(struct ble_gatts_aware_state) * MYNEWT_VAL(BLE_STORE_MAX_BONDS));
         if (ble_gatts_conn_aware_states == NULL) {
@@ -1869,6 +1870,7 @@ ble_gatts_start(void)
             goto done;
         }
     }
+#endif
 #else
     memset(ble_gatts_conn_aware_states, 0, sizeof ble_gatts_conn_aware_states);
 #endif
