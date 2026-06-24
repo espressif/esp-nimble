@@ -445,6 +445,7 @@ npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
         if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
+        return;
     } else {
         BLE_NPL_ENTER_CRITICAL();
         if (event->queued) {
@@ -468,13 +469,10 @@ npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
     BaseType_t ret;
     int i;
     int count;
+    bool removed;
     BaseType_t woken, woken2;
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
     struct ble_npl_event_freertos *event = (struct ble_npl_event_freertos *)ev->event;
-
-    if (!event->queued) {
-        return;
-    }
 
     /*
      * XXX We cannot extract element from inside FreeRTOS queue so as a quick
@@ -484,22 +482,38 @@ npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
      */
 
     if (in_isr()) {
+        if (!npl_eventq_queued_get_isr(event)) {
+            return;
+        }
+
+        removed = false;
         woken = pdFALSE;
 
+        portENTER_CRITICAL_ISR(&ble_port_mutex);
         count = uxQueueMessagesWaitingFromISR(eventq->q);
         for (i = 0; i < count; i++) {
             ret = xQueueReceiveFromISR(eventq->q, &tmp_ev, &woken2);
-            BLE_LL_ASSERT(ret == pdPASS);
+            if (ret != pdPASS) {
+                break;
+            }
             woken |= woken2;
 
             if (tmp_ev == ev) {
+                removed = true;
                 continue;
             }
 
             ret = xQueueSendToBackFromISR(eventq->q, &tmp_ev, &woken2);
-            BLE_LL_ASSERT(ret == pdPASS);
+            if (ret != pdPASS) {
+                npl_eventq_lost_event_clear(tmp_ev);
+                break;
+            }
             woken |= woken2;
         }
+        if (removed) {
+            event->queued = false;
+        }
+        portEXIT_CRITICAL_ISR(&ble_port_mutex);
 
         portYIELD_FROM_ISR(woken);
     } else {
@@ -508,14 +522,19 @@ npl_freertos_eventq_remove(struct ble_npl_eventq *evq,
         count = uxQueueMessagesWaiting(eventq->q);
         for (i = 0; i < count; i++) {
             ret = xQueueReceive(eventq->q, &tmp_ev, 0);
-            BLE_LL_ASSERT(ret == pdPASS);
+            if (ret != pdPASS) {
+                break;
+            }
 
             if (tmp_ev == ev) {
                 continue;
             }
 
             ret = xQueueSendToBack(eventq->q, &tmp_ev, 0);
-            BLE_LL_ASSERT(ret == pdPASS);
+            if (ret != pdPASS) {
+                npl_eventq_lost_event_clear(tmp_ev);
+                break;
+            }
         }
 
         BLE_NPL_EXIT_CRITICAL();
@@ -1420,6 +1439,10 @@ int npl_freertos_mempool_init(void)
     }
 
 _error:
+    if (npl_eventq_sync) {
+        vSemaphoreDelete(npl_eventq_sync);
+        npl_eventq_sync = NULL;
+    }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_freertos_ctx) {

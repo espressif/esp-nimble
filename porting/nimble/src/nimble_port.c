@@ -265,7 +265,7 @@ esp_err_t esp_nimble_deinit(void)
     npl_freertos_funcs_deinit();
 #endif
 
-#if !SOC_ESP_NIMBLE_CONTROLLER
+#if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
     npl_freertos_mempool_deinit();
 #endif
 
