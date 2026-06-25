@@ -88,7 +88,7 @@ ble_store_config_serialize_arr(const void *arr, int obj_sz, int num_objs,
     int arr_size;
 
     arr_size = obj_sz * num_objs;
-    assert(arr_size <= buf_sz);
+    assert(BASE64_ENCODE_SIZE(arr_size) <= buf_sz);
 
     base64_encode(arr, arr_size, out_buf, 1);
 }

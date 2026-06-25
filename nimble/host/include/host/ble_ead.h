@@ -88,9 +88,10 @@ struct key_material {
  *
  * @return              0 on success;
  *                      BLE_HS_EINVAL if the specified value is not
- *                      within the allowed range.
- *                      BLE_HS_ECANCEL if error occurred during the random number
- *                      generation
+ *                      within the allowed range;
+ *                      other nonzero BLE host error codes on internal
+ *                      failure (e.g., HCI error during randomizer
+ *                      generation).
  */
 int ble_ead_encrypt(const uint8_t session_key[BLE_EAD_KEY_SIZE],
                     const uint8_t iv[BLE_EAD_IV_SIZE], const uint8_t *payload,

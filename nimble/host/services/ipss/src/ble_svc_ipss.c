@@ -52,5 +52,6 @@ ble_svc_ipss_init(void)
 
     rc = ble_gatts_add_svcs(ble_svc_ipss_defs);
     SYSINIT_PANIC_ASSERT(rc == 0);
+    (void)rc;
 }
 #endif

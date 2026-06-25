@@ -71,7 +71,9 @@ ble_l2cap_sig_reject_tx(uint16_t conn_handle, uint8_t id, uint16_t reason,
     }
 
     cmd->reason = htole16(reason);
-    memcpy(cmd->data, data, data_len);
+    if (data_len > 0) {
+        memcpy(cmd->data, data, data_len);
+    }
 
     STATS_INC(ble_l2cap_stats, sig_tx);
     return ble_l2cap_sig_tx(conn_handle, txom);
@@ -85,8 +87,8 @@ ble_l2cap_sig_reject_invalid_cid_tx(uint16_t conn_handle, uint8_t id,
         uint16_t local_cid;
         uint16_t remote_cid;
     } data = {
-        .local_cid = dst_cid,
-        .remote_cid = src_cid,
+        .local_cid = htole16(dst_cid),
+        .remote_cid = htole16(src_cid),
     };
 
     return ble_l2cap_sig_reject_tx(conn_handle, id,
@@ -105,13 +107,12 @@ ble_l2cap_sig_cmd_get(uint8_t opcode, uint8_t id, uint16_t len,
         return NULL;
     }
 
-    if (os_mbuf_extend(*txom, sizeof(*hdr) + len) == NULL) {
+    hdr = os_mbuf_extend(*txom, sizeof(*hdr) + len);
+    if (hdr == NULL) {
         os_mbuf_free_chain(*txom);
         *txom = NULL;
         return NULL;
     }
-
-    hdr = (struct ble_l2cap_sig_hdr *)(*txom)->om_data;
 
     hdr->op = opcode;
     hdr->identifier = id;

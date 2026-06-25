@@ -27,7 +27,7 @@ int
 ble_store_read(int obj_type, const union ble_store_key *key,
                union ble_store_value *val)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     int rc;
 
@@ -50,7 +50,7 @@ ble_store_read(int obj_type, const union ble_store_key *key,
 int
 ble_store_write(int obj_type, const union ble_store_value *val)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
     int rc;
 
     while (1) {
@@ -91,7 +91,7 @@ ble_store_write(int obj_type, const union ble_store_value *val)
 int
 ble_store_delete(int obj_type, const union ble_store_key *key)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     int rc;
 
@@ -111,7 +111,7 @@ ble_store_delete(int obj_type, const union ble_store_key *key)
 #endif
 }
 
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 static int
 ble_store_status(struct ble_store_status_event *event)
 {
@@ -132,9 +132,9 @@ ble_store_status(struct ble_store_status_event *event)
 int
 ble_store_overflow_event(int obj_type, const union ble_store_value *value)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
-    struct ble_store_status_event event;
+    struct ble_store_status_event event = {0};
 
     event.event_code = BLE_STORE_EVENT_OVERFLOW;
     event.overflow.obj_type = obj_type;
@@ -149,9 +149,9 @@ ble_store_overflow_event(int obj_type, const union ble_store_value *value)
 int
 ble_store_full_event(int obj_type, uint16_t conn_handle)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
-    struct ble_store_status_event event;
+    struct ble_store_status_event event = {0};
 
     event.event_code = BLE_STORE_EVENT_FULL;
     event.full.obj_type = obj_type;
@@ -228,11 +228,11 @@ ble_store_delete_our_sec(const struct ble_store_key_sec *key_sec)
 {
 #if NIMBLE_BLE_CONNECT
 
-    union ble_store_key *store_key;
+    union ble_store_key store_key = {0};
     int rc;
 
-    store_key = (void *)key_sec;
-    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_OUR_SEC, store_key);
+    store_key.sec = *key_sec;
+    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_OUR_SEC, &store_key);
     return rc;
 #else
     return BLE_HS_ENOTSUP;
@@ -258,16 +258,16 @@ int
 ble_store_read_peer_sec(const struct ble_store_key_sec *key_sec,
                         struct ble_store_value_sec *value_sec)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     union ble_store_value *store_value;
-    union ble_store_key *store_key;
+    const union ble_store_key *store_key;
     int rc;
 
     BLE_HS_DBG_ASSERT(key_sec->peer_addr.type == BLE_ADDR_PUBLIC ||
                       key_sec->peer_addr.type == BLE_ADDR_RANDOM);
 
-    store_key = (void *)key_sec;
+    store_key = (const union ble_store_key *)key_sec;
     store_value = (void *)value_sec;
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_PEER_SEC, store_key, store_value);
 
@@ -280,7 +280,7 @@ ble_store_read_peer_sec(const struct ble_store_key_sec *key_sec,
 int
 ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     int rc;
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY)
@@ -390,7 +390,7 @@ ble_store_read_cccd(const struct ble_store_key_cccd *key,
 int
 ble_store_write_cccd(const struct ble_store_value_cccd *value)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     union ble_store_value *store_value;
     int rc;
@@ -406,7 +406,7 @@ ble_store_write_cccd(const struct ble_store_value_cccd *value)
 int
 ble_store_delete_cccd(const struct ble_store_key_cccd *key)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     union ble_store_key *store_key;
     int rc;
@@ -443,11 +443,11 @@ ble_store_write_csfc(const struct ble_store_value_csfc *value)
 {
 #if NIMBLE_BLE_CONNECT
 
-    union ble_store_value *store_value;
+    union ble_store_value store_value = {0};
     int rc;
 
-    store_value = (void *)value;
-    rc = ble_store_write(BLE_STORE_OBJ_TYPE_CSFC, store_value);
+    store_value.csfc = *value;
+    rc = ble_store_write(BLE_STORE_OBJ_TYPE_CSFC, &store_value);
     return rc;
 #else
     return BLE_HS_ENOTSUP;
@@ -474,7 +474,7 @@ void
 ble_store_key_from_value_cccd(struct ble_store_key_cccd *out_key,
                               const struct ble_store_value_cccd *value)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     out_key->peer_addr = value->peer_addr;
     out_key->chr_val_handle = value->chr_val_handle;
@@ -503,10 +503,10 @@ ble_store_read_ead(const struct ble_store_key_ead *key,
 #if NIMBLE_BLE_CONNECT
 
     union ble_store_value *store_value;
-    union ble_store_key *store_key;
+    const union ble_store_key *store_key;
     int rc;
 
-    store_key = (void *)key;
+    store_key = (const union ble_store_key *)key;
     store_value = (void *)out_value;
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, store_key, store_value);
     return rc;
@@ -536,11 +536,11 @@ ble_store_delete_ead(const struct ble_store_key_ead *key)
 {
 #if NIMBLE_BLE_CONNECT
 
-    union ble_store_key *store_key;
+    union ble_store_key store_key = {0};
     int rc;
 
-    store_key = (void *)key;
-    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, store_key);
+    store_key.ead = *key;
+    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &store_key);
     return rc;
 #else
     return BLE_HS_ENOTSUP;
@@ -563,7 +563,7 @@ int
 ble_store_read_local_irk(const struct ble_store_key_local_irk *key,
                    struct ble_store_value_local_irk *out_value)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     union ble_store_value *store_value;
     union ble_store_key *store_key;
@@ -583,13 +583,13 @@ ble_store_read_local_irk(const struct ble_store_key_local_irk *key,
 int
 ble_store_write_local_irk(const struct ble_store_value_local_irk *value)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
-    union ble_store_value *store_value;
+    union ble_store_value store_value = {0};
     int rc;
 
-    store_value = (void *)value;
-    rc = ble_store_write(BLE_STORE_OBJ_TYPE_LOCAL_IRK, store_value);
+    store_value.local_irk = *value;
+    rc = ble_store_write(BLE_STORE_OBJ_TYPE_LOCAL_IRK, &store_value);
     return rc;
 #else
     return BLE_HS_ENOTSUP;
@@ -602,11 +602,11 @@ ble_store_delete_local_irk(const struct ble_store_key_local_irk *key)
 {
 #if NIMBLE_BLE_CONNECT
 
-    union ble_store_key *store_key;
+    union ble_store_key store_key = {0};
     int rc;
 
-    store_key = (void *)key;
-    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_LOCAL_IRK, store_key);
+    store_key.local_irk = *key;
+    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_LOCAL_IRK, &store_key);
     return rc;
 #else
     return BLE_HS_ENOTSUP;
@@ -664,11 +664,11 @@ ble_store_delete_rpa_rec(const struct ble_store_key_rpa_rec *key)
 {
 #if NIMBLE_BLE_CONNECT
 
-    union ble_store_key *store_key;
+    union ble_store_key store_key = {0};
     int rc;
 
-    store_key = (void *)key;
-    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_PEER_ADDR, store_key);
+    store_key.rpa_rec = *key;
+    rc = ble_store_delete(BLE_STORE_OBJ_TYPE_PEER_ADDR, &store_key);
     return rc;
 #else
     return BLE_HS_ENOTSUP;
@@ -743,7 +743,7 @@ ble_store_iterate(int obj_type,
                   ble_store_iterator_fn *callback,
                   void *cookie)
 {
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT
 
     union ble_store_key key;
     union ble_store_value value;

@@ -193,6 +193,7 @@ ble_sm_gen_stk(struct ble_sm_proc *proc)
 
     /* Zero sensitive key material from stack */
     memset(key, 0, sizeof(key));
+    __asm__ volatile("" : : "r"(key) : "memory");
 
     return 0;
 }

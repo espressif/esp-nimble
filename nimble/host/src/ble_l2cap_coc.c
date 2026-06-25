@@ -106,8 +106,18 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
 {
     struct ble_l2cap_coc_srv *srv;
 
+    if (psm < 0x0001 || psm > 0x00FF) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     if (cb == NULL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
+    if (mtu < BLE_L2CAP_COC_MIN_MTU) {
+        BLE_HS_LOG(ERROR, "%s mtu too small rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -142,13 +152,13 @@ ble_l2cap_coc_create_server(uint16_t psm, uint16_t mtu,
 static inline void
 ble_l2cap_set_used_cid(uint32_t *cid_mask, int bit)
 {
-    cid_mask[bit / 32] |= (1 << (bit % 32));
+    cid_mask[bit / 32] |= (1U << (bit % 32));
 }
 
 static inline void
 ble_l2cap_clear_used_cid(uint32_t *cid_mask, int bit)
 {
-    cid_mask[bit / 32] &= ~(1 << (bit % 32));
+    cid_mask[bit / 32] &= ~(1U << (bit % 32));
 }
 
 static inline int
@@ -183,7 +193,7 @@ ble_l2cap_coc_get_cid(uint32_t *cid_mask)
     int bit;
 
     bit = ble_l2cap_get_first_available_bit(cid_mask);
-    if (bit < 0) {
+    if (bit < 0 || bit >= MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM)) {
         return -1;
     }
 
@@ -219,6 +229,7 @@ ble_l2cap_event_coc_received_data(struct ble_l2cap_chan *chan,
 {
     struct ble_l2cap_event event;
 
+    memset(&event, 0, sizeof event);
     event.type = BLE_L2CAP_EVENT_COC_DATA_RECEIVED;
     event.receive.conn_handle = chan->conn_handle;
     event.receive.chan = chan;
@@ -244,7 +255,16 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     BLE_HS_DBG_ASSERT(rx != NULL);
 
     rx_sdu = rx->sdus[chan->coc_rx.current_sdu_idx];
-    BLE_HS_DBG_ASSERT(rx_sdu != NULL);
+    if (rx_sdu == NULL) {
+        /* Peer used a credit while no RX SDU buffer is armed (app deferred
+         * ble_l2cap_recv_ready). This is a credit/buffer asymmetry — disconnect
+         * rather than dereference a NULL pointer.
+         */
+        BLE_HS_LOG(ERROR, "CoC RX: no SDU buffer armed (idx=%d), disconnecting\n",
+                   chan->coc_rx.current_sdu_idx);
+        ble_l2cap_disconnect(chan);
+        return BLE_HS_ENOMEM;
+    }
 
     om_total = OS_MBUF_PKTLEN(*om);
 
@@ -522,8 +542,8 @@ ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
 {
     struct ble_l2cap_coc_endpoint *tx;
     uint16_t len;
-    uint16_t left_to_send;
-    struct os_mbuf *txom;
+    uint32_t left_to_send;
+    struct os_mbuf *txom = NULL;
     struct ble_hs_conn *conn;
     uint16_t sdu_size_offset;
     int rc;
@@ -549,7 +569,13 @@ ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
         }
 
         /* Take into account peer MTU */
-        len = min(left_to_send, chan->peer_coc_mps);
+        len = min(left_to_send, (uint32_t)chan->peer_coc_mps);
+
+        /* Guard against underflow: first packet needs at least SDU_SIZE bytes */
+        if (len < sdu_size_offset) {
+            rc = BLE_HS_EINVAL;
+            goto failed;
+        }
 
         /* Prepare packet */
         txom = ble_hs_mbuf_l2cap_pkt();
@@ -690,9 +716,7 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
 
     ble_hs_lock();
 
-    if (chan->coc_rx.sdus[0] != NULL &&
-        chan->coc_rx.next_sdu_alloc_idx == chan->coc_rx.current_sdu_idx &&
-        BLE_L2CAP_SDU_BUFF_CNT != 1) {
+    if (chan->coc_rx.sdus[chan->coc_rx.next_sdu_alloc_idx] != NULL) {
         ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBUSY);
         return BLE_HS_EBUSY;
@@ -724,13 +748,18 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
                                  credits_to_send);
         ble_hs_lock();
         /* Re-validate connection and channel after relock — they could have
-         * been freed while the lock was released. */
-        /* Re-validate connection and channel after relock — they could have
-         * been freed while the lock was released. Credits were already updated
-         * at line 714 before unlocking; no further update needed here. */
+         * been freed while the lock was released. coc_rx.credits was already
+         * updated before unlocking; no further update needed here. */
         conn = ble_hs_conn_find(cached_conn_handle);
         if (conn != NULL) {
             c = ble_hs_conn_chan_find_by_scid(conn, cached_scid);
+        } else {
+            c = NULL;
+        }
+
+        if (c == NULL) {
+            ble_hs_unlock();
+            return 0;
         }
     }
 
@@ -824,6 +853,14 @@ void ble_l2cap_coc_deinit(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
      if (ble_l2cap_coc_ctx) {
+        struct ble_l2cap_coc_srv *srv;
+
+        /* Free all active server entries before destroying the pool */
+        while ((srv = STAILQ_FIRST(&ble_l2cap_coc_srvs)) != NULL) {
+            STAILQ_REMOVE_HEAD(&ble_l2cap_coc_srvs, next);
+            os_memblock_put(&ble_l2cap_coc_srv_pool, srv);
+        }
+
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
         if (ble_l2cap_coc_srv_mem) {
              nimble_platform_mem_free(ble_l2cap_coc_srv_mem);

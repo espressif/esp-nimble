@@ -54,6 +54,9 @@ static const char * const ble_gatt_chr_f_names[] = {
     "WRITE_ENC",
     "WRITE_AUTHEN",
     "WRITE_AUTHOR",
+    "NOTIFY_INDICATE_ENC",
+    "NOTIFY_INDICATE_AUTHEN",
+    "NOTIFY_INDICATE_AUTHOR",
     NULL
 };
 
@@ -69,7 +72,7 @@ static const char * const ble_gatt_dsc_f_names[] = {
     NULL
 };
 
-#define BLE_CHR_FLAGS_STR_LEN 180
+#define BLE_CHR_FLAGS_STR_LEN 256
 
 static char *
 ble_gatts_flags_to_str(uint32_t flags, char *buf,
@@ -269,7 +272,9 @@ ble_gatt_show_local_svc(const struct ble_gatt_svc_def *svc,
 void
 ble_gatts_show_local(void)
 {
+    ble_hs_lock();
     ble_gatts_lcl_svc_foreach(ble_gatt_show_local_svc, NULL);
+    ble_hs_unlock();
 }
 
 #endif

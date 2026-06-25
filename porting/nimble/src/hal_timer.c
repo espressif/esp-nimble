@@ -190,6 +190,9 @@ nrf_timer_set_ocmp(struct nrf52_hal_timer *bsptimer, uint32_t expiry)
                 /* CC too far ahead. Just make sure we set compare far ahead */
                 rtctimer->CC[NRF_RTC_TIMER_CC_INT] = cntr + (1UL << 23);
             }
+            /* Clear any stale TICK and COMPARE events before enabling interrupt */
+            rtctimer->EVENTS_TICK = 0;
+            rtctimer->EVENTS_COMPARE[NRF_RTC_TIMER_CC_INT] = 0;
             rtctimer->INTENSET = NRF_TIMER_INT_MASK(NRF_RTC_TIMER_CC_INT);
         }
     } else {
@@ -535,6 +538,7 @@ hal_timer_init(int timer_num, void *cfg)
 
     bsptimer->tmr_reg = hwtimer;
     bsptimer->tmr_irq_num = irq_num;
+    TAILQ_INIT(&bsptimer->hal_timer_q);
 
     /* Disable IRQ, set priority and set vector in table */
     NVIC_DisableIRQ(irq_num);
@@ -591,6 +595,7 @@ hal_timer_config(int timer_num, uint32_t freq_hz)
 
         bsptimer->tmr_freq = freq_hz;
         bsptimer->tmr_enabled = 1;
+        bsptimer->tmr_cntr = 0;
 
         OS_ENTER_CRITICAL(sr);
 
@@ -619,6 +624,11 @@ hal_timer_config(int timer_num, uint32_t freq_hz)
 #endif
 
     /* Set timer to desired frequency */
+    if (freq_hz == 0) {
+        rc = EINVAL;
+        goto err;
+    }
+
     div = NRF52_MAX_TIMER_FREQ / freq_hz;
 
     /*
@@ -707,6 +717,12 @@ hal_timer_deinit(int timer_num)
     NRF52_HAL_TIMER_RESOLVE(timer_num, bsptimer);
 
     OS_ENTER_CRITICAL(sr);
+    if (bsptimer->tmr_reg == NULL) {
+        /* Already deinitialized */
+        OS_EXIT_CRITICAL(sr);
+        rc = EINVAL;
+        goto err;
+    }
     if (bsptimer->tmr_rtc) {
         rtctimer = (NRF_RTC_Type *)bsptimer->tmr_reg;
         rtctimer->INTENCLR = NRF_TIMER_INT_MASK(NRF_RTC_TIMER_CC_INT);
@@ -748,6 +764,9 @@ hal_timer_get_resolution(int timer_num)
 
     NRF52_HAL_TIMER_RESOLVE(timer_num, bsptimer);
 
+    if (bsptimer->tmr_freq == 0) {
+        return 0;
+    }
     resolution = 1000000000 / bsptimer->tmr_freq;
     return resolution;
 
@@ -781,11 +800,12 @@ hal_timer_read(int timer_num)
 
     return tcntr;
 
-    /* Assert here since there is no invalid return code */
+    /* Abort on invalid timer_num since there is no valid return code.
+     * rc is set by NRF52_HAL_TIMER_RESOLVE but not used after abort(). */
     err:
-    assert(0);
-    rc = 0;
-    return rc;
+    (void)rc;
+    abort();
+    return 0;
 }
 
 /**
@@ -802,6 +822,10 @@ int
 hal_timer_delay(int timer_num, uint32_t ticks)
 {
     uint32_t until;
+
+    if (ticks == 0) {
+        return 0;
+    }
 
     until = hal_timer_read(timer_num) + ticks;
     while ((int32_t)(hal_timer_read(timer_num) - until) <= 0) {
@@ -846,6 +870,10 @@ hal_timer_start(struct hal_timer *timer, uint32_t ticks)
     int rc;
     uint32_t tick;
     struct nrf52_hal_timer *bsptimer;
+
+    if (timer == NULL) {
+        return EINVAL;
+    }
 
     /* Set the tick value at which the timer should expire */
     bsptimer = (struct nrf52_hal_timer *)timer->bsp_timer;

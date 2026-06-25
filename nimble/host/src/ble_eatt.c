@@ -235,9 +235,7 @@ ble_eatt_alloc(void)
     struct ble_eatt *eatt;
 
     eatt = os_memblock_get(&ble_eatt_conn_pool);
-    if (eatt) {
-        SLIST_INSERT_HEAD(&g_ble_eatt_list, eatt, next);
-    } else {
+    if (!eatt) {
         BLE_EATT_LOG_DEBUG("eatt: Failed to allocate new eatt context\n");
         return NULL;
     }
@@ -249,6 +247,8 @@ ble_eatt_alloc(void)
     STAILQ_INIT(&eatt->eatt_tx_q);
     ble_npl_event_init(&eatt->setup_ev, ble_eatt_setup_cb, eatt);
     ble_npl_event_init(&eatt->wakeup_ev, ble_eatt_wakeup_cb, eatt);
+
+    SLIST_INSERT_HEAD(&g_ble_eatt_list, eatt, next);
     return eatt;
 }
 
@@ -256,6 +256,15 @@ static void
 ble_eatt_free(struct ble_eatt *eatt)
 {
     struct os_mbuf_pkthdr *omp;
+
+    /* Remove pending events and release internal event resources. On FreeRTOS,
+     * ble_npl_event_init allocates memory that event_deinit must free. */
+    ble_npl_eventq_remove((struct ble_npl_eventq *)ble_hs_evq_get(),
+                          &eatt->setup_ev);
+    ble_npl_event_deinit(&eatt->setup_ev);
+    ble_npl_eventq_remove((struct ble_npl_eventq *)ble_hs_evq_get(),
+                          &eatt->wakeup_ev);
+    ble_npl_event_deinit(&eatt->wakeup_ev);
 
     while ((omp = STAILQ_FIRST(&eatt->eatt_tx_q)) != NULL) {
         STAILQ_REMOVE_HEAD(&eatt->eatt_tx_q, omp_next);
@@ -399,7 +408,6 @@ ble_eatt_setup_cb(struct ble_npl_event *ev)
     if (rc) {
         BLE_EATT_LOG_ERROR("eatt: Failed to connect EATT on conn_handle 0x%04x (status=%d)\n",
                            eatt->conn_handle, rc);
-        os_mbuf_free_chain(om);
         ble_eatt_free(eatt);
     }
 }
@@ -459,28 +467,30 @@ ble_gatt_eatt_read_uuid_cb(uint16_t conn_handle,
 
     if (error == NULL || (error->status != 0 && error->status != BLE_HS_EDONE)) {
         BLE_EATT_LOG_DEBUG("eatt: Cannot find Server Supported features on peer device\n");
-        return BLE_HS_EDONE;
+        return 0;
     }
 
-    if (attr == NULL) {
-        BLE_EATT_LOG_ERROR("eatt: Invalid attribute \n");
-        return BLE_HS_EDONE;
-    }
+    if (error->status == 0) {
+        if (attr == NULL) {
+            BLE_EATT_LOG_ERROR("eatt: Invalid attribute \n");
+            return 0;
+        }
 
-    rc = os_mbuf_copydata(attr->om, 0, 1, &supported_features);
-    if (rc) {
-        BLE_EATT_LOG_ERROR("eatt: Cannot read srv supported features \n");
-        return BLE_HS_EDONE;
-    }
+        rc = os_mbuf_copydata(attr->om, 0, 1, &supported_features);
+        if (rc) {
+            BLE_EATT_LOG_ERROR("eatt: Cannot read srv supported features \n");
+            return 0;
+        }
 
-    if (supported_features & 0x01) {
-        struct ble_npl_event *ev = (struct ble_npl_event *)nimble_platform_mem_calloc(1, sizeof(struct ble_npl_event));
-        if (ev) {
-            ble_npl_event_init(ev, ble_gatt_eatt_read_cl_uuid, (void *)((uintptr_t) conn_handle));
-            ble_npl_eventq_put(ble_hs_evq_get(), ev);
+        if (supported_features & 0x01) {
+            struct ble_npl_event *ev = (struct ble_npl_event *)nimble_platform_mem_calloc(1, sizeof(struct ble_npl_event));
+            if (ev) {
+                ble_npl_event_init(ev, ble_gatt_eatt_read_cl_uuid, (void *)((uintptr_t) conn_handle));
+                ble_npl_eventq_put(ble_hs_evq_get(), ev);
+            }
         }
     }
-    return BLE_HS_EDONE;
+    return 0;
 }
 
 static void
@@ -679,9 +689,16 @@ ble_eatt_start(uint16_t conn_handle)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_eatt_deinit(void)
 {
+    struct ble_eatt *eatt;
+    struct ble_eatt *next;
+
     if (ble_eatt_ctx == NULL)
     {
         return;
+    }
+
+    SLIST_FOREACH_SAFE(eatt, &g_ble_eatt_list, next, next) {
+        ble_eatt_free(eatt);
     }
 
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
@@ -735,9 +752,9 @@ ble_eatt_init(ble_eatt_att_rx_fn att_rx_cb)
         if (!ble_eatt_sdu_coc_mem) {
             // free the allocated memory
             nimble_platform_mem_free(ble_eatt_conn_mem);
+            ble_eatt_conn_mem = NULL;
             nimble_platform_mem_free(ble_eatt_ctx);
-	    ble_eatt_conn_mem = NULL;
-	    ble_eatt_ctx = NULL;
+            ble_eatt_ctx = NULL;
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
@@ -781,6 +798,8 @@ ble_eatt_init(ble_eatt_att_rx_fn att_rx_cb)
 
 err:
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    os_mempool_unregister(&ble_eatt_sdu_mbuf_mempool);
+    os_mempool_unregister(&ble_eatt_conn_pool);
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     nimble_platform_mem_free(ble_eatt_sdu_coc_mem);
     ble_eatt_sdu_coc_mem = NULL;

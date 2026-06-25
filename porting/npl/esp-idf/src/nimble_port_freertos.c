@@ -21,9 +21,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nimble/nimble_port.h"
+#include "esp_log.h"
 #if CONFIG_BT_CONTROLLER_ENABLED
 #include "esp_bt.h"
 #endif
+
+#define NIMBLE_PORT_LOG_TAG "BLE_INIT"
 
 static TaskHandle_t host_task_h = NULL;
 
@@ -35,13 +38,28 @@ static TaskHandle_t host_task_h = NULL;
  */
 esp_err_t esp_nimble_enable(void *host_task)
 {
+    if (host_task == NULL) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "esp_nimble_enable: host_task is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (host_task_h != NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     /*
      * Create task where NimBLE host will run. It is not strictly necessary to
      * have separate task for NimBLE host, but since something needs to handle
      * default queue it is just easier to make separate task which does this.
      */
-    xTaskCreatePinnedToCore(host_task, "nimble_host", NIMBLE_HS_STACK_SIZE,
-                            NULL, (configMAX_PRIORITIES - 4), &host_task_h, NIMBLE_CORE);
+    BaseType_t ret = xTaskCreatePinnedToCore(host_task, "nimble_host",
+                                             NIMBLE_HS_STACK_SIZE, NULL,
+                                             (configMAX_PRIORITIES - 4),
+                                             &host_task_h, NIMBLE_CORE);
+    if (ret != pdPASS) {
+        host_task_h = NULL;
+        return ESP_ERR_NO_MEM;
+    }
     return ESP_OK;
 
 }
@@ -54,8 +72,9 @@ esp_err_t esp_nimble_enable(void *host_task)
 esp_err_t esp_nimble_disable(void)
 {
     if (host_task_h) {
-        vTaskDelete(host_task_h);
+        TaskHandle_t tmp = host_task_h;
         host_task_h = NULL;
+        vTaskDelete(tmp);
     }
     return ESP_OK;
 }
@@ -69,7 +88,14 @@ esp_err_t esp_nimble_disable(void)
 void
 nimble_port_freertos_init(TaskFunction_t host_task_fn)
 {
-    esp_nimble_enable(host_task_fn);
+    esp_err_t err = esp_nimble_enable(host_task_fn);
+    if (err != ESP_OK) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG,
+                 "nimble_port_freertos_init: esp_nimble_enable failed (%d)", err);
+        /* BLE host task creation is critical; abort so the system does not
+         * continue in a broken state where all BLE operations will fail. */
+        abort();
+    }
 }
 
 /**

@@ -105,7 +105,9 @@ TEST_CASE_SELF(ble_hs_hci_acl_one_conn)
     ble_hs_test_util_init();
 
     /* The controller has room for five 20-byte payloads. */
+    ble_hs_lock();
     rc = ble_hs_hci_set_buf_sz(20, 5);
+    ble_hs_unlock();
     TEST_ASSERT_FATAL(rc == 0);
     TEST_ASSERT_FATAL(ble_hs_hci_avail_pkts == 5);
 
@@ -190,7 +192,9 @@ TEST_CASE_SELF(ble_hs_hci_acl_two_conn)
     ble_hs_test_util_init();
 
     /* The controller has room for five 20-byte payloads*/
+    ble_hs_lock();
     rc = ble_hs_hci_set_buf_sz(20, 5);
+    ble_hs_unlock();
     TEST_ASSERT_FATAL(rc == 0);
     TEST_ASSERT_FATAL(ble_hs_hci_avail_pkts == 5);
 

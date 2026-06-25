@@ -33,6 +33,9 @@ extern "C" {
 #define BLE_L2CAP_COC_CID_START                 0x0040
 #define BLE_L2CAP_COC_CID_END                   0x007F
 
+/* Core Spec Vol 3 Part A §4.22 — LE Credit Based Flow Control min MTU */
+#define BLE_L2CAP_COC_MIN_MTU                   23
+
 struct ble_l2cap_chan;
 
 #define BLE_L2CAP_COC_FLAG_STALLED              0x01

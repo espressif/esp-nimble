@@ -80,6 +80,11 @@ ble_hs_hci_util_rand(void *dst, int len)
         return BLE_HS_EINVAL;
     }
 
+    if (dst == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     u8ptr = dst;
     while (len > 0) {
         rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_RAND),
@@ -495,7 +500,7 @@ ble_hs_hci_add_monitor_adv_list(uint8_t addr_type, uint8_t *addr, int8_t rssi_lo
 }
 
 int
-ble_hs_hci_rmv_monitor_adv_list(uint8_t addr_type, uint8_t *addr)
+ble_hs_hci_rmv_monitor_adv_list(uint8_t addr_type, const uint8_t *addr)
 {
     struct ble_hci_le_rmv_monitor_adv_list_cp cmd;
 

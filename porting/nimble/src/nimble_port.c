@@ -94,6 +94,8 @@ static struct ble_hs_stop_listener stop_listener;
 
 #endif
 
+static bool nimble_port_run_active;
+
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
@@ -167,7 +169,17 @@ esp_err_t esp_nimble_init(void)
     /* Initialize the function pointers for OS porting */
     npl_freertos_funcs_init();
 
-    npl_freertos_mempool_init();
+    if (npl_freertos_mempool_init() != 0) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "npl mempool init failed\n");
+        npl_freertos_funcs_deinit();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_npl_ctx) {
+            nimble_platform_mem_free(ble_npl_ctx);
+            ble_npl_ctx = NULL;
+        }
+#endif
+        return ESP_FAIL;
+    }
 
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_init() != ESP_OK) {
@@ -219,6 +231,9 @@ esp_err_t esp_nimble_init(void)
 esp_err_t esp_nimble_deinit(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ctx == NULL) {
+        return ESP_OK;
+    }
     ble_npl_deiniting = true;
 #endif
 
@@ -248,9 +263,9 @@ esp_err_t esp_nimble_deinit(void)
 
 #endif
 
-    ble_npl_eventq_deinit(&g_eventq_dflt);
-
     ble_hs_deinit();
+
+    ble_npl_eventq_deinit(&g_eventq_dflt);
 
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
     npl_freertos_funcs_deinit();
@@ -392,12 +407,18 @@ nimble_port_stop(void)
     err = ble_hs_stop(&stop_listener, ble_hs_stop_cb,
                      NULL);
     if (err != 0) {
-        ble_npl_sem_deinit(&ble_hs_stop_sem);
-        return err;
+        if (err != BLE_HS_EALREADY) {
+            ble_npl_sem_deinit(&ble_hs_stop_sem);
+            return err;
+        }
+        if (!nimble_port_run_active) {
+            ble_npl_sem_deinit(&ble_hs_stop_sem);
+            return ESP_OK;
+        }
+    } else {
+        /* Wait till the host stop procedure is complete */
+        ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
     }
-
-    /* Wait till the host stop procedure is complete */
-    ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
 
     ble_npl_event_init(&ble_hs_ev_stop, nimble_port_stop_cb,
                        NULL);
@@ -417,14 +438,25 @@ IRAM_ATTR
 void nimble_port_run(void)
 {
     struct ble_npl_event *ev;
+    /* Snapshot stop_ev and stop_sem addresses before entering the loop.
+     * When BLE_STATIC_TO_DYNAMIC is enabled, after ble_npl_sem_release(stop_sem)
+     * at the end of stop-event handling, the caller of nimble_port_stop() can
+     * wake up and free ble_npl_ctx. Any subsequent use of the &ble_hs_ev_stop
+     * or &ble_hs_stop_sem macros (which dereference ble_npl_ctx) would be a
+     * use-after-free. Using local snapshots avoids that.
+     */
+    struct ble_npl_event *stop_ev  = &ble_hs_ev_stop;
+    struct ble_npl_sem  *stop_sem  = &ble_hs_stop_sem;
 
+    nimble_port_run_active = true;
     while (1) {
         ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
         if (ev) {
             ble_npl_event_run(ev);
-            if (ev == &ble_hs_ev_stop) {
-                ble_npl_event_deinit(&ble_hs_ev_stop);
-                ble_npl_sem_release(&ble_hs_stop_sem);
+            if (ev == stop_ev) {
+                ble_npl_event_deinit(stop_ev);
+                nimble_port_run_active = false;
+                ble_npl_sem_release(stop_sem);
                 break;
             }
         }
@@ -438,16 +470,16 @@ struct ble_npl_eventq *
 nimble_port_get_dflt_eventq(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* Check deiniting first: context may still be non-NULL during the deinit
+     * window after ble_npl_deiniting is set but before ble_npl_ctx is freed.
+     * Return the fallback to prevent callers from using a deinitialized queue. */
+    if (ble_npl_deiniting) {
+        return &g_eventq_shutdown_fallback;
+    }
+
     /* If context exists, return the real eventq */
     if (ble_npl_ctx != NULL) {
         return &g_eventq_dflt;
-    }
-
-    /* Context is NULL - either not yet allocated or already freed during deinit.
-     * If we're in shutdown, return the static fallback to prevent crashes.
-     * The fallback eventq is not functional but callers can safely reference it. */
-    if (ble_npl_deiniting) {
-        return &g_eventq_shutdown_fallback;
     }
 
     /* Normal case: try to allocate context */

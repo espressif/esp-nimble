@@ -64,16 +64,19 @@ ble_ibeacon_set_adv_data(const void *uuid128, uint16_t major,
         return BLE_HS_EINVAL;
     }
 
+    ble_hs_lock();
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-if (buf == NULL) {
-    /* Since the data used by buf is needed for adv reattempts,
-     * this data shall stay in the heap and not be freed.
-     */
-    buf = nimble_platform_mem_calloc(BLE_IBEACON_MFG_DATA_SIZE, sizeof(uint8_t));
     if (buf == NULL) {
-        return BLE_HS_ENOMEM;
+        /* Since the data used by buf is needed for adv reattempts,
+         * this data shall stay in the heap and not be freed.
+         */
+        buf = nimble_platform_mem_calloc(BLE_IBEACON_MFG_DATA_SIZE, sizeof(uint8_t));
+        if (buf == NULL) {
+            ble_hs_unlock();
+            return BLE_HS_ENOMEM;
+        }
     }
-}
 #endif
 
     /** Company identifier (Apple). */
@@ -106,5 +109,6 @@ if (buf == NULL) {
                    BLE_HS_ADV_F_BREDR_UNSUP;
 
     rc = ble_gap_adv_set_fields(&fields);
+    ble_hs_unlock();
     return rc;
 }

@@ -101,7 +101,7 @@ ble_npl_mutex_pend(struct ble_npl_mutex *mu, ble_npl_time_t timeout)
 ble_npl_error_t
 ble_npl_mutex_release(struct ble_npl_mutex *mu)
 {
-    return BLE_NPL_ENOENT;
+    return BLE_NPL_OK;
 }
 
 ble_npl_error_t
@@ -128,10 +128,11 @@ ble_npl_sem_get_count(struct ble_npl_sem *sem)
     return 0;
 }
 
-void
+int
 ble_npl_callout_init(struct ble_npl_callout *c, struct ble_npl_eventq *evq,
                      ble_npl_event_fn *ev_cb, void *ev_arg)
 {
+    return 0;
 }
 
 ble_npl_error_t
@@ -167,7 +168,8 @@ ble_npl_time_get(void)
 ble_npl_error_t
 ble_npl_time_ms_to_ticks(uint32_t ms, ble_npl_time_t *out_ticks)
 {
-    return BLE_NPL_ENOENT;
+    *out_ticks = ms;
+    return 0;
 }
 
 ble_npl_error_t

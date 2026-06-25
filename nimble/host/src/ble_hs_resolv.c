@@ -367,6 +367,7 @@ ble_rpa_resolv_add_peer_rec(uint8_t *peer_addr)
     p_dev_rec = &peer_dev_rec[ble_store_num_peer_dev_rec];
 
     p_dev_rec->rec_used = 1;
+    p_dev_rec->rand_addr_type = BLE_ADDR_RANDOM;
     memcpy(p_dev_rec->pseudo_addr, peer_addr, BLE_DEV_ADDR_LEN);
     memcpy(p_dev_rec->rand_addr, peer_addr, BLE_DEV_ADDR_LEN);
     memcpy(p_dev_rec->identity_addr, peer_addr, BLE_DEV_ADDR_LEN);
@@ -525,9 +526,9 @@ ble_hs_rand_prand_get(uint8_t *prand)
 {
     uint16_t sum;
     int rc;
-    int retry = 100;
+    int i;
 
-    while (retry--) {
+    for (i = 0; i < 100; i++) {
         /* Get 24 bits of random data */
         rc = ble_hs_hci_util_rand(prand, 3);
         if (rc != 0) {
@@ -537,20 +538,15 @@ ble_hs_rand_prand_get(uint8_t *prand)
         /* Prand cannot be all zeros or 1's. */
         sum = prand[0] + prand[1] + prand[2];
         if ((sum != 0) && (sum != (3 * 0xff))) {
-            break;
+            /* Upper two bits must be 01 */
+            prand[2] &= ~0xc0;
+            prand[2] |= 0x40;
+            return 0;
         }
     }
 
-    if (retry <= 0) {
-        BLE_HS_LOG(ERROR, "Failed to generate random prand\n");
-        return BLE_HS_ETIMEOUT;
-    }
-
-    /* Upper two bits must be 01 */
-    prand[2] &= ~0xc0;
-    prand[2] |= 0x40;
-
-    return 0;
+    BLE_HS_LOG(ERROR, "Failed to generate random prand\n");
+    return BLE_HS_ETIMEOUT;
 }
 
 static bool
@@ -674,9 +670,9 @@ ble_hs_get_rpa_local(void)
 static void
 ble_hs_resolv_rpa_timer_cb(struct ble_npl_event *ev)
 {
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_resolv_ctx == NULL) {
         rc = ble_hs_resolv_ctx_ensure_init();
         if (rc != 0) {
@@ -689,7 +685,10 @@ ble_hs_resolv_rpa_timer_cb(struct ble_npl_event *ev)
         BLE_HS_LOG(DEBUG, "RPA/NRPA Timeout; start active adv & scan with new Private address \n");
         ble_gap_preempt();
         /* Generate local private address */
-        ble_hs_gen_own_private_rnd();
+        rc = ble_hs_gen_own_private_rnd();
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "RPA/NRPA generation failed; rc=%d\n", rc);
+        }
         ble_npl_callout_reset(&g_ble_hs_resolv_data.rpa_timer,
                               (int32_t)g_ble_hs_resolv_data.rpa_tmo);
         ble_gap_preempt_done();
@@ -717,7 +716,9 @@ ble_hs_is_on_resolv_list(uint8_t *addr, uint8_t addr_type)
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];
 
     for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
-        if ((!memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN)) || (!memcmp(rl->rl_peer_rpa, addr, BLE_DEV_ADDR_LEN))) {
+        if (rl->rl_addr_type == addr_type &&
+            ((!memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN)) ||
+             (!memcmp(rl->rl_peer_rpa, addr, BLE_DEV_ADDR_LEN)))) {
             return i;
         }
         ++rl;
@@ -871,17 +872,17 @@ ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
     if (position) {
         memmove(&g_ble_hs_resolv_list[position],
                 &g_ble_hs_resolv_list[position + 1],
-                (g_ble_hs_resolv_data.rl_cnt - position) * sizeof (struct
+                (g_ble_hs_resolv_data.rl_cnt - position - 1) * sizeof (struct
                         ble_hs_resolv_entry));
         --g_ble_hs_resolv_data.rl_cnt;
 
         rc = 0;
     }
 
-    /* As we are removing the RL record, it is needed to change
-     * peer_address to its latest received OTA address, this helps when existing bond at
-     * peer side is removed */
-    ble_rpa_replace_id_with_rand_addr(&addr_type, ident_addr);
+    /* Only replace identity addr with RPA if the entry was actually removed */
+    if (rc == 0) {
+        ble_rpa_replace_id_with_rand_addr(&addr_type, ident_addr);
+    }
 #endif
 
     return rc;
@@ -1078,7 +1079,6 @@ ble_hs_resolv_rpa_addr(uint8_t *addr, uint8_t addr_type) {
     for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
         if(ble_hs_resolv_rpa(addr, rl->rl_peer_irk) == 0) {
             memcpy(g_ble_hs_resolv_list[i].rl_peer_rpa, addr, BLE_DEV_ADDR_LEN);
-            g_ble_hs_resolv_list[i].rl_addr_type = addr_type;
             return rl;
         }
 

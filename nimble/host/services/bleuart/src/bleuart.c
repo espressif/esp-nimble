@@ -147,13 +147,21 @@ bleuart_uart_read(void)
 
     off = 0;
     while (1) {
-        rc = console_read(console_buf + off,
-                          MYNEWT_VAL(BLEUART_MAX_INPUT) - off, &full_line);
-        if (rc <= 0 && !full_line) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
+        if (off >= MYNEWT_VAL(BLEUART_MAX_INPUT)) {
+            full_line = 1;
+        } else {
+            rc = console_read(console_buf + off,
+                              MYNEWT_VAL(BLEUART_MAX_INPUT) - off, &full_line);
+            if (rc < 0) {
+                off = 0;
+                break;
+            }
+            if (rc <= 0 && !full_line) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+                continue;
+            }
+            off += rc;
         }
-        off += rc;
         if (!full_line) {
             continue;
         }
@@ -192,10 +200,10 @@ bleuart_init(void)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
-    rc = console_init(bleuart_uart_read);
-    SYSINIT_PANIC_ASSERT(rc == 0);
-
     console_buf = nimble_platform_mem_calloc(1, MYNEWT_VAL(BLEUART_MAX_INPUT));
     SYSINIT_PANIC_ASSERT(console_buf != NULL);
+
+    rc = console_init(bleuart_uart_read);
+    SYSINIT_PANIC_ASSERT(rc == 0);
 }
 #endif

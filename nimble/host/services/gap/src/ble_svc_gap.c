@@ -238,8 +238,8 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
 
     ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, om_len + 1);
     if (!ble_hs_gap_svc_ctx->svc_gap_name) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-        return BLE_HS_ENOMEM;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 #endif
 
@@ -251,8 +251,11 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
 
     ble_svc_gap_name[om_len] = '\0';
 
-    if (ble_svc_gap_chr_changed_cb_fn) {
-        ble_svc_gap_chr_changed_cb_fn(BLE_SVC_GAP_CHR_UUID16_DEVICE_NAME);
+    {
+        ble_svc_gap_chr_changed_fn *cb = ble_svc_gap_chr_changed_cb_fn;
+        if (cb) {
+            cb(BLE_SVC_GAP_CHR_UUID16_DEVICE_NAME);
+        }
     }
 
     return rc;
@@ -292,8 +295,11 @@ ble_svc_gap_appearance_write_access(struct ble_gatt_access_ctxt *ctxt)
 
     ble_svc_gap_appearance = le16toh(ble_svc_gap_appearance);
 
-    if (ble_svc_gap_chr_changed_cb_fn) {
-        ble_svc_gap_chr_changed_cb_fn(BLE_SVC_GAP_CHR_UUID16_APPEARANCE);
+    {
+        ble_svc_gap_chr_changed_fn *cb = ble_svc_gap_chr_changed_cb_fn;
+        if (cb) {
+            cb(BLE_SVC_GAP_CHR_UUID16_APPEARANCE);
+        }
     }
 
     return rc;
@@ -518,6 +524,14 @@ ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv)
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    int rc;
+
+    rc = ble_svc_gap_appearance_init();
+    if (rc != 0) {
+        return rc;
+    }
+#endif
     memcpy(&ble_svc_gap_km.session_key, session_key, BLE_EAD_KEY_SIZE);
     memcpy(&ble_svc_gap_km.iv, iv, BLE_EAD_IV_SIZE);
     ble_gatts_chr_updated(ble_svc_gap_enc_adv_data_handle);
@@ -588,7 +602,7 @@ ble_svc_gap_deinit_name(void)
 void
 ble_svc_gap_init(void)
 {
-#if NIMBLE_BLE_CONNECT
+#if NIMBLE_BLE_CONNECT || MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc;
 #endif
     /* Ensure this function only gets called by sysinit. */

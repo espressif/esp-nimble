@@ -31,7 +31,7 @@ static int
 ble_svc_hr_access(uint16_t conn_handle, uint16_t attr_handle,
                   struct ble_gatt_access_ctxt *ctxt,
                   void *arg);
-static int ble_svc_hr_notify_measurement(void);
+int ble_svc_hr_notify_measurement(void);
 static int
 ble_svc_hr_chr_write(struct os_mbuf *om, uint16_t min_len,
                      uint16_t max_len, void *dst,
@@ -107,7 +107,8 @@ ble_svc_hr_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (uuid16) {
     case BLE_SVC_HR_CHR_UUID16_MEASUREMENT:
-        rc = ble_svc_hr_notify_measurement();
+        rc = os_mbuf_append(ctxt->om, &ble_svc_hr_measurement,
+                            sizeof(ble_svc_hr_measurement));
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
     case BLE_SVC_HR_CHR_UUID16_BODY_SENSOR_LOC:
@@ -122,7 +123,7 @@ ble_svc_hr_access(uint16_t conn_handle, uint16_t attr_handle,
                                       &ble_svc_hr_ctrl_pt,
                                       NULL);
 
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            return rc;
         }
         return BLE_SVC_HS_ERR_CMD_NOT_SUPPORTED;
 
@@ -172,26 +173,34 @@ int
 ble_svc_hr_notify_measurement(void)
 {
     int rc;
+    int first_err = 0;
     struct os_mbuf *txom = NULL;
 
-    for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
+    for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
         if (ble_svc_hr_conn_handle[i] != -1) {
 
             txom = ble_hs_mbuf_from_flat(&ble_svc_hr_measurement,
                                          sizeof(ble_svc_hr_measurement));
             if (!txom) {
                 BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-                return BLE_HS_ENOMEM;
+                if (first_err == 0) {
+                    first_err = BLE_HS_ENOMEM;
+                }
+                continue;
             }
 
             rc = ble_gatts_notify_custom(ble_svc_hr_conn_handle[i],
                                          ble_svc_hr_measurement_val_handle, txom);
             if (rc != 0) {
-                return rc;
+                BLE_HS_LOG(ERROR, "%s conn=%d rc=%d\n", __func__,
+                           ble_svc_hr_conn_handle[i], rc);
+                if (first_err == 0) {
+                    first_err = rc;
+                }
             }
         }
     }
-    return 0;
+    return first_err;
 }
 
 /**

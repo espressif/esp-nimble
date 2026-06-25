@@ -80,7 +80,7 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
     struct ble_hci_le_set_rpa_tmo_cp cmd;
 
     if (timeout == 0 || timeout > BLE_MAX_RPA_TIMEOUT_VAL) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+        return BLE_HS_EINVAL;
     }
 
     cmd.rpa_timeout = htole16(timeout);
@@ -99,9 +99,12 @@ int ble_hs_set_rpa_timeout(uint16_t timeout)
         return BLE_HS_ENOMEM;
     }
 #endif
-    l_rpa_timeout = timeout;
+    int rc = ble_hs_pvcy_set_addr_timeout(timeout);
+    if (rc == 0) {
+        l_rpa_timeout = timeout;
+    }
 
-    return ble_hs_pvcy_set_addr_timeout(l_rpa_timeout);
+    return rc;
 }
 
 uint16_t ble_hs_get_rpa_timeout(void)
@@ -260,6 +263,7 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     memcpy(peer_addr.val, addr, sizeof peer_addr.val);
     rc = ble_hs_pvcy_set_mode(&peer_addr, BLE_GAP_PRIVATE_MODE_DEVICE);
     if (rc != 0) {
+        ble_hs_pvcy_remove_entry(addr_type, addr);
         return rc;
     }
 #endif
@@ -307,6 +311,13 @@ ble_hs_pvcy_add_entry(const uint8_t *addr, uint8_t addr_type,
                       const uint8_t *irk)
 {
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_pvcy_ctx == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     STATS_INC(ble_hs_stats, pvcy_add_entry);
 
@@ -420,8 +431,13 @@ void ble_hs_pvcy_set_default_irk(void)
         }
     }
 
-    void ble_store_config_init(void);
-    ble_store_config_init();
+    /* Only call ble_store_config_init on the first initialization.
+     * Calling it at runtime resets all in-memory bonds/CCCDs.
+     */
+    if (!ble_hs_pvcy_ctx->pvcy_started) {
+        void ble_store_config_init(void);
+        ble_store_config_init();
+    }
 #endif
 
     rc = ble_store_read_local_irk(&key_local_irk, &value_local_irk);
@@ -457,16 +473,18 @@ void ble_hs_pvcy_set_default_irk(void)
     }
 }
 
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void
 ble_hs_pvcy_irk_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_pvcy_ctx) {
         nimble_platform_mem_free(ble_hs_pvcy_ctx);
         ble_hs_pvcy_ctx = NULL;
     }
-}
+#else
+    ble_hs_pvcy_started = 0;
 #endif
+}
 
 int
 ble_hs_pvcy_set_our_irk(const uint8_t *irk)
@@ -574,12 +592,15 @@ ble_hs_pvcy_set_mode(const ble_addr_t *addr, uint8_t priv_mode)
         return BLE_HS_EINVAL;
     }
 
-    if (addr->type > BLE_ADDR_RANDOM) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+    /* Reject address types that are not in the expected set */
+    if (addr->type != BLE_ADDR_PUBLIC && addr->type != BLE_ADDR_RANDOM &&
+        addr->type != BLE_ADDR_PUBLIC_ID && addr->type != BLE_ADDR_RANDOM_ID) {
+        return BLE_HS_EINVAL;
     }
 
     cmd.mode = priv_mode;
-    cmd.peer_id_addr_type = addr->type;
+    /* HCI only accepts public (0) or random (1); map identity types to base */
+    cmd.peer_id_addr_type = addr->type % 2;
     memcpy(cmd.peer_id_addr, addr->val, BLE_DEV_ADDR_LEN);
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
@@ -603,12 +624,23 @@ int
 ble_hs_pvcy_rpa_config(uint8_t enable)
 {
     int rc = 0;
+    bool was_resolv_enabled;
+    bool was_nrpa;
+
+    if (enable != NIMBLE_HOST_DISABLE_PRIVACY &&
+        enable != NIMBLE_HOST_ENABLE_RPA &&
+        enable != NIMBLE_HOST_ENABLE_NRPA) {
+        return BLE_HS_EINVAL;
+    }
 
     if (enable != NIMBLE_HOST_DISABLE_PRIVACY) {
         rc = ble_hs_pvcy_ensure_started();
         if (rc != 0) {
             return rc;
         }
+
+        was_resolv_enabled = is_ble_hs_resolv_enabled();
+        was_nrpa = was_resolv_enabled && !ble_host_rpa_enabled();
 
         ble_hs_resolv_enable(true);
 
@@ -621,6 +653,16 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
 
         /* Generate local RPA address and set it in controller */
         rc = ble_hs_gen_own_private_rnd();
+        if (rc != 0) {
+            if (!was_resolv_enabled) {
+                ble_hs_resolv_enable(false);
+            }
+            if (was_nrpa) {
+                ble_hs_resolv_nrpa_enable();
+            } else {
+                ble_hs_resolv_nrpa_disable();
+            }
+        }
     } else {
         ble_hs_resolv_enable(false);
     }

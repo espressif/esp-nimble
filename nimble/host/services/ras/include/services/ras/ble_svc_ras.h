@@ -173,6 +173,18 @@ struct ranging_buffer {
     /** Index for tracking the current write position in subevent data. */
     uint16_t subevent_cursor;
 
+    /** Offset of the most recently written subevent_header within the
+     *  subevents array. Used to update num_steps_reported when a
+     *  RESULT_CONTINUE event appends additional steps to the same subevent. */
+    uint16_t last_subevent_hdr_offset;
+
+    /** True only when last_subevent_hdr_offset points to a successfully written
+     *  subevent header for the current subevent. Reset to false at the start of
+     *  every RESULT event (before the overflow check) so that a RESULT_CONTINUE
+     *  arriving after a failed/overflow RESULT does not corrupt the previous
+     *  subevent's header via a stale offset. */
+    bool last_subevent_hdr_valid;
+
     /** Reference count to ensure safe access and prevent premature reuse. */
     uint8_t refcount;
 
@@ -227,6 +239,7 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent);
 void ble_gatts_indicate_control_point_response(uint16_t attr_handle , uint16_t ranging_counter);
 struct ranging_buffer *ranging_buffer_alloc(uint16_t conn_handle , uint16_t ranging_counter);
 void ble_svc_ras_init(void);
+void ble_svc_ras_deinit(void);
 
 
 #endif

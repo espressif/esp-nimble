@@ -115,7 +115,7 @@ static const struct ble_gatt_svc_def ble_svc_htp_defs[] = {
                 {
                     {
                         .uuid = BLE_UUID16_DECLARE(BLE_SVC_HTP_DSC_UUID16_VALID_RANGE),
-                        .att_flags = BLE_ATT_F_READ | BLE_ATT_F_WRITE,
+                        .att_flags = BLE_ATT_F_READ,
                         .access_cb = ble_svc_htp_access,
                     }, {
                         0,
@@ -166,7 +166,7 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
 
     case BLE_SVC_HTP_CHR_UUID16_MEASUREMENT_ITVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            rc = ble_svc_htp_chr_write(ctxt->om, 0, sizeof(ble_svc_htp_temp_msr_itvl),
+            rc = ble_svc_htp_chr_write(ctxt->om, sizeof(ble_svc_htp_temp_msr_itvl), sizeof(ble_svc_htp_temp_msr_itvl),
                                        &ble_svc_htp_temp_msr_itvl,
                                        NULL);
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -178,8 +178,16 @@ ble_svc_htp_access(uint16_t conn_handle, uint16_t attr_handle,
             return BLE_SVC_HS_ERR_OUT_OF_RANGE;
         }
 
+    case BLE_SVC_HTP_DSC_UUID16_VALID_RANGE:
+        /* Valid Range descriptor is read-only; minimum and maximum interval values */
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_DSC) {
+            static const uint16_t valid_range[2] = {1, 65535};
+            rc = os_mbuf_append(ctxt->om, valid_range, sizeof(valid_range));
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+
     default:
-        assert(0);
         return BLE_ATT_ERR_UNLIKELY;
     }
 }
@@ -214,6 +222,9 @@ ble_svc_htp_is_subscribed(uint16_t conn_handle, int chr)
 #endif
 
     if (conn_handle > MYNEWT_VAL(BLE_MAX_CONNECTIONS)) {
+        return false;
+    }
+    if (chr < 0 || chr >= 3) {
         return false;
     }
     return conn_chr_subs[conn_handle].chr_subs[chr];
@@ -276,7 +287,7 @@ ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit)
 
     txom = ble_hs_mbuf_from_flat(&flags, sizeof(flags));
     if (!txom) {
-        return ESP_FAIL;
+        return BLE_HS_ENOMEM;
     }
 
     rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));
@@ -323,7 +334,7 @@ ble_svc_htp_indicate(uint16_t conn_handle, float temp, bool temp_unit)
 
     txom = ble_hs_mbuf_from_flat(&flags, sizeof(flags));
     if (!txom) {
-        return ESP_FAIL;
+        return BLE_HS_ENOMEM;
     }
 
     rc = os_mbuf_copyinto(txom, sizeof(flags), &temp, sizeof(temp));

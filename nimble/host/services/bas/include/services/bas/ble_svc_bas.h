@@ -31,6 +31,7 @@ extern "C" {
 #define BLE_SVC_BAS_CHR_UUID16_BATTERY_LEVEL                 0x2A19
 
 int ble_svc_bas_battery_level_set(uint8_t level);
+uint8_t ble_svc_bas_battery_level_get(void);
 
 void ble_svc_bas_init(void);
 void ble_svc_bas_deinit(void);

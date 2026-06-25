@@ -80,7 +80,7 @@ static void
 ble_store_ram_print_value_sec(const struct ble_store_value_sec *sec)
 {
     if (sec->ltk_present) {
-        BLE_HS_LOG(DEBUG, "ediv=%u rand=%llu authenticated=%d ltk=",
+        BLE_HS_LOG(DEBUG, "ediv=%u rand=%" PRIu64 " authenticated=%d ltk=",
                        sec->ediv, sec->rand_num, sec->authenticated);
         ble_hs_log_flat_buf(sec->ltk, 16);
         BLE_HS_LOG(DEBUG, " ");
@@ -124,12 +124,18 @@ ble_store_ram_find_sec(const struct ble_store_key_sec *key_sec,
         if (key_sec->idx < num_value_secs) {
             return key_sec->idx;
         }
-    } else if (key_sec->idx == 0) {
+    } else {
+        int skipped;
+
+        skipped = 0;
         for (i = 0; i < num_value_secs; i++) {
             cur = &value_secs[i];
 
             if (!ble_addr_cmp(&cur->peer_addr, &key_sec->peer_addr)) {
-                return i;
+                if (skipped == key_sec->idx) {
+                    return i;
+                }
+                skipped++;
             }
         }
     }
@@ -165,6 +171,10 @@ ble_store_ram_write_our_sec(const struct ble_store_value_sec *value_sec)
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     struct ble_store_key_sec key_sec;
     int idx;
+
+    if (ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY) == 0) {
+        return BLE_HS_EINVAL;
+    }
 
     BLE_HS_LOG(DEBUG, "persisting our sec; ");
     ble_store_ram_print_value_sec(value_sec);
@@ -212,6 +222,10 @@ ble_store_ram_delete_obj(void *values, int value_size, int idx,
         move_count = *num_values - idx;
         memmove(dst, src, (size_t)move_count * value_size);
     }
+
+    /* Zero the now-unused slot at the end to prevent stale key data in RAM */
+    dst = (uint8_t *)values + (*num_values) * value_size;
+    memset(dst, 0, value_size);
 
     return 0;
 }
@@ -304,6 +318,10 @@ ble_store_ram_write_peer_sec(const struct ble_store_value_sec *value_sec)
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     struct ble_store_key_sec key_sec;
     int idx;
+
+    if (ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY) == 0) {
+        return BLE_HS_EINVAL;
+    }
 
     BLE_HS_LOG(DEBUG, "persisting peer sec; ");
     ble_store_ram_print_value_sec(value_sec);
@@ -529,7 +547,7 @@ static int
 ble_store_ram_write_csfc(const struct ble_store_value_csfc *value_csfc)
 {
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
-    struct ble_store_key_csfc key_csfc;
+    struct ble_store_key_csfc key_csfc = {0};
     int idx;
 
     ble_store_key_from_value_csfc(&key_csfc, value_csfc);
@@ -624,7 +642,7 @@ ble_store_ram_read_ead(const struct ble_store_key_ead *key_ead,
 static int
 ble_store_ram_write_ead(const struct ble_store_value_ead *value_ead)
 {
-    struct ble_store_key_ead key_ead;
+    struct ble_store_key_ead key_ead = {0};
     int idx;
 
     ble_store_key_from_value_ead(&key_ead, value_ead);

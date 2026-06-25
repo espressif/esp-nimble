@@ -18,6 +18,7 @@
  */
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "sysinit/sysinit.h"
@@ -115,7 +116,7 @@ int ble_restore_our_sec_nvs(void)
 
         err = ble_store_config_delete(BLE_STORE_OBJ_TYPE_OUR_SEC, &key);
 
-        if (err != ESP_OK) {
+        if (err != 0) {
             BLE_HS_LOG(DEBUG, "Error deleting from nvs");
             return err;
         }
@@ -128,7 +129,7 @@ int ble_restore_our_sec_nvs(void)
 
         err = ble_store_config_write(BLE_STORE_OBJ_TYPE_OUR_SEC, &val);
 
-        if (err != ESP_OK) {
+        if (err != 0) {
             BLE_HS_LOG(DEBUG, "Error writing to nvs");
             return err;
         }
@@ -164,7 +165,7 @@ int ble_restore_peer_sec_nvs(void)
 
         err = ble_store_config_delete(BLE_STORE_OBJ_TYPE_PEER_SEC, &key);
 
-        if (err != ESP_OK) {
+        if (err != 0) {
             BLE_HS_LOG(DEBUG, "Error deleting from nvs %d ",err);
             return err;
         }
@@ -176,7 +177,7 @@ int ble_restore_peer_sec_nvs(void)
 
         err = ble_store_config_write(BLE_STORE_OBJ_TYPE_PEER_SEC, &val);
 
-        if (err != ESP_OK) {
+        if (err != 0) {
             BLE_HS_LOG(DEBUG, "Error writing to nvs %d ",err);
             return err;
         }
@@ -640,6 +641,7 @@ ble_store_config_find_ead(const struct ble_store_key_ead *key)
 static int
 ble_store_config_delete_ead(const struct ble_store_key_ead *key_ead)
 {
+    struct ble_store_value_ead backup;
     int idx;
     int rc;
 
@@ -647,6 +649,8 @@ ble_store_config_delete_ead(const struct ble_store_key_ead *key_ead)
     if (idx == -1) {
         return BLE_HS_ENOENT;
     }
+
+    backup = ble_store_config_eads[idx];
 
     rc = ble_store_config_delete_obj(ble_store_config_eads,
                                      sizeof *ble_store_config_eads,
@@ -658,6 +662,12 @@ ble_store_config_delete_ead(const struct ble_store_key_ead *key_ead)
 
     rc = ble_store_config_persist_eads();
     if (rc != 0) {
+        /* Restore the deleted entry to keep RAM consistent with storage */
+        memmove(&ble_store_config_eads[idx + 1],
+                &ble_store_config_eads[idx],
+                (ble_store_config_num_eads - idx) * sizeof(*ble_store_config_eads));
+        ble_store_config_eads[idx] = backup;
+        ble_store_config_num_eads++;
         return rc;
     }
 
@@ -685,11 +695,13 @@ ble_store_config_write_ead(const struct ble_store_value_ead *value_ead)
     struct ble_store_key_ead key_ead;
     int idx;
     int rc;
+    bool is_new;
 
     ble_store_key_from_value_ead(&key_ead, value_ead);
     idx = ble_store_config_find_ead(&key_ead);
+    is_new = (idx == -1);
 
-    if (idx == -1) {
+    if (is_new) {
         if (ble_store_config_num_eads >= MYNEWT_VAL(BLE_STORE_MAX_EADS)) {
             BLE_HS_LOG(DEBUG, "error persisting ead; too many entries (%d)\n",
                        ble_store_config_num_eads);
@@ -705,6 +717,9 @@ ble_store_config_write_ead(const struct ble_store_value_ead *value_ead)
 
     rc = ble_store_config_persist_eads();
     if (rc != 0) {
+        if (is_new) {
+            ble_store_config_num_eads--;
+        }
         return rc;
     }
 
@@ -852,9 +867,11 @@ ble_store_config_find_rpa_rec(const struct ble_store_key_rpa_rec *key)
     for(i = 0; i < ble_store_config_num_rpa_recs; i++){
         rpa_rec = ble_store_config_rpa_recs + i;
 
-        if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr) &&
-            ble_addr_cmp(&rpa_rec->peer_addr, &key->peer_rpa_addr)) {
-            continue;
+        if (ble_addr_cmp(&key->peer_rpa_addr, BLE_ADDR_ANY)) {
+            if (ble_addr_cmp(&rpa_rec->peer_rpa_addr, &key->peer_rpa_addr) &&
+                ble_addr_cmp(&rpa_rec->peer_addr, &key->peer_rpa_addr)) {
+                continue;
+            }
         }
         if (key->idx > skipped) {
             skipped++;
@@ -961,9 +978,14 @@ ble_store_config_find_csfc(const struct ble_store_key_csfc *key,
 
     /* If peer_addr is specified, search by peer_addr (common for write/read/delete) */
     if (ble_addr_cmp(&key->peer_addr, BLE_ADDR_ANY)) {
+        int skipped = 0;
         for (i = 0; i < num_value_csfc; i++) {
             cur = &value_csfc[i];
             if (!ble_addr_cmp(&cur->peer_addr, &key->peer_addr)) {
+                if (skipped < key->idx) {
+                    skipped++;
+                    continue;
+                }
                 return i;
             }
         }
@@ -1258,5 +1280,8 @@ ble_store_config_deinit(void)
         nimble_platform_mem_free(ble_store_config_vars);
         ble_store_config_vars = NULL;
     }
+    ble_hs_cfg.store_read_cb = NULL;
+    ble_hs_cfg.store_write_cb = NULL;
+    ble_hs_cfg.store_delete_cb = NULL;
 }
 #endif

@@ -117,14 +117,14 @@ ble_l2cap_chan_free(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan)
 
     ble_l2cap_coc_cleanup_chan(conn, chan);
 
-#if MYNEWT_VAL(BLE_HS_DEBUG)
-    memset(chan, 0xff, sizeof *chan);
-#endif
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_l2cap_ctx == NULL) {
         return;
     }
+#endif
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    memset(chan, 0xff, sizeof *chan);
 #endif
     rc = os_memblock_put(&ble_l2cap_chan_pool, chan);
 
@@ -241,9 +241,18 @@ ble_l2cap_reconfig(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t new_mtu
         return BLE_HS_EINVAL;
     }
 
+    if (chans[0] == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     conn_handle = chans[0]->conn_handle;
 
     for (i = 1; i < num; i++) {
+        if (chans[i] == NULL) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
         if (conn_handle != chans[i]->conn_handle) {
             BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
             return BLE_HS_EINVAL;
@@ -582,11 +591,16 @@ ble_l2cap_init(void)
     return 0;
 done:
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_l2cap_sig_deinit();
+    ble_l2cap_coc_deinit();
+    ble_sm_deinit();
+
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     nimble_platform_mem_free(ble_l2cap_chan_mem);
     ble_l2cap_chan_mem = NULL;
 #endif
     os_mempool_unregister(&ble_l2cap_chan_pool);
+    memset(&ble_l2cap_chan_pool, 0, sizeof(ble_l2cap_chan_pool));
     nimble_platform_mem_free(ble_l2cap_ctx);
     ble_l2cap_ctx = NULL;
 #endif

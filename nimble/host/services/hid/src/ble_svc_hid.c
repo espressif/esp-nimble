@@ -300,6 +300,10 @@ fill_boot_mouse_inp(uint8_t instance)
         return;
     }
 
+    if (hid_instances[instance].mouse_inp_rpt_len == 0) {
+        hid_instances[instance].mouse_inp_rpt_len = 3;
+    }
+
     write_flags = BLE_GATT_CHR_F_WRITE |
 #if MYNEWT_VAL(BLE_SM_LVL) == 2
                   BLE_GATT_CHR_F_WRITE_ENC |
@@ -538,7 +542,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
     uint16_t out_rpt_len = 0;
     uint8_t instances = get_curr_svc_idx();
     uint16_t handle;
-    uint8_t val;
+    uint8_t val = 0xFF;
 
     for (int instance = 0; instance < instances; instance++) {
         switch (uuid16) {
@@ -597,7 +601,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                         s_char_write_cb) {
                     s_char_write_cb(attr_handle, BLE_SVC_HID_CHR_UUID16_HID_CTRL_PT, hid_instances[instance].ctrl_pt);
                 }
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return rc;
             }
             return BLE_ATT_ERR_UNLIKELY;
 
@@ -619,7 +623,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                                       &hid_instances[instance].kbd_out_rpt,
                                       out_rpt_len);
                 }
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return rc;
             }
             return 0;
         case BLE_SVC_HID_CHR_UUID16_BOOT_KBD_INP:
@@ -636,7 +640,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 if (ctxt->chr->flags & BLE_GATT_CHR_F_NOTIFY) {
                     ble_gatts_chr_updated(*(ctxt->chr->val_handle));
                 }
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return rc;
             }
             return 0;
         case BLE_SVC_HID_CHR_UUID16_BOOT_MOUSE_INP:
@@ -681,7 +685,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                             s_char_write_cb) {
                         s_char_write_cb(attr_handle, BLE_SVC_HID_CHR_UUID16_PROTOCOL_MODE, hid_instances[instance].proto_mode);
                     }
-                    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                    return rc;
                 }
                 return BLE_ATT_ERR_UNLIKELY;
             }
@@ -709,7 +713,7 @@ ble_svc_hid_access(uint16_t conn_handle, uint16_t attr_handle,
                 if (ctxt->chr->flags & BLE_GATT_CHR_F_NOTIFY) {
                     ble_gatts_chr_updated(*(ctxt->chr->val_handle));
                 }
-                return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+                return rc;
             }
             return 0;
 
@@ -861,6 +865,7 @@ ble_svc_hid_reset(void)
 void
 ble_svc_hid_deinit(void)
 {
+    ble_svc_hid_reset();
     ble_gatts_free_svcs();
 }
 

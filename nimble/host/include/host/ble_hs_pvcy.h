@@ -68,7 +68,9 @@ int ble_hs_pvcy_rpa_config(uint8_t enable);
 void ble_hs_resolv_deinit(void);
 #endif
 
+#if (!MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
 int ble_hs_pvcy_set_resolve_enabled(int enable);
+#endif
 int ble_hs_set_rpa_timeout(uint16_t timeout);
 
 #ifdef __cplusplus

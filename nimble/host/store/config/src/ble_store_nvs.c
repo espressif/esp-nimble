@@ -159,7 +159,10 @@ get_nvs_peer_record(char *key_string, struct ble_hs_dev_records *p_dev_rec)
     size_t required_size = 0;
     nvs_handle_t nimble_handle;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READONLY, &nimble_handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_ERR_NVS_NOT_FOUND;
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open operation failed");
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
@@ -221,7 +224,10 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
     size_t expected_size;
     nvs_handle_t nimble_handle;
 
-    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READONLY, &nimble_handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_ERR_NVS_NOT_FOUND;
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "NVS open operation failed");
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
@@ -450,6 +456,10 @@ ble_nvs_write_key_value(char *key, const void *value, size_t required_size)
     return 0;
 error:
     nvs_close(nimble_handle);
+    if (err == ESP_ERR_NVS_NOT_ENOUGH_SPACE || err == ESP_ERR_NVS_NO_FREE_PAGES) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_CAP);
+        return BLE_HS_ESTORE_CAP;
+    }
     BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
     return BLE_HS_ESTORE_FAIL;
 }
@@ -1063,17 +1073,22 @@ int ble_store_persist_peer_records(void)
         peer_rec = peer_dev_rec[ble_store_num_peer_dev_rec - 1];
         return ble_store_nvs_peer_records(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, &peer_rec);
     } else if (nvs_count > ble_store_num_peer_dev_rec) {
-        /* NVS db count more than RAM count, delete operation */
-        nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, 0,
-                                       peer_dev_rec,
-                                       ble_store_num_peer_dev_rec);
-        if (nvs_idx == -1) {
-            ESP_LOGE(TAG, "NVS delete operation failed for peer records");
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
-            return BLE_HS_ESTORE_FAIL;
+        /* NVS db count more than RAM count, delete all non-matching records */
+        while (nvs_count > ble_store_num_peer_dev_rec) {
+            nvs_idx = get_nvs_db_attribute(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, 0,
+                                           peer_dev_rec,
+                                           ble_store_num_peer_dev_rec);
+            if (nvs_idx == -1) {
+                ESP_LOGE(TAG, "NVS delete operation failed for peer records");
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ESTORE_FAIL);
+                return BLE_HS_ESTORE_FAIL;
+            }
+            ESP_LOGD(TAG, "Deleting peer record, nvs idx = %d", nvs_idx);
+            if (ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, nvs_idx) != 0) {
+                return BLE_HS_ESTORE_FAIL;
+            }
+            nvs_count--;
         }
-        ESP_LOGD(TAG, "Deleting peer record, nvs idx = %d", nvs_idx);
-        return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_DEV_REC, nvs_idx);
     }
     return 0;
 }

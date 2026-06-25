@@ -134,6 +134,10 @@ ble_svc_bas_battery_level_set(uint8_t level)
 void
 ble_svc_bas_deinit(void)
 {
+    ble_svc_bas_battery_level = 0;
+#if MYNEWT_VAL(BLE_SVC_BAS_BATTERY_LEVEL_NOTIFY_ENABLE) > 0
+    ble_svc_bas_battery_handle = 0;
+#endif
     ble_gatts_free_svcs();
 }
 

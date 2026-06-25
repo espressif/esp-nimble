@@ -550,6 +550,16 @@ ble_att_rx_handle_unknown_request(uint8_t op, uint16_t conn_handle,
         return;
     }
 #if MYNEWT_VAL(BLE_GATTS)
+    /*
+     * Responses and notifications have bit 0 set (includes Handle Value
+     * Indication 0x1D). Handle Value Confirmation (0x1E) has bit 0 clear.
+     */
+    if ((op & 0x01) || op == BLE_ATT_OP_INDICATE_RSP) {
+        os_mbuf_free_chain(*om);
+        *om = NULL;
+        return;
+    }
+
     os_mbuf_adj(*om, OS_MBUF_PKTLEN(*om));
     ble_att_svr_tx_error_rsp(conn_handle, cid, *om, op, 0,
                              BLE_ATT_ERR_REQ_NOT_SUPPORTED);
@@ -690,10 +700,6 @@ process_att_normally:
         return BLE_HS_EMSGSIZE;
     }
 
-    if (cid == BLE_L2CAP_CID_ATT && ble_att_is_response_op(op)) {
-        ble_att_send_outstanding_after_response(conn_handle);
-    }
-
     entry = ble_att_rx_dispatch_entry_find(op);
     if (entry == NULL) {
         BLE_HS_LOG(INFO, "ATT handler not found; op=0x%02x conn_handle=0x%04x "
@@ -708,6 +714,9 @@ process_att_normally:
     os_mbuf_adj(*om, 1);
 
     rc = entry->bde_fn(conn_handle, cid, om);
+    if (cid == BLE_L2CAP_CID_ATT && ble_att_is_response_op(op)) {
+        ble_att_send_outstanding_after_response(conn_handle);
+    }
     if (rc != 0) {
         if (rc == BLE_HS_ENOTSUP) {
             ble_att_rx_handle_unknown_request(op, conn_handle, cid, om);
@@ -760,10 +769,10 @@ ble_att_set_preferred_mtu(uint16_t mtu)
         return BLE_HS_EINVAL;
     }
 
-    ble_att_preferred_mtu_val = mtu;
-
     /* Set my_mtu for established connections that haven't exchanged. */
     ble_hs_lock();
+
+    ble_att_preferred_mtu_val = mtu;
 
     i = 0;
     while ((conn = ble_hs_conn_find_by_idx(i)) != NULL) {

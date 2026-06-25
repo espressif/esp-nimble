@@ -92,6 +92,9 @@ static void ranging_buffer_init(uint16_t conn_handle, struct ranging_buffer *buf
     buf->isbusy = true;
     buf->isacked = false;
     buf->subevent_cursor = 0;
+    buf->last_subevent_hdr_offset = 0;
+    buf->last_subevent_hdr_valid = false;
+    memset(&buf->ranging_data, 0, sizeof(buf->ranging_data));
 }
 
 static void reset_ranging_buffer(void)
@@ -104,6 +107,8 @@ static void reset_ranging_buffer(void)
         ranging_buffers[i].isbusy = false;
         ranging_buffers[i].isacked = false;
         ranging_buffers[i].subevent_cursor = 0;
+        ranging_buffers[i].last_subevent_hdr_offset = 0;
+        ranging_buffers[i].last_subevent_hdr_valid = false;
     }
 }
 
@@ -113,9 +118,10 @@ ble_svc_ras_ensure_ctx_init()
 {
     if (ble_svc_ras_ctx == NULL) {
         ble_svc_ras_ctx = nimble_platform_mem_calloc(1, sizeof(ble_svc_ras_ctx_t));
+        if (ble_svc_ras_ctx != NULL) {
+            reset_ranging_buffer();
+        }
     }
-
-    reset_ranging_buffer();
 }
 
 void
@@ -377,9 +383,11 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         sizeof(ble_svc_ras_rt_rd_val),
                         sizeof(ble_svc_ras_rt_rd_val),
                         &ble_svc_ras_rt_rd_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             } else if (attr_handle == ble_svc_ras_od_rd_val_handle) {
                 /* Ensure the buffer is allocated before writing to it */
@@ -420,10 +428,23 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         ble_svc_ras_od_rd_val = NULL;
                         ble_svc_ras_od_rd_seg_len = 0;
                     }
-                    /* Reset the ranging buffers */
+                    /* Reset the ranging buffer for this connection */
+                    for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
+                        if (ranging_buffers[i].conn == (int)conn_handle) {
+                            ranging_buffers[i].conn = -1;
+                            ranging_buffers[i].ranging_counter = 0;
+                            ranging_buffers[i].isready = false;
+                            ranging_buffers[i].isbusy = false;
+                            ranging_buffers[i].isacked = false;
+                            ranging_buffers[i].subevent_cursor = 0;
+                            ranging_buffers[i].last_subevent_hdr_offset = 0;
+                            ranging_buffers[i].last_subevent_hdr_valid = false;
+                        }
+                    }
                     ble_svc_ras_cp_val[0]= 0x02;
                     /*Table 3.12. Response Code Values associated with Op Code 0x02*/
                     ble_svc_ras_cp_val[1]=0x01; // Success
+                    ble_svc_ras_cp_val[2]=0x01; // Response value: Success
                     ble_gatts_chr_updated(ble_svc_ras_cp_val_handle);
                     MODLOG_DFLT(INFO, "Successfully completed the Ranging procedure\n");
 
@@ -440,18 +461,22 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         sizeof(ble_svc_ras_rd_val),
                         sizeof(ble_svc_ras_rd_val),
                         &ble_svc_ras_rd_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             } else if (attr_handle == ble_svc_ras_rd_ov_val_handle) {
                 rc = gatt_svr_write(ctxt->om,
                         sizeof(ble_svc_ras_rd_ov_val),
                         sizeof(ble_svc_ras_rd_ov_val),
                         &ble_svc_ras_rd_ov_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             }
 
@@ -472,6 +497,48 @@ unknown:
 
 void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     struct ranging_buffer *buf = NULL;
+    uint16_t conn_handle;
+    uint16_t procedure_counter;
+    uint8_t config_id;
+    uint8_t procedure_done_status;
+    uint8_t subevent_done_status;
+    uint8_t abort_reason;
+    uint8_t num_antenna_paths;
+    uint8_t num_steps_reported;
+    const struct cs_steps_data *steps;
+    uint16_t start_acl_conn_event_counter = 0;
+    uint16_t frequency_compensation = 0;
+    uint8_t reference_power_level = 0;
+
+    /* Extract fields from the correct union member based on event type */
+    if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT) {
+        conn_handle = ranging_subevent.subev_result.conn_handle;
+        procedure_counter = ranging_subevent.subev_result.procedure_counter;
+        config_id = ranging_subevent.subev_result.config_id;
+        procedure_done_status = ranging_subevent.subev_result.procedure_done_status;
+        subevent_done_status = ranging_subevent.subev_result.subevent_done_status;
+        abort_reason = ranging_subevent.subev_result.abort_reason;
+        num_antenna_paths = ranging_subevent.subev_result.num_antenna_paths;
+        num_steps_reported = ranging_subevent.subev_result.num_steps_reported;
+        steps = ranging_subevent.subev_result.steps;
+        start_acl_conn_event_counter = ranging_subevent.subev_result.start_acl_conn_event_counter;
+        frequency_compensation = ranging_subevent.subev_result.frequency_compensation;
+        reference_power_level = ranging_subevent.subev_result.reference_power_level;
+    } else if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT_CONTINUE) {
+        conn_handle = ranging_subevent.subev_result_continue.conn_handle;
+        /* subev_result_continue has no procedure_counter; reuse conn to find buf */
+        procedure_counter = 0;
+        config_id = ranging_subevent.subev_result_continue.config_id;
+        procedure_done_status = ranging_subevent.subev_result_continue.procedure_done_status;
+        subevent_done_status = ranging_subevent.subev_result_continue.subevent_done_status;
+        abort_reason = ranging_subevent.subev_result_continue.abort_reason;
+        num_antenna_paths = ranging_subevent.subev_result_continue.num_antenna_paths;
+        num_steps_reported = ranging_subevent.subev_result_continue.num_steps_reported;
+        steps = ranging_subevent.subev_result_continue.steps;
+    } else {
+        MODLOG_DFLT(ERROR, "Unknown CS event type %d\n", ranging_subevent.type);
+        return;
+    }
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     ble_svc_ras_ensure_ctx_init();
@@ -480,70 +547,162 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     }
 #endif
 
-    /* Check if the subevent is already stored */
-    for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
-        if (ranging_buffers[i].conn == ranging_subevent.subev_result.conn_handle &&
-            ranging_buffers[i].ranging_counter == ranging_subevent.subev_result.procedure_counter) {
-            buf = &ranging_buffers[i];
-            break;
+    /* Find the buffer for this event.
+     * RESULT:          match on conn_handle + ranging_counter (unique per procedure).
+     * RESULT_CONTINUE: procedure_counter not available per BT Core Spec §7.7.65.45;
+     *                  match on conn_handle + config_id. config_id is only 4 bits
+     *                  (0-3), so successive procedures on the same connection share
+     *                  the same config_id. Among all matching buffers pick the one
+     *                  with the highest ranging_counter — that is the most recently
+     *                  started procedure and the correct target for RESULT_CONTINUE. */
+    if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT_CONTINUE) {
+        uint16_t best_counter = 0;
+        bool found = false;
+        for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
+            if (ranging_buffers[i].conn != (int)conn_handle) {
+                continue;
+            }
+            if (ranging_buffers[i].ranging_data.ranging_header.config_id == config_id) {
+                if (!found || ranging_buffers[i].ranging_counter > best_counter) {
+                    buf = &ranging_buffers[i];
+                    best_counter = ranging_buffers[i].ranging_counter;
+                    found = true;
+                }
+            }
+        }
+    } else {
+        for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
+            if (ranging_buffers[i].conn != (int)conn_handle) {
+                continue;
+            }
+            if (ranging_buffers[i].ranging_counter == procedure_counter) {
+                buf = &ranging_buffers[i];
+                break;
+            }
         }
     }
 
     if (buf == NULL) {
-        /* Allocate a new buffer if not found */
-        buf = ranging_buffer_alloc(ranging_subevent.subev_result.conn_handle, ranging_subevent.subev_result.procedure_counter);
+        /* Per BT spec §7.7.65.45, RESULT_CONTINUE shall only follow a prior
+         * RESULT event. Receiving RESULT_CONTINUE without an existing buffer
+         * is a protocol error — reject to avoid producing corrupt data. */
+        if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT_CONTINUE) {
+            MODLOG_DFLT(ERROR, "RESULT_CONTINUE without prior RESULT for conn 0x%04x\n",
+                        conn_handle);
+            return;
+        }
+        buf = ranging_buffer_alloc(conn_handle, procedure_counter);
         if (buf == NULL) {
             MODLOG_DFLT(ERROR,"No available buffer for storing ranging data\n");
             return;
         }
     }
 
-    buf->ranging_data.ranging_header.config_id = ranging_subevent.subev_result.config_id;
-    buf->ranging_data.ranging_header.ranging_counter = ranging_subevent.subev_result.procedure_counter;
-  //  buf->ranging_data.ranging_header.selected_tx_power = ranging_subevent.subev_result.selected_tx_power;
-    /* convert antenna path mask using bitmask */
-    buf->ranging_data.ranging_header.antenna_paths_mask = ranging_subevent.subev_result.num_antenna_paths;
+    /* Only set header fields for initial RESULT event; RESULT_CONTINUE appends
+     * to an existing buffer and must not overwrite the valid ranging_counter. */
+    if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT) {
+        buf->ranging_data.ranging_header.config_id = config_id;
+        buf->ranging_data.ranging_header.ranging_counter = procedure_counter;
+        /* convert antenna path mask using bitmask */
+        buf->ranging_data.ranging_header.antenna_paths_mask = num_antenna_paths;
+    }
 
     uint16_t max_subevent_data = BLE_RAS_PROCEDURE_MEM - sizeof(struct ranging_header);
 
-    if (buf->subevent_cursor + sizeof(struct subevent_header) > max_subevent_data) {
-        MODLOG_DFLT(ERROR, "Ranging buffer overflow on subevent header\n");
+    /* RESULT_CONTINUE appends step data to the same logical subevent; no new
+     * subevent_header is written. Only RESULT events open a new subevent. */
+    if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT) {
+        /* Invalidate the prior subevent's header pointer before the overflow
+         * check. If this RESULT overflows and returns early, any subsequent
+         * RESULT_CONTINUE must not corrupt the previous subevent's header. */
+        buf->last_subevent_hdr_valid = false;
+
+        if (buf->subevent_cursor + sizeof(struct subevent_header) > max_subevent_data) {
+            MODLOG_DFLT(ERROR, "Ranging buffer overflow on subevent header\n");
+            return;
+        }
+
+        /* Save offset so RESULT_CONTINUE can locate and update this header. */
+        buf->last_subevent_hdr_offset = buf->subevent_cursor;
+        buf->last_subevent_hdr_valid = true;
+
+        struct subevent_header *subevent_hdr = (struct subevent_header *)(buf->ranging_data.subevents + buf->subevent_cursor);
+        buf->subevent_cursor += sizeof(struct subevent_header);
+        subevent_hdr->start_acl_conn_event = start_acl_conn_event_counter;
+        subevent_hdr->freq_compensation = frequency_compensation;
+        subevent_hdr->ranging_done_status = procedure_done_status;
+        subevent_hdr->subevent_done_status = subevent_done_status;
+        /* Abort_Reason per BT Core Spec §7.7.65.44: bits 0-3 = procedure abort,
+         * bits 4-7 = subevent abort. Extract each nibble separately. */
+        subevent_hdr->ranging_abort_reason  = abort_reason & 0x0F;
+        subevent_hdr->subevent_abort_reason = (abort_reason >> 4) & 0x0F;
+        subevent_hdr->ref_power_level = reference_power_level;
+        /* num_steps_reported set after the step loop to reflect actual written count. */
+    }
+
+    /* For RESULT_CONTINUE: if the corresponding RESULT event failed (overflow),
+     * last_subevent_hdr_valid is false. Writing step data into the buffer with
+     * no subevent header to account for it produces a corrupt RAS segment.
+     * Reject early, before the loop advances subevent_cursor. */
+    if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT_CONTINUE &&
+            !buf->last_subevent_hdr_valid) {
+        MODLOG_DFLT(ERROR, "RESULT_CONTINUE with no valid subevent header; dropping\n");
         return;
     }
 
-    struct subevent_header *subevent_hdr = (struct subevent_header *)(buf->ranging_data.subevents + buf->subevent_cursor);
-    buf->subevent_cursor += sizeof(struct subevent_header);
-    subevent_hdr->start_acl_conn_event = ranging_subevent.subev_result.start_acl_conn_event_counter;
-    subevent_hdr->freq_compensation = ranging_subevent.subev_result.frequency_compensation;
-    subevent_hdr->ranging_done_status = ranging_subevent.subev_result.procedure_done_status;
-    subevent_hdr->subevent_done_status = ranging_subevent.subev_result.subevent_done_status;
-    subevent_hdr->ranging_abort_reason = ranging_subevent.subev_result.abort_reason;
-    subevent_hdr->subevent_abort_reason = ranging_subevent.subev_result.abort_reason;
-    subevent_hdr->ref_power_level = ranging_subevent.subev_result.reference_power_level;
-    subevent_hdr->num_steps_reported = ranging_subevent.subev_result.num_steps_reported;
-
-
-    /* Add step data to buf using manual pointer advancement for flexible array member */
-    const uint8_t *step_ptr = (const uint8_t *)ranging_subevent.subev_result.steps;
-    for (int i = 0; i < ranging_subevent.subev_result.num_steps_reported; i++) {
+    /* Add step data; track actual steps written so the header reflects reality
+     * even if the buffer overflows mid-loop and we return early. */
+    uint8_t steps_written = 0;
+    const uint8_t *step_ptr = (const uint8_t *)steps;
+    for (int i = 0; i < num_steps_reported; i++) {
         const struct cs_steps_data *step = (const struct cs_steps_data *)step_ptr;
 
         if (buf->subevent_cursor + BLE_RAS_STEP_MODE_LEN + step->data_len > max_subevent_data) {
             MODLOG_DFLT(ERROR, "Ranging buffer overflow on step data\n");
-            return;
+            break;
         }
 
         buf->ranging_data.subevents[buf->subevent_cursor] = step->mode;
         buf->subevent_cursor += BLE_RAS_STEP_MODE_LEN;
         memcpy(&buf->ranging_data.subevents[buf->subevent_cursor], step->data, step->data_len);
         buf->subevent_cursor += step->data_len;
-
         step_ptr += sizeof(struct cs_steps_data) + step->data_len;
+        steps_written++;
+    }
+
+    /* Update the subevent header with the count of steps actually written.
+     * For RESULT: correct any pre-set count in case of overflow.
+     * For RESULT_CONTINUE: accumulate only the steps that fit, and overwrite
+     * the status/abort fields with the final values from this last event
+     * (BT Core Spec v6.2 §7.7.65.44 — the Continue event carries the terminal
+     * done/abort status that supersedes the partial status set by RESULT).
+     * Guard with last_subevent_hdr_valid: a RESULT_CONTINUE arriving after an
+     * overflowed RESULT must not corrupt the previous subevent's header. */
+    if (buf->last_subevent_hdr_valid) {
+        struct subevent_header *subevent_hdr =
+            (struct subevent_header *)(buf->ranging_data.subevents +
+                                       buf->last_subevent_hdr_offset);
+        if (ranging_subevent.type == BLE_CS_EVENT_SUBEVET_RESULT) {
+            subevent_hdr->num_steps_reported = steps_written;
+        } else {
+            subevent_hdr->num_steps_reported += steps_written;
+            subevent_hdr->ranging_done_status  = procedure_done_status;
+            subevent_hdr->subevent_done_status = subevent_done_status;
+            subevent_hdr->ranging_abort_reason  = abort_reason & 0x0F;
+            subevent_hdr->subevent_abort_reason = (abort_reason >> 4) & 0x0F;
+        }
     }
     /* Create RAS segment*/
     struct segment *ras_segment;
 
-    uint16_t max_data_len = ble_att_mtu(ranging_subevent.subev_result.conn_handle) - sizeof(struct segment_header) - 4;
+    uint16_t att_mtu = ble_att_mtu(conn_handle);
+    uint16_t overhead = (uint16_t)(sizeof(struct segment_header) + 4);
+    if (att_mtu == 0 || att_mtu <= overhead) {
+        MODLOG_DFLT(INFO, "MTU (%d) too small for RAS segment overhead (%d)\n",
+                    att_mtu, overhead);
+        return;
+    }
+    uint16_t max_data_len = att_mtu - overhead;
     MODLOG_DFLT(INFO, "Max data len : %d\n", max_data_len);
     ras_segment= nimble_platform_mem_calloc(1,sizeof(struct segment)+ max_data_len);
     if (ras_segment == NULL) {
@@ -620,5 +779,21 @@ ble_svc_ras_init(void) {
 
     reset_ranging_buffer();
 
+}
+
+void
+ble_svc_ras_deinit(void)
+{
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_ras_od_rd_val != NULL) {
+        nimble_platform_mem_free(ble_svc_ras_od_rd_val);
+        ble_svc_ras_od_rd_val = NULL;
+    }
+    ble_svc_ras_od_rd_seg_len = 0;
+#else
+    /* ble_svc_ras_ctx_deinit handles NULL check, frees inner buffer,
+     * frees ctx itself, and sets ble_svc_ras_ctx = NULL. */
+    ble_svc_ras_ctx_deinit();
+#endif
 }
 #endif

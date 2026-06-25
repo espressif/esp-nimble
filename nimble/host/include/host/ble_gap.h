@@ -2749,14 +2749,6 @@ struct ble_gap_set_periodic_adv_subev_data_params {
 };
 #endif
 
-#if MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
-struct ble_gap_adv_const_did_cmd_params {
-    uint16_t handle;
-    uint8_t enable;
-    uint16_t did;
-};
-#endif // MYNEWT_VAL(BLE_ADV_SEND_CONSTANT_DID)
-
 /**
  * Configure periodic advertising for specified advertising instance
  *
@@ -3554,37 +3546,6 @@ int ble_gap_write_sugg_def_data_len(uint16_t sugg_max_tx_octets,
                                     uint16_t sugg_max_tx_time);
 
 /**
- * Read LE Suggested Default Data Length in controller (OGF = 0x08, OCF = 0x0024).
- *
- * @param out_sugg_max_tx_octets    The Host's suggested value for the Controller's maximum transmitted
- *                                  number of payload octets in LL Data PDUs to be used for new
- *                                  connections. (Range 0x001B-0x00FB).
- * @param out_sugg_max_tx_time      The Host's suggested value for the Controller's maximum packet
- *                                  transmission time for packets containing LL Data PDUs to be used
- *                                  for new connections. (Range 0x0148-0x4290).
- *
- * @return                          0 on success,
- *                                  other error code on failure.
- */
-int ble_gap_read_sugg_def_data_len(uint16_t *out_sugg_max_tx_octets,
-                                   uint16_t *out_sugg_max_tx_time);
-
-/**
- * Configure LE Suggested Default Data Length in controller (OGF = 0x08, OCF = 0x0024).
- *
- * @param sugg_max_tx_octets    The Host's suggested value for the Controller's maximum transmitted
- *                              number of payload octets in LL Data PDUs to be used for new
- *                              connections. (Range 0x001B-0x00FB).
- * @param sugg_max_tx_time      The Host's suggested value for the Controller's maximum packet
- *                              transmission time for packets containing LL Data PDUs to be used
- *                              for new connections. (Range 0x0148-0x4290).
- *
- * @return                      0 on success,
- *                              other error code on failure.
- */
-int ble_gap_write_sugg_def_data_len(uint16_t sugg_max_tx_octets, uint16_t sugg_max_tx_time);
-
-/**
  * Initiates the GAP security procedure.
  *
  * Depending on connection role and stored security information this function
@@ -4224,7 +4185,6 @@ int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_
  */
 int ble_gap_read_local_irk(uint8_t * out_irk);
 
-#if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
 /**
  * Set or clear a bit controlled by the host in the link layer featureSet
  * stored in the Controller
@@ -4236,7 +4196,9 @@ int ble_gap_read_local_irk(uint8_t * out_irk);
  * return                0 on success; nonzero on failure
  */
 int ble_gap_set_host_feat(uint8_t bit_num,uint8_t bit_val);
-#endif
+
+int ble_gap_rd_all_local_supp_features(uint8_t *status, uint8_t *max_page, uint8_t *le_features);
+int ble_gap_rd_all_remote_features(uint16_t conn_handle, uint8_t page_requested);
 
 #if MYNEWT_VAL(BLE_FRAME_SPACE_UPDATE)
 /* * Request a Frame Space Update.

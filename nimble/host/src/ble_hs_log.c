@@ -73,7 +73,9 @@ ble_hs_log_mbuf(const struct os_mbuf *om)
             chunk_len = BLE_HS_LOG_HEX_BYTES_PER_LINE;
         }
 
-        os_mbuf_copydata(om, offset, chunk_len, buf);
+        if (os_mbuf_copydata(om, offset, chunk_len, buf) != 0) {
+            break;
+        }
         ble_hs_log_debug_hex_chunk(buf, chunk_len);
     }
 #endif

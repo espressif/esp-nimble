@@ -176,7 +176,8 @@ const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &ble_svc_dis_include_uuid.u,
         .includes = included_services,
-    }
+    },
+    { 0 }
 };
 
 /**
@@ -484,6 +485,17 @@ ble_svc_dis_deinit(void)
         nimble_platform_mem_free(ble_svc_dis_data_ptr);
         ble_svc_dis_data_ptr = NULL;
     }
+#else
+    ble_svc_dis_data.model_number     = MYNEWT_VAL(BLE_SVC_DIS_MODEL_NUMBER_DEFAULT);
+    ble_svc_dis_data.serial_number     = MYNEWT_VAL(BLE_SVC_DIS_SERIAL_NUMBER_DEFAULT);
+    ble_svc_dis_data.firmware_revision = MYNEWT_VAL(BLE_SVC_DIS_FIRMWARE_REVISION_DEFAULT);
+    ble_svc_dis_data.hardware_revision = MYNEWT_VAL(BLE_SVC_DIS_HARDWARE_REVISION_DEFAULT);
+    ble_svc_dis_data.software_revision = MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_DEFAULT);
+    ble_svc_dis_data.manufacturer_name = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT);
+    ble_svc_dis_data.system_id         = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT);
+    ble_svc_dis_data.pnp_id            = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT);
+    ble_svc_dis_data.ieee              = "dummy_data";
+    ble_svc_dis_data.udi               = NULL;
 #endif
 }
 

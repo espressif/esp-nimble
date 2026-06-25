@@ -238,6 +238,11 @@ ble_hs_evq_get(void)
 void
 ble_hs_evq_set(struct ble_npl_eventq *evq)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_ctx == NULL) {
+        return;
+    }
+#endif
     ble_hs_evq = evq;
 }
 
@@ -288,11 +293,14 @@ ble_hs_lock_nested(void)
     rc = ble_npl_mutex_pend(&ble_hs_mutex, 0xffffffff);
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
+    BLE_HS_DBG_ASSERT(ble_hs_task_handle_index < MAX_NESTED_LOCKS);
     counter_lock++;
     ble_hs_mutex_locked = 1;
     ble_hs_task_handle = xTaskGetCurrentTaskHandle();
-    ble_hs_task_handles[ble_hs_task_handle_index] = xTaskGetCurrentTaskHandle();
-    ble_hs_task_handle_index++;
+    if (ble_hs_task_handle_index < MAX_NESTED_LOCKS) {
+        ble_hs_task_handles[ble_hs_task_handle_index] = ble_hs_task_handle;
+        ble_hs_task_handle_index++;
+    }
 #endif
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -315,10 +323,13 @@ ble_hs_unlock_nested(void)
         if (counter_lock == 0) {
             ble_hs_mutex_locked = 0;
         }
-        if (ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
+        if (counter_lock < MAX_NESTED_LOCKS &&
+            ble_hs_task_handle_index > 0 &&
+            ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
             ble_hs_task_handle_index--;
             ble_hs_task_handles[ble_hs_task_handle_index] = NULL;
-            ble_hs_task_handle = ble_hs_task_handles[ble_hs_task_handle_index -1];
+            ble_hs_task_handle = (ble_hs_task_handle_index > 0) ?
+                ble_hs_task_handles[ble_hs_task_handle_index - 1] : NULL;
         }
     }
 #endif
@@ -388,6 +399,8 @@ ble_hs_wakeup_tx_conn(struct ble_hs_conn *conn)
              */
             STAILQ_INSERT_HEAD(&conn->bhc_tx_q, OS_MBUF_PKTHDR(om), omp_next);
             return BLE_HS_EAGAIN;
+        } else if (rc != 0) {
+            return rc;
         }
     }
 
@@ -453,12 +466,22 @@ ble_hs_clear_rx_queue(void)
 int
 ble_hs_is_enabled(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_state_ctx) {
+        return 0;
+    }
+#endif
     return ble_hs_enabled_state == BLE_HS_ENABLED_STATE_ON;
 }
 
 int
 ble_hs_synced(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_state_ctx) {
+        return 0;
+    }
+#endif
     return ble_hs_sync_state == BLE_HS_SYNC_STATE_GOOD;
 }
 
@@ -486,10 +509,12 @@ ble_hs_sync(void)
 
     if (rc == 0) {
 #if NIMBLE_BLE_CONNECT
-        rc = ble_hs_misc_restore_irks();
-        if (rc != 0) {
+        int irk_rc;
+
+        irk_rc = ble_hs_misc_restore_irks();
+        if (irk_rc != 0) {
             BLE_HS_LOG(INFO, "Failed to restore IRKs from store; status=%d\n",
-                       rc);
+                       irk_rc);
         }
 #endif
         if (ble_hs_cfg.sync_cb != NULL) {
@@ -506,6 +531,7 @@ static int
 ble_hs_reset(void)
 {
     int rc;
+    int reset_reason;
 
     STATS_INC(ble_hs_stats, reset);
 
@@ -513,16 +539,23 @@ ble_hs_reset(void)
 
     ble_hs_clear_rx_queue();
 
+    /* Atomically retrieve and clear reset reason under lock to avoid race
+     * with concurrent ble_hs_sched_reset() calls.
+     */
+    ble_hs_lock_nested();
+    reset_reason = ble_hs_reset_reason;
+    ble_hs_reset_reason = 0;
+    ble_hs_unlock_nested();
+
     /* Clear adverising and scanning states. */
-    ble_gap_reset_state(ble_hs_reset_reason);
+    ble_gap_reset_state(reset_reason);
 
     /* Clear configured addresses. */
     ble_hs_id_reset();
 
-    if (ble_hs_cfg.reset_cb != NULL && ble_hs_reset_reason != 0) {
-        ble_hs_cfg.reset_cb(ble_hs_reset_reason);
+    if (ble_hs_cfg.reset_cb != NULL && reset_reason != 0) {
+        ble_hs_cfg.reset_cb(reset_reason);
     }
-    ble_hs_reset_reason = 0;
 
     rc = ble_hs_sync();
     return rc;
@@ -580,7 +613,6 @@ ble_hs_timer_reset(uint32_t ticks)
 
     if (!ble_hs_is_enabled()) {
         ble_npl_callout_stop(&ble_hs_timer);
-        ble_npl_callout_deinit(&ble_hs_timer);
     } else {
         rc = ble_npl_callout_reset(&ble_hs_timer, ticks);
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
@@ -596,6 +628,10 @@ ble_hs_timer_sched(int32_t ticks_from_now)
         return;
     }
 
+    if (!ble_hs_is_enabled()) {
+        return;
+    }
+
     /* Reset timer if it is not currently scheduled or if the specified time is
      * sooner than the previous expiration time.
      */
@@ -605,8 +641,8 @@ ble_hs_timer_sched(int32_t ticks_from_now)
                                ble_npl_callout_get_ticks(&ble_hs_timer))) < 0) {
         ble_hs_timer_reset(ticks_from_now);
     }
-    else if (ble_npl_callout_get_ticks(&ble_hs_timer) <= ble_npl_time_get()) {
-        /* Reset timer if currect time is later than expiration time. */
+    else if ((ble_npl_stime_t)(ble_npl_time_get() - ble_npl_callout_get_ticks(&ble_hs_timer)) >= 0) {
+        /* Reset timer if current time is later than expiration time. */
         BLE_HS_LOG(DEBUG,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
         ble_hs_timer_reset(ticks_from_now);
     }
@@ -716,12 +752,15 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
 
-    if (ev) {
+    if (ev && ble_hs_evq) {
         memset (ev, 0, sizeof *ev);
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
         ble_npl_eventq_put(ble_hs_evq, ev);
     } else {
         /* Either ev is NULL or queue doesn't exist */
+        if (ev) {
+            os_memblock_put(&ble_hs_hci_ev_pool, ev);
+        }
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_transport_free(BLE_HCI_EVT, hci_evt);
 #else
@@ -883,11 +922,12 @@ ble_hs_tx_data(struct os_mbuf *om)
     if (pkt_len + 1 <= BLE_HS_HCI_LOG_BUF_SIZE) {
         uint8_t data[BLE_HS_HCI_LOG_BUF_SIZE];
         data[0] = 0x02;
-        os_mbuf_copydata(om, 0, pkt_len, &data[1]);
-        bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_H2C_ACL, &data[1], pkt_len);
+        if (os_mbuf_copydata(om, 0, pkt_len, &data[1]) == 0) {
+            bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_H2C_ACL, &data[1], pkt_len);
 #if BT_HCI_INSIGHTS_INCLUDED
-        bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_H2C_ACL, &data[1], pkt_len);
+            bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_H2C_ACL, &data[1], pkt_len);
 #endif
+        }
     }
 #endif
 
@@ -925,6 +965,10 @@ ble_hs_init(void)
         ble_hs_state_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_state_ctx));
         if (!ble_hs_state_ctx) {
             MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_state_ctx (%zu bytes)\n", sizeof(*ble_hs_state_ctx));
+            nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
+            ble_hs_ctx->hci_os_event_buf = NULL;
+            nimble_platform_mem_free(ble_hs_ctx);
+            ble_hs_ctx = NULL;
             return;
         }
     }
@@ -1086,6 +1130,12 @@ ble_transport_hs_init(void)
 void
 ble_hs_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_ctx == NULL) {
+        return;
+    }
+#endif
+
     ble_hs_flow_deinit();
 
 #if BLE_MONITOR
@@ -1143,6 +1193,12 @@ ble_hs_deinit(void)
 #if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
     ble_hs_resolv_deinit();
 #endif
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) && MYNEWT_VAL(BLE_PERIODIC_ADV)
+    ble_hs_periodic_sync_deinit();
+#endif
+#if MYNEWT_VAL(BLE_HS_PVCY)
+    ble_hs_pvcy_irk_deinit();
+#endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx) {
         ble_hs_ctx->parent_task = NULL;
@@ -1168,10 +1224,6 @@ ble_hs_deinit(void)
     ble_store_config_deinit();
 
     ble_hs_adv_parse_free();
-
-#if MYNEWT_VAL(BLE_HS_PVCY)
-    ble_hs_pvcy_irk_deinit();
-#endif
 
     ble_hs_id_ctx_free();
 

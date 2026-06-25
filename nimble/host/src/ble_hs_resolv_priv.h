@@ -109,6 +109,8 @@ int ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk);
 /* Initialize resolv*/
 void ble_hs_resolv_init(void);
 
+uint8_t is_ble_hs_resolv_enabled(void);
+
 #ifdef __cplusplus
 }
 #endif

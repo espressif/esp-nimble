@@ -1845,7 +1845,11 @@ cmd_set_adv_data_or_scan_rsp(int argc, char **argv, bool scan_rsp,
             rc = ble_gap_ext_adv_rsp_set_data(instance, adv_data);
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
         } else if (periodic) {
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_ENH)
+            rc = ble_gap_periodic_adv_set_data(instance, adv_data, NULL);
+#else
             rc = ble_gap_periodic_adv_set_data(instance, adv_data);
+#endif
 #endif
         } else {
             rc = ble_gap_ext_adv_set_data(instance, adv_data);

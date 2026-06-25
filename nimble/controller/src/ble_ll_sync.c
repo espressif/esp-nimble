@@ -1898,7 +1898,7 @@ ble_ll_sync_receive_enable(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_UNK_ADV_INDENT;
     }
 
-    if (cmd->enable) {
+    if (cmd->enable & 0x01) {
         sm->flags &= ~BLE_LL_SYNC_SM_FLAG_DISABLED;
     } else {
         sm->flags |= BLE_LL_SYNC_SM_FLAG_DISABLED;

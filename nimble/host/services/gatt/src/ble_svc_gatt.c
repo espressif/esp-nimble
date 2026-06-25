@@ -144,7 +144,16 @@ ble_svc_gatt_cl_sup_feat_access(uint16_t conn_handle, uint16_t attr_handle,
         return 0;
     }
     if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-        return ble_gatts_peer_cl_sup_feat_update(conn_handle, ctxt->om);
+        rc = ble_gatts_peer_cl_sup_feat_update(conn_handle, ctxt->om);
+        if (rc == 0) {
+            return 0;
+        }
+        if (rc == BLE_ATT_ERR_INSUFFICIENT_RES ||
+            rc == BLE_ATT_ERR_UNLIKELY ||
+            rc == BLE_ATT_ERR_VALUE_NOT_ALLOWED) {
+            return rc;
+        }
+        return BLE_ATT_ERR_UNLIKELY;
     }
 
     return 0;
@@ -270,6 +279,8 @@ ble_svc_gatt_init(void)
 void
 ble_svc_gatt_deinit(void)
 {
+    ble_svc_gatt_local_srv_sup_feat = 0;
+    ble_svc_gatt_local_cl_sup_feat = 0;
     ble_gatts_free_svcs();
 }
 #endif

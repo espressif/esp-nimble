@@ -385,11 +385,12 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
        return rc;
    }
 
-   if (set.status != 0 && set.status != BLE_HS_ENOMEM) {
+   *out_num_peers = set.num_peers;
+
+   if (set.status != 0) {
        return set.status;
    }
 
-   *out_num_peers = set.num_peers;
    return 0;
 #else
     return BLE_HS_ENOTSUP;
@@ -400,7 +401,7 @@ ble_store_util_ead_peers(ble_addr_t *out_peer_id_addrs, int *out_num_peers,
 int
 ble_store_util_delete_ead_oldest_peer(void)
 {
-#if NIMBLE_BLE_CONNECT
+#if NIMBLE_BLE_CONNECT && (MYNEWT_VAL(BLE_STORE_MAX_EADS) > 0)
 
    ble_addr_t peer_id_addrs[MYNEWT_VAL(BLE_STORE_MAX_EADS)];
    int num_peers;

@@ -123,6 +123,11 @@ int ble_ead_encrypt(const uint8_t session_key[BLE_EAD_KEY_SIZE], const uint8_t i
                    "Randomizer and the MIC.");
     }
 
+    if (payload_size > 0xffff) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     /* Ensure payload_size isn't too large to wrap around when adding overhead */
     if (payload_size > SIZE_MAX - (BLE_EAD_RANDOMIZER_SIZE + BLE_EAD_MIC_SIZE)) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);

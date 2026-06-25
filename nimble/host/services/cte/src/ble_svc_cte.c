@@ -190,6 +190,10 @@ static const struct ble_gatt_svc_def ble_svc_cte_defs[] = {
  * @return A pointer to the matching CTE configuration instance, or NULL if not found.
  */
 static cte_instance_config_t* cte_find_config_by_conn_handle(uint16_t conn_handle) {
+    if (conn_handle == 0xffff) {
+        return NULL;
+    }
+
     for (int i = 0; i < MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
         if (cte_config[i].conn_handle == conn_handle) {
             return &cte_config[i];
@@ -303,6 +307,7 @@ ble_svc_cte_two_octet_chr_write(struct os_mbuf *om,
     if (rc != 0) {
         return BLE_ATT_ERR_UNLIKELY;
     }
+    value = le16toh(value);
 
     // Check if the value is within the allowed range
     if (value < min_value || value > max_value) {
@@ -366,18 +371,19 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                         if(ble_gap_set_conn_cte_transmit_param(conn_handle, BLE_GAP_CTE_RSP_ALLOW_AOA_MASK, 0, NULL) != 0)
                         {
                             config->cte_enable = old_enable;
-                            rc = 0xFC;
+                            rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
                             break;
                         }
                         if(ble_gap_conn_cte_rsp_enable(conn_handle, true) != 0) {
                             config->cte_enable = old_enable;
-                            rc = 0xFC;
+                            rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
                             break;
                         }
-                    } else if ((old_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) {
+                    } else if ((old_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION &&
+                               (config->cte_enable & CTE_ENABLE_AOA_CONNECTION) == 0) {
                         if(ble_gap_conn_cte_rsp_enable(conn_handle, false) != 0) {
                             config->cte_enable = old_enable;
-                            rc = 0xFC;
+                            rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
                             break;
                         }
                     }
@@ -509,11 +515,13 @@ static int ble_svc_cte_adv_cte_interval_access(uint16_t conn_handle, uint16_t at
     }
     
     switch (ctxt->op) {
-        case BLE_GATT_ACCESS_OP_READ_CHR:
+        case BLE_GATT_ACCESS_OP_READ_CHR: {
             // Handle read characteristic request
-            rc = os_mbuf_append(ctxt->om, &config->cte_interval, sizeof(config->cte_interval)) == 0 ?
+            uint16_t interval_le = htole16(config->cte_interval);
+            rc = os_mbuf_append(ctxt->om, &interval_le, sizeof(interval_le)) == 0 ?
                     0 : BLE_ATT_ERR_INSUFFICIENT_RES;
             break;
+        }
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
             // Handle write characteristic request

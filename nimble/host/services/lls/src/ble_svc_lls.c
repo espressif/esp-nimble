@@ -111,7 +111,7 @@ ble_svc_lls_access(uint16_t conn_handle, uint16_t attr_handle,
                             sizeof ble_svc_lls_alert_level);
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 
-    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+    case BLE_GATT_ACCESS_OP_WRITE_CHR: {
         uint8_t level;
         rc = ble_svc_lls_chr_write(ctxt->om,
                                    sizeof level,
@@ -124,6 +124,7 @@ ble_svc_lls_access(uint16_t conn_handle, uint16_t attr_handle,
             ble_svc_lls_alert_level = level;
         }
         return rc;
+    }
 
     default:
         assert(0);
@@ -150,9 +151,11 @@ ble_svc_lls_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_lls_on_gap_disconnect(int reason)
 {
+    ble_svc_lls_event_fn *cb = ble_svc_lls_cb_fn;
+
     if (reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_SPVN_TMO)) {
-        if (ble_svc_lls_cb_fn != NULL) {
-            ble_svc_lls_cb_fn(ble_svc_lls_alert_level);
+        if (cb != NULL) {
+            cb(ble_svc_lls_alert_level);
         }
     }
 }

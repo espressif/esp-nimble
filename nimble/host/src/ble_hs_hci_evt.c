@@ -126,7 +126,7 @@ static ble_hs_hci_evt_fn ble_hs_hci_evt_hw_error;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_num_completed_pkts;
 #if NIMBLE_BLE_CONNECT
 static ble_hs_hci_evt_fn ble_hs_hci_evt_disconn_complete;
-#if MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_SM
 static ble_hs_hci_evt_fn ble_hs_hci_evt_encrypt_change;
 static ble_hs_hci_evt_fn ble_hs_hci_evt_enc_key_refresh;
 #endif
@@ -258,7 +258,7 @@ static const struct ble_hs_hci_evt_dispatch_entry ble_hs_hci_evt_dispatch[] = {
 #if NIMBLE_BLE_CONNECT
     { BLE_HCI_EVCODE_RD_REM_VER_INFO_CMP, ble_hs_hci_evt_rd_rem_ver_complete },
     { BLE_HCI_EVCODE_DISCONN_CMP, ble_hs_hci_evt_disconn_complete },
-#if MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_SM
     { BLE_HCI_EVCODE_ENCRYPT_CHG, ble_hs_hci_evt_encrypt_change },
     { BLE_HCI_EVCODE_ENC_KEY_REFRESH, ble_hs_hci_evt_enc_key_refresh },
 #endif
@@ -520,7 +520,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 		/* Post event to interested application */
 		ble_gap_reattempt_count(handle, reattempt_conn.count);
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
-                rc = ble_gap_master_connect_reattempt(ev->conn_handle);
+                rc = ble_gap_master_connect_reattempt(handle);
 		if (rc != 0) {
 		    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
 		}
@@ -593,7 +593,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     return 0;
 }
 
-#if MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_SM
 static int
 ble_hs_hci_evt_encrypt_change(uint8_t event_code, const void *data,
                               unsigned int len)
@@ -626,7 +626,7 @@ ble_hs_hci_evt_hw_error(uint8_t event_code, const void *data, unsigned int len)
     return 0;
 }
 
-#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_SM_SC)
+#if NIMBLE_BLE_CONNECT && NIMBLE_BLE_SM
 static int
 ble_hs_hci_evt_enc_key_refresh(uint8_t event_code, const void *data,
                                unsigned int len)
@@ -715,6 +715,9 @@ ble_hs_hci_evt_vs(uint8_t event_code, const void *data, unsigned int len)
 static int
 ble_hs_hci_evt_rx_test(uint8_t event_code, const void *data, unsigned int len)
 {
+    if (len < sizeof(struct ble_hci_ev_command_complete)) {
+        return BLE_HS_ECONTROLLER;
+    }
     ble_gap_rx_test_evt(data, len);
 
     return 0;
@@ -799,7 +802,7 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
         /* RPA needs to be resolved here, as controller is not aware of the
          * address is RPA in Host based RPA  */
-        if (ble_host_rpa_enabled() && ((!memcmp(evt.local_rpa, ble_hs_conn_null_addr, 6)) == 0)) {
+        if (ble_host_rpa_enabled() && (memcmp(evt.local_rpa, ble_hs_conn_null_addr, 6) == 0)) {
             uint8_t *local_id_rpa = ble_hs_get_rpa_local();
             if (local_id_rpa) {
                 memcpy(evt.local_rpa, local_id_rpa, BLE_DEV_ADDR_LEN);
@@ -952,7 +955,7 @@ ble_hs_hci_evt_le_adv_rpt_first_pass(const void *data, unsigned int len)
 
         rpt = data;
 
-        if (rpt->data_len > len) {
+        if (sizeof(*rpt) + 1 + rpt->data_len > len) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
@@ -992,12 +995,18 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
 
     /* BLE Queue Congestion check*/
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hci_ctx) {
+#endif
     if (ble_get_adv_list_length() > BLE_ADV_LIST_MAX_LENGTH || ble_adv_list_count > BLE_ADV_LIST_MAX_COUNT) {
         ble_adv_list_refresh();
     }
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
     ble_adv_list_count++;
     ble_npl_mutex_release(&adv_list_lock);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    }
+#endif
 #endif
 
     for (i = 0; i < ev->num_reports; i++) {
@@ -1005,7 +1014,12 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
 
     /* Avoiding further processing, if the adv report is from the same device*/
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
-    if (ble_check_adv_list(rpt->addr, rpt->addr_type) == true) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hci_ctx &&
+#else
+    if (
+#endif
+        ble_check_adv_list(rpt->addr, rpt->addr_type) == true) {
         data += sizeof(*rpt) + rpt->data_len + 1;
         continue;
     }
@@ -1150,11 +1164,11 @@ int
 ble_hs_iso_evt_rx_cb_set(void *cb)
 {
     if (cb == NULL) {
-        return -BLE_HS_EINVAL;
+        return BLE_HS_EINVAL;
     }
 
     if (iso_evt_cb) {
-        return -BLE_HS_EALREADY;
+        return BLE_HS_EALREADY;
     }
 
     iso_evt_cb = cb;
@@ -1370,7 +1384,7 @@ ble_hs_hci_evt_le_ext_adv_rpt_first_pass(const void *data, unsigned int len)
 
         report = data;
 
-        if (report->data_len > len) {
+        if (sizeof(*report) + report->data_len > len) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
             return BLE_HS_ECONTROLLER;
         }
@@ -1413,7 +1427,7 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
 
         desc.props = (report->evt_type) & 0x1F;
         if (desc.props & BLE_HCI_ADV_LEGACY_MASK) {
-            legacy_event_type = ble_hs_hci_decode_legacy_type(report->evt_type);
+            legacy_event_type = ble_hs_hci_decode_legacy_type(desc.props);
             if (legacy_event_type < 0) {
                 report = (const void *) &report->data[report->data_len];
                 continue;
@@ -1550,13 +1564,22 @@ ble_hs_hci_evt_le_periodic_adv_sync_transfer(uint8_t subevent, const void *data,
 {
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
     const struct ble_hci_ev_le_subev_periodic_adv_sync_transfer *ev = data;
+    struct ble_hci_ev_le_subev_periodic_adv_sync_transfer ev_copy;
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    /* V1 event is 4 bytes shorter (lacks PAwR fields); accept both lengths */
+    unsigned int v1_len = sizeof(*ev) - 4;
+    if (len != sizeof(*ev) && len != v1_len) {
+#else
     if (len != sizeof(*ev)) {
+#endif
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
-    ble_gap_rx_periodic_adv_sync_transfer(ev);
+    memset(&ev_copy, 0, sizeof(ev_copy));
+    memcpy(&ev_copy, ev, len);
+    ble_gap_rx_periodic_adv_sync_transfer(&ev_copy);
 
 #endif
     return 0;
@@ -1634,6 +1657,22 @@ ble_hs_hci_evt_le_adv_set_terminated(uint8_t subevent, const void *data,
             ble_gap_rx_conn_complete(&pend_conn_complete, ev->adv_handle);
             pend_conn_complete_valid = false;
         }
+    } else {
+        /* Advertising set terminated with error. Clear a stale pending
+         * connection-complete only if it is itself an error (e.g. directed
+         * advertising timeout, status != 0). A real connection (status == 0)
+         * may belong to a *different* advertising set whose Advertising Set
+         * Terminated (success) event has not arrived yet; clearing it here
+         * would silently drop that connection at the host level. */
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_hci_ctx) {
+#endif
+            if (!pend_conn_complete_valid || pend_conn_complete.status != 0) {
+                pend_conn_complete_valid = false;
+            }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        }
+#endif
     }
     ble_gap_rx_adv_set_terminated(ev);
 #endif
@@ -1772,7 +1811,6 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
     const struct ble_hci_ev_le_subev_periodic_adv_resp_rep *ev = data;
     const struct periodic_adv_response *response;
     struct ble_gap_periodic_adv_response resp;
-    uint32_t size;
 
     if (len < 5) {  // minimum size for fixed fields
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
@@ -1793,16 +1831,6 @@ ble_hs_hci_evt_le_periodic_adv_subev_resp_rep(uint8_t subevent, const void *data
         offset += 6 + data_length;
     }
     if (offset != len) {  // exact match
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
-        return BLE_HS_ECONTROLLER;
-    }
-
-    /* TODO: compare with the total length including the response data. */
-    size = sizeof(*ev);
-    for (uint8_t i = 0; i < ev->num_responses; i ++) {
-        size += sizeof(struct periodic_adv_response) + ev->responses[i].data_length;
-    }
-    if (len < size) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
@@ -2019,13 +2047,23 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
     STATS_INC(ble_hs_stats, hci_event);
 
     if(ev->opcode == BLE_HCI_EVCODE_COMMAND_COMPLETE) {
-        if (ev->length < sizeof(struct ble_hci_ev_command_complete)) {
+        if (ev->length < sizeof(struct ble_hci_ev_command_complete_nop)) {
              STATS_INC(ble_hs_stats, hci_unknown_event);
              rc = BLE_HS_ECONTROLLER;
              goto done;
         }
         /* Check if this Command complete has a parsable opcode */
         struct ble_hci_ev_command_complete *cmd_complete = (void *) ev->data;
+        /* NOP command complete has no status byte; skip dispatch for it */
+        if (le16toh(cmd_complete->opcode) == BLE_HCI_OPCODE_NOP) {
+             rc = 0;
+             goto done;
+        }
+        if (ev->length < sizeof(struct ble_hci_ev_command_complete)) {
+             STATS_INC(ble_hs_stats, hci_unknown_event);
+             rc = BLE_HS_ECONTROLLER;
+             goto done;
+        }
         entry = ble_hs_hci_evt_dispatch_find(cmd_complete->opcode);
     }
     else {
@@ -2042,7 +2080,7 @@ ble_hs_hci_evt_process(struct ble_hci_ev *ev)
            BLE_HS_LOG(DEBUG, "ble_hs_event_rx_hci_ev; opcode=0x%x ", ev->opcode);
 
 	   /* For LE Meta, print subevent code */
-           if(ev->opcode == 0x3e) {
+           if(ev->opcode == 0x3e && ev->length >= 1) {
               BLE_HS_LOG(DEBUG, "subevent: 0x%x", ev->data[0]);
            }
 
@@ -2139,12 +2177,11 @@ void ble_adv_list_init(void)
 void ble_adv_list_deinit(void)
 {
     struct ble_addr_list_entry *device;
-    struct ble_addr_list_entry *temp;
 
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 
-    SLIST_FOREACH_SAFE(device, &ble_adv_list, next, temp) {
-        SLIST_REMOVE(&ble_adv_list, device, ble_addr_list_entry, next);
+    while ((device = SLIST_FIRST(&ble_adv_list)) != NULL) {
+        SLIST_REMOVE_HEAD(&ble_adv_list, next);
         nimble_platform_mem_free(device);
     }
 
@@ -2162,6 +2199,13 @@ void ble_adv_list_add_packet(void *data)
         return;
     }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hci_ctx) {
+        /* List takes ownership of data; free here to avoid leak when ctx absent. */
+        nimble_platform_mem_free(data);
+        return;
+    }
+#endif
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 
     device = (struct ble_addr_list_entry *)data;
@@ -2175,6 +2219,11 @@ uint32_t ble_get_adv_list_length(void)
     uint32_t length = 0;
     struct ble_addr_list_entry *device;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hci_ctx) {
+        return 0;
+    }
+#endif
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
     SLIST_FOREACH(device, &ble_adv_list, next) {
         length++;
@@ -2187,7 +2236,6 @@ uint32_t ble_get_adv_list_length(void)
 void ble_adv_list_refresh(void)
 {
     struct ble_addr_list_entry *device;
-    struct ble_addr_list_entry *temp;
 
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 
@@ -2195,8 +2243,8 @@ void ble_adv_list_refresh(void)
         BLE_HS_LOG(DEBUG, "%s: ble_adv_list empty — reinitializing", __func__);
         SLIST_INIT(&ble_adv_list);
     } else {
-        SLIST_FOREACH_SAFE(device, &ble_adv_list, next, temp) {
-            SLIST_REMOVE(&ble_adv_list, device, ble_addr_list_entry, next);
+        while ((device = SLIST_FIRST(&ble_adv_list)) != NULL) {
+            SLIST_REMOVE_HEAD(&ble_adv_list, next);
             nimble_platform_mem_free(device);
         }
     }
@@ -2215,6 +2263,12 @@ bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type)
         BLE_HS_LOG(ERROR, "%s addr is NULL", __func__);
         return found;
     }
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hci_ctx) {
+        return false;
+    }
+#endif
 
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 

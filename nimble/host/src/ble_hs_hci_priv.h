@@ -83,7 +83,13 @@ struct ble_hs_hci_sup_cmd {
     uint8_t commands[64];
 };
 
+uint16_t ble_hs_hci_get_avail_pkts(void);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#define ble_hs_hci_avail_pkts         (ble_hs_hci_get_avail_pkts())
+#else
 extern uint16_t ble_hs_hci_avail_pkts;
+#endif
 
 /* This function is not waiting for command status/complete HCI events */
 int ble_hs_hci_cmd_tx_no_rsp(uint16_t opcode, const void *cmd, uint8_t cmd_len);
@@ -145,9 +151,9 @@ int ble_hs_hci_rd_all_local_supp_features(uint8_t *status, uint8_t *max_page,
 int ble_hs_hci_rd_all_remote_features(uint16_t conn_handle, uint8_t page_requested);
 
 #if MYNEWT_VAL(BLE_MONITOR_ADV)
-int ble_hs_hci_add_monitor_adv_list(uint8_t addr_type, uint8_t *addr, uint8_t rssi_low,
-                                    uint8_t rssi_high, uint8_t timeout);
-int ble_hs_hci_rmv_monitor_adv_list(uint8_t addr_type, uint8_t *addr);
+int ble_hs_hci_add_monitor_adv_list(uint8_t addr_type, uint8_t *addr, int8_t rssi_low,
+                                    int8_t rssi_high, uint8_t timeout);
+int ble_hs_hci_rmv_monitor_adv_list(uint8_t addr_type, const uint8_t *addr);
 int ble_hs_hci_clear_monitor_adv_list(void);
 int ble_hs_hci_read_monitor_adv_list_size(uint8_t *out_number);
 int ble_hs_hci_enable_monitor_adv(uint8_t enable);

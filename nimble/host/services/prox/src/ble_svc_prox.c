@@ -222,15 +222,28 @@ ble_svc_prox_link_loss_access(uint16_t conn_handle, uint16_t attr_handle,
     uint16_t uuid16;
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_prox_ctx == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
+
     uuid16 = ble_uuid_u16(ctxt->chr->uuid);
     assert(uuid16 != 0);
 
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_ALERT_LVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            rc = ble_svc_prox_chr_write(ctxt->om, 1, sizeof(ble_svc_prox_link_loss_alert),
-                                        &ble_svc_prox_link_loss_alert, NULL);
-            return rc;
+            uint8_t tmp_alert;
+            rc = ble_svc_prox_chr_write(ctxt->om, 1, sizeof(tmp_alert), &tmp_alert, NULL);
+            if (rc != 0) {
+                return rc;
+            }
+            if (tmp_alert > 2) {
+                return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+            }
+            ble_svc_prox_link_loss_alert = tmp_alert;
+            return 0;
         } else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
             rc = os_mbuf_append(ctxt->om, &ble_svc_prox_link_loss_alert,
                                 sizeof(ble_svc_prox_link_loss_alert));
@@ -251,6 +264,12 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
 {
     uint16_t uuid16;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_prox_ctx == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
+
     uuid16 = ble_uuid_u16(ctxt->chr->uuid);
     assert(uuid16 != 0);
 
@@ -259,7 +278,7 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
             int rc = ble_svc_prox_chr_write(ctxt->om, 1, 1, &ble_svc_prox_alert, NULL);
             if (rc != 0) {
-                return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+                return rc;
             }
             MODLOG_DFLT(INFO, "Path loss = %d", ble_svc_prox_alert);
 
@@ -281,6 +300,12 @@ ble_svc_prox_tx_pwr_access(uint16_t conn_handle, uint16_t attr_handle,
 {
     uint16_t uuid16;
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_prox_ctx == NULL) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
 
     uuid16 = ble_uuid_u16(ctxt->chr->uuid);
     assert(uuid16 != 0);
@@ -360,5 +385,19 @@ ble_svc_prox_init(void)
 
     BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task", 4096, NULL, 10, &ble_prox_task_handle);
     SYSINIT_PANIC_ASSERT(ret == pdPASS);
+}
+
+void
+ble_svc_prox_deinit(void)
+{
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* ble_svc_prox_ctx_deinit handles NULL check, task deletion, and ctx free */
+    ble_svc_prox_ctx_deinit();
+#else
+    if (ble_prox_task_handle != NULL) {
+        vTaskDelete(ble_prox_task_handle);
+        ble_prox_task_handle = NULL;
+    }
+#endif
 }
 #endif

@@ -133,7 +133,13 @@ ble_uuid_cmp(const ble_uuid_t *uuid1, const ble_uuid_t *uuid2)
 
     switch (uuid1->type) {
     case BLE_UUID_TYPE_16:
-        return (int) BLE_UUID16(uuid1)->value - (int) BLE_UUID16(uuid2)->value;
+        if (BLE_UUID16(uuid1)->value < BLE_UUID16(uuid2)->value) {
+            return -1;
+        }
+        if (BLE_UUID16(uuid1)->value > BLE_UUID16(uuid2)->value) {
+            return 1;
+        }
+        return 0;
     case BLE_UUID_TYPE_32:
         if (BLE_UUID32(uuid1)->value < BLE_UUID32(uuid2)->value) {
             return -1;
@@ -143,7 +149,7 @@ ble_uuid_cmp(const ble_uuid_t *uuid1, const ble_uuid_t *uuid2)
         }
         return 0;
     case BLE_UUID_TYPE_128:
-        return memcmp(&BLE_UUID128(uuid1)->value, &BLE_UUID128(uuid2)->value, 16);
+        return memcmp(BLE_UUID128(uuid1)->value, BLE_UUID128(uuid2)->value, 16);
     }
 
     BLE_HS_DBG_ASSERT(0);
@@ -154,6 +160,9 @@ ble_uuid_cmp(const ble_uuid_t *uuid1, const ble_uuid_t *uuid2)
 void
 ble_uuid_copy(ble_uuid_any_t *dst, const ble_uuid_t *src)
 {
+    if (src == NULL || dst == NULL) {
+        return;
+    }
     VERIFY_UUID(src);
 
     switch (src->type) {
@@ -212,15 +221,14 @@ ble_uuid_base_init(void)
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
         }
+        ble_uuid_base[0] = 0xfb;
+        ble_uuid_base[1] = 0x34;
+        ble_uuid_base[2] = 0x9b;
+        ble_uuid_base[3] = 0x5f;
+        ble_uuid_base[4] = 0x80;
+        ble_uuid_base[7] = 0x80;
+        ble_uuid_base[9] = 0x10;
     }
-
-    ble_uuid_base[0] = 0xfb;
-    ble_uuid_base[1] = 0x34;
-    ble_uuid_base[2] = 0x9b;
-    ble_uuid_base[3] = 0x5f;
-    ble_uuid_base[4] = 0x80;
-    ble_uuid_base[7] = 0x80;
-    ble_uuid_base[9] = 0x10;
 
     return 0;
 }
@@ -249,13 +257,21 @@ ble_uuid_from_str(ble_uuid_any_t *uuid, const char *str)
         return BLE_HS_EINVAL;
     }
 
+    /* For 16-bit (6 chars: 0xXXXX) and 32-bit (10 chars: 0xXXXXXXXX) strings,
+     * require the "0x" prefix */
+    if ((len == 6 || len == 10) &&
+        !(str[0] == '0' && (str[1] == 'x' || str[1] == 'X'))) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     str_ptr = &str[len - 2];
 
     if (len <= BLE_UUID16_STR_MAX_LEN) {
         uuid->u.type = BLE_UUID_TYPE_16;
     } else if (len <= BLE_UUID32_STR_MAX_LEN) {
         uuid->u.type = BLE_UUID_TYPE_32;
-    } else if (len <= BLE_UUID128_STR_MAX_LEN) {
+    } else if (len == BLE_UUID128_STR_MAX_LEN || len == 32) {
         uuid->u.type = BLE_UUID_TYPE_128;
     } else {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
@@ -422,6 +438,7 @@ int
 ble_uuid_to_mbuf(const ble_uuid_t *uuid, struct os_mbuf *om)
 {
     int len;
+    int rc;
     void *buf;
 
     VERIFY_UUID(uuid);
@@ -439,7 +456,11 @@ ble_uuid_to_mbuf(const ble_uuid_t *uuid, struct os_mbuf *om)
         return BLE_HS_ENOMEM;
     }
 
-    ble_uuid_flat(uuid, buf);
+    rc = ble_uuid_flat(uuid, buf);
+    if (rc != 0) {
+        os_mbuf_adj(om, -len);
+        return rc;
+    }
 
     return 0;
 }

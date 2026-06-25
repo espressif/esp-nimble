@@ -306,7 +306,9 @@ cdc_hci_acl_packet_write(struct usb_in_packet *packet, size_t offset)
 
         for (;;) {
             mb = os_mbuf_off(om, (int)new_offset - 1, &mbuf_offset);
-            assert(mb);
+            if (mb == NULL || new_offset < 1) {
+                break;
+            }
             /* mbuf_offset is == om_len when new_offset reached end of mbuf data */
             if (mb->om_len == mbuf_offset) {
                 break;

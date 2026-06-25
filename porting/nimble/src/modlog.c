@@ -9,9 +9,14 @@ void MODLOG_INFO(int mod, char * msg, ...) {
 
     memset(buffer, 0, 1000);
     va_start(args, msg);
-    len = sprintf(buffer, args);
+    len = vsnprintf(buffer, sizeof(buffer), msg, args);
     va_end(args);
 
+    if (len < 0) {
+        len = 0;
+    } else if (len >= (int)sizeof(buffer)) {
+        len = (int)sizeof(buffer) - 1;
+    }
     ble_log_write_hex(BLE_LOG_SRC_HOST, (uint8_t *)buffer, len);
     ble_log_flush();
 }

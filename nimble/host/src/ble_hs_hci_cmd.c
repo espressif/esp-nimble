@@ -54,8 +54,11 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
         return BLE_HS_ENOMEM_EVT;
 
     default:
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        /* BLE_HS_HCI_ERR is defined for positive HCI error codes (0x01-0xFF).
+         * Negative or out-of-range codes (e.g. -ENOMEM from UART transport)
+         * must not be passed to the macro or they produce an invalid error value. */
+        return (rc > 0 && rc <= 0xFF) ? BLE_HS_HCI_ERR(rc) : BLE_HS_EUNKNOWN;
     }
 }
 

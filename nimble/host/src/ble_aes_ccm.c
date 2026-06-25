@@ -64,8 +64,7 @@ ble_aes_ccm_hex(const void *buf, size_t len)
     char *str;
     int i;
 
-    str = hexbufs[curbuf++];
-    curbuf %= ARRAY_SIZE(hexbufs);
+    str = hexbufs[curbuf++ % ARRAY_SIZE(hexbufs)];
 
     len = min(len, (sizeof(hexbufs[0]) - 1) / 2);
 
@@ -142,18 +141,26 @@ int
 ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
     struct tc_aes_key_sched_struct s = {0};
+    int rc = 0;
 
     if (tc_aes128_set_encrypt_key(&s, key) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
+        goto done;
     }
 
     if (tc_aes_encrypt(enc_data, plaintext, &s) == TC_CRYPTO_FAIL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN;
+        rc = BLE_HS_EUNKNOWN;
     }
 
-    return 0;
+done:
+    memset(&s, 0, sizeof(s));
+    /* Compiler barrier: prevent the optimizer from eliminating the memset above
+     * as a dead store. The key schedule in s is sensitive cryptographic material
+     * and must actually be erased from the stack before the frame is released. */
+    __asm__ volatile("" : : "r"(&s) : "memory");
+    return rc;
 }
 #endif
 
@@ -361,14 +368,36 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
 
     rc = ble_aes_ccm_crypt(key_reversed, nonce, enc_msg, out_msg, msg_len);
     if (rc != 0) {
+        memset(out_msg, 0, msg_len);
+        memset(key_reversed, 0, sizeof(key_reversed));
+        __asm__ volatile("" : : "r"(key_reversed) : "memory");
         return rc;
     }
 
     rc = ble_aes_ccm_auth(key_reversed, nonce, out_msg, msg_len, aad, aad_len, mic, mic_size);
+    memset(key_reversed, 0, sizeof(key_reversed));
+    __asm__ volatile("" : : "r"(key_reversed) : "memory");
     if (rc != 0) {
+        memset(out_msg, 0, msg_len);
+        memset(mic, 0, sizeof(mic));
+        __asm__ volatile("" : : "r"(mic) : "memory");
         return rc;
     }
 
+    /* Constant-time MIC comparison to prevent timing side-channel attacks */
+    volatile uint8_t diff = 0;
+    for (size_t i = 0; i < mic_size; i++) {
+        diff |= mic[i] ^ enc_msg[msg_len + i];
+    }
+    if (diff != 0) {
+        memset(out_msg, 0, msg_len);
+        memset(mic, 0, sizeof(mic));
+        __asm__ volatile("" : : "r"(mic) : "memory");
+        return BLE_HS_EAUTHEN;
+    }
+
+    memset(mic, 0, sizeof(mic));
+    __asm__ volatile("" : : "r"(mic) : "memory");
     return 0;
 }
 
@@ -400,11 +429,15 @@ int ble_aes_ccm_encrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
     /** Calculating MIC */
     int rc = ble_aes_ccm_auth(key_reversed, nonce, msg, msg_len, aad, aad_len, mic, mic_size);
     if (rc != 0) {
+        memset(key_reversed, 0, sizeof(key_reversed));
+        __asm__ volatile("" : : "r"(key_reversed) : "memory");
         return rc;
     }
 
     /** Encrypting advertisement */
     rc = ble_aes_ccm_crypt(key_reversed, nonce, msg, out_msg, msg_len);
+    memset(key_reversed, 0, sizeof(key_reversed));
+    __asm__ volatile("" : : "r"(key_reversed) : "memory");
     if (rc != 0) {
         return rc;
     }

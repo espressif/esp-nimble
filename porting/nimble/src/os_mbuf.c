@@ -121,7 +121,7 @@ os_mqueue_put(struct os_mqueue *mq, struct ble_npl_eventq *evq, struct os_mbuf *
     int rc;
 
     /* Can only place the head of a chained mbuf on the queue. */
-    if (!OS_MBUF_IS_PKTHDR(m)) {
+    if (m == NULL || !OS_MBUF_IS_PKTHDR(m)) {
         rc = OS_EINVAL;
         goto err;
     }
@@ -153,15 +153,23 @@ os_msys_register(struct os_mbuf_pool *new_pool)
 
     pool = NULL;
     STAILQ_FOREACH(pool, &g_msys_pool_list, omp_next) {
-        if (new_pool->omp_databuf_len > pool->omp_databuf_len) {
+        if (new_pool->omp_databuf_len < pool->omp_databuf_len) {
             break;
         }
     }
 
-    if (pool) {
-        STAILQ_INSERT_AFTER(&g_msys_pool_list, pool, new_pool, omp_next);
-    } else {
+    if (pool == NULL) {
         STAILQ_INSERT_TAIL(&g_msys_pool_list, new_pool, omp_next);
+    } else if (pool == STAILQ_FIRST(&g_msys_pool_list)) {
+        STAILQ_INSERT_HEAD(&g_msys_pool_list, new_pool, omp_next);
+    } else {
+        struct os_mbuf_pool *prev;
+
+        prev = STAILQ_FIRST(&g_msys_pool_list);
+        while (STAILQ_NEXT(prev, omp_next) != pool) {
+            prev = STAILQ_NEXT(prev, omp_next);
+        }
+        STAILQ_INSERT_AFTER(&g_msys_pool_list, prev, new_pool, omp_next);
     }
 
     return (0);
@@ -216,7 +224,7 @@ os_msys_get(uint16_t dsize, uint16_t leadingspace)
 err:
     log_count ++;
     if ((log_count % 100) == 0) {
-        ESP_LOGI("ESP_LOG_INFO","_os_msys_find_pool failed (size %u)\n",dsize);
+        ESP_LOGE("nimble_mbuf", "_os_msys_find_pool failed (size %u)", dsize);
         log_count = 0;
     }
 
@@ -241,7 +249,7 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
 err:
     log_count ++;
     if ((log_count % 100) == 0) {
-        ESP_LOGI("ESP_LOG_INFO","_os_msys_find_pool failed (size %u)\n",dsize);
+        ESP_LOGE("nimble_mbuf", "_os_msys_find_pool failed (size %u)", dsize);
         log_count = 0;
     }
     return (NULL);
@@ -570,6 +578,8 @@ os_mbuf_dup(struct os_mbuf *om)
 
             if (OS_MBUF_IS_PKTHDR(om)) {
                 _os_mbuf_copypkthdr(head, om);
+                /* Restore leading space that _os_mbuf_copypkthdr overwrote */
+                head->om_data += OS_MBUF_LEADINGSPACE(om);
             }
             copy = head;
         }
@@ -589,6 +599,10 @@ os_mbuf_off(const struct os_mbuf *om, int off, uint16_t *out_off)
 {
     struct os_mbuf *next;
     struct os_mbuf *cur;
+
+    if (off < 0) {
+        return NULL;
+    }
 
     /* Cast away const. */
     cur = (struct os_mbuf *)om;
@@ -618,7 +632,11 @@ os_mbuf_copydata(const struct os_mbuf *m, int off, int len, void *dst)
     unsigned int count;
     uint8_t *udst;
 
-    if (!len) {
+    if (off < 0 || len < 0) {
+        return -1;
+    }
+
+    if (len == 0) {
         return 0;
     }
 
@@ -872,6 +890,10 @@ os_mbuf_prepend(struct os_mbuf *om, int len)
 struct os_mbuf *
 os_mbuf_prepend_pullup(struct os_mbuf *om, uint16_t len)
 {
+    if (om == NULL) {
+        return NULL;
+    }
+
     om = os_mbuf_prepend(om, len);
     if (om == NULL) {
         return NULL;
@@ -894,6 +916,7 @@ os_mbuf_copyinto(struct os_mbuf *om, int off, const void *src, int len)
     uint16_t cur_off;
     int copylen;
     int rc;
+    int orig_len = len;
 
     /* Find the mbuf,offset pair for the start of the destination. */
     cur = os_mbuf_off(om, off, &cur_off);
@@ -936,7 +959,7 @@ os_mbuf_copyinto(struct os_mbuf *om, int off, const void *src, int len)
     /* Fix up the packet header, if one is present. */
     if (OS_MBUF_IS_PKTHDR(om)) {
         OS_MBUF_PKTHDR(om)->omp_len =
-            max(OS_MBUF_PKTHDR(om)->omp_len, off + len);
+            max(OS_MBUF_PKTHDR(om)->omp_len, off + orig_len);
     }
 
     return 0;
@@ -1052,6 +1075,7 @@ os_mbuf_pullup(struct os_mbuf *om, uint16_t len)
 
         if (OS_MBUF_IS_PKTHDR(om)) {
             _os_mbuf_copypkthdr(om2, om);
+            om->om_pkthdr_len = 0;
         }
     }
     space = OS_MBUF_TRAILINGSPACE(om2);
@@ -1201,6 +1225,11 @@ os_mbuf_widen(struct os_mbuf *om, uint16_t off, uint16_t len)
         return OS_ENOMEM;
     }
     edge_om->om_len = sub_off;
+
+    /* Find actual tail of gap chain (os_mbuf_append may have extended it). */
+    while (SLIST_NEXT(prev, om_next) != NULL) {
+        prev = SLIST_NEXT(prev, om_next);
+    }
 
     /* Insert the gap into the chain. */
     SLIST_NEXT(prev, om_next) = SLIST_NEXT(edge_om, om_next);

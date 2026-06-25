@@ -209,17 +209,21 @@ ble_hs_startup_read_buf_sz(void)
         }
     }
 
+    ble_hs_lock();
     rc = ble_hs_hci_set_buf_sz(pktlen, max_pkts);
+    ble_hs_unlock();
     if (rc != 0) {
         return rc;
     }
 
 #if MYNEWT_VAL(BLE_ISO)
-    ble_hs_lock();
-    rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
-    ble_hs_unlock();
-    if (rc != 0) {
-        return rc;
+    if (iso_pktlen != 0 && iso_max_pkts != 0) {
+        ble_hs_lock();
+        rc = ble_hs_hci_set_iso_buf_sz(iso_pktlen, iso_max_pkts);
+        ble_hs_unlock();
+        if (rc != 0) {
+            return rc;
+        }
     }
 #endif /* MYNEWT_VAL(BLE_ISO) */
 
@@ -400,7 +404,7 @@ ble_hs_startup_le_set_evmask_tx(void)
 #endif /* MYNEWT_VAL(BLE_ISO) */
 
 #if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
-    if (version >= BLE_HCI_VER_BCS_5_4) {
+    if (version >= BLE_HCI_VER_BCS_6_0) {
         /**
          * Enable the following LE events:
          * 0x0000080000000000 LE CS Read Remote Supported Capabilities Complete event

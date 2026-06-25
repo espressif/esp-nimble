@@ -419,6 +419,14 @@ ble_transport_acl_put(struct os_mempool_ext *mpe, void *data, void *arg)
     struct os_mbuf *om;
     struct os_mbuf_pkthdr *pkthdr;
     bool from_ll;
+    uint16_t omp_flags;
+#endif
+
+#if MYNEWT_VAL(BLE_TRANSPORT_INT_FLOW_CTL)
+    om = data;
+    pkthdr = OS_MBUF_PKTHDR(om);
+    omp_flags = pkthdr->omp_flags;
+    from_ll = (omp_flags & OMP_FLAG_FROM_MASK) == OMP_FLAG_FROM_LL;
 #endif
 
 #if MYNEWT_VAL(BLE_HS_FLOW_CTRL)
@@ -430,10 +438,6 @@ ble_transport_acl_put(struct os_mempool_ext *mpe, void *data, void *arg)
 #endif
 
 #if MYNEWT_VAL(BLE_TRANSPORT_INT_FLOW_CTL)
-    om = data;
-    pkthdr = OS_MBUF_PKTHDR(om);
-
-    from_ll = (pkthdr->omp_flags & OMP_FLAG_FROM_MASK) == OMP_FLAG_FROM_LL;
 
     if (from_ll && !err) {
         hci_ipc_put(HCI_IPC_TYPE_ACL);

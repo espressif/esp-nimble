@@ -29,6 +29,10 @@
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_SM_SC)
 
+#if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+void mbedtls_free_keypair(void);
+#endif
+
 #define BLE_SM_SC_PASSKEY_BYTES     4
 #define BLE_SM_SC_PASSKEY_BITS      20
 
@@ -158,20 +162,16 @@ ble_sm_sc_io_action(struct ble_sm_proc *proc, uint8_t *action)
     pair_req = (struct ble_sm_pair_cmd *) &proc->pair_req[1];
     pair_rsp = (struct ble_sm_pair_cmd *) &proc->pair_rsp[1];
 
+    if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES ||
+        pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
+        *action = BLE_SM_IOACT_OOB_SC;
 #if MYNEWT_VAL(STATIC_PASSKEY)
-    /* Check if static passkey is enabled - if so, use static passkey action */
-    if (ble_hs_cfg.sm_static_passkey)
-    {
+    } else if (ble_hs_cfg.sm_static_passkey) {
         *action = BLE_SM_IOACT_STATIC;
         proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
         proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
         return 0;
-    }
 #endif
-
-    if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES ||
-        pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
-        *action = BLE_SM_IOACT_OOB_SC;
     } else if (!(pair_req->authreq & BLE_SM_PAIR_AUTHREQ_MITM) &&
                !(pair_rsp->authreq & BLE_SM_PAIR_AUTHREQ_MITM)) {
 
@@ -780,7 +780,7 @@ static void
 ble_sm_sc_dhkey_addrs(struct ble_sm_proc *proc, ble_addr_t *our_addr,
                       ble_addr_t *peer_addr)
 {
-    struct ble_hs_conn_addrs addrs;
+    struct ble_hs_conn_addrs addrs = {0};
     struct ble_hs_conn *conn;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
@@ -1009,25 +1009,28 @@ ble_sm_sc_oob_data_check(struct ble_sm_proc *proc,
 int
 ble_sm_sc_oob_generate_data(struct ble_sm_sc_oob_data *oob_data)
 {
+    uint8_t pub_key[64];
     int rc;
 
+    ble_hs_lock();
+
     rc = ble_sm_sc_ensure_keys_generated();
-    if (rc) {
+    if (rc == 0) {
+        memcpy(pub_key, ble_sm_sc_pub_key, sizeof(pub_key));
+    }
+
+    ble_hs_unlock();
+
+    if (rc != 0) {
         return rc;
     }
 
     rc = ble_hs_hci_util_rand(oob_data->r, 16);
-    if (rc) {
+    if (rc != 0) {
         return rc;
     }
 
-    rc = ble_sm_alg_f4(ble_sm_sc_pub_key, ble_sm_sc_pub_key, oob_data->r, 0,
-                       oob_data->c);
-    if (rc) {
-        return rc;
-    }
-
-    return 0;
+    return ble_sm_alg_f4(pub_key, pub_key, oob_data->r, 0, oob_data->c);
 }
 
 void
@@ -1042,9 +1045,13 @@ void
 ble_sm_sc_deinit(void)
 {
     if (ble_sm_sc_ctx) {
+#if MYNEWT_VAL(BLE_CRYPTO_STACK_MBEDTLS)
+        mbedtls_free_keypair();
+#endif
         nimble_platform_mem_free(ble_sm_sc_ctx);
         ble_sm_sc_ctx = NULL;
     }
+    ble_sm_sc_keys_generated = 0;
 }
 #endif
 

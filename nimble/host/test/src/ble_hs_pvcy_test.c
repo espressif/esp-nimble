@@ -236,7 +236,7 @@ ble_hs_pvcy_test_util_add_arbitrary_irk(bool scanning, bool connecting)
     ble_hs_pvcy_test_util_add_irk(
         &peer_addr,
         (uint8_t[16]){1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16},
-        ble_hs_pvcy_default_irk,
+        ble_hs_pvcy_get_default_irk(),
         scanning,
         connecting);
 }
@@ -255,7 +255,7 @@ ble_hs_pvcy_test_util_restore_irk(const struct ble_store_value_sec *value_sec,
 
     ble_hs_pvcy_test_util_add_irk_verify_tx(&value_sec->peer_addr,
                                             value_sec->irk,
-                                            ble_hs_pvcy_default_irk,
+                                            ble_hs_pvcy_get_default_irk(),
                                             scanning,
                                             connecting);
 }
@@ -287,7 +287,7 @@ TEST_CASE_SELF(ble_hs_pvcy_test_case_restore_irks)
     ble_hs_pvcy_test_util_start_host(1);
     ble_hs_pvcy_test_util_add_irk_verify_tx(&value_sec1.peer_addr,
                                             value_sec1.irk,
-                                            ble_hs_pvcy_default_irk,
+                                            ble_hs_pvcy_get_default_irk(),
                                             false, false);
 
     /* Two persisted IRKs. */
@@ -305,11 +305,11 @@ TEST_CASE_SELF(ble_hs_pvcy_test_case_restore_irks)
     ble_hs_pvcy_test_util_start_host(2);
     ble_hs_pvcy_test_util_add_irk_verify_tx(&value_sec1.peer_addr,
                                             value_sec1.irk,
-                                            ble_hs_pvcy_default_irk,
+                                            ble_hs_pvcy_get_default_irk(),
                                             false, false);
     ble_hs_pvcy_test_util_add_irk_verify_tx(&value_sec2.peer_addr,
                                             value_sec2.irk,
-                                            ble_hs_pvcy_default_irk,
+                                            ble_hs_pvcy_get_default_irk(),
                                             false, false);
 
     ble_hs_test_util_assert_mbufs_freed(NULL);

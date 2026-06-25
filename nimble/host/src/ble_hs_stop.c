@@ -90,11 +90,20 @@ ble_hs_stop_done(int status)
     slist = ble_hs_stop_listeners;
     SLIST_INIT(&ble_hs_stop_listeners);
 
-    ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
+    if (status == 0) {
+        ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
+    } else {
+        ble_hs_enabled_state = BLE_HS_ENABLED_STATE_ON;
+    }
 
     ble_hs_unlock();
 
-    SLIST_FOREACH(listener, &slist, link) {
+    if (status != 0) {
+        ble_hs_timer_resched();
+    }
+
+    struct ble_hs_stop_listener *listener_next;
+    SLIST_FOREACH_SAFE(listener, &slist, link, listener_next) {
         listener->fn(status, listener->arg);
     }
 }
@@ -169,8 +178,7 @@ ble_hs_stop_terminate_timeout_cb(struct ble_npl_event *ev)
     BLE_HS_LOG(ERROR, "ble_hs_stop_terminate_timeout_cb,"
                       "%d connection(s) still up \n", ble_hs_stop_conn_cnt);
 
-    /* TODO: Shall we send error here? */
-    ble_hs_stop_done(0);
+    ble_hs_stop_done(BLE_HS_ETIMEOUT);
 }
 
 /**
@@ -208,7 +216,19 @@ static void
 ble_hs_stop_register_listener(struct ble_hs_stop_listener *listener,
                               ble_hs_stop_fn *fn, void *arg)
 {
+    struct ble_hs_stop_listener *cur;
+
     BLE_HS_DBG_ASSERT(fn != NULL);
+
+    /* Prevent duplicate insertion which would create a cycle in the list. */
+    SLIST_FOREACH(cur, &ble_hs_stop_listeners, link) {
+        if (cur == listener) {
+            /* Update fn/arg in case caller re-registers with new values */
+            listener->fn = fn;
+            listener->arg = arg;
+            return;
+        }
+    }
 
     listener->fn = fn;
     listener->arg = arg;
@@ -219,6 +239,10 @@ static int
 ble_hs_stop_begin(struct ble_hs_stop_listener *listener,
                    ble_hs_stop_fn *fn, void *arg)
 {
+    if (listener != NULL && fn == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
     switch (ble_hs_enabled_state) {
     case BLE_HS_ENABLED_STATE_ON:
         /* Host is enabled; proceed with the stop procedure. */
@@ -339,12 +363,14 @@ ble_hs_stop_init(void)
 void
 ble_hs_stop_deinit(void)
 {
-    ble_npl_callout_deinit(&ble_hs_stop_terminate_tmo);
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_stop_ctx) {
+        ble_npl_callout_deinit(&ble_hs_stop_terminate_tmo);
         nimble_platform_mem_free(ble_hs_stop_ctx);
         ble_hs_stop_ctx = NULL;
     }
+#else
+    ble_npl_callout_deinit(&ble_hs_stop_terminate_tmo);
 #endif
 
 }

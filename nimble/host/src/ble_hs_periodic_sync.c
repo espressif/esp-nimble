@@ -79,6 +79,8 @@ ble_hs_periodic_sync_alloc(void)
 {
     struct ble_hs_periodic_sync *psync;
 
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
     psync = os_memblock_get(&ble_hs_periodic_sync_pool);
     if (psync) {
         memset(psync, 0, sizeof(*psync));
@@ -119,8 +121,8 @@ ble_hs_periodic_sync_insert(struct ble_hs_periodic_sync *psync)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    BLE_HS_DBG_ASSERT_EVAL(
-                           ble_hs_periodic_sync_find_by_handle(psync->sync_handle) == NULL);
+    BLE_HS_DBG_ASSERT(
+        ble_hs_periodic_sync_find_by_handle(psync->sync_handle) == NULL);
 
     SLIST_INSERT_HEAD(&g_ble_hs_periodic_sync_handles, psync, next);
 }
@@ -128,10 +130,23 @@ ble_hs_periodic_sync_insert(struct ble_hs_periodic_sync *psync)
 void
 ble_hs_periodic_sync_remove(struct ble_hs_periodic_sync *psync)
 {
+    struct ble_hs_periodic_sync *cur;
+    struct ble_hs_periodic_sync *prev;
+
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    SLIST_REMOVE(&g_ble_hs_periodic_sync_handles, psync, ble_hs_periodic_sync,
-                 next);
+    prev = NULL;
+    SLIST_FOREACH(cur, &g_ble_hs_periodic_sync_handles, next) {
+        if (cur == psync) {
+            if (prev == NULL) {
+                SLIST_REMOVE_HEAD(&g_ble_hs_periodic_sync_handles, next);
+            } else {
+                SLIST_NEXT(prev, next) = SLIST_NEXT(cur, next);
+            }
+            return;
+        }
+        prev = cur;
+    }
 }
 
 struct ble_hs_periodic_sync *

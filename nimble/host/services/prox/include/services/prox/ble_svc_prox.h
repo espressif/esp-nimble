@@ -36,6 +36,7 @@ void ble_svc_prox_ctx_deinit(void);
  * @brief  Initializes proximity service.
  */
 void ble_svc_prox_init(void);
+void ble_svc_prox_deinit(void);
 
 #ifdef __cplusplus
 }

@@ -138,10 +138,10 @@ static struct err_code core_err_code_list[] = {
       { BLE_HS_EAUTHEN,                               ": BLE_HS_EAUTHEN (Insufficient authentication)" },
       { BLE_HS_EAUTHOR,                               ": BLE_HS_EAUTHOR (Insufficient authorization)" },
       { BLE_HS_EENCRYPT,                              ": BLE_HS_EENCRYPT (Insufficient encryption level)" },
-      { BLE_HS_EENCRYPT_KEY_SZ,                       ": BLE_HS_EENCRYPT_KEY_SZ (Insufficient key size" },
-      { BLE_HS_ESTORE_CAP,                            ": BLE_HS_ESTORE_CAP (BLE_HS_ESTORE_FAIL,)" },
+      { BLE_HS_EENCRYPT_KEY_SZ,                       ": BLE_HS_EENCRYPT_KEY_SZ (Insufficient key size)" },
+      { BLE_HS_ESTORE_CAP,                            ": BLE_HS_ESTORE_CAP (Storage capacity exceeded)" },
       { BLE_HS_ESTORE_FAIL,                           ": BLE_HS_ESTORE_FAIL (Storage IO error)" },
-      { BLE_HS_EPREEMPTED,                            ": BLE_HS_EPREEMPTED (ation was preempted)" },
+      { BLE_HS_EPREEMPTED,                            ": BLE_HS_EPREEMPTED (Operation was preempted)" },
       { BLE_HS_EDISABLED,                             ": BLE_HS_EDISABLED (Operation disabled)" },
       { BLE_HS_ESTALLED,                              ": BLE_HS_ESTALLED (Operation stalled)" }
 };
@@ -268,7 +268,7 @@ typedef struct {
     uint16_t             hci_max_pkts;
     uint64_t             hci_sup_feat;
     uint8_t              hci_version;
-    uint16_t             hci_avial_pkts;
+    uint16_t             hci_avail_pkts;
 
     struct os_mempool    hci_frag_mempool;      /* Memory pool for HCI fragments */
     os_membuf_t         *hci_frag_data;         /* Memory buffer backing HCI pool */
@@ -286,7 +286,8 @@ static ble_hs_hci_ctx_t *ble_hs_hci_ctx = NULL;
 #define ble_hs_hci_max_pkts           (ble_hs_hci_ctx->hci_max_pkts)
 #define ble_hs_hci_sup_feat           (ble_hs_hci_ctx->hci_sup_feat)
 #define ble_hs_hci_version            (ble_hs_hci_ctx->hci_version)
-#define ble_hs_hci_avail_pkts         (ble_hs_hci_ctx->hci_avial_pkts)
+#undef ble_hs_hci_avail_pkts
+#define ble_hs_hci_avail_pkts         (ble_hs_hci_ctx->hci_avail_pkts)
 
 #define ble_hs_hci_frag_mempool     (ble_hs_hci_ctx->hci_frag_mempool)
 #define ble_hs_hci_frag_data        (ble_hs_hci_ctx->hci_frag_data)
@@ -311,6 +312,9 @@ static uint8_t ble_hs_hci_version;
 uint16_t ble_hs_hci_avail_pkts;
 static struct ble_hci_ev *l_ble_hs_hci_ack;
 #endif //BLE_STATIC_TO_DYNAMIC
+
+/* Indicates HCI mutex / state has been initialized and can be safely read. */
+static uint8_t ble_hs_hci_initialized;
 
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
 #define BLE_HS_HCI_FRAG_DATABUF_SIZE    \
@@ -365,13 +369,19 @@ ble_hs_hci_set_phony_ack_cb(ble_hs_hci_phony_ack_fn *cb)
 }
 #endif
 
-static void
+static int
 ble_hs_hci_lock(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_hci_ctx == NULL) {
+        return BLE_HS_ENOTSYNCED;
+    }
+#endif
     rc = ble_npl_mutex_pend(&ble_hs_hci_mutex, BLE_NPL_TIME_FOREVER);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
+    return 0;
 }
 
 static void
@@ -379,6 +389,11 @@ ble_hs_hci_unlock(void)
 {
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_hci_ctx == NULL) {
+        return;
+    }
+#endif
     rc = ble_npl_mutex_release(&ble_hs_hci_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -391,11 +406,33 @@ ble_hs_hci_set_buf_sz(uint16_t pktlen, uint16_t max_pkts)
         return BLE_HS_EINVAL;
     }
 
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
     ble_hs_hci_buf_sz = pktlen;
     ble_hs_hci_max_pkts = max_pkts;
     ble_hs_hci_avail_pkts = max_pkts;
 
     return 0;
+}
+
+/**
+ * Returns the number of available ACL transmit buffers on the controller.
+ * This can be used by applications to throttle notification enqueuing.
+ */
+uint16_t
+ble_hs_hci_get_avail_pkts(void)
+{
+    if (!ble_hs_hci_initialized) {
+        return 0;
+    }
+
+    uint16_t avail_pkts;
+
+    ble_hs_lock_nested();
+    avail_pkts = ble_hs_hci_avail_pkts;
+    ble_hs_unlock_nested();
+
+    return avail_pkts;
 }
 
 /**
@@ -406,7 +443,13 @@ ble_hs_hci_add_avail_pkts(uint16_t delta)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    if (ble_hs_hci_avail_pkts + delta > UINT16_MAX) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_hci_ctx) {
+        return;
+    }
+#endif
+
+    if (delta > ble_hs_hci_max_pkts - ble_hs_hci_avail_pkts) {
         ble_hs_sched_reset(BLE_HS_ECONTROLLER);
     } else {
         ble_hs_hci_avail_pkts += delta;
@@ -437,6 +480,7 @@ ble_hs_hci_rx_cmd_complete(const void *data, int len,
 
         /* TODO Process num_pkts field. */
 
+        out_ack->bha_opcode = opcode;
         out_ack->bha_status = 0;
         out_ack->bha_params = NULL;
         out_ack->bha_params_len = 0;
@@ -547,9 +591,10 @@ ble_hs_hci_wait_for_ack(void)
     if (ble_hs_hci_phony_ack_cb == NULL) {
         rc = BLE_HS_ETIMEOUT_HCI;
     } else {
-        l_ble_hs_hci_ack = ble_transport_alloc_cmd();
+        l_ble_hs_hci_ack = (struct ble_hci_ev *)ble_transport_alloc_evt(0);
         BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack != NULL);
-        rc = ble_hs_hci_phony_ack_cb((void *)l_ble_hs_hci_ack, 260);
+        rc = ble_hs_hci_phony_ack_cb((void *)l_ble_hs_hci_ack,
+                                     MYNEWT_VAL(BLE_TRANSPORT_EVT_SIZE));
     }
 #else
     rc = ble_npl_sem_pend(&ble_hs_hci_sem,
@@ -575,7 +620,10 @@ ble_hs_hci_cmd_tx_no_rsp(uint16_t opcode, const void *cmd, uint8_t cmd_len)
 {
     int rc;
 
-    ble_hs_hci_lock();
+    rc = ble_hs_hci_lock();
+    if (rc != 0) {
+        return rc;
+    }
 
     rc = ble_hs_hci_cmd_send_buf(opcode, cmd, cmd_len);
 
@@ -591,8 +639,14 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
     struct ble_hs_hci_ack ack;
     int rc;
 
+    rc = ble_hs_hci_lock();
+    if (rc != 0) {
+        return rc;
+    }
+    /* Assert after lock: when BLE_STATIC_TO_DYNAMIC is enabled, l_ble_hs_hci_ack
+     * expands to (ble_hs_hci_ctx->hci_ack). Evaluating this before ble_hs_hci_lock()
+     * would dereference ble_hs_hci_ctx before its NULL guard is checked. */
     BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
-    ble_hs_hci_lock();
 
     rc = ble_hs_hci_cmd_send_buf(opcode, cmd, cmd_len);
     if (rc != 0) {
@@ -1002,6 +1056,11 @@ ble_hs_hci_set_hci_version(uint8_t hci_version)
 uint8_t
 ble_hs_hci_get_hci_version(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_hci_ctx) {
+        return 0;
+    }
+#endif
     return ble_hs_hci_version;
 }
 
@@ -1045,11 +1104,15 @@ ble_hs_hci_init(void)
     }
 #endif
 
+    int init_ok = 1;
+
     rc = ble_npl_sem_init(&ble_hs_hci_sem, 0);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    init_ok = init_ok && (rc == 0);
 
     rc = ble_npl_mutex_init(&ble_hs_hci_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    init_ok = init_ok && (rc == 0);
 
     rc = mem_init_mbuf_pool(ble_hs_hci_frag_data,
                             &ble_hs_hci_frag_mempool,
@@ -1059,11 +1122,15 @@ ble_hs_hci_init(void)
                             "ble_hs_hci_frag");
 
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    init_ok = init_ok && (rc == 0);
+    ble_hs_hci_initialized = init_ok;
 }
 
 void ble_hs_hci_deinit(void)
 {
     int rc;
+
+    ble_hs_hci_initialized = 0;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_hci_ctx == NULL) {

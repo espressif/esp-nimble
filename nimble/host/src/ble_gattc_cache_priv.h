@@ -126,6 +126,8 @@ struct ble_gattc_cache_conn {
     struct ble_gattc_cache_conn_svc_list svcs;
 
     uint8_t cache_state;
+    /** Set when a DB change arrives during in-progress discovery. */
+    uint8_t needs_rediscovery;
     /** Keeps track of where we are in the service discovery process. */
     uint16_t disc_prev_chr_val;
     struct ble_gattc_cache_conn_svc *cur_svc;
@@ -308,7 +310,7 @@ int ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,
                                          ble_gatt_disc_svc_fn *cb, void *cb_arg);
 int ble_gattc_cache_conn_search_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *uuid,
                                             ble_gatt_disc_svc_fn *cb, void *cb_arg);
-#if (MYNEWT_VAL(BLE_INCL_SVC_DISCOVERY) || MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES))
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
 int ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
                                          uint16_t end_handle,
                                          ble_gatt_disc_incl_svc_fn *cb, void *cb_arg);

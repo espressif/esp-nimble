@@ -149,7 +149,7 @@ os_msys_sanity_min_count(int idx)
 
     default:
         BLE_LL_ASSERT(0);
-        return ESP_OK;
+        return 0;
     }
 }
 
@@ -291,6 +291,8 @@ os_msys_buf_free(void)
     os_mempool_unregister(&os_msys_init_2_mempool);
 #endif
 #endif
+
+    os_msys_reset();
 }
 
 void os_msys_init(void)

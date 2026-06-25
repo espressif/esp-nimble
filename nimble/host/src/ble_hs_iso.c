@@ -183,6 +183,10 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
     uint8_t *frag;
     int rc;
 
+    if (sdu == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
     /* Get the Controller ISO buffer needed for the SDU */
     uint8_t count = ble_hs_hci_iso_buf_needed(sdu_len, ts_flag);
@@ -222,7 +226,8 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
      */
     rc = ble_hci_trans_hs_iso_tx(frag, BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len, NULL);
     if (rc) {
-        return BLE_HS_EDONE;
+        nimble_platform_mem_free(frag);
+        return BLE_HS_ECONTROLLER;
     }
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
@@ -267,8 +272,10 @@ ble_hs_iso_pkt_rx_cb_set(ble_hs_iso_pkt_rx_fn cb)
 int
 ble_hs_rx_iso_data(const uint8_t *data, uint16_t len, void *arg)
 {
+    int rc = 0;
+
     if (ble_hs_iso_pkt_rx_cb) {
-        ble_hs_iso_pkt_rx_cb(data, len, arg);
+        rc = ble_hs_iso_pkt_rx_cb(data, len, arg);
     } else {
         BLE_HS_LOG(WARN, "ISO RX: no callback registered");
     }
@@ -277,7 +284,7 @@ ble_hs_rx_iso_data(const uint8_t *data, uint16_t len, void *arg)
     // TODO: add adapter for controller free.
     free((void *)data);
 
-    return 0;
+    return rc;
 }
 
 #endif /* MYNEWT_VAL(BLE_ISO) */

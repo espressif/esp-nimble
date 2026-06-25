@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <string.h>
 #include "sysinit/sysinit.h"
+#include "host/ble_att.h"
 #include "host/ble_hs.h"
 #include "services/sps/ble_svc_sps.h"
 #include "host/ble_hs_log.h"
@@ -113,6 +114,11 @@ ble_svc_sps_chr_write(struct os_mbuf *om, uint16_t min_len,
 }
 
 void ble_svc_sps_scan_refresh() {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_sps_static_vars == NULL) {
+        return;
+    }
+#endif
     /* spec allows only value 0 to send */
     ble_scan_refresh = 0;
     ble_gatts_chr_updated(ble_scan_refresh_handle);
@@ -131,8 +137,16 @@ ble_svc_sps_access(uint16_t conn_handle, uint16_t attr_handle,
         assert(ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR);
         rc = ble_svc_sps_chr_write(ctxt->om, 4, 4, buf, NULL);
         if(rc == 0) {
-            ble_scan_itvl = get_le16(buf);
-            ble_scan_window = get_le16(buf + 2);
+            uint16_t itvl = get_le16(buf);
+            uint16_t window = get_le16(buf + 2);
+
+            if (itvl < 0x0004 || itvl > 0x4000 ||
+                window < 0x0004 || window > 0x4000 ||
+                window > itvl) {
+                return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+            }
+            ble_scan_itvl = itvl;
+            ble_scan_window = window;
             if (ble_svc_sps_cb_fn) {
                 ble_svc_sps_cb_fn(ble_scan_itvl, ble_scan_window);
             }
@@ -198,8 +212,17 @@ ble_svc_sps_set_cb(ble_svc_sps_event_fn *cb)
 void ble_svc_sps_deinit(void)
 {
     ble_gatts_free_svcs();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_sps_static_vars != NULL) {
+        ble_scan_itvl = 0;
+        ble_scan_window = 0;
+        nimble_platform_mem_free(ble_svc_sps_static_vars);
+        ble_svc_sps_static_vars = NULL;
+    }
+#else
     ble_scan_itvl = 0;
     ble_scan_window = 0;
+#endif
 }
 
 /**

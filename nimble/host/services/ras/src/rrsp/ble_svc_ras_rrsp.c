@@ -27,7 +27,7 @@
 static uint32_t ble_svc_ras_feat_val;
 static uint16_t ble_svc_ras_rd_val;
 static uint16_t ble_svc_ras_rd_ov_val;
-static uint16_t ble_svc_ras_cp_val;
+static uint8_t ble_svc_ras_cp_val[RASCP_CMD_OPCODE_LEN + sizeof(uint16_t)];
 
 static uint16_t ble_svc_ras_feat_val_handle;
 static uint16_t ble_svc_ras_od_val_handle;

@@ -347,8 +347,10 @@ ble_gap_dev_authorization(uint16_t conn_handle, bool authorized);
  * @return                      0 on success;
  *                              A nonzero value indicating an error if the command fails.
  */
+#if MYNEWT_VAL(BLE_HCI_VS)
 int
 ble_hs_send_vs_event_mask(uint32_t event_mask);
+#endif
 
 void ble_gap_rx_test_evt(const void *buf, uint8_t len);
 void ble_gap_tx_test_evt(const void *buf, uint8_t len);

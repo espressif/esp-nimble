@@ -148,9 +148,7 @@ int ble_att_svr_register(const ble_uuid_t *uuid, uint8_t flags,
                          uint8_t min_key_size, uint16_t *handle_id,
                          ble_att_svr_access_fn *cb, void *cb_arg);
 
-#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 int ble_att_svr_deregister(uint16_t start_handle, uint16_t end_group_handle);
-#endif
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 int ble_att_get_database_size(int *out_size);
 int ble_att_fill_database_info(uint8_t *out_data);

@@ -88,13 +88,14 @@ ble_hs_is_rpa(uint8_t *addr, uint8_t addr_type)
 int
 ble_hs_id_set_pub(const uint8_t *pub_addr)
 {
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
-    ble_hs_lock();
     memcpy(ble_hs_id_pub, pub_addr, 6);
     ble_hs_unlock();
     return 0;
@@ -136,19 +137,19 @@ ble_hs_id_set_nrpa_rnd(void)
     ble_addr_t nrpa_addr;
     int rc;
 
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_hs_id_ensure_ctx()) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-        return BLE_HS_ENOMEM;
-    }
-#endif
-
     rc = ble_hs_id_gen_rnd(1, &nrpa_addr);
     if (rc != 0) {
         return rc;
     }
 
     ble_hs_lock();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ensure_ctx()) {
+        ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     /* set the NRPA address as pseudo random address in controller */
     rc = ble_hs_hci_util_set_random_addr(nrpa_addr.val);
@@ -182,14 +183,14 @@ ble_hs_id_set_pseudo_rnd(const uint8_t *rnd_addr)
     int rc;
     int ones;
 
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        ble_hs_unlock();
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
 #endif
-
-    ble_hs_lock();
 
     /* Make sure random part of rnd_addr is not all ones or zeros. Reference:
      * Core v5.0, Vol 6, Part B, section 1.3.2.1 */
@@ -226,14 +227,15 @@ ble_hs_id_set_rnd(const uint8_t *rnd_addr)
     int rc;
     int ones;
 
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_hs_id_ensure_ctx()) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
-        return BLE_HS_EINVAL;
+    rc = ble_hs_id_ensure_ctx();
+    if (rc != 0) {
+        ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+        return rc;
     }
 #endif
-
-    ble_hs_lock();
 
     /* Make sure random part of rnd_addr is not all ones or zeros. Reference:
      * Core v5.0, Vol 6, Part B, section 1.3.2.1 */
@@ -471,12 +473,13 @@ done:
 void
 ble_hs_id_reset(void)
 {
+    ble_hs_lock();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_id_ensure_ctx()) {
+        ble_hs_unlock();
         return;
     }
 #endif
-    ble_hs_lock();
     memset(ble_hs_id_pub, 0, sizeof ble_hs_id_pub);
     memset(ble_hs_id_rnd, 0, sizeof ble_hs_id_rnd);
     ble_hs_unlock();
