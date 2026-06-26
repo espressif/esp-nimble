@@ -2071,6 +2071,7 @@ ble_gattc_cache_conn_update(uint16_t conn_handle, uint16_t start_handle, uint16_
 
 int ble_gattc_cache_refresh(ble_addr_t peer_addr)
 {
+#if MYNEWT_VAL(BLE_GATTC)
     struct ble_hs_conn *hs_conn;
     struct ble_gattc_cache_conn *conn;
     int rc;
@@ -2104,6 +2105,14 @@ int ble_gattc_cache_refresh(ble_addr_t peer_addr)
     rc = ble_gattc_cache_conn_disc(conn);
 
     return rc;
+#else
+    /* Refreshing a peer's GATT cache requires the GATT client. On a
+     * server-only build (BLE_GATT_CACHING enabled without BLE_GATTC) there is
+     * nothing to refresh, so report the operation as unsupported instead of
+     * referencing client-only helpers that are compiled out. */
+    (void)peer_addr;
+    return BLE_HS_ENOTSUP;
+#endif
 }
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
