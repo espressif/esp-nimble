@@ -314,6 +314,20 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
 #if NIMBLE_BLE_CONNECT
 
     int rc;
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY)
+    struct ble_store_key_sec key_sec;
+    struct ble_store_value_sec old_sec;
+    int replace_entry;
+
+    replace_entry = 0;
+    if (ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY) &&
+        value_sec->irk_present) {
+        memset(&key_sec, 0, sizeof key_sec);
+        key_sec.peer_addr = value_sec->peer_addr;
+        rc = ble_store_read_peer_sec(&key_sec, &old_sec);
+        replace_entry = rc == 0 && old_sec.irk_present;
+    }
+#endif /* BLE_DEFER_CONN_EVENTS && BLE_HS_PVCY */
 
     rc = ble_store_persist_sec(BLE_STORE_OBJ_TYPE_PEER_SEC, value_sec);
     if (rc != 0) {
@@ -323,11 +337,56 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
     if (ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY) &&
         value_sec->irk_present) {
 #if MYNEWT_VAL(BLE_HS_PVCY)
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+        /* Do not update the controller resolving list while this peer is still
+         * connected. The bond is already persisted for the current link, and
+         * some controllers reject LE Add Device To Resolving List in this
+         * state even when GAP is preempted.
+         */
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        ble_hs_lock();
+        struct ble_hs_conn *conn = ble_hs_conn_find_by_addr(&value_sec->peer_addr);
+        if (conn != NULL) {
+            conn->bhc_deferred_pvcy_add = 1;
+            conn->bhc_deferred_pvcy_replace = replace_entry;
+            conn->bhc_deferred_pvcy_addr = value_sec->peer_addr;
+            memcpy(conn->bhc_deferred_pvcy_irk, value_sec->irk,
+                   sizeof conn->bhc_deferred_pvcy_irk);
+            ble_hs_unlock();
+            return 0;
+        }
+        ble_hs_unlock();
+#endif
+
+        /* Write the peer IRK to the controller keycache
+         * There is not much to do here if it fails */
+        if (replace_entry) {
+            rc = ble_hs_pvcy_replace_entry(value_sec->peer_addr.val,
+                                           value_sec->peer_addr.type,
+                                           value_sec->irk);
+        } else {
+            rc = ble_hs_pvcy_add_entry(value_sec->peer_addr.val,
+                                       value_sec->peer_addr.type,
+                                       value_sec->irk);
+            if (rc == BLE_HS_EINVAL ||
+                rc == BLE_HS_HCI_ERR(BLE_ERR_CMD_DISALLOWED) ||
+                rc == BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS)) {
+                /* Entry already present in resolving list; replace it.
+                 * Occurs when the store entry was deleted and re-written
+                 * without first removing the resolving list entry (e.g.
+                 * sign-counter increment with BLE_HOST_BASED_PRIVACY=1). */
+                rc = ble_hs_pvcy_replace_entry(value_sec->peer_addr.val,
+                                               value_sec->peer_addr.type,
+                                               value_sec->irk);
+            }
+        }
+#else
         /* Write the peer IRK to the controller keycache
          * There is not much to do here if it fails */
         rc = ble_hs_pvcy_add_entry(value_sec->peer_addr.val,
-                                          value_sec->peer_addr.type,
-                                          value_sec->irk);
+                                   value_sec->peer_addr.type,
+                                   value_sec->irk);
+#endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
         if (rc != 0) {
             return rc;
         }

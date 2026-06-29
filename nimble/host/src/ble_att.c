@@ -22,6 +22,10 @@
 #include "ble_hs_priv.h"
 #include "host/ble_att.h"
 #include "host/ble_hs_log.h"
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+#include "host/ble_gap.h"
+#include "esp_nimble_mem.h"
+#endif
 
 #if NIMBLE_BLE_CONNECT
 
@@ -623,7 +627,11 @@ ble_att_send_outstanding_after_response(uint16_t conn_handle)
     ble_hs_unlock();
 }
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+int
+#else
 static int
+#endif
 ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 {
     const struct ble_att_rx_dispatch_entry *entry;
@@ -632,6 +640,99 @@ ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 
     BLE_HS_DBG_ASSERT(*om != NULL);
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    {
+        struct ble_hs_conn *conn;
+
+        ble_hs_lock();
+        conn = ble_hs_conn_find(conn_handle);
+        if (conn != NULL && !conn->bhc_connect_delivered) {
+            struct ble_att_deferred_req *req;
+            bool defer_ok = true;
+
+            if ((conn->bhc_deferred_event_cnt + conn->bhc_deferred_att_cnt) >=
+                BLE_HS_CONN_DEFERRED_EVENT_MAX) {
+                defer_ok = false;
+                BLE_HS_LOG(ERROR,
+                           "ble_att_rx_extended: defer queue full; conn=%u cid=%u\n",
+                           conn_handle, cid);
+            }
+
+            ble_hs_unlock();
+
+            if (defer_ok) {
+                req = nimble_platform_mem_calloc(1, sizeof(*req));
+                if (req == NULL) {
+                    BLE_HS_LOG(ERROR,
+                               "ble_att_rx_extended: defer alloc failed; conn=%u cid=%u\n",
+                               conn_handle, cid);
+                } else {
+                    ble_hs_lock();
+                    conn = ble_hs_conn_find(conn_handle);
+                    if (conn == NULL) {
+                        ble_hs_unlock();
+                        nimble_platform_mem_free(req);
+                        return BLE_HS_ENOTCONN;
+                    } else if (conn->bhc_connect_delivered) {
+                        ble_hs_unlock();
+                        nimble_platform_mem_free(req);
+                        goto process_att_normally;
+                    } else if ((conn->bhc_deferred_event_cnt +
+                                conn->bhc_deferred_att_cnt) >=
+                               BLE_HS_CONN_DEFERRED_EVENT_MAX) {
+                        ble_hs_unlock();
+                        nimble_platform_mem_free(req);
+                        BLE_HS_LOG(ERROR,
+                                   "ble_att_rx_extended: defer queue full post-alloc; "
+                                   "conn=%u cid=%u\n",
+                                   conn_handle, cid);
+                    } else {
+                        req->cid = cid;
+                        req->om = *om;
+                        req->seq = conn->bhc_deferred_seq++;
+                        STAILQ_INSERT_TAIL(&conn->bhc_deferred_att_reqs, req, next);
+                        conn->bhc_deferred_att_cnt++;
+                        *om = NULL;
+                        ble_hs_unlock();
+                        return 0;
+                    }
+                }
+            }
+
+            rc = os_mbuf_copydata(*om, 0, 1, &op);
+            if (rc != 0) {
+                return BLE_HS_EMSGSIZE;
+            }
+
+            /*
+             * Defer queue is full or allocation failed.  Respond on the wire
+             * for ATT requests; drop everything else.  Either way the
+             * application is not invoked so CONNECT stays first.
+             */
+            if (cid == BLE_L2CAP_CID_ATT && ble_att_is_request_op(op)) {
+#if MYNEWT_VAL(BLE_GATTS)
+                os_mbuf_adj(*om, OS_MBUF_PKTLEN(*om));
+                ble_att_svr_tx_error_rsp(conn_handle, cid, *om, op, 0,
+                                         BLE_ATT_ERR_INSUFFICIENT_RES);
+                *om = NULL;
+#endif
+                if (*om != NULL) {
+                    os_mbuf_free_chain(*om);
+                    *om = NULL;
+                }
+            } else {
+                /* Notifications, write commands, EATT ops, etc. */
+                os_mbuf_free_chain(*om);
+                *om = NULL;
+            }
+            return 0;
+        } else {
+            ble_hs_unlock();
+        }
+    }
+
+process_att_normally:
+#endif
     rc = os_mbuf_copydata(*om, 0, 1, &op);
     if (rc != 0) {
         return BLE_HS_EMSGSIZE;

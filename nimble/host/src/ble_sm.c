@@ -1038,6 +1038,22 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
 
     retried = 0;
     do {
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+        int defer_repeat_chk;
+
+        defer_repeat_chk = 0;
+        ble_hs_lock();
+        {
+            struct ble_hs_conn *conn;
+
+            conn = ble_hs_conn_find(conn_handle);
+            if (conn != NULL && !conn->bhc_connect_delivered) {
+                defer_repeat_chk = 1;
+            }
+        }
+        ble_hs_unlock();
+#endif
+
         /* If the peer isn't bonded, indicate that the pairing procedure should
          * continue.
          */
@@ -1051,6 +1067,25 @@ ble_sm_chk_repeat_pairing(uint16_t conn_handle,
         default:
             return rc;
         }
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+        /*
+         * Repeat pairing needs a synchronous app decision and cannot be
+         * deferred.  Reject pairing from bonded peers until CONNECT is
+         * delivered so the bond is not overwritten without consent.
+         */
+        if (defer_repeat_chk) {
+            struct ble_hs_conn *conn;
+
+            ble_hs_lock();
+            conn = ble_hs_conn_find(conn_handle);
+            if (conn != NULL && !conn->bhc_connect_delivered) {
+                ble_hs_unlock();
+                return BLE_HS_EBUSY;
+            }
+            ble_hs_unlock();
+        }
+#endif
 
         /* Peer is already bonded.  Ask the application what to do about it. */
         rp.conn_handle = conn_handle;
@@ -1171,7 +1206,12 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
             ble_sm_persist_keys(proc);
         }
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+        if (res->enc_cb &&
+            res->app_status != BLE_HS_ENOTCONN) {
+#else
         if (res->enc_cb) {
+#endif
             BLE_HS_DBG_ASSERT(proc == NULL || rm);
             ble_gap_enc_event(conn_handle, res->app_status, res->restore, res->bonded);
         }
@@ -2184,6 +2224,13 @@ ble_sm_pair_req_rx(uint16_t conn_handle, struct os_mbuf **om,
             /* The app indicated that the pairing request should be ignored. */
             res->app_status = rc;
             res->execute = 0;
+            if (rc == BLE_HS_EBUSY) {
+                /*
+                 * CONNECT not yet delivered; send Pairing Failed so the peer
+                 * does not sit in SMP until the 30 s timer expires.
+                 */
+                res->sm_err = BLE_SM_ERR_UNSPECIFIED;
+            }
         }
     }
 }
@@ -3061,12 +3108,22 @@ ble_sm_incr_peer_sign_counter(uint16_t conn_handle, uint32_t new_counter)
     }
 
 #if MYNEWT_VAL(BLE_HS_PVCY)
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    /*
+     * Only the sign counter is being bumped; the IRK is unchanged.
+     * The controller resolving list stores the IRK, not the sign counter,
+     * so there is no reason to remove and re-add the entry here.
+     * ble_store_write_peer_sec will update the resolving list entry at
+     * disconnect (deferred path) or immediately if the peer is not connected.
+     */
+#else
     if (value_sec.irk_present == 1) {
         ble_hs_pvcy_remove_entry(value_sec.peer_addr.type, value_sec.peer_addr.val);
         /* No need to check if the above command fails or passes.
          * Proceed with trying to write the new sign counter.
          */
     }
+#endif
 #endif
 
     value_sec.sign_counter = new_counter;
