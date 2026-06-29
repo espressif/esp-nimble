@@ -189,6 +189,9 @@ void ble_att_truncate_to_mtu(const struct ble_l2cap_chan *att_chan,
 void ble_att_set_peer_mtu(struct ble_l2cap_chan *chan, uint16_t peer_mtu);
 uint16_t ble_att_chan_mtu(const struct ble_l2cap_chan *chan);
 uint16_t ble_att_mtu_by_cid(uint16_t conn_handle, uint16_t cid);
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+int ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om);
+#endif
 int ble_att_init(void);
 void ble_att_deinit(void);
 /*** @svr */

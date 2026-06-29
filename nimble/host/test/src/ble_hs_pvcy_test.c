@@ -110,10 +110,18 @@ ble_hs_pvcy_test_util_add_irk_set_acks(bool scanning, bool connecting)
             0);
     }
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_hs_test_util_hci_ack_append(
+        BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_ADDR_RES_EN), 0);
+#endif
     ble_hs_test_util_hci_ack_append(
         BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_ADD_RESOLV_LIST), 0);
     ble_hs_test_util_hci_ack_append(
         BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_PRIVACY_MODE), 0);
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_hs_test_util_hci_ack_append(
+        BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_ADDR_RES_EN), 0);
+#endif
 }
 
 static void
@@ -167,6 +175,12 @@ ble_hs_pvcy_test_util_add_irk_verify_tx(const ble_addr_t *peer_addr,
                                        NULL);
     }
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_hs_test_util_hci_verify_tx(BLE_HCI_OGF_LE,
+                                   BLE_HCI_OCF_LE_SET_ADDR_RES_EN,
+                                   NULL);
+#endif
+
     ble_hs_test_util_hci_verify_tx_add_irk(peer_addr->type,
                                            peer_addr->val,
                                            peer_irk,
@@ -175,6 +189,12 @@ ble_hs_pvcy_test_util_add_irk_verify_tx(const ble_addr_t *peer_addr,
     ble_hs_test_util_hci_verify_tx_set_priv_mode(peer_addr->type,
                                                  peer_addr->val,
                                                  BLE_GAP_PRIVATE_MODE_DEVICE);
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_hs_test_util_hci_verify_tx(BLE_HCI_OGF_LE,
+                                   BLE_HCI_OCF_LE_SET_ADDR_RES_EN,
+                                   NULL);
+#endif
 }
 
 static void
@@ -192,7 +212,7 @@ ble_hs_pvcy_test_util_add_irk(const ble_addr_t *peer_addr,
     rc = ble_hs_pvcy_add_entry(peer_addr->val, peer_addr->type, peer_irk);
     TEST_ASSERT_FATAL(rc == 0);
 
-    num_acks = 3;
+    num_acks = MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) ? 5 : 3;
     if (scanning) {
         num_acks++;
     }

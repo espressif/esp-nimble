@@ -38,6 +38,37 @@ typedef uint8_t ble_hs_conn_flags_t;
 #define BLE_HS_CONN_F_TERMINATING   0x02
 #define BLE_HS_CONN_F_TX_FRAG       0x04 /* Cur ACL packet partially txed. */
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+#include "host/ble_gap.h"
+
+/**
+ * GAP event deferred until BLE_GAP_EVENT_CONNECT has been delivered.
+ * Queued on ble_hs_conn.bhc_deferred_events.
+ */
+struct ble_gap_deferred_event {
+    STAILQ_ENTRY(ble_gap_deferred_event) next;
+    uint16_t seq;
+    struct ble_gap_event event;
+    uint8_t enc_security_restored;
+    uint8_t enc_bonded;
+    struct ble_gap_upd_params upd_peer;
+    struct ble_gap_upd_params upd_self;
+};
+
+/**
+ * L2CAP ATT payload deferred until BLE_GAP_EVENT_CONNECT has been delivered.
+ * Queued on ble_hs_conn.bhc_deferred_att_reqs.
+ */
+struct ble_att_deferred_req {
+    STAILQ_ENTRY(ble_att_deferred_req) next;
+    struct os_mbuf *om;
+    uint16_t cid;
+    uint16_t seq;
+};
+
+#define BLE_HS_CONN_DEFERRED_EVENT_MAX  64
+#endif
+
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM)
 #define BLE_HS_CONN_L2CAP_COC_CID_MASK_LEN_REM \
                       ((MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) % (8 * sizeof(uint32_t))) ? 1 : 0)
@@ -52,6 +83,23 @@ struct ble_hs_conn {
     uint16_t bhc_handle;
     uint8_t bhc_our_addr_type;
     uint8_t slave_conn : 1;
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    uint8_t bhc_connect_delivered : 1;
+    uint8_t bhc_deferred_draining : 1;
+    uint8_t bhc_deferred_inited : 1;
+    uint8_t bhc_deferred_event_cnt;
+    uint8_t bhc_deferred_att_cnt;
+    uint16_t bhc_deferred_seq;
+    STAILQ_HEAD(, ble_gap_deferred_event) bhc_deferred_events;
+    STAILQ_HEAD(, ble_att_deferred_req) bhc_deferred_att_reqs;
+    struct ble_npl_event bhc_deferred_drain_ev;
+#if MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    uint8_t bhc_deferred_pvcy_add;
+    uint8_t bhc_deferred_pvcy_replace;
+    ble_addr_t bhc_deferred_pvcy_addr;
+    uint8_t bhc_deferred_pvcy_irk[16];
+#endif
+#endif
 #if MYNEWT_VAL(BLE_EXT_ADV)
     uint8_t bhc_our_rnd_addr[6];
 #endif

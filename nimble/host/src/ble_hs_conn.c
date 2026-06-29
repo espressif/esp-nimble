@@ -205,6 +205,15 @@ ble_hs_conn_alloc(uint16_t conn_handle)
     memset(conn, 0, sizeof *conn);
     conn->bhc_handle = conn_handle;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    STAILQ_INIT(&conn->bhc_deferred_events);
+    conn->bhc_deferred_event_cnt = 0;
+    conn->bhc_deferred_att_cnt = 0;
+    conn->bhc_deferred_seq = 0;
+    STAILQ_INIT(&conn->bhc_deferred_att_reqs);
+    ble_gap_conn_deferred_init(conn);
+#endif
+
     SLIST_INIT(&conn->bhc_channels);
 
     chan = ble_att_create_chan(conn_handle);
@@ -320,6 +329,10 @@ ble_hs_conn_free(struct ble_hs_conn *conn)
         STAILQ_REMOVE_HEAD(&conn->att_tx_q, omp_next);
         os_mbuf_free_chain(OS_MBUF_PKTHDR_TO_MBUF(omp));
     }
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && NIMBLE_BLE_CONNECT
+    ble_gap_conn_deferred_cleanup(conn);
+#endif
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
     memset(conn, 0xff, sizeof *conn);
