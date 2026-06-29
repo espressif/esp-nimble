@@ -125,17 +125,57 @@ void ble_hs_reset_rpa_timeout(void)
 }
 
 #if (!MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+static uint8_t ble_hs_pvcy_resolve_en;
+#endif
+
 int
 ble_hs_pvcy_set_resolve_enabled(int enable)
 {
     struct ble_hci_le_set_addr_res_en_cp cmd;
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    int rc;
 
+    cmd.enable = !!enable;
+
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                        BLE_HCI_OCF_LE_SET_ADDR_RES_EN),
+                             &cmd, sizeof(cmd), NULL, 0);
+    if (rc == 0) {
+        ble_hs_pvcy_resolve_en = cmd.enable;
+    }
+
+    return rc;
+#else
     cmd.enable = enable;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SET_ADDR_RES_EN),
                              &cmd, sizeof(cmd), NULL, 0);
+#endif
 }
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+static void
+ble_hs_pvcy_restore_resolve_if_needed(uint8_t was_enabled)
+{
+    int rc_en;
+
+    if (!was_enabled) {
+        return;
+    }
+
+    rc_en = BLE_HS_EUNKNOWN;
+    for (int i = 0; i < 3 && rc_en != 0; i++) {
+        rc_en = ble_hs_pvcy_set_resolve_enabled(1);
+    }
+    if (rc_en != 0) {
+        BLE_HS_LOG(ERROR,
+                   "ble_hs_pvcy: address resolution restore failed after "
+                   "retries; privacy broken\n");
+    }
+}
+#endif
 #endif
 
 int
@@ -227,6 +267,41 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+int
+ble_hs_pvcy_replace_entry(const uint8_t *addr, uint8_t addr_type,
+                          const uint8_t *irk)
+{
+#if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
+    (void)ble_hs_pvcy_remove_entry(addr_type, addr);
+    return ble_hs_pvcy_add_entry(addr, addr_type, irk);
+#else
+    int rc;
+    uint8_t resolve_was_en;
+
+    STATS_INC(ble_hs_stats, pvcy_add_entry);
+
+    ble_gap_preempt();
+    resolve_was_en = ble_hs_pvcy_resolve_en;
+
+    rc = ble_hs_pvcy_set_resolve_enabled(0);
+    if (rc == 0) {
+        (void)ble_hs_pvcy_remove_entry(addr_type, addr);
+        rc = ble_hs_pvcy_add_entry_hci(addr, addr_type, irk);
+        ble_hs_pvcy_restore_resolve_if_needed(resolve_was_en);
+    }
+
+    ble_gap_preempt_done();
+
+    if (rc != 0) {
+        STATS_INC(ble_hs_stats, pvcy_add_entry_fail);
+    }
+
+    return rc;
+#endif
+}
+#endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
+
 int
 ble_hs_pvcy_add_entry(const uint8_t *addr, uint8_t addr_type,
                       const uint8_t *irk)
@@ -244,8 +319,20 @@ ble_hs_pvcy_add_entry(const uint8_t *addr, uint8_t addr_type,
 #else
     ble_gap_preempt();
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    uint8_t resolve_was_en;
+
+    resolve_was_en = ble_hs_pvcy_resolve_en;
+    rc = ble_hs_pvcy_set_resolve_enabled(0);
+    if (rc == 0) {
+        /* Try to add the entry now that GAP is halted and address resolution is disabled. */
+        rc = ble_hs_pvcy_add_entry_hci(addr, addr_type, irk);
+        ble_hs_pvcy_restore_resolve_if_needed(resolve_was_en);
+    }
+#else
     /* Try to add the entry now that GAP is halted. */
     rc = ble_hs_pvcy_add_entry_hci(addr, addr_type, irk);
+#endif
 
     /* Allow GAP procedures to be started again. */
     ble_gap_preempt_done();

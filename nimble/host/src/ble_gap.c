@@ -27,6 +27,10 @@
 #include "ble_hs_priv.h"
 #include "ble_gap_priv.h"
 #include "ble_hs_resolv_priv.h"
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+#include "ble_hs_pvcy_priv.h"
+#include "ble_att_priv.h"
+#endif
 #include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 #include "ble_gattc_cache_priv.h"
@@ -45,6 +49,13 @@
 
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static ble_addr_t ble_gap_deferred_pvcy_addr;
+static uint8_t ble_gap_deferred_pvcy_irk[16];
+static bool ble_gap_deferred_pvcy_add;
+static bool ble_gap_deferred_pvcy_replace;
 #endif
 
 #ifndef max
@@ -887,6 +898,10 @@ ble_gap_extract_conn_cb(uint16_t conn_handle,
 }
 #endif
 
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static void ble_gap_ensure_peer_rl_entry(const ble_addr_t *peer_addr);
+#endif
+
 int
 ble_gap_set_priv_mode(const ble_addr_t *peer_addr, uint8_t priv_mode)
 {
@@ -901,6 +916,9 @@ ble_gap_set_priv_mode(const ble_addr_t *peer_addr, uint8_t priv_mode)
     }
 
 #if MYNEWT_VAL(BLE_HS_PVCY)
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_ensure_peer_rl_entry(peer_addr);
+#endif
     return ble_hs_pvcy_set_mode(peer_addr, priv_mode);
 #else
     return BLE_HS_ENOTSUP;
@@ -1135,6 +1153,37 @@ ble_gap_call_event_cb(struct ble_gap_event *event,
 }
 
 #if NIMBLE_BLE_CONNECT
+static void ble_gap_update_failed(uint16_t conn_handle, int status);
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+static void
+ble_gap_enc_side_effects(uint16_t conn_handle, int status,
+                         int security_restored, int bonded)
+{
+#if NIMBLE_BLE_SM
+#if MYNEWT_VAL(BLE_GATTC) && MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
+    ble_gattc_recover_gatt_proc(conn_handle, status);
+#endif
+
+    if (status == 0) {
+#if MYNEWT_VAL(BLE_GATTS)
+        if (security_restored) {
+            ble_gatts_bonding_restored(conn_handle);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+            ble_gattc_cache_conn_bonding_restored(conn_handle);
+#endif
+        } else if (bonded) {
+            ble_gatts_bonding_established(conn_handle);
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+            ble_gattc_cache_conn_bonding_established(conn_handle);
+#endif
+        }
+#endif
+    }
+#endif
+}
+#endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
+
 static int
 ble_gap_call_conn_event_cb(struct ble_gap_event *event, uint16_t conn_handle)
 {
@@ -1154,6 +1203,388 @@ ble_gap_call_conn_event_cb(struct ble_gap_event *event, uint16_t conn_handle)
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+enum ble_gap_defer_result {
+    BLE_GAP_DEFER_NOT_NEEDED = 0,
+    BLE_GAP_DEFER_QUEUED,
+    BLE_GAP_DEFER_FAILED,
+};
+
+struct ble_gap_defer_meta {
+    uint8_t enc_security_restored;
+    uint8_t enc_bonded;
+    const struct ble_gap_upd_params *upd_peer;
+    const struct ble_gap_upd_params *upd_self;
+};
+
+static void ble_gap_deferred_drain_ev(struct ble_npl_event *ev);
+static void ble_gap_deferred_drain_step(uint16_t conn_handle);
+static void ble_gap_deferred_drain_start(uint16_t conn_handle);
+static void ble_gap_conn_deferred_discard(struct ble_hs_conn *conn);
+static void ble_gap_deliver_deferred_gap(struct ble_gap_deferred_event *dev,
+                                         uint16_t conn_handle);
+static void ble_gap_notify_conn_event(uint16_t conn_handle,
+                                      struct ble_gap_event *event);
+static enum ble_gap_defer_result
+ble_gap_defer_event(uint16_t conn_handle, const struct ble_gap_event *event,
+                    const struct ble_gap_defer_meta *meta);
+static void ble_gap_mark_connect_delivered(uint16_t conn_handle);
+
+static bool
+ble_gap_deferred_conn_cb_only(uint8_t type)
+{
+    switch (type) {
+    case BLE_GAP_EVENT_PASSKEY_ACTION:
+    case BLE_GAP_EVENT_PARING_COMPLETE:
+    case BLE_GAP_EVENT_CONN_UPDATE_REQ:
+    case BLE_GAP_EVENT_REPEAT_PAIRING:
+    case BLE_GAP_EVENT_CACHE_ASSOC:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * Attempt to defer a GAP event until BLE_GAP_EVENT_CONNECT has been delivered.
+ *
+ * Must be called with the ble_hs lock NOT held.  Event ownership, including
+ * notify_rx.om for BLE_GAP_EVENT_NOTIFY_RX, is transferred only when this
+ * returns BLE_GAP_DEFER_QUEUED.  Otherwise the caller retains ownership.
+ *
+ * Memory for the queue node is allocated before acquiring the ble_hs lock so
+ * the critical section stays short and allocation-failure handling stays out
+ * of the hot path.
+ *
+ * @param conn_handle  Connection handle.
+ * @param event        Fully populated GAP event to defer.
+ */
+static enum ble_gap_defer_result
+ble_gap_defer_event(uint16_t conn_handle,
+                    const struct ble_gap_event *event,
+                    const struct ble_gap_defer_meta *meta)
+{
+    struct ble_hs_conn *conn;
+    struct ble_gap_deferred_event *dev;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn == NULL || conn->bhc_connect_delivered) {
+        ble_hs_unlock();
+        return BLE_GAP_DEFER_NOT_NEEDED;
+    }
+
+    if ((conn->bhc_deferred_event_cnt + conn->bhc_deferred_att_cnt) >=
+        BLE_HS_CONN_DEFERRED_EVENT_MAX) {
+        ble_hs_unlock();
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_defer_event: queue full; type=%d conn=%u\n",
+                   event->type, conn_handle);
+        return BLE_GAP_DEFER_FAILED;
+    }
+
+    ble_hs_unlock();
+
+    dev = nimble_platform_mem_calloc(1, sizeof(*dev));
+    if (dev == NULL) {
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_defer_event: alloc failed; type=%d conn=%u\n",
+                   event->type, conn_handle);
+        return BLE_GAP_DEFER_FAILED;
+    }
+
+    dev->event = *event;
+    if (meta != NULL) {
+        dev->enc_security_restored = meta->enc_security_restored;
+        dev->enc_bonded = meta->enc_bonded;
+        if (meta->upd_peer != NULL) {
+            dev->upd_peer = *meta->upd_peer;
+            dev->event.conn_update_req.peer_params = &dev->upd_peer;
+        }
+        if (meta->upd_self != NULL) {
+            dev->upd_self = *meta->upd_self;
+            dev->event.conn_update_req.self_params = &dev->upd_self;
+        }
+    }
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+
+    if (conn == NULL || conn->bhc_connect_delivered) {
+        ble_hs_unlock();
+        nimble_platform_mem_free(dev);
+        return BLE_GAP_DEFER_NOT_NEEDED;
+    }
+
+    if ((conn->bhc_deferred_event_cnt + conn->bhc_deferred_att_cnt) >=
+        BLE_HS_CONN_DEFERRED_EVENT_MAX) {
+        ble_hs_unlock();
+        nimble_platform_mem_free(dev);
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_defer_event: queue full post-alloc; type=%d conn=%u\n",
+                   event->type, conn_handle);
+        return BLE_GAP_DEFER_FAILED;
+    }
+
+    dev->seq = conn->bhc_deferred_seq++;
+    STAILQ_INSERT_TAIL(&conn->bhc_deferred_events, dev, next);
+    conn->bhc_deferred_event_cnt++;
+    ble_hs_unlock();
+    return BLE_GAP_DEFER_QUEUED;
+}
+
+static void
+ble_gap_notify_conn_event(uint16_t conn_handle, struct ble_gap_event *event)
+{
+    switch (ble_gap_defer_event(conn_handle, event, NULL)) {
+    case BLE_GAP_DEFER_QUEUED:
+        return;
+    case BLE_GAP_DEFER_NOT_NEEDED:
+        ble_gap_event_listener_call(event);
+        ble_gap_call_conn_event_cb(event, conn_handle);
+        break;
+    case BLE_GAP_DEFER_FAILED:
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_notify_conn_event: defer failed; type=%d conn=%u\n",
+                   event->type, conn_handle);
+        ble_gap_event_listener_call(event);
+        ble_gap_call_conn_event_cb(event, conn_handle);
+        break;
+    }
+}
+
+static void
+ble_gap_deliver_deferred_gap(struct ble_gap_deferred_event *dev,
+                             uint16_t conn_handle)
+{
+    struct ble_gap_event *event;
+
+    event = &dev->event;
+
+    if (event->type == BLE_GAP_EVENT_CONN_UPDATE_REQ) {
+        /*
+         * HCI Reply/NRR was already sent in ble_gap_rx_param_req(); only
+         * deliver the deferred application notification here.
+         */
+        event->conn_update_req.self_params = &dev->upd_self;
+        event->conn_update_req.peer_params = &dev->upd_peer;
+        ble_gap_call_conn_event_cb(event, conn_handle);
+        return;
+    }
+
+    if (!ble_gap_deferred_conn_cb_only(event->type)) {
+        ble_gap_event_listener_call(event);
+    }
+    ble_gap_call_conn_event_cb(event, conn_handle);
+
+    if (event->type == BLE_GAP_EVENT_ENC_CHANGE) {
+        ble_gap_enc_side_effects(conn_handle, event->enc_change.status,
+                                 dev->enc_security_restored, dev->enc_bonded);
+    }
+
+    if (event->type == BLE_GAP_EVENT_NOTIFY_RX) {
+        os_mbuf_free_chain(event->notify_rx.om);
+    }
+}
+
+static void
+ble_gap_deferred_drain_step(uint16_t conn_handle)
+{
+    struct ble_hs_conn *conn;
+    struct ble_gap_deferred_event *dev;
+    struct ble_att_deferred_req *req;
+    bool more;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn == NULL) {
+        ble_hs_unlock();
+        return;
+    }
+
+    if (!conn->bhc_deferred_draining) {
+        ble_hs_unlock();
+        return;
+    }
+
+    dev = STAILQ_FIRST(&conn->bhc_deferred_events);
+    req = STAILQ_FIRST(&conn->bhc_deferred_att_reqs);
+
+    if (req == NULL || (dev != NULL && dev->seq <= req->seq)) {
+        if (dev != NULL) {
+            STAILQ_REMOVE_HEAD(&conn->bhc_deferred_events, next);
+            conn->bhc_deferred_event_cnt--;
+        }
+    } else {
+        dev = NULL;
+        STAILQ_REMOVE_HEAD(&conn->bhc_deferred_att_reqs, next);
+        conn->bhc_deferred_att_cnt--;
+    }
+
+    more = !STAILQ_EMPTY(&conn->bhc_deferred_events) ||
+           !STAILQ_EMPTY(&conn->bhc_deferred_att_reqs);
+
+    if (!more) {
+        conn->bhc_deferred_draining = 0;
+    }
+
+    ble_hs_unlock();
+
+    if (!more) {
+        ble_npl_eventq_remove(ble_hs_evq_get(), &conn->bhc_deferred_drain_ev);
+    }
+
+    if (dev != NULL) {
+        ble_gap_deliver_deferred_gap(dev, conn_handle);
+        nimble_platform_mem_free(dev);
+    } else if (req != NULL) {
+        ble_hs_lock();
+        conn = ble_hs_conn_find(conn_handle);
+        if (conn != NULL) {
+            /*
+             * Temporarily clear the draining flag so ble_att_rx_extended
+             * processes the replayed request normally instead of
+             * re-deferring it back onto the queue (which would livelock).
+             * The flag is restored under lock in the if (more) block below.
+             */
+            conn->bhc_deferred_draining = 0;
+        }
+        ble_hs_unlock();
+
+        if (conn == NULL) {
+            os_mbuf_free_chain(req->om);
+            nimble_platform_mem_free(req);
+            return;
+        }
+
+        struct os_mbuf *om = req->om;
+        ble_att_rx_extended(conn_handle, req->cid, &om);
+        if (om != NULL) {
+            os_mbuf_free_chain(om);
+        }
+        nimble_platform_mem_free(req);
+    }
+
+    if (more) {
+        ble_hs_lock();
+        conn = ble_hs_conn_find(conn_handle);
+        if (conn != NULL) {
+            conn->bhc_deferred_draining = 1;
+            ble_npl_eventq_put(ble_hs_evq_get(), &conn->bhc_deferred_drain_ev);
+        }
+        ble_hs_unlock();
+    }
+}
+
+static void
+ble_gap_deferred_drain_ev(struct ble_npl_event *ev)
+{
+    uint16_t conn_handle;
+
+    conn_handle = (uint16_t)(uintptr_t)ble_npl_event_get_arg(ev);
+    ble_gap_deferred_drain_step(conn_handle);
+}
+
+static void
+ble_gap_deferred_drain_start(uint16_t conn_handle)
+{
+    struct ble_hs_conn *conn;
+    bool schedule;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn == NULL) {
+        ble_hs_unlock();
+        return;
+    }
+
+    if (conn->bhc_deferred_draining) {
+        ble_hs_unlock();
+        return;
+    }
+
+    schedule = !STAILQ_EMPTY(&conn->bhc_deferred_events) ||
+                 !STAILQ_EMPTY(&conn->bhc_deferred_att_reqs);
+
+    if (schedule) {
+        conn->bhc_deferred_draining = 1;
+        ble_npl_eventq_put(ble_hs_evq_get(), &conn->bhc_deferred_drain_ev);
+    }
+
+    ble_hs_unlock();
+}
+
+static void
+ble_gap_mark_connect_delivered(uint16_t conn_handle)
+{
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn != NULL) {
+        conn->bhc_connect_delivered = 1;
+    }
+    ble_hs_unlock();
+}
+
+void
+ble_gap_conn_deferred_init(struct ble_hs_conn *conn)
+{
+    BLE_HS_DBG_ASSERT(!conn->bhc_deferred_inited);
+
+    ble_npl_event_init(&conn->bhc_deferred_drain_ev, ble_gap_deferred_drain_ev,
+                       (void *)(uintptr_t)conn->bhc_handle);
+    conn->bhc_deferred_inited = 1;
+}
+
+static void
+ble_gap_conn_deferred_discard(struct ble_hs_conn *conn)
+{
+    struct ble_gap_deferred_event *dev;
+    struct ble_att_deferred_req *req;
+
+    if (conn == NULL || !conn->bhc_deferred_inited) {
+        return;
+    }
+
+    ble_npl_eventq_remove(ble_hs_evq_get(), &conn->bhc_deferred_drain_ev);
+    conn->bhc_deferred_draining = 0;
+
+    while ((dev = STAILQ_FIRST(&conn->bhc_deferred_events)) != NULL) {
+        STAILQ_REMOVE_HEAD(&conn->bhc_deferred_events, next);
+        if (dev->event.type == BLE_GAP_EVENT_NOTIFY_RX) {
+            os_mbuf_free_chain(dev->event.notify_rx.om);
+        }
+        nimble_platform_mem_free(dev);
+    }
+    conn->bhc_deferred_event_cnt = 0;
+
+    while ((req = STAILQ_FIRST(&conn->bhc_deferred_att_reqs)) != NULL) {
+        STAILQ_REMOVE_HEAD(&conn->bhc_deferred_att_reqs, next);
+        os_mbuf_free_chain(req->om);
+        nimble_platform_mem_free(req);
+    }
+    conn->bhc_deferred_att_cnt = 0;
+}
+
+void
+ble_gap_conn_deferred_cleanup(struct ble_hs_conn *conn)
+{
+    if (conn == NULL || !conn->bhc_deferred_inited) {
+        return;
+    }
+
+    ble_gap_conn_deferred_discard(conn);
+    ble_npl_event_deinit(&conn->bhc_deferred_drain_ev);
+    conn->bhc_deferred_inited = 0;
+}
+
+#endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
+#endif /* NIMBLE_BLE_CONNECT */
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static void ble_gap_apply_deferred_pvcy_add(void);
 #endif
 
 static bool
@@ -1649,8 +2080,12 @@ ble_gap_update_notify(uint16_t conn_handle, int status)
     event.conn_update.conn_handle = conn_handle;
     event.conn_update.status = status;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 
     /* Terminate the connection on procedure timeout. */
     if (status == BLE_HS_ETIMEOUT) {
@@ -1824,8 +2259,15 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
     struct ble_gap_snapshot snap;
     struct ble_gap_event event;
     struct ble_hs_conn *conn;
+    bool post_connect_fail;
     bool send = 1;
     int rc;
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_addr_t deferred_pvcy_addr;
+    uint8_t deferred_pvcy_irk[16];
+    bool deferred_pvcy_add = false;
+    bool deferred_pvcy_replace = false;
+#endif
 
     memset(&event, 0, sizeof event);
     snap.desc = &event.disconnect.conn;
@@ -1880,10 +2322,13 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
         if (conn->slave_conn) {
             conn->slave_conn = 0;
 #endif
-	} else {
-	    send = 0;
-	}
+        } else {
+            send = 0;
+        }
     }
+
+    post_connect_fail = conn != NULL && !send &&
+                        !(conn->bhc_flags & BLE_HS_CONN_F_MASTER);
 
     ble_hs_unlock();
 
@@ -1891,9 +2336,8 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
      * a connection failure and post a connect-failed event instead of a
      * disconnect. This allows applications to restart advertising.
      */
-    if (conn != NULL && !send && !(conn->bhc_flags & BLE_HS_CONN_F_MASTER))
-    {
-        ble_gap_event_connect_call(conn_handle, BLE_HS_EAGAIN);
+    if (post_connect_fail) {
+        ble_gap_event_connect_call(htole16(conn_handle), BLE_HS_EAGAIN);
     }
 
     ble_hs_lock();
@@ -1903,10 +2347,36 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
         conn->bhc_max_rx_time = 0;
         conn->bhc_max_tx_octets = 0;
         conn->bhc_max_rx_octets = 0;
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        if (conn->bhc_deferred_pvcy_add) {
+            deferred_pvcy_addr = conn->bhc_deferred_pvcy_addr;
+            memcpy(deferred_pvcy_irk, conn->bhc_deferred_pvcy_irk,
+                   sizeof deferred_pvcy_irk);
+            deferred_pvcy_replace = conn->bhc_deferred_pvcy_replace;
+            conn->bhc_deferred_pvcy_add = 0;
+            conn->bhc_deferred_pvcy_replace = 0;
+            deferred_pvcy_add = true;
+        }
+#endif
     }
     ble_hs_unlock();
 
     ble_hs_atomic_conn_delete(conn_handle);
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    if (deferred_pvcy_add) {
+        ble_gap_deferred_pvcy_addr = deferred_pvcy_addr;
+        memcpy(ble_gap_deferred_pvcy_irk, deferred_pvcy_irk,
+               sizeof ble_gap_deferred_pvcy_irk);
+        ble_gap_deferred_pvcy_replace = deferred_pvcy_replace;
+        ble_gap_deferred_pvcy_add = true;
+        /*
+         * Peer IRK was held while connected; push it to the controller
+         * resolving list now so scan/connect work without starting adv.
+         */
+        ble_gap_apply_deferred_pvcy_add();
+    }
+#endif
 
     event.type = BLE_GAP_EVENT_DISCONNECT;
     event.disconnect.reason = reason;
@@ -3572,11 +4042,33 @@ ble_gap_event_connect_call(uint16_t conn_handle, int status)
     ble_gap_event_listener_call(&event);
 #if NIMBLE_BLE_CONNECT
     ble_gap_call_conn_event_cb(&event, handle);
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    /*
+     * Application callbacks for CONNECT/LINK_ESTAB are complete.
+     * Success: drain deferred GAP/ATT work in seq order.
+     * Failure: drop the deferred queue; connection is not established.
+     */
+    ble_gap_mark_connect_delivered(handle);
+    if (status == 0) {
+        ble_gap_deferred_drain_start(handle);
+    } else {
+        struct ble_hs_conn *conn;
+
+        ble_hs_lock();
+        conn = ble_hs_conn_find(handle);
+        if (conn != NULL) {
+            ble_gap_conn_deferred_discard(conn);
+        }
+        ble_hs_unlock();
+    }
+#endif
 #endif
 
-    if (status == 0 ) {
-        ble_hs_hci_util_set_data_len(le16toh(conn_handle), BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
-                BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
+    if (status == 0) {
+        ble_hs_hci_util_set_data_len(le16toh(conn_handle),
+                                     BLE_HCI_SUGG_DEF_DATALEN_TX_OCTETS_MAX,
+                                     BLE_HCI_SUGG_DEF_DATALEN_TX_TIME_MAX);
     }
 }
 
@@ -3665,15 +4157,30 @@ ble_gap_rx_l2cap_update_req(uint16_t conn_handle,
 {
 #if NIMBLE_BLE_CONNECT
     struct ble_gap_event event;
-    int rc;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    struct ble_hs_conn *conn;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    if (conn != NULL && !conn->bhc_connect_delivered) {
+        ble_hs_unlock();
+        /*
+         * Reject until BLE_GAP_EVENT_CONNECT is delivered.  Deferring and
+         * returning success would auto-accept per ble_l2cap_sig_update_req_rx().
+         */
+        return BLE_HS_EREJECT;
+    }
+    ble_hs_unlock();
+#endif
 
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_L2CAP_UPDATE_REQ;
     event.conn_update_req.conn_handle = conn_handle;
     event.conn_update_req.peer_params = params;
 
-    rc = ble_gap_call_conn_event_cb(&event, conn_handle);
-    return rc;
+    ble_gap_event_listener_call(&event);
+    return ble_gap_call_conn_event_cb(&event, conn_handle);
 #else
     return BLE_HS_ENOTSUP;
 #endif
@@ -3693,8 +4200,12 @@ ble_gap_rx_phy_update_complete(const struct ble_hci_ev_le_subev_phy_update_compl
     event.phy_updated.tx_phy = ev->tx_phy;
     event.phy_updated.rx_phy = ev->rx_phy;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 
@@ -3708,6 +4219,7 @@ ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev)
 
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_DATA_LEN_CHG;
+    event.data_len_chg.conn_handle = conn_handle;
     event.data_len_chg.max_tx_octets = le16toh(ev->max_tx_octets);
     event.data_len_chg.max_rx_octets = le16toh(ev->max_rx_octets);
     event.data_len_chg.max_tx_time = le16toh(ev->max_tx_time);
@@ -3723,8 +4235,12 @@ ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev)
     }
     ble_hs_unlock();
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 
@@ -4076,9 +4592,13 @@ ble_gap_adv_stop_no_lock(void)
 
     STATS_INC(ble_gap_stats, adv_stop);
 
-    active = ble_gap_adv_active();
-
     BLE_HS_LOG(INFO, "GAP procedure initiated: stop advertising.\n");
+
+    active = ble_gap_adv_active();
+    if (!active) {
+        rc = BLE_HS_EALREADY;
+        goto done;
+    }
 
     rc = ble_gap_adv_enable_tx(0);
     if (rc != 0) {
@@ -4086,12 +4606,6 @@ ble_gap_adv_stop_no_lock(void)
     }
 
     ble_gap_slave_reset_state(0);
-
-    if (!active) {
-        rc = BLE_HS_EALREADY;
-    } else {
-        rc = 0;
-    }
 
 done:
     if (rc != 0) {
@@ -4325,6 +4839,85 @@ ble_gap_adv_validate(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 }
 #endif
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static void
+ble_gap_apply_deferred_pvcy_add(void)
+{
+    ble_addr_t addr;
+    uint8_t irk[16];
+    bool replace;
+    int rc;
+
+    if (!ble_gap_deferred_pvcy_add) {
+        return;
+    }
+
+    addr = ble_gap_deferred_pvcy_addr;
+    memcpy(irk, ble_gap_deferred_pvcy_irk, sizeof irk);
+    replace = ble_gap_deferred_pvcy_replace;
+    ble_gap_deferred_pvcy_add = false;
+    ble_gap_deferred_pvcy_replace = false;
+
+    if (replace) {
+        /* Entry is expected to be present (e.g. already loaded by
+         * ble_hs_misc_restore_irks at startup); use replace_entry which
+         * removes then re-adds so it is idempotent.
+         */
+        rc = ble_hs_pvcy_replace_entry(addr.val, addr.type, irk);
+    } else {
+        /* First bond: entry should not be in the resolving list yet.
+         * Attempt a plain add; if it fails because the entry is already
+         * present (e.g. a sign-counter bump skipped the remove step to avoid
+         * a resolution gap), fall back to replace_entry which is idempotent.
+         * Controllers report CMD_DISALLOWED (0x0C) for a duplicate add per
+         * Core Spec Vol 4 Part E §7.8.38; guard both that and the older
+         * INV_HCI_CMD_PARMS (0x12) code seen on some implementations.
+         */
+        rc = ble_hs_pvcy_add_entry(addr.val, addr.type, irk);
+        if (rc == BLE_HS_HCI_ERR(BLE_ERR_CMD_DISALLOWED) ||
+            rc == BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS)) {
+            rc = ble_hs_pvcy_replace_entry(addr.val, addr.type, irk);
+        }
+    }
+
+    if (rc != 0) {
+        BLE_HS_LOG(WARN,
+                   "failed to add deferred resolving-list entry before advertising; rc=%d\n",
+                   rc);
+    }
+}
+
+#if NIMBLE_BLE_CONNECT
+static void
+ble_gap_ensure_peer_rl_entry(const ble_addr_t *peer_addr)
+{
+    struct ble_store_key_sec key_sec;
+    struct ble_store_value_sec value_sec;
+    int rc;
+
+    ble_gap_apply_deferred_pvcy_add();
+
+    memset(&key_sec, 0, sizeof key_sec);
+    key_sec.peer_addr = *peer_addr;
+    rc = ble_store_read_peer_sec(&key_sec, &value_sec);
+    if (rc != 0 || !value_sec.irk_present) {
+        return;
+    }
+
+    rc = ble_hs_pvcy_add_entry(peer_addr->val, peer_addr->type, value_sec.irk);
+    if (rc == BLE_HS_HCI_ERR(BLE_ERR_CMD_DISALLOWED) ||
+        rc == BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS)) {
+        rc = ble_hs_pvcy_replace_entry(peer_addr->val, peer_addr->type,
+                                       value_sec.irk);
+    }
+    if (rc != 0) {
+        BLE_HS_LOG(DEBUG,
+                   "resolving-list sync before set privacy mode; rc=%d\n", rc);
+    }
+}
+#endif /* NIMBLE_BLE_CONNECT */
+#endif
+
 int
 ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
                   int32_t duration_ms,
@@ -4343,6 +4936,10 @@ ble_gap_adv_start(uint8_t own_addr_type, const ble_addr_t *direct_addr,
 #endif
         return BLE_HS_EDISABLED;
     }
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
+#endif
 
     ble_hs_lock();
 
@@ -5004,6 +5601,10 @@ ble_gap_ext_adv_start(uint8_t instance, int duration, int max_events)
      ble_adv_reattempt.instance = instance;
      ble_adv_reattempt.duration = duration;
      ble_adv_reattempt.max_events = max_events;
+#endif
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
 #endif
 
     ble_hs_lock();
@@ -7236,6 +7837,10 @@ ble_gap_ext_disc(uint8_t own_addr_type, uint16_t duration, uint16_t period,
         return BLE_HS_EDISABLED;
     }
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
+#endif
+
     ble_hs_lock();
 
     rc = ble_gap_disc_ext_validate(own_addr_type);
@@ -7408,6 +8013,10 @@ ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
     if (!ble_hs_is_enabled()) {
         return BLE_HS_EDISABLED;
     }
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
+#endif
 
     ble_hs_lock();
 
@@ -7750,6 +8359,10 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
     int rc;
 
     STATS_INC(ble_gap_stats, initiate);
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
+#endif
 
     ble_hs_lock();
 
@@ -8104,6 +8717,10 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     }
 #endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
+#endif
+
     ble_hs_lock();
 
     if (ble_gap_conn_active()) {
@@ -8290,6 +8907,10 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         return BLE_HS_EINVAL;
     }
 #endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_apply_deferred_pvcy_add();
+#endif
 
     ble_hs_lock();
 
@@ -8913,8 +9534,6 @@ ble_gap_rx_param_req(const struct ble_hci_ev_le_subev_rem_conn_param_req *ev)
     uint16_t conn_handle;
     int rc;
 
-    memset(&event, 0, sizeof event);
-
     peer_params.itvl_min = le16toh(ev->min_interval);
     peer_params.itvl_max = le16toh(ev->max_interval);
     peer_params.latency = le16toh(ev->latency);
@@ -8935,6 +9554,48 @@ ble_gap_rx_param_req(const struct ble_hci_ev_le_subev_rem_conn_param_req *ev)
     event.conn_update_req.conn_handle = conn_handle;
     event.conn_update_req.self_params = &self_params;
     event.conn_update_req.peer_params = &peer_params;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    {
+        struct ble_gap_defer_meta meta;
+        struct ble_hs_conn *conn;
+        enum ble_gap_defer_result defer_rc;
+        bool defer_app_cb;
+
+        ble_hs_lock();
+        conn = ble_hs_conn_find(conn_handle);
+        defer_app_cb = (conn != NULL && !conn->bhc_connect_delivered);
+        ble_hs_unlock();
+
+        if (defer_app_cb) {
+            memset(&meta, 0, sizeof meta);
+            meta.upd_peer = &peer_params;
+            meta.upd_self = &self_params;
+
+            defer_rc = ble_gap_defer_event(conn_handle, &event, &meta);
+            if (defer_rc == BLE_GAP_DEFER_QUEUED) {
+                /*
+                 * Vol 6 Part B §5.1.7.2 / HCI §7.7.65.6: reply to the Controller
+                 * after queuing; deliver the application callback when the
+                 * deferred events are drained.
+                 */
+                rc = ble_gap_tx_param_pos_reply(conn_handle, &self_params);
+                if (rc != 0) {
+                    ble_gap_update_failed(conn_handle, rc);
+                }
+                return;
+            }
+            if (defer_rc == BLE_GAP_DEFER_FAILED) {
+                BLE_HS_LOG(ERROR,
+                           "ble_gap_rx_param_req: defer failed; conn=%u\n",
+                           conn_handle);
+            }
+
+            /* NOT_NEEDED or FAILED: fall through to the normal path. */
+        }
+    }
+#endif
+
     rc = ble_gap_call_conn_event_cb(&event, conn_handle);
     if (rc == 0) {
         rc = ble_gap_tx_param_pos_reply(conn_handle, &self_params);
@@ -9597,7 +10258,24 @@ ble_gap_passkey_event(uint16_t conn_handle,
     event.type = BLE_GAP_EVENT_PASSKEY_ACTION;
     event.passkey.conn_handle = conn_handle;
     event.passkey.params = *passkey_params;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    switch (ble_gap_defer_event(conn_handle, &event, NULL)) {
+    case BLE_GAP_DEFER_QUEUED:
+        return;
+    case BLE_GAP_DEFER_NOT_NEEDED:
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+        break;
+    case BLE_GAP_DEFER_FAILED:
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_passkey_event: defer failed; conn=%u\n",
+                   conn_handle);
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+        break;
+    }
+#else
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 
@@ -9613,6 +10291,33 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
     event.enc_change.conn_handle = conn_handle;
     event.enc_change.status = status;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    {
+        struct ble_gap_defer_meta meta;
+
+        memset(&meta, 0, sizeof meta);
+        meta.enc_security_restored = security_restored;
+        meta.enc_bonded = bonded;
+
+        switch (ble_gap_defer_event(conn_handle, &event, &meta)) {
+        case BLE_GAP_DEFER_QUEUED:
+            return;
+        case BLE_GAP_DEFER_NOT_NEEDED:
+            break;
+        case BLE_GAP_DEFER_FAILED:
+            BLE_HS_LOG(ERROR,
+                       "ble_gap_enc_event: defer failed; conn=%u status=%d\n",
+                       conn_handle, status);
+            break;
+        }
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_event_listener_call(&event);
+    ble_gap_call_conn_event_cb(&event, conn_handle);
+    ble_gap_enc_side_effects(conn_handle, status, security_restored, bonded);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
 
@@ -9650,6 +10355,7 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
     }
 
 #endif
+#endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
 
 #endif
 }
@@ -9666,7 +10372,13 @@ ble_gap_identity_event(uint16_t conn_handle, const ble_addr_t *peer_id_addr)
     event.type = BLE_GAP_EVENT_IDENTITY_RESOLVED;
     event.identity_resolved.conn_handle = conn_handle;
     event.identity_resolved.peer_id_addr = *peer_id_addr;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
+    ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 
@@ -9706,7 +10418,24 @@ ble_gap_pairing_complete_event(uint16_t conn_handle, int status)
     event.type = BLE_GAP_EVENT_PARING_COMPLETE;
     event.pairing_complete.conn_handle = conn_handle;
     event.pairing_complete.status = status;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    switch (ble_gap_defer_event(conn_handle, &event, NULL)) {
+    case BLE_GAP_DEFER_QUEUED:
+        return;
+    case BLE_GAP_DEFER_NOT_NEEDED:
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+        break;
+    case BLE_GAP_DEFER_FAILED:
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_pairing_complete_event: defer failed; conn=%u\n",
+                   conn_handle);
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+        break;
+    }
+#else
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 /*****************************************************************************
@@ -9725,7 +10454,23 @@ ble_gap_assoc_event(uint16_t conn_handle, int status, uint8_t cache_state)
     event.cache_assoc.status = status;
     event.cache_assoc.cache_state = cache_state;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    switch (ble_gap_defer_event(conn_handle, &event, NULL)) {
+    case BLE_GAP_DEFER_QUEUED:
+        return;
+    case BLE_GAP_DEFER_NOT_NEEDED:
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+        break;
+    case BLE_GAP_DEFER_FAILED:
+        BLE_HS_LOG(ERROR,
+                   "ble_gap_assoc_event: defer failed; conn=%u\n",
+                   conn_handle);
+        ble_gap_call_conn_event_cb(&event, conn_handle);
+        break;
+    }
+#else
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 #endif
@@ -9758,12 +10503,17 @@ ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
 #if (MYNEWT_VAL(BLE_GATT_NOTIFY) || MYNEWT_VAL(BLE_GATT_INDICATE)) && NIMBLE_BLE_CONNECT
 
     struct ble_gap_event event;
+
 #if MYNEWT_VAL(BLE_GATT_CACHING) && MYNEWT_VAL(BLE_GATTC)
     uint16_t start_handle;
     uint16_t end_handle;
 
     uint16_t svc_changed_handle = ble_gattc_cache_conn_get_svc_changed_handle(conn_handle);
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    if (svc_changed_handle != 0 && attr_handle == svc_changed_handle && OS_MBUF_PKTLEN(om) >= 4) {
+#else
     if (svc_changed_handle != 0xFFFF && attr_handle == svc_changed_handle && OS_MBUF_PKTLEN(om) >= 4) {
+#endif
         uint8_t buf[4];
         os_mbuf_copydata(om, 0, 4, buf);
         start_handle = get_le16(buf);
@@ -9771,12 +10521,30 @@ ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
         ble_gattc_cache_conn_update(conn_handle, start_handle, end_handle);
     }
 #endif
+
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_NOTIFY_RX;
     event.notify_rx.conn_handle = conn_handle;
     event.notify_rx.attr_handle = attr_handle;
     event.notify_rx.om = om;
     event.notify_rx.indication = is_indication;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    {
+        enum ble_gap_defer_result defer_rc;
+
+        defer_rc = ble_gap_defer_event(conn_handle, &event, NULL);
+        if (defer_rc == BLE_GAP_DEFER_QUEUED) {
+            return;
+        }
+        if (defer_rc == BLE_GAP_DEFER_FAILED) {
+            BLE_HS_LOG(ERROR,
+                       "ble_gap_notify_rx_event: defer failed; conn=%u\n",
+                       conn_handle);
+        }
+    }
+#endif
+
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
 
@@ -9797,8 +10565,13 @@ ble_gap_notify_tx_event(int status, uint16_t conn_handle, uint16_t attr_handle,
     event.notify_tx.status = status;
     event.notify_tx.attr_handle = attr_handle;
     event.notify_tx.indication = is_indication;
+
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 
@@ -9831,8 +10604,12 @@ ble_gap_subscribe_event(uint16_t conn_handle, uint16_t attr_handle,
     event.subscribe.prev_indicate = !!prev_indicate;
     event.subscribe.cur_indicate = !!cur_indicate;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 
@@ -9852,8 +10629,12 @@ ble_gap_mtu_event(uint16_t conn_handle, uint16_t cid, uint16_t mtu)
     event.mtu.channel_id = cid;
     event.mtu.value = mtu;
 
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+    ble_gap_notify_conn_event(conn_handle, &event);
+#else
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, conn_handle);
+#endif
 #endif
 }
 

@@ -2222,7 +2222,11 @@ ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
     peer = ble_gattc_cache_conn_find(conn_handle);
     if (peer == NULL) {
         BLE_HS_LOG(ERROR, "Cannot find connection with conn_handle %d", conn_handle);
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+        return 0;
+#else
         return -1;
+#endif
     }
 
     /* Check if attr_handle is of service change char */
@@ -2231,7 +2235,11 @@ ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
 
     if (chr == NULL) {
         BLE_HS_LOG(DEBUG, "Cannot find service change characteristic");
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
+        return 0;
+#else
         return -1;
+#endif
     }
     return chr->chr.val_handle;
 }
