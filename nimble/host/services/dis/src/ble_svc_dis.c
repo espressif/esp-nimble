@@ -55,7 +55,9 @@ struct ble_svc_dis_data _ble_svc_dis_data = {
     (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0) ||	\
     (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0) || \
     (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0) || \
-    (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
+    (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0) || \
+    (MYNEWT_VAL(BLE_SVC_DIS_IEEE_READ_PERM) >= 0) || \
+    (MYNEWT_VAL(BLE_SVC_DIS_UDI_READ_PERM) >= 0)
 static int
 ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -132,12 +134,14 @@ static const struct ble_gatt_chr_def dis_characteristics[] = {
         .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM),
     },
 #endif
+#if (MYNEWT_VAL(BLE_SVC_DIS_IEEE_READ_PERM) >= 0)
     {
         /*** Characteristic: IEEE 11073-20601 Regulatory Certification Data List */
         .uuid = &uuid_chr_ieee_cert.u,
         .access_cb = ble_svc_dis_access,
-        .flags = BLE_GATT_CHR_F_READ,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_IEEE_READ_PERM),
     },
+#endif
 #if (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
     {
         /*** Characteristic: PNP Id */
@@ -146,12 +150,14 @@ static const struct ble_gatt_chr_def dis_characteristics[] = {
         .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM),
     },
 #endif
+#if (MYNEWT_VAL(BLE_SVC_DIS_UDI_READ_PERM) >= 0)
     {
         /*** Characteristic: UDI for Medical Devices */
         .uuid = &uuid_chr_udi.u,
         .access_cb = ble_svc_dis_access,
-        .flags = BLE_GATT_CHR_F_READ,
+        .flags = BLE_GATT_CHR_F_READ | MYNEWT_VAL(BLE_SVC_DIS_UDI_READ_PERM),
     },
+#endif
     {
         0, /* Terminator: No more characteristics in this service */
     },
@@ -193,7 +199,9 @@ const struct ble_gatt_svc_def ble_svc_dis_include_def[] = {
     (MYNEWT_VAL(BLE_SVC_DIS_SOFTWARE_REVISION_READ_PERM) >= 0) ||	\
     (MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_READ_PERM) >= 0) || \
     (MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_READ_PERM) >= 0) || \
-    (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0)
+    (MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_READ_PERM) >= 0) || \
+    (MYNEWT_VAL(BLE_SVC_DIS_IEEE_READ_PERM) >= 0) || \
+    (MYNEWT_VAL(BLE_SVC_DIS_UDI_READ_PERM) >= 0)
 static int
 ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -314,6 +322,7 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
 #endif
         break;
 
+#if (MYNEWT_VAL(BLE_SVC_DIS_IEEE_READ_PERM) >= 0)
     case BLE_SVC_DIS_CHR_UUID16_IEEE_REG_CERT_LIST:
         info = ble_svc_dis_data.ieee;
         if (info != NULL) {
@@ -321,7 +330,9 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
         break;
+#endif
 
+#if (MYNEWT_VAL(BLE_SVC_DIS_UDI_READ_PERM) >= 0)
     case BLE_SVC_DIS_CHR_UUID16_UDI:
         info = ble_svc_dis_data.udi;
         if (info == NULL) {
@@ -330,6 +341,7 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
         break;
+#endif
 
     default:
         return BLE_ATT_ERR_UNLIKELY;
