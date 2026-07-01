@@ -1714,6 +1714,7 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
     struct ble_gap_snapshot snap;
     struct ble_gap_event event;
     struct ble_hs_conn *conn;
+    bool post_connect_fail;
     bool send = 1;
     int rc;
 
@@ -1760,29 +1761,25 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
     ble_hs_lock();
     conn = ble_hs_conn_find(conn_handle);
 
-    // Send disconnect event in slave role if connect was sent
-#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
-    if ((conn != NULL) &&  !(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
+    // Suppress disconnect event in slave role if connect was sent
+    if ((conn != NULL) && !(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
         if (conn->slave_conn) {
             conn->slave_conn = 0;
-#else
-    if ((conn != NULL) &&  !(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
-        if (conn->slave_conn) {
-            conn->slave_conn = 0;
-#endif
-	} else {
-	    send = 0;
-	}
+        } else {
+            send = 0;
+        }
     }
+
+    post_connect_fail = conn != NULL && !send &&
+                        !(conn->bhc_flags & BLE_HS_CONN_F_MASTER);
 
     ble_hs_unlock();
 
-    /* If we never posted a connect event for a slave (send == 0), treat this as
-     * a connection failure and post a connect-failed event instead of a
+    /* If we never posted a connect event for a slave (send == 0), treat this as a
+     * connection failure and post a connect-failed event instead of a
      * disconnect. This allows applications to restart advertising.
      */
-    if (conn != NULL && !send && !(conn->bhc_flags & BLE_HS_CONN_F_MASTER))
-    {
+    if (post_connect_fail) {
         ble_gap_event_connect_call(conn_handle, BLE_HS_EAGAIN);
     }
 
@@ -3138,12 +3135,15 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
 
     ble_hs_unlock();
 
-    if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
-        /* Failed for 0x3E. Reconnection will automatically happen */
+    /* Only these statuses mean controller already dropped the ACL.
+     * Other non-zero: link may still be up → continue rem-ver / notify app. */
+    if (ev->status == BLE_ERR_CONN_ESTABLISHMENT ||
+        ev->status == BLE_ERR_CONN_SPVN_TMO      ||
+        ev->status == BLE_ERR_LMP_LL_RSP_TMO) {
         return;
     }
 
-    if ((conn != NULL) &&  (conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
+    if ((conn != NULL) && (conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
         if (ev->status == 0) {
 #if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
             conn->supported_feat = !!(get_le32(ev->features) & BLE_HS_HCI_LE_FEAT_CONN_PARAM_REQUEST);
@@ -3152,7 +3152,6 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
 #endif
         }
         ble_gap_rd_rem_ver_tx(ev->conn_handle);
-
     } else {
         if (conn != NULL) {
             if (ev->status == 0) {
@@ -3183,8 +3182,11 @@ ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp 
 
     ble_hs_unlock();
 
-    if (ev->status == BLE_ERR_CONN_ESTABLISHMENT) {
-        /* Failed for 0x3E. Reconnection will automatically happen */
+    /* 0x3E, 0x08, 0x22: controller tore down the link; do nothing and let
+     * the guaranteed HCI_Disconnection_Complete notify the app. */
+    if (ev->status == BLE_ERR_CONN_ESTABLISHMENT ||
+        ev->status == BLE_ERR_CONN_SPVN_TMO      ||
+        ev->status == BLE_ERR_LMP_LL_RSP_TMO) {
         return;
     }
 
