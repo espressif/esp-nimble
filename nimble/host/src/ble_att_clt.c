@@ -906,7 +906,9 @@ err:
         message = NULL;
     }
     /* Do not free txom here; the caller ble_gattc_signed_write is responsible for it on error. */
-    os_mbuf_free_chain(txom2);
+    if (txom2 != NULL) {
+        os_mbuf_free_chain(txom2);
+    }
     return rc;
 }
 #endif
