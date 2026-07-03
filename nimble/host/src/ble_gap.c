@@ -10951,6 +10951,9 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
     }
 
     ble_addr_t *new_addr = (ble_addr_t *) peer_addr;
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    int defer_add_pending = 0;
+#endif
     if (!ble_hs_is_enabled()) {
         return BLE_HS_EDISABLED;
     }
@@ -10972,6 +10975,17 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
 
     conn = ble_hs_conn_find_by_addr(peer_addr);
     if (conn != NULL) {
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        /* The peer IRK add was deferred and has not been pushed to the
+         * controller resolving list yet. Cancel the pending deferred add so it
+         * is not resurrected at disconnect, and remember that there is nothing
+         * to remove from the controller resolving list. */
+        if (conn->bhc_deferred_pvcy_add) {
+            conn->bhc_deferred_pvcy_add = 0;
+            conn->bhc_deferred_pvcy_replace = 0;
+            defer_add_pending = 1;
+        }
+#endif
         ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
     }
 
@@ -11011,10 +11025,19 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
     if (!rc) {
         if (value.sec.irk_present) {
 #if MYNEWT_VAL(BLE_HS_PVCY)
-            // Delete the IRK as it is Distributed
-            rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,key.sec.peer_addr.val);
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",rc);
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+            /* If the peer IRK add was deferred and never applied to the
+             * controller resolving list, there is nothing to remove; issuing
+             * the HCI remove would only fail with Unknown Connection
+             * Identifier (0x02). Skip it in that case. */
+            if (!defer_add_pending)
+#endif
+            {
+                // Delete the IRK as it is Distributed
+                rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,key.sec.peer_addr.val);
+                if (rc != 0) {
+                    BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",rc);
+                }
             }
 #endif
         }
