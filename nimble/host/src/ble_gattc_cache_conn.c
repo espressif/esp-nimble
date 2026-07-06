@@ -2067,7 +2067,6 @@ ble_gattc_cache_conn_update(uint16_t conn_handle, uint16_t start_handle, uint16_
         peer->cache_state = CACHE_INVALID;
     }
 }
-#endif
 
 int ble_gattc_cache_refresh(ble_addr_t peer_addr)
 {
@@ -2105,6 +2104,7 @@ int ble_gattc_cache_refresh(ble_addr_t peer_addr)
 
     return rc;
 }
+#endif
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
 static int
