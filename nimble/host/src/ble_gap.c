@@ -10509,9 +10509,20 @@ ble_gap_reset_irk(void)
 #if MYNEWT_VAL(BLE_HS_PVCY)
     ble_hs_pvcy_set_default_irk();
 
+    /* For controller-based privacy, HCI LE_Remove_Device_From_Resolving_List
+     * cannot run while advertising or scanning is active. Host-based privacy
+     * uses a software resolving list and needs no preemption.
+     */
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_preempt();
+#endif
+
     //Remove the previous entry pertaining to 00:00:00:00:00:00 address
     memset(tmp_addr, 0, 6);
     rc = ble_hs_pvcy_remove_entry(0, tmp_addr);
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_preempt_done();
+#endif
     if (rc != 0) {
         BLE_HS_LOG(INFO, "Failed to remove old all zero IRK");
         return;
@@ -10551,13 +10562,10 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
         return BLE_HS_EINVAL;
     }
 
-    /* We cannot delete entry from resolving list if there is ongoing
-     * discovery or advertising in progress. Check early before any
-     * state modifications to avoid inconsistency. */
-    if (ble_gap_adv_active() || ble_gap_disc_active()) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBUSY);
-        return BLE_HS_EBUSY;
-    }
+    /* Resolving-list removal is handled at the actual IRK removal site:
+     * controller privacy preempts GAP procedures, while host privacy updates
+     * the software resolving list directly.
+     */
 
     ble_hs_lock();
 
@@ -10613,8 +10621,19 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             if (!defer_add_pending)
 #endif
             {
-                // Delete the IRK as it is Distributed
+                /* For controller-based privacy, the HCI LE_Remove_Device_From_
+                 * Resolving_List command cannot be issued while advertising or
+                 * scanning is active.  Preempt GAP procedures temporarily to
+                 * satisfy this constraint, mirroring ble_hs_pvcy_add_entry().
+                 * For host-based privacy the resolving list is a software list,
+                 * so no preemption is required. */
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+                ble_gap_preempt();
+#endif
                 rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type,key.sec.peer_addr.val);
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+                ble_gap_preempt_done();
+#endif
                 if (rc != 0) {
                     BLE_HS_LOG(ERROR, "Error while removing IRK , rc = %x\n",rc);
                 }
