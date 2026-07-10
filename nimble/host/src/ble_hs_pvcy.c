@@ -416,17 +416,22 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
        ble_hs_unlock_nested();
    }
 #else
+    ble_gap_preempt();
+
     rc = ble_hs_pvcy_set_resolve_enabled(0);
     if (rc != 0) {
-       return rc;
+       goto done;
     }
 
     rc = ble_hs_pvcy_clear_entries();
     if (rc != 0) {
-       return rc;
+       goto done;
     }
 
     rc = ble_hs_pvcy_set_resolve_enabled(1);
+
+done:
+    ble_gap_preempt_done();
     if (rc != 0) {
        return rc;
     }
