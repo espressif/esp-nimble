@@ -625,7 +625,7 @@ ble_gattc_cache_save(struct ble_gattc_cache_conn *peer, size_t num_attr)
 
     nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_calloc(1,num_attr * sizeof(ble_gatt_nv_attr));
     if (nv_attr == NULL) {
-        BLE_HS_LOG(DEBUG, "Failed to allocate memory to nv_attr");
+        BLE_HS_LOG(ERROR, "Failed to allocate memory to nv_attr");
         return;
     }
     memset(nv_attr, 0, num_attr * sizeof(ble_gatt_nv_attr));
