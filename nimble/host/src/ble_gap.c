@@ -2822,7 +2822,23 @@ ble_gap_rx_conn_comp_failed(const struct ble_gap_conn_complete *evt)
     event_link_estab.link_estab.adv_handle = evt->adv_handle;
 
     ble_gap_master_reset_state();
-    ble_gap_slave_extract_cb(evt->adv_handle, &cb, &cb_arg);
+
+    cb = NULL;
+    cb_arg = NULL;
+    if (evt->sync_handle != 0xFFFF) {
+        struct ble_hs_periodic_sync *psync;
+
+        ble_hs_lock();
+        psync = ble_hs_periodic_sync_find_by_handle(evt->sync_handle);
+        if (psync != NULL) {
+            cb = psync->cb;
+            cb_arg = psync->cb_arg;
+        }
+        ble_hs_unlock();
+    } else {
+        ble_gap_slave_extract_cb(evt->adv_handle, &cb, &cb_arg);
+    }
+
     if (cb != NULL) {
         cb(&event, cb_arg);
         cb(&event_link_estab, cb_arg);
@@ -2984,7 +3000,18 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         ble_gap_master_reset_state();
     } else {
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-        if (!v1_evt) {
+        if (!v1_evt && evt->sync_handle != 0xFFFF) {
+            /* PAwR peripheral: application callback is on the periodic sync. */
+            struct ble_hs_periodic_sync *psync;
+
+            ble_hs_lock();
+            psync = ble_hs_periodic_sync_find_by_handle(evt->sync_handle);
+            if (psync != NULL) {
+                conn->bhc_cb = psync->cb;
+                conn->bhc_cb_arg = psync->cb_arg;
+            }
+            ble_hs_unlock();
+        } else if (!v1_evt) {
             conn->bhc_cb = ble_gap_master.cb;
             conn->bhc_cb_arg = ble_gap_master.cb_arg;
             conn->bhc_our_addr_type = ble_gap_master.conn.our_addr_type;
