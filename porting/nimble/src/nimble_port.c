@@ -50,6 +50,8 @@
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
 #endif
+#include "bt_osal.h"
+#include "bt_prf_task.h"
 
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
@@ -202,6 +204,17 @@ esp_err_t esp_nimble_init(void)
     ble_npl_eventq_init(&g_eventq_dflt);
 #endif // !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 
+    /* Bring up the host-agnostic bt_osal function table before host bring-up; */
+    bt_osal_freertos_funcs_init();
+
+#if CONFIG_BT_PRF_TASK_ENABLED
+    /* Start the shared BLE profile task now that the bt_osal table is up, so
+     * profiles can post work without spawning their own tasks. */
+    if (bt_prf_task_init() != BT_OSAL_OK) {
+        ESP_LOGW(NIMBLE_PORT_LOG_TAG, "bt_prf_task_init failed");
+    }
+#endif
+
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
     ble_adv_list_init();
 #endif
@@ -280,6 +293,16 @@ esp_err_t esp_nimble_deinit(void)
      * of the next init cycle (in ble_npl_reset_deinit_flag). */
 
 #endif
+
+#if CONFIG_BT_PRF_TASK_ENABLED
+    /* Stop the shared BLE profile task while the bt_osal table is still up,
+     * symmetrically with the init in esp_nimble_init(). */
+    bt_prf_task_deinit();
+#endif
+
+    /* Release the bt_osal function table set up in esp_nimble_init(). */
+    bt_osal_freertos_funcs_deinit();
+
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     os_mempool_deinit(0);
 #endif
