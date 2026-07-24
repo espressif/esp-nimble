@@ -5317,7 +5317,11 @@ ble_gap_adv_validate(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         return BLE_HS_EINVAL;
     }
 
-    if (ble_gap_slave[0].op != BLE_GAP_OP_NULL) {
+    if (ble_gap_slave[0].op != BLE_GAP_OP_NULL
+#if MYNEWT_VAL(BLE_GAP_ALLOW_ADV_RESTART)
+        && ble_gap_slave[0].op != BLE_GAP_OP_S_ADV
+#endif
+       ) {
         return BLE_HS_EALREADY;
     }
 
@@ -5656,6 +5660,15 @@ done:
     if (rc != 0) {
         goto done;
     }
+
+#if MYNEWT_VAL(BLE_GAP_ALLOW_ADV_RESTART)
+    if (ble_gap_slave[0].op == BLE_GAP_OP_S_ADV) {
+        rc = ble_gap_adv_stop_no_lock();
+        if (rc != 0) {
+            goto done;
+        }
+    }
+#endif
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
     }
