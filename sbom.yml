@@ -1,5 +1,51 @@
 name: 'Apache Mynewt Nimble'
-version: '1.6.0'
+version: '1.9.0'
 supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
 originator: 'Organization: The Apache Software Foundation'
+cpe: cpe:2.3:a:apache:nimble:{}:*:*:*:*:*:*:*
 description: An open-source Bluetooth 5.1 stack with additional features and patches from Espressif.
+cve-exclude-list:
+  - cve: CVE-2024-24746
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+        https://github.com/espressif/esp-nimble/commit/1c1b07ec41fc9fe5b291aa1c5e01a6f9977fd75a
+  - cve: CVE-2024-51569
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+        https://github.com/espressif/esp-nimble/commit/91e141004d35400e705e9dcfac85fc7f10d5340e
+  - cve: CVE-2025-52435
+    reason: Not applicable for esp-nimble which is Host only BLE stack
+  - cve: CVE-2025-53477
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/50409a34353513c542b8026eb6ec23c6df62f57b
+         https://github.com/espressif/esp-nimble/commit/d014127c634719b0ed10ef4851f2f0bb58b04d25
+  - cve: CVE-2025-62235
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/df52b386a0cc78997c2252ce034625212c35ca44
+  - cve: CVE-2024-47248
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/c58a8e7edfdad6e6b4e7742ef2aa3a07488b815e
+  - cve: CVE-2024-47249
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/5532be76217e59882375f814d134fbf686dc3f3b
+  - cve: CVE-2024-47250
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/2891b4d95321fe88b693ae03fdf239facbc48ac8
+         https://github.com/espressif/esp-nimble/commit/08d95ab7ee61977feabbb5bc76414f867ca15d35
+  - cve: CVE-2025-53470
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/d8106042fadba152115bd97be715b41950e57ad0
