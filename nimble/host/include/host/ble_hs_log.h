@@ -48,13 +48,13 @@
 #include "logcfg/logcfg.h"
 #endif
 
-#ifndef ESP_PLATFORM
+#if !defined(ESP_PLATFORM) && !MYNEWT_VAL(NEWT_FEATURE_LOGCFG)
 #ifndef BLE_NPL_LOG_MODULE
 /** Defines the logging module for NimBLE Porting Layer (NPL). */
 #define BLE_NPL_LOG_MODULE BLE_HS_LOG
 #endif
 #include <nimble/nimble_npl_log.h>
-#endif /* !ESP_PLATFORM */
+#endif /* !ESP_PLATFORM && !NEWT_FEATURE_LOGCFG */
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,8 +71,7 @@ struct os_mbuf;
  * @param lvl           The log level of the message.
  * @param ...           The format string and additional arguments for the log message.
  */
-#ifdef ESP_PLATFORM
-/* Use logcfg BLE_HS_LOG_<LVL> macros — avoids conflict with BLE_NPL_LOG_IMPL. */
+#if defined(ESP_PLATFORM) || MYNEWT_VAL(NEWT_FEATURE_LOGCFG)
 #define BLE_HS_LOG(lvl, ...) \
     BLE_HS_LOG_ ## lvl(__VA_ARGS__)
 #else
@@ -89,7 +88,7 @@ struct os_mbuf;
  *  @param lvl          The log level of the message.
  *  @param addr         The Bluetooth address to be logged.
  */
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || MYNEWT_VAL(NEWT_FEATURE_LOGCFG)
 #define BLE_HS_LOG_ADDR(lvl, addr)                              \
     BLE_HS_LOG_ ## lvl("%02x:%02x:%02x:%02x:%02x:%02x",        \
                        (addr)[5], (addr)[4], (addr)[3],         \

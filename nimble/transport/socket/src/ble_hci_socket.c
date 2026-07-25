@@ -188,6 +188,7 @@ ble_hci_sock_acl_tx(struct os_mbuf *om)
     int i;
     struct os_mbuf *m;
     uint8_t ch;
+    int pktlen;
 
     memset(&msg, 0, sizeof(msg));
     memset(iov, 0, sizeof(iov));
@@ -199,6 +200,10 @@ ble_hci_sock_acl_tx(struct os_mbuf *om)
     iov[0].iov_base = &ch;
     i = 1;
     for (m = om; m; m = SLIST_NEXT(m, om_next)) {
+        if (i >= 8) {
+            os_mbuf_free_chain(om);
+            return BLE_ERR_MEM_CAPACITY;
+        }
         iov[i].iov_base = m->om_data;
         iov[i].iov_len = m->om_len;
         i++;
@@ -208,9 +213,10 @@ ble_hci_sock_acl_tx(struct os_mbuf *om)
     STATS_INC(hci_sock_stats, omsg);
     STATS_INC(hci_sock_stats, oacl);
     STATS_INCN(hci_sock_stats, obytes, OS_MBUF_PKTLEN(om) + 1);
+    pktlen = OS_MBUF_PKTLEN(om);
     i = sendmsg(ble_hci_sock_state.sock, &msg, 0);
     os_mbuf_free_chain(om);
-    if (i != OS_MBUF_PKTLEN(om) + 1) {
+    if (i != pktlen + 1) {
         if (i < 0) {
             dprintf(1, "sendmsg() failed : %d\n", errno);
         } else {
@@ -285,6 +291,7 @@ ble_hci_sock_iso_tx(struct os_mbuf *om)
     int i;
     struct os_mbuf *m;
     uint8_t ch;
+    int pktlen;
 
     memset(&msg, 0, sizeof(msg));
     memset(iov, 0, sizeof(iov));
@@ -296,6 +303,10 @@ ble_hci_sock_iso_tx(struct os_mbuf *om)
     iov[0].iov_base = &ch;
     i = 1;
     for (m = om; m; m = SLIST_NEXT(m, om_next)) {
+        if (i >= 8) {
+            os_mbuf_free_chain(om);
+            return BLE_ERR_MEM_CAPACITY;
+        }
         iov[i].iov_base = m->om_data;
         iov[i].iov_len = m->om_len;
         i++;
@@ -306,8 +317,9 @@ ble_hci_sock_iso_tx(struct os_mbuf *om)
     STATS_INC(hci_sock_stats, oiso);
     STATS_INCN(hci_sock_stats, obytes, OS_MBUF_PKTLEN(om) + 1);
     i = sendmsg(ble_hci_sock_state.sock, &msg, 0);
+    pktlen = OS_MBUF_PKTLEN(om);
     os_mbuf_free_chain(om);
-    if (i != OS_MBUF_PKTLEN(om) + 1) {
+    if (i != pktlen + 1) {
         if (i < 0) {
             dprintf(1, "sendmsg() failed : %d\n", errno);
         } else {
@@ -540,8 +552,8 @@ ble_hci_sock_rx_msg(void)
             if (bhss->rx_off < BLE_HCI_DATA_HDR_SZ) {
                 return -1;
             }
-            len = 1 + BLE_HCI_DATA_HDR_SZ + (bhss->rx_data[4] << 8) +
-                  bhss->rx_data[3];
+            len = 1 + BLE_HCI_DATA_HDR_SZ +
+                  (((bhss->rx_data[4] << 8) | bhss->rx_data[3]) & BLE_HCI_ISO_LENGTH_MASK);
             if (bhss->rx_off < len) {
                 return -1;
             }

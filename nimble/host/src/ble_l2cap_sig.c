@@ -285,9 +285,9 @@ ble_l2cap_sig_proc_insert(struct ble_l2cap_sig_proc *proc)
 {
     ble_l2cap_sig_dbg_assert_proc_not_inserted(proc);
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
     STAILQ_INSERT_HEAD(&ble_l2cap_sig_procs, proc, next);
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 }
 
 /**
@@ -374,13 +374,6 @@ ble_l2cap_sig_proc_set_timer(struct ble_l2cap_sig_proc *proc)
     proc->exp_os_ticks = ble_npl_time_get() +
                          ble_npl_time_ms_to_ticks32(BLE_L2CAP_SIG_UNRESPONSIVE_TIMEOUT);
     ble_hs_timer_resched();
-}
-
-static void
-ble_l2cap_sig_proc_start(struct ble_l2cap_sig_proc *proc)
-{
-    ble_l2cap_sig_proc_set_timer(proc);
-    ble_l2cap_sig_proc_insert(proc);
 }
 
 static void
@@ -653,6 +646,13 @@ done:
  *****************************************************************************/
 
 #if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) != 0
+
+static void
+ble_l2cap_sig_proc_start(struct ble_l2cap_sig_proc *proc)
+{
+    ble_l2cap_sig_proc_set_timer(proc);
+    ble_l2cap_sig_proc_insert(proc);
+}
 
 static int
 ble_l2cap_sig_coc_err2ble_hs_err(uint16_t l2cap_coc_err)
@@ -1101,6 +1101,11 @@ ble_l2cap_sig_credit_base_con_req_rx(uint16_t conn_handle,
         ble_hs_unlock();
 
         rc = ble_l2cap_event_coc_accept(chans[i], le16toh(req->mtu));
+        if (rc == 0 &&
+            chans[i]->coc_rx.sdus[chans[i]->coc_rx.current_sdu_idx] == NULL) {
+            /* ECFC requires a valid receive buffer during accept. */
+            rc = BLE_HS_ENOMEM;
+        }
         if (rc == 0) {
             rsp->dcids[i] = htole16(chans[i]->scid);
             chan_created++;
@@ -1544,12 +1549,14 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
     int i;
 
     if (!sdu_rx || !cb) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        /* Callers transfer ownership of sdu_rx[] mbufs on entry. When cb is
+         * NULL but sdu_rx is provided, free the mbufs to avoid leaking. */
         if (sdu_rx) {
             for (i = 0; i < num; i++) {
                 os_mbuf_free_chain(sdu_rx[i]);
             }
         }
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
@@ -1570,11 +1577,8 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
     }
 
     if (num == 0 || num > BLE_L2CAP_MAX_COC_CONN_REQ) {
-        for (i = 0; i < num; i++) {
-            os_mbuf_free_chain(sdu_rx[i]);
-        }
-        ble_l2cap_sig_proc_free(proc);
-        return BLE_HS_EINVAL;
+        rc = BLE_HS_EINVAL;
+        goto failed;
     }
 
     proc->op = BLE_L2CAP_SIG_PROC_OP_CONNECT;
@@ -1584,13 +1588,14 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
     req = ble_l2cap_sig_cmd_get(BLE_L2CAP_SIG_OP_CREDIT_CONNECT_REQ, proc->id,
                                 sizeof(*req) + num * sizeof(uint16_t), &txom);
     if (!req) {
-        ble_l2cap_sig_proc_free(proc);
-        return BLE_HS_ENOMEM;
+        rc = BLE_HS_ENOMEM;
+        goto failed;
     }
 
     for (i = 0; i < num; i++) {
         proc->connect.chan[i] =
             ble_l2cap_coc_chan_alloc(conn, psm, mtu, sdu_rx[i], cb, cb_arg);
+        sdu_rx[i] = NULL; /* ownership transferred to chan_alloc (freed on failure) */
         if (!proc->connect.chan[i]) {
             os_mbuf_free_chain(txom);
             rc = BLE_HS_ENOMEM;
@@ -1619,11 +1624,12 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
 
 failed:
     for (i = 0; i < num; i++) {
-        if (proc->connect.chan[i]) {
+        if (i < BLE_L2CAP_MAX_COC_CONN_REQ && proc->connect.chan[i]) {
             proc->connect.chan[i]->cb = NULL;
-            proc->connect.chan[i]->coc_rx.sdus[0] = NULL;
             ble_l2cap_chan_free(conn, proc->connect.chan[i]);
             proc->connect.chan[i] = NULL;
+        } else {
+            os_mbuf_free_chain(sdu_rx[i]);
         }
     }
 
@@ -1804,13 +1810,10 @@ ble_l2cap_sig_coc_disconnect_cb(struct ble_l2cap_sig_proc *proc, int status)
         chan = ble_hs_conn_chan_find_by_scid(conn, proc->disconnect.scid);
         if (chan) {
             SLIST_REMOVE(&conn->bhc_channels, chan, ble_l2cap_chan, next);
+            ble_l2cap_chan_free(conn, chan);
         }
     }
     ble_hs_unlock();
-
-    if (chan) {
-        ble_l2cap_chan_free(conn, chan);
-    }
 }
 
 static int
@@ -1963,7 +1966,7 @@ ble_l2cap_sig_le_credits_rx(uint16_t conn_handle, struct ble_l2cap_sig_hdr *hdr,
 }
 
 int
-ble_l2cap_sig_le_credits(uint16_t conn_handle, uint16_t scid, uint16_t credits)
+ble_l2cap_sig_le_credits_nolock(uint16_t conn_handle, uint16_t scid, uint16_t credits)
 {
     struct ble_l2cap_sig_le_credits *cmd;
     struct os_mbuf *txom;
@@ -1978,7 +1981,19 @@ ble_l2cap_sig_le_credits(uint16_t conn_handle, uint16_t scid, uint16_t credits)
     cmd->scid = htole16(scid);
     cmd->credits = htole16(credits);
 
-    return ble_l2cap_sig_tx(conn_handle, txom);
+    return ble_l2cap_sig_tx_nolock(conn_handle, txom);
+}
+
+int
+ble_l2cap_sig_le_credits(uint16_t conn_handle, uint16_t scid, uint16_t credits)
+{
+    int rc;
+
+    ble_hs_lock();
+    rc = ble_l2cap_sig_le_credits_nolock(conn_handle, scid, credits);
+    ble_hs_unlock();
+
+    return rc;
 }
 #endif
 

@@ -4,12 +4,24 @@ repos
 
 # Non-source files
 RELEASE_NOTES.md
+.gitignore
 **/README.md
 Doxyfile
 .clang-format
 .mailmap
 .style_ignored_dirs
 **/requirements.txt
+README.md
+pts-gap.txt
+pts-gatt.txt
+pts-l2cap.txt
+pts-sm.txt
+94654-20170317-085122560.tpg
+94654-20170317-085441153.pts
+uncrustify.cfg
+.style_ignored_dirs
+.mailmap
+requirements.txt
 
 # Ignore documentation folder
 docs

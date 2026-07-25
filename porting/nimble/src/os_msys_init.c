@@ -24,8 +24,7 @@
 #include "esp_nimble_mem.h"
 #include "esp_err.h"
 
-static STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
-    STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
+extern STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list;
 
 #if CONFIG_BT_NIMBLE_ENABLED
 #define OS_MSYS_1_BLOCK_COUNT MYNEWT_VAL(MSYS_1_BLOCK_COUNT)
@@ -173,7 +172,7 @@ os_msys_sanity(struct os_sanity_check *sc, void *arg)
         idx++;
     }
 
-    return ESP_OK;
+    return OS_OK;
 }
 #endif
 
@@ -265,7 +264,6 @@ os_msys_buf_free(void)
             nimble_platform_mem_free(os_msys_ctx->init_1_data);
             os_msys_ctx->init_1_data = NULL;
         }
-        os_mempool_unregister(&os_msys_ctx->init_1_mempool);
 #endif
 #if OS_MSYS_2_BLOCK_COUNT > 0
         os_mempool_unregister(&os_msys_ctx->init_2_mempool);
@@ -273,26 +271,23 @@ os_msys_buf_free(void)
             nimble_platform_mem_free(os_msys_ctx->init_2_data);
             os_msys_ctx->init_2_data = NULL;
         }
-        os_mempool_unregister(&os_msys_ctx->init_2_mempool);
 #endif
+        os_msys_reset();
         nimble_platform_mem_free(os_msys_ctx);
         os_msys_ctx = NULL;
     }
-    os_msys_reset();
 
 #else
 #if OS_MSYS_1_BLOCK_COUNT > 0
     os_mempool_unregister(&os_msys_init_1_mempool);
     nimble_platform_mem_free(os_msys_init_1_data);
     os_msys_init_1_data = NULL;
-    os_mempool_unregister(&os_msys_init_1_mempool);
 #endif
 
 #if OS_MSYS_2_BLOCK_COUNT > 0
     os_mempool_unregister(&os_msys_init_2_mempool);
     nimble_platform_mem_free(os_msys_init_2_data);
     os_msys_init_2_data = NULL;
-    os_mempool_unregister(&os_msys_init_2_mempool);
 #endif
     os_msys_reset();
 #endif
@@ -307,7 +302,7 @@ void os_msys_init(void)
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     /* Ensure context is allocated before dereferencing macros */
     if (ble_os_msys_ensure_ctx() != 0) {
-        BLE_LL_ASSERT(0);
+        SYSINIT_PANIC_ASSERT(0);
         return;
     }
 #endif

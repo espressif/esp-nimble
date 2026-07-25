@@ -43,7 +43,9 @@
 #include "host/ble_sm.h"
 #include "host/ble_store.h"
 #include "host/ble_uuid.h"
+#if MYNEWT_VAL(BLE_ISO)
 #include "host/ble_iso.h"
+#endif
 #include "nimble/nimble_npl.h"
 #include "host/ble_esp_hs.h"
 

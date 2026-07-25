@@ -352,7 +352,12 @@ vnd_model_recv(struct bt_mesh_model *model,
                    buf->om_len);
 
     bt_mesh_model_msg_init(msg, BT_MESH_MODEL_OP_3(0x01, CID_VENDOR));
-    os_mbuf_append(msg, buf->om_data, buf->om_len);
+    rc = os_mbuf_append(msg, buf->om_data, buf->om_len);
+    if (rc) {
+        console_printf("#vendor-model-recv: append failed\n");
+        os_mbuf_free_chain(msg);
+        return rc;
+    }
 
     rc = bt_mesh_model_send(model, ctx, msg, NULL, NULL);
     if (rc) {

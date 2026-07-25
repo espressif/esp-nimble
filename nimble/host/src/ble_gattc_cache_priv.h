@@ -89,6 +89,7 @@ struct ble_gattc_cache_conn_svc {
     struct ble_gattc_cache_conn_incl_list incl_svc;
 #endif
     struct ble_gattc_cache_conn_chr_list chrs;
+    uint8_t chrs_discovered;
 };
 SLIST_HEAD(ble_gattc_cache_conn_svc_list, ble_gattc_cache_conn_svc);
 
@@ -109,7 +110,7 @@ struct ble_gattc_cache_conn_op {
        request comes while the cache is building */
     uint16_t start_handle;
     uint16_t end_handle;
-    const ble_uuid_t *uuid;
+    ble_uuid_any_t uuid;
     void *cb;
     void *cb_arg;
     uint8_t cb_type;

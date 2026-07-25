@@ -302,6 +302,10 @@ cdc_hci_acl_packet_write(struct usb_in_packet *packet, size_t offset)
         if (new_offset == 0) {
             /* Write H4 ACL type */
             new_offset += tud_cdc_n_write_char(cdc_num, HCI_H4_ACL);
+            if (new_offset == 0) {
+                /* USB FIFO full; cannot write H4 type byte yet */
+                return (int)offset;
+            }
         }
 
         for (;;) {

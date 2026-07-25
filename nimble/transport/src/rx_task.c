@@ -25,6 +25,7 @@
 #include <os/os_mbuf.h>
 #include <nimble/transport.h>
 #include <nimble/nimble_npl.h>
+#include <nimble/nimble_port.h>
 
 #if !defined(MYNEWT) || MYNEWT_VAL(BLE_TRANSPORT_RX_TASK_STACK_SIZE)
 
@@ -80,7 +81,11 @@ ble_transport_rx_register(ble_transport_rx_func_t *func, void *arg)
 void
 ble_transport_rx(void)
 {
+#ifdef MYNEWT
     ble_npl_eventq_put(&rx_eventq, &rx_event);
+#else
+    ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &rx_event);
+#endif
 }
 
 #endif

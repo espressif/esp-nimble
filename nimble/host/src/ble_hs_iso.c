@@ -51,17 +51,11 @@ static uint16_t ble_hs_iso_avail_pkts;
 #endif /* MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL) */
 
 int
-ble_iso_init(void)
-{
-    return 0;
-}
-
-int
 ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts)
 {
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
-    if (pktlen < BLE_HCI_ISO_DATA_LOAD_HDR_SZ || max_pkts == 0) {
+    if (pktlen == 0 || max_pkts == 0) {
         return BLE_HS_EINVAL;
     }
 
@@ -193,9 +187,25 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
     uint8_t dlh_len;
     uint8_t *frag;
     int rc;
+#if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
+    uint16_t count;
+#endif
 
 #if MYNEWT_VAL(BLE_ISO_STD_FLOW_CTRL)
-    uint16_t count = ble_hs_hci_iso_buf_needed(sdu_len, ts_flag);
+    dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) +
+              BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
+    count = ble_hs_hci_iso_buf_needed(sdu_len, ts_flag);
+
+    if (count == 0) {
+        return BLE_HS_EINVAL;
+    }
+
+    /* Host does not support fragmentation yet; reject SDUs that don't fit in one buffer. */
+    if (count > 1) {
+        BLE_HS_LOG(ERROR, "ISO SDU+hdr too large (%u > %u)",
+                   (unsigned)(sdu_len + dlh_len), (unsigned)ble_hs_iso_buf_sz);
+        return BLE_HS_EMSGSIZE;
+    }
 
     /* Make sure the Controller ISO buffer can accommodate the SDU completely */
     if (count > ble_hs_iso_avail_pkts) {
@@ -207,9 +217,12 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
         BLE_HS_LOG(WARN, "ISO flow control!");
         return BLE_HS_EAGAIN;
     }
+    dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) +
+              BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
+#else
+    dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) +
+              BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
 #endif
-
-    dlh_len = (ts_flag ? BLE_HCI_ISO_DATA_LOAD_TS_SZ : 0) + BLE_HCI_ISO_DATA_LOAD_HDR_SZ;
 
     /* Note:
      * Here we allocate memory to hold the whole SDU, and in the BLE Controller,

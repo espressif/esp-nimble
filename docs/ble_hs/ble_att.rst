@@ -124,6 +124,6 @@ Finds an available (idle) EATT channel for the given connection. If an EATT chan
 
 .. code-block:: c
 
-   void ble_eatt_release_chan(uint16_t conn_handle, uint8_t op)
+   void ble_eatt_release_chan(uint16_t conn_handle, uint16_t cid)
 
-Releases a previously claimed EATT channel, marking it as idle and available for new transactions.
+Releases a previously claimed EATT channel identified by ``cid``, marking it as idle and available for new transactions.

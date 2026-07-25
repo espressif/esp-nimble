@@ -338,6 +338,7 @@ int ble_gap_config_ext_scan_adi_filter(uint8_t enable, uint8_t did_filter, uint8
 int
 ble_gap_dev_authorization(uint16_t conn_handle, bool authorized);
 
+#if MYNEWT_VAL(BLE_HCI_VS)
 /**
  * Sets the vendor-specific event mask for BLE host.
  *
@@ -351,6 +352,7 @@ ble_gap_dev_authorization(uint16_t conn_handle, bool authorized);
  */
 int
 ble_hs_send_vs_event_mask(uint32_t event_mask);
+#endif
 
 void ble_gap_rx_test_evt(const void *buf, uint8_t len);
 void ble_gap_tx_test_evt(const void *buf, uint8_t len);

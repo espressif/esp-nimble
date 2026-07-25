@@ -39,7 +39,7 @@
 #define MAX_ADDR_LIST_CACHE_BUF 4096
 
 #if MYNEWT_VAL(BLE_GATT_CACHING)
-static const char *cache_key = "key";
+static const char *cache_key = "k";
 static const char *cache_addr = "cache_addr_tab";
 static uint8_t ble_gattc_cache_find_addr(ble_addr_t addr);
 static uint8_t ble_gattc_cache_find_hash(uint8_t * hash_key);
@@ -101,7 +101,7 @@ print_addr(ble_addr_t addr)
     }
 }
 
-/* Increased buffer size to safely hold "key" + 12 hex chars + null + margin */
+/* Buffer size to safely hold "k" + 14 hex chars + null */
 #define GATT_CACHE_KEY_NAME_MAX_LEN 20
 
 /* Thread-local storage for key name to avoid static buffer thread safety issues */
@@ -360,7 +360,11 @@ void ble_gattc_cache_get_addr_list(ble_addr_t *addr_list, uint8_t *out_num)
         return;
     }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_static_vars == NULL || cache_env == NULL) {
+#else
     if (cache_env == NULL) {
+#endif
         *out_num = 0;
         return;
     }
@@ -549,6 +553,7 @@ ble_gattc_cache_addr_save(uint8_t *out_index, ble_addr_t addr, uint8_t * hash_ke
         } else {
             if (cache_env->num_addr >= MAX_DEVICE_IN_CACHE) {
                 nimble_platform_mem_free(p_buf);
+                BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
                 return BLE_HS_ENOMEM;
             }
             insert_ind = cache_env->num_addr;
@@ -849,6 +854,12 @@ ble_gattc_cache_find_source(struct ble_gattc_cache_conn *cache_conn, uint8_t *da
     uint8_t num;
     cache_addr_info_t *addr_info;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gattc_cache_static_vars == NULL) {
+        ble_gap_assoc_event(cache_conn->conn_handle, ESP_FAIL, cache_conn->cache_state);
+        return ESP_FAIL;
+    }
+#endif
     if (cache_env == NULL) {
         ble_gap_assoc_event(cache_conn->conn_handle, ESP_FAIL, cache_conn->cache_state);
         return ESP_FAIL;

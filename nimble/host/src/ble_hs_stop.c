@@ -68,6 +68,10 @@ static uint8_t ble_hs_stop_conn_cnt;
 static struct ble_npl_callout ble_hs_stop_terminate_tmo;
 #endif
 
+/** List of listeners being notified; guarded by ble_hs_stop_notifying. */
+static struct ble_hs_stop_listener_slist ble_hs_stop_notify_list;
+static bool ble_hs_stop_notifying;
+
 static int
 ble_hs_stop_hci_reset(void)
 {
@@ -81,8 +85,9 @@ ble_hs_stop_hci_reset(void)
 static void
 ble_hs_stop_done(int status)
 {
-    struct ble_hs_stop_listener_slist slist;
+    struct ble_hs_stop_listener_slist notify_list;
     struct ble_hs_stop_listener *listener;
+    struct ble_hs_stop_listener *l;
     int rc;
 
     ble_npl_callout_stop(&ble_hs_stop_terminate_tmo);
@@ -94,28 +99,60 @@ ble_hs_stop_done(int status)
         return;
     }
 
-    slist = ble_hs_stop_listeners;
+    ble_hs_stop_notify_list = ble_hs_stop_listeners;
     SLIST_INIT(&ble_hs_stop_listeners);
-
-    ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
+    ble_hs_stop_notifying = true;
 
     ble_hs_unlock();
 
     ble_gap_event_listener_unregister(&ble_hs_stop_gap_listener);
 
-    /* Reset the controller. */
+    /* Reset the controller while still in STOPPING state so the HCI ACK is
+     * not dropped by host_rcv_pkt (which drops packets when state == OFF). */
     rc = ble_hs_stop_hci_reset();
     if (rc != 0) {
         BLE_HS_LOG(ERROR, "ble_hs_stop: failed to reset controller; rc=%d\n", rc);
     }
 
+    /* Mark host as OFF and absorb any listeners registered during the HCI
+     * reset before notifying waiters. */
+    ble_hs_lock();
+    ble_hs_enabled_state = BLE_HS_ENABLED_STATE_OFF;
+    while ((listener = SLIST_FIRST(&ble_hs_stop_listeners)) != NULL) {
+        bool already;
+
+        SLIST_REMOVE_HEAD(&ble_hs_stop_listeners, link);
+        already = false;
+        SLIST_FOREACH(l, &ble_hs_stop_notify_list, link) {
+            if (l == listener) {
+                already = true;
+                break;
+            }
+        }
+        if (!already) {
+            SLIST_INSERT_HEAD(&ble_hs_stop_notify_list, listener, link);
+        }
+    }
+    ble_hs_stop_notifying = false;
+    notify_list = ble_hs_stop_notify_list;
+    SLIST_INIT(&ble_hs_stop_notify_list);
+    ble_hs_unlock();
+
     /* Clear advertising, scanning and connection states. */
-    ble_gap_reset_state(0);
+    if (status != 0) {
+        if (status == BLE_HS_ETIMEOUT) {
+            ble_gap_reset_state(BLE_ERR_CONN_SPVN_TMO);
+        } else {
+            ble_gap_reset_state(BLE_ERR_REM_USER_CONN_TERM);
+        }
+    } else {
+        ble_gap_reset_state(0);
+    }
 
     /* After LL reset the controller loses its random address */
     ble_hs_id_reset();
 
-    SLIST_FOREACH(listener, &slist, link) {
+    SLIST_FOREACH(listener, &notify_list, link) {
         listener->fn(status, listener->arg);
     }
 }
@@ -160,13 +197,14 @@ ble_hs_stop_terminate_all_periodic_sync(void)
          *
          * Also, once the sync is terminated, the psync will be freed and
          * removed from the list such that the next iteration yields the next
-         * psync handle.  Continue on errors so all syncs are cleaned up.
+         * psync handle.  Return on errors; the caller (ble_hs_stop) will
+         * report the failure via ble_hs_stop_done.
          */
         rc = ble_gap_periodic_adv_sync_terminate(sync_handle);
         if (rc != 0 && rc != BLE_HS_ENOTCONN) {
             BLE_HS_LOG(ERROR, "failed to terminate periodic sync=0x%04x, rc=%d\n",
                        sync_handle, rc);
-            /* Continue attempting to terminate remaining syncs. */
+            return rc;
         }
     }
 
@@ -249,15 +287,22 @@ ble_hs_stop_register_listener(struct ble_hs_stop_listener *listener,
 
     BLE_HS_DBG_ASSERT(fn != NULL);
 
+    listener->fn = fn;
+    listener->arg = arg;
+
     /* Guard against duplicate registration which would corrupt the list. */
     SLIST_FOREACH(l, &ble_hs_stop_listeners, link) {
         if (l == listener) {
             return;
         }
     }
-
-    listener->fn = fn;
-    listener->arg = arg;
+    if (ble_hs_stop_notifying) {
+        SLIST_FOREACH(l, &ble_hs_stop_notify_list, link) {
+            if (l == listener) {
+                return;
+            }
+        }
+    }
     SLIST_INSERT_HEAD(&ble_hs_stop_listeners, listener, link);
 }
 
@@ -362,8 +407,6 @@ ble_hs_stop(struct ble_hs_stop_listener *listener,
 void
 ble_hs_stop_init(void)
 {
-    int rc;
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (!ble_hs_stop_ctx) {
         ble_hs_stop_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_stop_ctx));
@@ -375,13 +418,15 @@ ble_hs_stop_init(void)
 #endif
 
 #ifdef MYNEWT
-    rc = ble_npl_callout_init(&ble_hs_stop_terminate_tmo, ble_npl_eventq_dflt_get(),
-                              ble_hs_stop_terminate_timeout_cb, NULL);
+    ble_npl_callout_init(&ble_hs_stop_terminate_tmo, ble_npl_eventq_dflt_get(),
+                         ble_hs_stop_terminate_timeout_cb, NULL);
 #else
+    int rc;
+
     rc = ble_npl_callout_init(&ble_hs_stop_terminate_tmo, nimble_port_get_dflt_eventq(),
                               ble_hs_stop_terminate_timeout_cb, NULL);
-#endif
     SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
 }
 
 void

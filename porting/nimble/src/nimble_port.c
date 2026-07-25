@@ -56,6 +56,7 @@
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
 extern void os_msys_init(void);
+extern void os_msys_buf_free(void);
 
 #if CONFIG_BT_NIMBLE_ENABLED 
 extern void ble_hs_deinit(void);
@@ -97,9 +98,10 @@ static struct ble_hs_stop_listener stop_listener;
 #endif
 
 extern void os_msys_init(void);
+extern void os_msys_buf_free(void);
 extern void os_mempool_module_init(void);
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-extern void os_mempool_deinit(bool is_controller);
+extern void os_mempool_deinit(void);
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -128,6 +130,15 @@ static void
 ble_npl_reset_deinit_flag(void)
 {
     ble_npl_deiniting = false;
+}
+
+static void
+ble_npl_free_ctx(void)
+{
+    if (ble_npl_ctx != NULL) {
+        nimble_platform_mem_free(ble_npl_ctx);
+        ble_npl_ctx = NULL;
+    }
 }
 #endif
 
@@ -170,17 +181,29 @@ esp_err_t esp_nimble_init(void)
     /* Initialize the function pointers for OS porting */
     rc = npl_freertos_funcs_init();
     if (rc != 0) {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        ble_npl_free_ctx();
+#endif
         return ESP_ERR_NO_MEM;
     }
 
     if (npl_freertos_mempool_init() != 0) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "mempool init failed\n");
+        npl_freertos_funcs_deinit();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        ble_npl_free_ctx();
+#endif
         return ESP_FAIL;
     }
 
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_init() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "hci inits failed\n");
+        npl_freertos_mempool_deinit();
+        npl_freertos_funcs_deinit();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        ble_npl_free_ctx();
+#endif
         return ESP_FAIL;
     }
     /* Initialize default event queue before ble_hs_init() posts start event. */
@@ -192,6 +215,11 @@ esp_err_t esp_nimble_init(void)
     ret = ble_buf_alloc();
     if (ret != ESP_OK) {
         ble_buf_free();
+        npl_freertos_mempool_deinit();
+        npl_freertos_funcs_deinit();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        ble_npl_free_ctx();
+#endif
         return ESP_FAIL;
     }
     ble_transport_init();
@@ -216,7 +244,26 @@ esp_err_t esp_nimble_init(void)
 #endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
-    ble_adv_list_init();
+    if (ble_adv_list_init() != 0) {
+#if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
+#if CONFIG_BT_CONTROLLER_ENABLED
+        esp_nimble_hci_deinit();
+        os_msys_buf_free();
+#else
+        ble_transport_deinit();
+        ble_buf_free();
+#endif
+        ble_npl_eventq_deinit(&g_eventq_dflt);
+        npl_freertos_mempool_deinit();
+        npl_freertos_funcs_deinit();
+#else
+        ble_npl_eventq_deinit(&g_eventq_dflt);
+#endif
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        ble_npl_free_ctx();
+#endif
+        return ESP_FAIL;
+    }
 #endif
 
     /* Initialize the host */
@@ -251,6 +298,14 @@ esp_err_t esp_nimble_deinit(void)
 
     ble_transport_ll_deinit();
 
+#if (BT_HCI_LOG_INCLUDED == TRUE)
+    bt_hci_log_deinit();
+#endif
+
+#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
+    ble_adv_list_deinit();
+#endif
+
 #if !SOC_ESP_NIMBLE_CONTROLLER || !CONFIG_BT_CONTROLLER_ENABLED
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_deinit() != ESP_OK) {
@@ -261,9 +316,6 @@ esp_err_t esp_nimble_deinit(void)
         return ESP_FAIL;
     }
 #else
-#if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
-    ble_adv_list_deinit();
-#endif
     ble_transport_deinit();
     ble_buf_free();
 #endif
@@ -283,10 +335,7 @@ esp_err_t esp_nimble_deinit(void)
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_npl_ctx) {
-        nimble_platform_mem_free(ble_npl_ctx);
-        ble_npl_ctx = NULL;
-    }
+    ble_npl_free_ctx();
     /* Keep ble_npl_deiniting = true until nimble_port_deinit completes.
      * This prevents controller deinit from re-allocating ble_npl_ctx when it
      * calls nimble_port_get_dflt_eventq(). The flag will be reset at the START
@@ -304,7 +353,7 @@ esp_err_t esp_nimble_deinit(void)
     bt_osal_freertos_funcs_deinit();
 
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    os_mempool_deinit(0);
+    os_mempool_deinit();
 #endif
 
     return ret;
@@ -384,7 +433,7 @@ nimble_port_deinit(void)
 
     if(esp_nimble_deinit() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble host deinit failed\n");
-        ret = ESP_FAIL;
+        return ESP_FAIL;
     }
 
 #if CONFIG_BT_CONTROLLER_ENABLED
@@ -492,7 +541,7 @@ nimble_port_get_dflt_eventq(void)
 
     /* Normal case: try to allocate context */
     if (ble_npl_ensure_ctx()) {
-        return NULL;
+        return &g_eventq_shutdown_fallback;
     }
 #endif
 

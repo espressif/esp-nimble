@@ -50,10 +50,12 @@ static uint16_t ble_svc_htp_temp_type_val_handle;
 static uint16_t ble_svc_htp_intr_temp_val_handle;
 static uint16_t ble_svc_htp_msr_itvl_val_handle;
 
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static struct {
     uint16_t conn_handle;
     struct chr_subscribe chr_subs;
 } conn_chr_subs[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
+#endif
 
 #define BLE_SVC_HTP_TEMP_MSR_MIN_ITVL 0x0001
 #define BLE_SVC_HTP_TEMP_MSR_MAX_ITVL 0xffff
@@ -82,7 +84,7 @@ ble_svc_htp_conn_slot(uint16_t conn_handle, int allocate)
                sizeof(conn_chr_subs[free_slot].chr_subs));
     }
 
-    return free_slot;
+    return allocate ? free_slot : -1;
 }
 
 static uint32_t
@@ -98,10 +100,10 @@ ble_svc_htp_temp_to_ieee11073(float temp)
         mantissa = (int32_t)(temp * 100.0f - 0.5f);
     }
 
-    if (mantissa > 0x7fffff) {
-        mantissa = 0x7fffff;
-    } else if (mantissa < -0x800000) {
-        mantissa = -0x800000;
+    if (mantissa > 0x7ffffb) {
+        mantissa = 0x7ffffb;
+    } else if (mantissa < -0x7ffffd) {
+        mantissa = -0x7ffffd;
     }
 
     return ((uint32_t)exponent << 24) | ((uint32_t)mantissa & 0x00ffffff);

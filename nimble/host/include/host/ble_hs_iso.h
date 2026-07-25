@@ -16,8 +16,6 @@
 extern "C" {
 #endif
 
-int ble_iso_init(void);
-
 int ble_hs_hci_set_iso_buf_sz(uint16_t pktlen, uint8_t max_pkts);
 
 void ble_hs_hci_get_iso_buf_size(uint16_t *pktlen, uint8_t *max_pkts);

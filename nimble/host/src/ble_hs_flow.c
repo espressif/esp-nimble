@@ -211,6 +211,8 @@ ble_hs_flow_acl_free(struct os_mempool_ext *mpe, void *data, void *arg)
     #else
     int idx = ble_hs_flow_mbuf_index(om);
     if (idx < 0) {
+        BLE_HS_LOG(INFO, "ACL free: mbuf index not found; "
+                   "flow credit may be lost\n");
         return os_memblock_put_from_cb(&mpe->mpe_mp, data);
     }
     conn_handle = ble_hs_flow_mbuf_conn_handle[idx];
@@ -252,11 +254,11 @@ ble_hs_flow_connection_broken(uint16_t conn_handle)
     {
         uint16_t snapshot = ble_hs_flow_num_completed_pkts;
         int rc = ble_hs_flow_tx_num_comp_pkts();
+        /* Decrement unconditionally to prevent counter overflow during async reset window */
+        ble_hs_flow_num_completed_pkts = (ble_hs_flow_num_completed_pkts >= snapshot) ?
+            ble_hs_flow_num_completed_pkts - snapshot : 0;
         if (rc != 0) {
             ble_hs_sched_reset(rc);
-        } else {
-            ble_hs_flow_num_completed_pkts = (ble_hs_flow_num_completed_pkts >= snapshot) ?
-                ble_hs_flow_num_completed_pkts - snapshot : 0;
         }
     }
 #else
@@ -391,6 +393,13 @@ ble_hs_flow_deinit(void)
     nimble_platform_mem_free(ble_hs_flow_ctx);
     ble_hs_flow_ctx = NULL;
 #else
+    ble_npl_eventq_remove(ble_hs_evq_get(), &ble_hs_flow_ev);
+    ble_npl_callout_stop(&ble_hs_flow_timer);
+#if SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED
+    ble_hci_trans_set_acl_free_cb(NULL, NULL);
+#else
+    ble_transport_register_put_acl_from_ll_cb(NULL);
+#endif
     ble_npl_event_deinit(&ble_hs_flow_ev);
     ble_npl_callout_deinit(&ble_hs_flow_timer);
 #endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */

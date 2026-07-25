@@ -617,6 +617,7 @@ int
 ble_store_read_local_irk(const struct ble_store_key_local_irk *key,
                    struct ble_store_value_local_irk *out_value)
 {
+#if NIMBLE_BLE_CONNECT
     union ble_store_value local_store_value = {0};
     union ble_store_key local_store_key = {0};
     int rc;
@@ -632,6 +633,9 @@ ble_store_read_local_irk(const struct ble_store_key_local_irk *key,
     }
 
     return rc;
+#else
+    return BLE_HS_ENOTSUP;
+#endif
 }
 #endif
 

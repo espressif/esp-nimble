@@ -6,6 +6,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#define BLE_NPL_LOG_MODULE BLE_MESH_MODEL_LOG
+#include <nimble/nimble_npl_log.h>
+
 #include "mesh/mesh.h"
 
 void bt_mesh_model_msg_init(struct os_mbuf *msg, uint32_t opcode)

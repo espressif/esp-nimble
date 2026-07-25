@@ -24,8 +24,7 @@
 #include "esp_nimble_mem.h"
 #include "esp_err.h"
 
-static STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
-    STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
+extern STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list;
 
 #if CONFIG_BT_NIMBLE_ENABLED
 #define OS_MSYS_1_BLOCK_COUNT MYNEWT_VAL(MSYS_1_BLOCK_COUNT)
@@ -173,7 +172,7 @@ os_msys_sanity(struct os_sanity_check *sc, void *arg)
         idx++;
     }
 
-    return ESP_OK;
+    return OS_OK;
 }
 #endif
 
@@ -273,6 +272,7 @@ os_msys_buf_free(void)
             os_msys_ctx->init_2_data = NULL;
         }
 #endif
+        os_msys_reset();
         nimble_platform_mem_free(os_msys_ctx);
         os_msys_ctx = NULL;
     }
@@ -289,15 +289,17 @@ os_msys_buf_free(void)
     nimble_platform_mem_free(os_msys_init_2_data);
     os_msys_init_2_data = NULL;
 #endif
-#endif
     os_msys_reset();
+#endif
 }
 
 void os_msys_init(void)
 {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    int rc_ctx = ble_os_msys_ensure_ctx();
-    SYSINIT_PANIC_ASSERT(rc_ctx == 0);
+    if (ble_os_msys_ensure_ctx() != 0) {
+        SYSINIT_PANIC_ASSERT(0);
+        return;
+    }
 #endif
 
 #if OS_MSYS_SANITY_ENABLED

@@ -162,6 +162,7 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     MYNEWT_VAL(BLE_STORE_MAX_BONDS),
                     &ble_store_config_num_peer_secs);
             return rc;
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
         } else if (strcmp(argv[0], "cccd") == 0) {
             rc = ble_store_config_deserialize_arr(
                     val,
@@ -170,6 +171,7 @@ ble_store_config_conf_set(int argc, char **argv, char *val)
                     MYNEWT_VAL(BLE_STORE_MAX_CCCDS),
                     &ble_store_config_num_cccds);
             return rc;
+#endif
         }
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
         else if (strcmp(argv[0], "csfc") == 0) {
@@ -217,9 +219,11 @@ ble_store_config_conf_export(void (*func)(char *name, char *val),
 
     /* Get the largest possible encoding size */
     buf_sz = BLE_STORE_CONFIG_SEC_SET_ENCODE_SZ;
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
     if (BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ > buf_sz) {
         buf_sz = BLE_STORE_CONFIG_CCCD_SET_ENCODE_SZ;
     }
+#endif
     if (BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ > buf_sz) {
         buf_sz = BLE_STORE_CONFIG_RPA_REC_SET_ENCODE_SZ;
     }
@@ -253,12 +257,14 @@ ble_store_config_conf_export(void (*func)(char *name, char *val),
                                    buf_sz);
     func("ble_hs/peer_sec", buf);
 
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
     ble_store_config_serialize_arr(ble_store_config_cccds,
                                    sizeof *ble_store_config_cccds,
                                    ble_store_config_num_cccds,
                                    buf,
                                    buf_sz);
     func("ble_hs/cccd", buf);
+#endif
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
     ble_store_config_serialize_arr(ble_store_config_csfcs,
                                    sizeof *ble_store_config_csfcs,

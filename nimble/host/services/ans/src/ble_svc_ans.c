@@ -51,6 +51,8 @@ typedef struct {
     uint8_t _ble_svc_ans_alert_not_ctrl_pt[2];
     uint8_t _ble_svc_ans_new_alert_cnt[BLE_SVC_ANS_CAT_NUM];
     uint8_t _ble_svc_ans_unr_alert_cnt[BLE_SVC_ANS_CAT_NUM];
+    uint8_t _ble_svc_ans_new_alert_notif_state;
+    uint8_t _ble_svc_ans_unr_alert_notif_state;
     uint16_t _ble_svc_ans_conn_handle;
 } ble_svc_ans_ctx_t;
 
@@ -64,6 +66,8 @@ static ble_svc_ans_ctx_t * ble_svc_ans_ctx;
 #define ble_svc_ans_alert_not_ctrl_pt (ble_svc_ans_ctx->_ble_svc_ans_alert_not_ctrl_pt)
 #define ble_svc_ans_new_alert_cnt (ble_svc_ans_ctx->_ble_svc_ans_new_alert_cnt)
 #define ble_svc_ans_unr_alert_cnt (ble_svc_ans_ctx->_ble_svc_ans_unr_alert_cnt)
+#define ble_svc_ans_new_alert_notif_state (ble_svc_ans_ctx->_ble_svc_ans_new_alert_notif_state)
+#define ble_svc_ans_unr_alert_notif_state (ble_svc_ans_ctx->_ble_svc_ans_unr_alert_notif_state)
 #define ble_svc_ans_conn_handle (ble_svc_ans_ctx->_ble_svc_ans_conn_handle)
 
 #else /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
@@ -306,18 +310,21 @@ ble_svc_ans_access(uint16_t conn_handle, uint16_t attr_handle,
 
     case BLE_SVC_ANS_CHR_UUID16_ALERT_NOT_CTRL_PT:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+            ble_hs_lock();
             rc = ble_svc_ans_chr_write(ctxt->om,
                                        sizeof ble_svc_ans_alert_not_ctrl_pt,
                                        sizeof ble_svc_ans_alert_not_ctrl_pt,
                                        &ble_svc_ans_alert_not_ctrl_pt,
                                        NULL);
             if (rc != 0) {
+                ble_hs_unlock();
                 return rc;
             }
 
-            /* Get command ID and category ID */
+            /* Get command ID and category ID while still holding lock */
             cmd_id = ble_svc_ans_alert_not_ctrl_pt[0];
             cat_id = ble_svc_ans_alert_not_ctrl_pt[1];
+            ble_hs_unlock();
 
 
             /* Set cat_bit_mask to the appropriate bitmask based on cat_id */
@@ -428,6 +435,8 @@ ble_svc_ans_on_gap_connect(uint16_t conn_handle)
 
     ble_hs_lock();
     ble_svc_ans_conn_handle = conn_handle;
+    ble_svc_ans_new_alert_notif_state = 0;
+    ble_svc_ans_unr_alert_notif_state = 0;
     ble_hs_unlock();
 }
 

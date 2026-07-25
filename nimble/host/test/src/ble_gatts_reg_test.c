@@ -265,8 +265,9 @@ ble_gatts_reg_test_misc_verify_entry(uint8_t op, const ble_uuid_t *uuid)
     int i;
 
     for (i = 0; i < ble_gatts_reg_test_num_entries; i++) {
-        entry = ble_gatts_reg_test_entries + i;
-        if (entry->op == op && ble_uuid_cmp(&entry->uuid.u, uuid) == 0) {
+        if (ble_gatts_reg_test_entries[i].op == op &&
+            ble_uuid_cmp(&ble_gatts_reg_test_entries[i].uuid.u, uuid) == 0) {
+            entry = ble_gatts_reg_test_entries + i;
             break;
         }
     }

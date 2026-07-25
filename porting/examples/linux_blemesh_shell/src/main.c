@@ -102,5 +102,5 @@ main(int argc, char *argv[])
                       NULL, TASK_DEFAULT_PRIORITY, BLE_NPL_TIME_FOREVER,
                       TASK_DEFAULT_STACK, TASK_DEFAULT_STACK_SIZE);
 
-    pthread_exit(&ret);
+    pthread_exit(NULL);
 }

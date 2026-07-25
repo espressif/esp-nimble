@@ -20,8 +20,8 @@
 #ifndef _NIMBLE_NPL_OS_LOG_H_
 #define _NIMBLE_NPL_OS_LOG_H_
 
-#define BLE_NPL_LOG_IMPL(lvl) \
+#define BLE_NPL_LOG_IMPL(lvl, lvl_value) \
     static inline void _BLE_NPL_LOG_CAT(BLE_NPL_LOG_MODULE, \
-            _BLE_NPL_LOG_CAT(_, lvl))(const char *fmt, ...) { }
+            _BLE_NPL_LOG_CAT(_, lvl))(const char *fmt, ...) { (void)(lvl_value); }
 
 #endif  /* _NIMBLE_NPL_OS_LOG_H_ */

@@ -88,9 +88,32 @@ os_mempool_poison_check(const struct os_mempool *mp, void *start)
         p++;
     }
 }
+
+static bool
+os_mempool_poison_valid(const struct os_mempool *mp, void *start)
+{
+    uint32_t *p;
+    uint32_t *end;
+    int sz;
+
+    sz = OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size);
+    p = start;
+    end = p + sz / 4;
+    p += sizeof(struct os_memblock) / 4;
+
+    while (p < end) {
+        if (*p != os_mem_poison) {
+            return false;
+        }
+        p++;
+    }
+
+    return true;
+}
 #else
 #define os_mempool_poison(mp, start)
 #define os_mempool_poison_check(mp, start)
+#define os_mempool_poison_valid(mp, start) true
 #endif
 #if MYNEWT_VAL(OS_MEMPOOL_GUARD)
 #define OS_MEMPOOL_GUARD_PATTERN 0xBAFF1ED1
@@ -118,9 +141,26 @@ os_mempool_guard_check(const struct os_mempool *mp, void *start)
         assert(*tgt == OS_MEMPOOL_GUARD_PATTERN);
     }
 }
+
+static bool
+os_mempool_guard_valid(const struct os_mempool *mp, void *start)
+{
+    uint32_t *tgt;
+
+    if ((mp->mp_flags & OS_MEMPOOL_F_EXT) == 0) {
+        tgt = (uint32_t *)((uintptr_t)start +
+                                     OS_MEM_TRUE_BLOCK_SIZE(mp->mp_block_size));
+        if (*tgt != OS_MEMPOOL_GUARD_PATTERN) {
+            return false;
+        }
+    }
+
+    return true;
+}
 #else
 #define os_mempool_guard(mp, start)
 #define os_mempool_guard_check(mp, start)
+#define os_mempool_guard_valid(mp, start) true
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -143,6 +183,10 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
     int i;
     uint8_t *block_addr;
     struct os_memblock *block_ptr;
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC) && MYNEWT_VAL(MP_BLOCK_REUSED)
+    uint8_t old_flags = 0;
+    struct os_memblock *old_first = NULL;
+#endif
 
     /* Check for valid parameters */
     if (!mp || (block_size == 0)) {
@@ -165,6 +209,15 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
         }
     }
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC) && MYNEWT_VAL(MP_BLOCK_REUSED)
+    if (membuf == NULL && mp != NULL &&
+        (mp->mp_flags & (OS_MEMPOOL_F_REUSED | OS_MEMPOOL_F_RUNTIME)) ==
+        (OS_MEMPOOL_F_REUSED | OS_MEMPOOL_F_RUNTIME)) {
+        old_flags = mp->mp_flags;
+        old_first = SLIST_FIRST(mp);
+    }
+#endif
+
     /* Initialize the memory pool structure */
     mp->mp_block_size = block_size;
     mp->mp_num_free = blocks;
@@ -173,11 +226,28 @@ os_mempool_init_internal(struct os_mempool *mp, uint16_t blocks,
     mp->mp_num_blocks = blocks;
     mp->mp_membuf_addr = (uintptr_t)membuf;
     mp->name = name;
-    SLIST_FIRST(mp) = membuf;
+    if (blocks > 0) {
+        SLIST_FIRST(mp) = membuf;
+    } else {
+        SLIST_FIRST(mp) = NULL;
+    }
 
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (membuf == NULL) {
         /* Runtime allocation mode */
+#if MYNEWT_VAL(MP_BLOCK_REUSED)
+        if (old_flags & OS_MEMPOOL_F_REUSED) {
+            void *temp_ptr;
+            struct os_memblock *block_ptr;
+
+            block_ptr = old_first;
+            while (block_ptr != NULL) {
+                temp_ptr = block_ptr;
+                block_ptr = SLIST_NEXT(block_ptr, mb_next);
+                nimble_platform_mem_free(temp_ptr);
+            }
+        }
+#endif
         mp->mp_membuf_addr = 0;
         mp->mp_flags |= OS_MEMPOOL_F_RUNTIME;
         #if MYNEWT_VAL(MP_BLOCK_REUSED)
@@ -258,6 +328,10 @@ os_mempool_ext_init(struct os_mempool_ext *mpe, uint16_t blocks,
                     uint32_t block_size, void *membuf, const char *name)
 {
     int rc;
+
+    if (mpe == NULL) {
+        return OS_INVALID_PARM;
+    }
 
     rc = os_mempool_init_internal(&mpe->mpe_mp, blocks, block_size, membuf,
                                   name, OS_MEMPOOL_F_EXT);
@@ -388,15 +462,17 @@ os_mempool_ext_clear(struct os_mempool_ext *mpe)
 {
     int rc;
 
+    if (mpe == NULL) {
+        return OS_INVALID_PARM;
+    }
+
     /* Clear the mempool first while EXT flag is intact */
     rc = os_mempool_clear(&mpe->mpe_mp);
+    if (rc != OS_OK) {
+        return rc;
+    }
 
-    /* Then clear the extended flags using bitwise operation to preserve other flags */
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    mpe->mpe_mp.mp_flags &= ~OS_MEMPOOL_F_EXT;
-#else
-    mpe->mpe_mp.mp_flags &= ~OS_MEMPOOL_F_EXT;
-#endif
+    /* Clear callback pointers; keep OS_MEMPOOL_F_EXT so block stride stays consistent. */
     mpe->mpe_put_cb = NULL;
     mpe->mpe_put_arg = NULL;
 
@@ -408,16 +484,21 @@ os_mempool_is_sane(const struct os_mempool *mp)
 {
     struct os_memblock *block;
 
+    if (mp == NULL) {
+        return false;
+    }
+
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
     /* Runtime mode cannot verify sanity */
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         assert(0);
+        return false;
     }
 #endif
 
     /* Verify that each block in the free list belongs to the mempool. */
     /* Limit iterations to prevent infinite loops in case of corruption */
-    uint16_t iterations = 0;
+    uint32_t iterations = 0;
     SLIST_FOREACH(block, mp, mb_next) {
         if (++iterations > mp->mp_num_blocks) {
             /* Potential cycle detected */
@@ -426,8 +507,12 @@ os_mempool_is_sane(const struct os_mempool *mp)
         if (!os_memblock_from(mp, block)) {
             return false;
         }
-        os_mempool_poison_check(mp, block);
-        os_mempool_guard_check(mp, block);
+        if (!os_mempool_poison_valid(mp, block)) {
+            return false;
+        }
+        if (!os_mempool_guard_valid(mp, block)) {
+            return false;
+        }
     }
 
     return true;
@@ -444,6 +529,7 @@ os_memblock_from(const struct os_mempool *mp, const void *block_addr)
     /* Runtime allocation mode doesn't support from */
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         assert(0);
+        return false;
     }
 #endif
 
@@ -485,6 +571,7 @@ os_memblock_get(struct os_mempool *mp)
         OS_ENTER_CRITICAL(sr);
 
         if (mp->mp_num_free) {
+#if MYNEWT_VAL(MP_BLOCK_REUSED)
             if (mp->mp_flags & OS_MEMPOOL_F_REUSED) {
                 if (SLIST_FIRST(mp) != NULL) {
                     block = SLIST_FIRST(mp);
@@ -493,13 +580,15 @@ os_memblock_get(struct os_mempool *mp)
                     need_alloc = true;
                     mp->mp_alloc_blocks++;
                 } else {
-                    /* apply the changes: pool budget exhausted and free list empty;
-                     * exit without decrementing mp_num_free to prevent permanent
-                     * pool exhaustion when mp_num_free > 0 but no block available */
+                    /* Pool budget exhausted and free list empty; exit without
+                     * decrementing mp_num_free. */
                     OS_EXIT_CRITICAL(sr);
+                    os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, 0);
                     return NULL;
                 }
-            } else {
+            } else
+#endif
+            {
                 need_alloc = true;
             }
             /* Decrement number free by 1 */
@@ -541,6 +630,7 @@ os_memblock_get(struct os_mempool *mp)
             os_mempool_guard_check(mp, block);
         }
 
+        os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_GET, (uintptr_t)block);
         return block;
     }
 #endif
@@ -580,6 +670,10 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
     os_sr_t sr;
     struct os_memblock *block;
 
+    if (mp == NULL || block_addr == NULL) {
+        return OS_INVALID_PARM;
+    }
+
     os_trace_api_u32x2(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uintptr_t)mp,
                        (uintptr_t)block_addr);
 
@@ -587,6 +681,7 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
     if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
         bool need_free = true;
         os_mempool_guard_check(mp, block_addr);
+        os_mempool_poison(mp, block_addr);
 
         /* Runtime allocation mode - free directly */
         OS_ENTER_CRITICAL(sr);
@@ -600,21 +695,28 @@ os_memblock_put_from_cb(struct os_mempool *mp, void *block_addr)
                 }
             }
 
+            if (mp->mp_num_free >= mp->mp_num_blocks) {
+                OS_EXIT_CRITICAL(sr);
+                return OS_INVALID_PARM;
+            }
+
             block = (struct os_memblock *)block_addr;
             SLIST_NEXT(block, mb_next) = SLIST_FIRST(mp);
             SLIST_FIRST(mp) = block;
             need_free = false;
         }
+        if (mp->mp_num_free >= mp->mp_num_blocks) {
+            OS_EXIT_CRITICAL(sr);
+            return OS_INVALID_PARM;
+        }
         mp->mp_num_free++;
-        assert(mp->mp_num_blocks >= mp->mp_num_free);
         OS_EXIT_CRITICAL(sr);
 
-        /* Poison and free outside critical section to minimize lock hold time */
-        if (!need_free) {
-            os_mempool_poison(mp, block_addr);
-        } else {
+        /* Free outside critical section to minimize lock hold time */
+        if (need_free) {
             nimble_platform_mem_free(block_addr);
         }
+        os_trace_api_ret_u32(OS_TRACE_ID_MEMBLOCK_PUT_FROM_CB, (uint32_t)OS_OK);
         return OS_OK;
     }
 #endif
@@ -723,6 +825,10 @@ os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
 {
     struct os_mempool *cur;
 
+    if (omi == NULL) {
+        return NULL;
+    }
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     os_mempool_list_ensure_init();
 #endif
@@ -741,8 +847,12 @@ os_mempool_info_get_next(struct os_mempool *mp, struct os_mempool_info *omi)
     omi->omi_num_blocks = cur->mp_num_blocks;
     omi->omi_num_free = cur->mp_num_free;
     omi->omi_min_free = cur->mp_min_free;
-    strncpy(omi->omi_name, cur->name, sizeof(omi->omi_name) - 1);
-    omi->omi_name[sizeof(omi->omi_name) - 1] = '\0';
+    if (cur->name != NULL) {
+        strncpy(omi->omi_name, cur->name, sizeof(omi->omi_name) - 1);
+        omi->omi_name[sizeof(omi->omi_name) - 1] = '\0';
+    } else {
+        omi->omi_name[0] = '\0';
+    }
 
     return (cur);
 }
@@ -806,5 +916,9 @@ os_mempool_deinit(void)
         }
         mp = STAILQ_NEXT(mp, mp_list);
     }
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    STAILQ_INIT(&g_os_mempool_list);
+    g_os_mempool_list_inited = false;
+#endif
 }
 #endif

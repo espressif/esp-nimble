@@ -293,8 +293,12 @@ ble_svc_dis_access(uint16_t conn_handle, uint16_t attr_handle,
         {
             uint8_t sysid[8] = {0};
             if (info != NULL) {
-                /* System ID is 8 bytes binary */
-                memcpy(sysid, info, 8);
+                /* System ID is 8 bytes binary; cap copy length defensively */
+                size_t len = strlen(info);
+                if (len > 8) {
+                    len = 8;
+                }
+                memcpy(sysid, info, len);
             }
             int rc = os_mbuf_append(ctxt->om, sysid, 8);
             return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -570,6 +574,7 @@ ble_svc_dis_init_dynamic(void)
 void
 ble_svc_dis_deinit(void)
 {
+    ble_gatts_free_svcs();
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_dis_data_ptr != NULL) {
         nimble_platform_mem_free(ble_svc_dis_data_ptr);

@@ -482,8 +482,8 @@ ble_gatts_chr_def_access(uint16_t conn_handle, uint16_t attr_handle,
 {
     const struct ble_gatt_chr_def *chr;
     uint8_t *buf;
-    uint16_t uuid_len;
     uint16_t total_len;
+    int uuid_len;
 
     STATS_INC(ble_gatts_stats, chr_def_reads);
 
@@ -491,6 +491,9 @@ ble_gatts_chr_def_access(uint16_t conn_handle, uint16_t attr_handle,
 
     chr = arg;
     uuid_len = ble_uuid_length(chr->uuid);
+    if (uuid_len < 0) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
     total_len = 3 + uuid_len; /* properties(1) + handle(2) + uuid */
 
     /* Validate offset */
@@ -598,20 +601,23 @@ ble_gatts_chr_inc_val_stat(uint8_t gatt_op)
 bool
 ble_gatts_mutable(void)
 {
+    bool mutable;
+
+    ble_hs_lock_nested();
     /* Ensure no active GAP procedures. */
     if (ble_gap_adv_active() ||
         ble_gap_disc_active() ||
         ble_gap_conn_active()) {
 
+        ble_hs_unlock_nested();
         return false;
     }
 
     /* Ensure no established connections. */
-    if (ble_hs_conn_first() != NULL) {
-        return false;
-    }
+    mutable = ble_hs_conn_first() == NULL;
+    ble_hs_unlock_nested();
 
-    return true;
+    return mutable;
 }
 
 static int
@@ -1153,6 +1159,10 @@ ble_gatts_read_cccd(uint16_t conn_handle, uint16_t chr_val_handle, uint8_t *cccd
     struct ble_gatts_clt_cfg *clt_cfg;
     struct ble_hs_conn *conn;
 
+    if (cccd_value == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
     ble_hs_lock();
 
     conn = ble_hs_conn_find(conn_handle);
@@ -1409,7 +1419,9 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     uint16_t def_handle;
     uint16_t val_handle;
     uint16_t dsc_handle;
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     uint16_t cep_handle;
+#endif
     uint16_t expected_handle;
     uint8_t att_flags;
     int rc;
@@ -1439,7 +1451,6 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     }
 
     expected_handle = def_handle;
-    (void)expected_handle;
 
     /* Register characteristic value attribute (cast away const on callback
      * arg).
@@ -1451,7 +1462,8 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
     if (rc != 0) {
         return rc;
     }
-    BLE_HS_DBG_ASSERT(val_handle == ++expected_handle);
+    expected_handle++;
+    BLE_HS_DBG_ASSERT_EVAL(val_handle == expected_handle);
 
     if (chr->val_handle != NULL) {
         *chr->val_handle = val_handle;
@@ -1472,7 +1484,8 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
         if (rc != 0) {
             return rc;
         }
-        BLE_HS_DBG_ASSERT(dsc_handle == ++expected_handle);
+        expected_handle++;
+        BLE_HS_DBG_ASSERT_EVAL(dsc_handle == expected_handle);
     }
 
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
@@ -1481,8 +1494,12 @@ ble_gatts_register_chr(const struct ble_gatt_svc_def *svc,
         if (rc != 0) {
             return rc;
         }
-        BLE_HS_DBG_ASSERT(cep_handle == ++expected_handle);
+        expected_handle++;
+        BLE_HS_DBG_ASSERT_EVAL(cep_handle == expected_handle);
     }
+#endif
+
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     /* Register each Client Presentation Format Descriptor. */
     rc = ble_gatts_register_cpfds(chr->cpfd);
     if (rc != 0) {
@@ -3277,22 +3294,37 @@ static int ble_gatts_update_conn_clt_cfg(struct ble_hs_conn *conn, void *arg) {
     clt_cfg_arg = arg;
 
     switch (clt_cfg_arg->action) {
-    case CONN_CLT_CFG_ADD:
+    case CONN_CLT_CFG_ADD: {
         /* added */
+        int add_rc;
         allowed_flags = clt_cfg_arg->allowed_flags;
-        clt_cfg_arg->rc = ble_gatts_add_clt_cfg(&conn->bhc_gatt_svr.clt_cfgs,
-                                clt_cfg_arg->chr_val_handle, allowed_flags, 0);
-        if (clt_cfg_arg->rc != 0) {
-            return clt_cfg_arg->rc;
+        add_rc = ble_gatts_add_clt_cfg(&conn->bhc_gatt_svr.clt_cfgs,
+                                       clt_cfg_arg->chr_val_handle, allowed_flags, 0);
+        if (add_rc != 0 && clt_cfg_arg->rc == 0) {
+            /* Only record the first failure; return 0 so iteration continues
+             * for remaining connections. Caller checks arg.rc after the loop.
+             */
+            clt_cfg_arg->rc = add_rc;
+        }
+        if (add_rc != 0) {
+            return 0;
         }
         (conn->bhc_gatt_svr.num_clt_cfgs)++;
         return 0;
+    }
     case CONN_CLT_CFG_REMOVE:
         /* removed */
-        clt_cfg_arg->rc = ble_gatts_remove_clt_cfg(&conn->bhc_gatt_svr.clt_cfgs,
-                                clt_cfg_arg->chr_val_handle);
-        if (clt_cfg_arg->rc == 0) {
-            (conn->bhc_gatt_svr.num_clt_cfgs)--;
+        {
+            int remove_rc;
+
+            remove_rc = ble_gatts_remove_clt_cfg(&conn->bhc_gatt_svr.clt_cfgs,
+                                    clt_cfg_arg->chr_val_handle);
+            if (remove_rc != 0 && clt_cfg_arg->rc == 0) {
+                clt_cfg_arg->rc = remove_rc;
+            }
+            if (remove_rc == 0) {
+                (conn->bhc_gatt_svr.num_clt_cfgs)--;
+            }
         }
         return 0;
 
@@ -3443,6 +3475,7 @@ ble_gatts_remove_svc_entry(const ble_uuid_t *uuid)
 
 int ble_gatts_delete_svc(const ble_uuid_t *uuid) {
     int rc;
+    int deregister_rc = BLE_HS_EUNKNOWN;
     struct ble_gatts_svc_entry * entry;
     int chr_val_handle;
     struct ble_gatt_chr_def *chr;
@@ -3480,6 +3513,10 @@ int ble_gatts_delete_svc(const ble_uuid_t *uuid) {
             arg.allowed_flags = 0;
             arg.rc = 0;
             ble_hs_conn_foreach(ble_gatts_update_conn_clt_cfg, &arg);
+            if (arg.rc != 0) {
+                BLE_HS_LOG(ERROR, "Failed to remove clt cfg from all connections; rc=%d\n",
+                           arg.rc);
+            }
         }
     }
     /* keep the start handle and end handle before deleting the service */
@@ -3487,11 +3524,15 @@ int ble_gatts_delete_svc(const ble_uuid_t *uuid) {
     start_handle = entry->handle;
     end_handle = entry->end_group_handle;
     /* deregister service now */
-    rc = ble_gatts_deregister_svc(uuid);
+    deregister_rc = ble_gatts_deregister_svc(uuid);
+    rc = deregister_rc;
 
 done:
-    if (rc == 0) {
-        rc = ble_gatts_remove_svc_entry(uuid);
+    if (deregister_rc == 0) {
+        int remove_rc;
+
+        remove_rc = ble_gatts_remove_svc_entry(uuid);
+        (void)remove_rc;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
         /* make all bonded connections them unaware */
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -3507,17 +3548,15 @@ done:
         ble_hs_conn_foreach(ble_gatts_conn_unaware, NULL);
 #endif
 
-        /* send service change indication */
-        // ble_svc_gatt_changed(start_handle, end_handle);
     }
     ble_hs_unlock();
 
-    if (rc == 0) {
+    if (deregister_rc == 0) {
         /* send service change indication */
         ble_svc_gatt_changed(start_handle, end_handle);
     }
 
-    return rc;
+    return deregister_rc == BLE_HS_EUNKNOWN ? rc : deregister_rc;
 }
 #endif
 
@@ -3567,7 +3606,13 @@ ble_gatts_free_svcs(void)
     if (ble_gatts_svc_defs != NULL) {
         nimble_platform_mem_free(ble_gatts_svc_defs);
         ble_gatts_svc_defs = NULL;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_static_vars != NULL) {
+#endif
         ble_gatts_num_svc_defs = 0;
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        }
+#endif
     }
 
     ble_hs_unlock();
@@ -3692,6 +3737,7 @@ ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
                     res->attrs++;
                 }
 
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
                 /* If the characteristic permits reliable writes or auxiliary
                  * writes, it has an Extended Properties descriptor.
                  */
@@ -3703,11 +3749,10 @@ ble_gatts_count_resources(const struct ble_gatt_svc_def *svcs,
                      *     o 1 attribute
                      */
                     res->dscs++;
-#if MYNEWT_VAL(BLE_CPFD_CAFD)
-                    res->ceps++;
-#endif
                     res->attrs++;
+                    res->ceps++;
                 }
+#endif
 
                 if (chr->descriptors != NULL) {
                     for (d = 0; chr->descriptors[d].uuid != NULL; d++) {

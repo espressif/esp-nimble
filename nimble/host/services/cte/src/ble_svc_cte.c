@@ -18,6 +18,7 @@
  */
 
 #include <assert.h>
+#include <stdbool.h>
 #include <string.h>
 #include "sysinit/sysinit.h"
 #include "syscfg/syscfg.h"
@@ -335,6 +336,21 @@ ble_svc_cte_two_octet_chr_write(struct os_mbuf *om,
 }
 
 
+static void
+ble_svc_cte_rollback_aoa_state(uint16_t conn_handle, bool aoa_enabled_now,
+                               bool aoa_disabled_now, uint8_t *cte_enable)
+{
+    if (aoa_enabled_now) {
+        if (ble_gap_conn_cte_rsp_enable(conn_handle, false) != 0) {
+            *cte_enable |= CTE_ENABLE_AOA_CONNECTION;
+        }
+    } else if (aoa_disabled_now) {
+        if (ble_gap_conn_cte_rsp_enable(conn_handle, true) != 0) {
+            *cte_enable &= ~CTE_ENABLE_AOA_CONNECTION;
+        }
+    }
+}
+
 /**
  * @brief Access callback for Constant Tone Extension Service cte enable
  *
@@ -377,6 +393,8 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                                         &config->cte_enable, NULL);
 
                 if (rc == 0) {
+                    bool aoa_enabled_now = false;
+                    bool aoa_disabled_now = false;
                     if(((config->cte_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) &&
                        ((old_enable & CTE_ENABLE_AOA_CONNECTION) != CTE_ENABLE_AOA_CONNECTION)) {
                         /* 0->1 transition: enable AoA CTE response on this connection */
@@ -391,6 +409,7 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                             rc = 0xFC;
                             break;
                         }
+                        aoa_enabled_now = true;
                     } else if (((old_enable & CTE_ENABLE_AOA_CONNECTION) == CTE_ENABLE_AOA_CONNECTION) &&
                                ((config->cte_enable & CTE_ENABLE_AOA_CONNECTION) != CTE_ENABLE_AOA_CONNECTION)) {
                         /* 1->0 transition only: disable AoA CTE response.
@@ -402,26 +421,40 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                             rc = 0xFC;
                             break;
                         }
+                        aoa_disabled_now = true;
                     }
                     if(((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) &&
                        ((old_enable & CTE_ENABLE_AOD_ADVERTISING) != CTE_ENABLE_AOD_ADVERTISING)) {
-                        if (adv_cte_config.cte_phy != CTE_PHY_MIN_VALUE) {
+                        /* CTE PHY range check: valid values are CTE_PHY_MIN_VALUE (LE 1M)
+                         * through CTE_PHY_MAX_VALUE (LE 2M). Both are valid per CTE spec. */
+                        if (adv_cte_config.cte_phy > CTE_PHY_MAX_VALUE) {
+                            ble_svc_cte_rollback_aoa_state(conn_handle,
+                                                             aoa_enabled_now,
+                                                             aoa_disabled_now,
+                                                             &old_enable);
                             config->cte_enable = old_enable;
                             rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
                             break;
                         }
 
-                        /* Apply the current advertising CTE parameters to the controller
-                         * using advertising instance 0 (default periodic advertising set). */
+                        /* Map GATT PHY characteristic to HCI AoD CTE_Type:
+                         * LE 1M PHY (0) -> AoD 1us slots (0x01)
+                         * LE 2M PHY (1) -> AoD 2us slots (0x02)
+                         * The +1 offset converts the PHY value to the AoD type. */
+                        uint8_t ant_ids[] = {0, 1};
                         struct ble_gap_periodic_adv_cte_params cte_params = {
                             .cte_length  = adv_cte_config.cte_min_length,
-                            .cte_type    = adv_cte_config.cte_phy,
+                            .cte_type    = (uint8_t)(adv_cte_config.cte_phy + 1),
                             .cte_count   = adv_cte_config.cte_min_transmit_count,
-                            .switching_pattern_length = 0,
-                            .antenna_ids  = NULL,
+                            .switching_pattern_length = 2,
+                            .antenna_ids  = ant_ids,
                         };
                         if (ble_gap_set_connless_cte_transmit_params(0, &cte_params) != 0 ||
                             ble_gap_set_connless_cte_transmit_enable(0, 1) != 0) {
+                            ble_svc_cte_rollback_aoa_state(conn_handle,
+                                                           aoa_enabled_now,
+                                                           aoa_disabled_now,
+                                                           &old_enable);
                             config->cte_enable = old_enable;
                             rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
                             break;
@@ -429,7 +462,16 @@ static int ble_svc_cte_enable_access(uint16_t conn_handle, uint16_t attr_handle,
                     } else if (((old_enable & CTE_ENABLE_AOD_ADVERTISING) == CTE_ENABLE_AOD_ADVERTISING) &&
                                ((config->cte_enable & CTE_ENABLE_AOD_ADVERTISING) != CTE_ENABLE_AOD_ADVERTISING)) {
                         /* 1->0 transition: disable connless CTE transmission */
-                        ble_gap_set_connless_cte_transmit_enable(0, 0);
+                        rc = ble_gap_set_connless_cte_transmit_enable(0, 0);
+                        if (rc != 0) {
+                            ble_svc_cte_rollback_aoa_state(conn_handle,
+                                                           aoa_enabled_now,
+                                                           aoa_disabled_now,
+                                                           &old_enable);
+                            config->cte_enable = old_enable;
+                            rc = SERVICE_ERROR_WRITE_REQUEST_REJECTED;
+                            break;
+                        }
                     }
                 }
             }
@@ -624,18 +666,30 @@ static void cte_init_config(void) {
 /**
  * @brief Initialize the Constant Tone Extension Service
  */
+static int ble_svc_cte_initialized = 0;
+
+void
+ble_svc_cte_deinit(void)
+{
+    if (ble_svc_cte_initialized) {
+        ble_gap_event_listener_unregister(&cte_gap_listener);
+    }
+    ble_svc_cte_initialized = 0;
+}
+
 void
 ble_svc_cte_init(void)
 {
     int rc;
-    /* Guard against repeated calls: ble_gatts_count_cfg and ble_gatts_add_svcs
-     * are additive, so calling them more than once inflates resource counters
-     * and inserts duplicate GATT service entries. */
-    static int initialized = 0;
-    if (initialized) {
+    /* Guard against repeated calls within the same init cycle:
+     * ble_gatts_count_cfg and ble_gatts_add_svcs are additive, so calling
+     * them more than once inflates resource counters and inserts duplicate
+     * GATT service entries. ble_svc_cte_deinit() resets this on stack deinit
+     * so that a subsequent nimble_port_init() cycle re-registers correctly. */
+    if (ble_svc_cte_initialized) {
         return;
     }
-    initialized = 1;
+    ble_svc_cte_initialized = 1;
 
     cte_init_config();
     ble_gap_event_listener_register(&cte_gap_listener, cte_gap_event, NULL);

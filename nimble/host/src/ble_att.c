@@ -37,6 +37,9 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
+/* Core Spec Vol 3 Part G 5.3.1: minimum ATT_MTU for Enhanced ATT bearers */
+#define BLE_ATT_EATT_MIN_MTU    64
+
 static uint16_t ble_att_preferred_mtu_val;
 
 /** Dispatch table for incoming ATT requests. */
@@ -551,7 +554,7 @@ ble_att_chan_mtu(const struct ble_l2cap_chan *chan)
          * MTU field values of the two devices. Reference:
          * Core v5.4 Vol 3 Part G 5.3.1 ATT_MTU */
          
-        return max(min(chan->coc_tx.mtu, chan->coc_rx.mtu), 64);
+        return max(min(chan->coc_tx.mtu, chan->coc_rx.mtu), BLE_ATT_EATT_MIN_MTU);
     }
 #endif
 
@@ -592,8 +595,24 @@ ble_att_rx_handle_unknown_request(uint8_t op, uint16_t conn_handle,
         return;
     }
 
-    if (op == BLE_ATT_OP_NOTIFY_REQ || op == BLE_ATT_OP_INDICATE_REQ || 
-        op == BLE_ATT_OP_NOTIFY_MULTI_REQ) {
+    if (op == BLE_ATT_OP_INDICATE_REQ) {
+        struct os_mbuf *txom;
+
+        os_mbuf_free_chain(*om);
+        *om = NULL;
+
+        txom = ble_hs_mbuf_l2cap_pkt();
+        if (txom == NULL) {
+            return;
+        }
+        if (ble_att_cmd_prepare(BLE_ATT_OP_INDICATE_RSP, 0, txom) == NULL) {
+            return;
+        }
+        ble_att_tx(conn_handle, cid, txom);
+        return;
+    }
+
+    if (op == BLE_ATT_OP_NOTIFY_REQ || op == BLE_ATT_OP_NOTIFY_MULTI_REQ) {
         return;
     }
 

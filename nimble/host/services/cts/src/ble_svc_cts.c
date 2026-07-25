@@ -169,9 +169,14 @@ ble_svc_cts_access(uint16_t conn_handle, uint16_t attr_handle,
             rc = os_mbuf_append(ctxt->om, &current_local_time_val,
                                 sizeof current_local_time_val);
             if (rc == 0) {
-                current_local_time_val.adjust_reason = 0;
+                /* Clear adjust_reason only on direct client reads, not when
+                 * the stack reads the value to build notifications. */
+                if (conn_handle != BLE_HS_CONN_HANDLE_NONE) {
+                    current_local_time_val.adjust_reason = 0;
+                }
+                return 0;
             }
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
 
         case BLE_GATT_ACCESS_OP_WRITE_CHR:
             rc = ble_svc_cts_chr_write(ctxt->om, sizeof(curr_time), sizeof(curr_time), &curr_time, NULL);

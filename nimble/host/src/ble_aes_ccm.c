@@ -138,6 +138,17 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
 #else
 #include <tinycrypt/aes.h>
 #include <tinycrypt/constants.h>
+
+static void
+ble_aes_ccm_secure_zero(void *buf, size_t len)
+{
+    volatile uint8_t *p = buf;
+
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
 int
 ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
@@ -158,7 +169,7 @@ ble_aes_ccm_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *en
 
 done:
     /* Securely erase sensitive key material from stack */
-    memset(&s, 0, sizeof(s));
+    ble_aes_ccm_secure_zero(&s, sizeof(s));
     return rc;
 }
 #endif
@@ -375,9 +386,12 @@ int ble_aes_ccm_decrypt(const uint8_t key[16], uint8_t nonce[13], const uint8_t 
         return rc;
     }
 
-    /* Compare calculated MIC with received MIC */
-    if (memcmp(mic, enc_msg + msg_len, mic_size) != 0) {
-        /* Zero out the decrypted plaintext on authentication failure */
+    /* Compare calculated MIC with received MIC in constant time. */
+    uint8_t diff = 0;
+    for (size_t i = 0; i < mic_size; i++) {
+        diff |= mic[i] ^ enc_msg[msg_len + i];
+    }
+    if (diff != 0) {
         memset(out_msg, 0, msg_len);
         return BLE_HS_EAUTHEN;
     }

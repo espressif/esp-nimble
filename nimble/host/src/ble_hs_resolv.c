@@ -801,6 +801,8 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
     const uint8_t *ident_addr;
     struct ble_hs_resolv_entry *rl;
     struct ble_hs_dev_records *p_dev_rec = NULL;
+    uint8_t p_dev_idaddr_backup[6];
+    bool p_dev_idaddr_modified = false;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
@@ -841,6 +843,8 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
         p_dev_rec = ble_rpa_find_peer_dev_by_irk(rl->rl_peer_irk);
 
         if (p_dev_rec != NULL) {
+            p_dev_idaddr_modified = true;
+            memcpy(p_dev_idaddr_backup, p_dev_rec->identity_addr, 6);
             memcpy(p_dev_rec->identity_addr, ident_addr, 6);
             memcpy(rl->rl_pseudo_id, p_dev_rec->pseudo_addr, 6);
         }
@@ -852,8 +856,12 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
     if (ble_hs_resolv_gen_priv_addr(rl, 1) != 0 ||
         ble_hs_resolv_gen_priv_addr(rl, 0) != 0) {
         memset(rl, 0, sizeof(*rl));
+        if (p_dev_idaddr_modified) {
+            memcpy(p_dev_rec->identity_addr, p_dev_idaddr_backup, 6);
+        }
         return BLE_HS_EUNKNOWN;
     }
+
     ++(g_ble_hs_resolv_data.rl_cnt);
     BLE_HS_LOG(DEBUG, "Device added to RL, Resolving list count = %d\n", g_ble_hs_resolv_data.rl_cnt);
 
@@ -912,7 +920,7 @@ ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
  * Clear the resolving list
  */
 void
-ble_hs_resolv_list_clear_all(bool preserve_local)
+ble_hs_resolv_list_clear_all(void)
 {
     struct ble_hs_resolv_entry local_entry;
     bool restore_local = false;
@@ -930,10 +938,8 @@ ble_hs_resolv_list_clear_all(bool preserve_local)
     }
 #endif
 
-    /* Index 0 is the local identity. Some callers clear only peer state,
-     * while local IRK replacement must clear it too.
-     */
-    if (preserve_local && g_ble_hs_resolv_data.rl_cnt > 0) {
+    /* Preserve local device entry at index 0 if it exists */
+    if (g_ble_hs_resolv_data.rl_cnt > 0) {
         memcpy(&local_entry, &g_ble_hs_resolv_list[0], sizeof(local_entry));
         restore_local = true;
     }

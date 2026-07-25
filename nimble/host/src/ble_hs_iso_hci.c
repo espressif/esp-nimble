@@ -271,7 +271,7 @@ ble_hs_hci_set_cig_params_test(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uin
     }
 
     if (rsp_buf == NULL||
-        rsp_len < sizeof(struct ble_hci_le_set_cig_params_rp) + cis_cnt * 2) {
+        rsp_len < sizeof(struct ble_hci_le_set_cig_params_test_rp) + cis_cnt * 2) {
         return BLE_HS_EINVAL;
     }
 
@@ -311,7 +311,7 @@ ble_hs_hci_set_cig_params_test(uint8_t cig_id, uint32_t sdu_interval_c_to_p, uin
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_SET_CIG_PARAMS_TEST),
                              cmd_buf, cmd_len, rsp_buf,
-                             sizeof(struct ble_hci_le_set_cig_params_rp) +
+                             sizeof(struct ble_hci_le_set_cig_params_test_rp) +
                              cis_cnt * 2);
 }
 #endif /* MYNEWT_VAL(BLE_ISO_TEST) */

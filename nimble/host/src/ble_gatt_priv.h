@@ -205,12 +205,13 @@ struct ble_gatt_resources {
      */
     uint16_t cccds;
 
-#if MYNEWT_VAL(BLE_CPFD_CAFD)
     /**
      * Number of characteristic extended properties descriptors. Each of
      * these also contributes to the total descriptor count.
      */
     uint16_t ceps;
+
+#if MYNEWT_VAL(BLE_CPFD_CAFD)
     /**
      * Number of client presentation format descriptors. Each of
      * these also contributes to the total descriptor count.

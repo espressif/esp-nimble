@@ -29,10 +29,10 @@
 #if NIMBLE_BLE_CONNECT
 static const ble_uuid_t *uuid_ccc =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16);
-static const ble_uuid_t *uuid_cep =
-        BLE_UUID16_DECLARE(BLE_GATT_DSC_EXT_PROP_UUID16);
 
 #if MYNEWT_VAL(BLE_CPFD_CAFD)
+static const ble_uuid_t *uuid_cep =
+        BLE_UUID16_DECLARE(BLE_GATT_DSC_EXT_PROP_UUID16);
 static const ble_uuid_t *uuid_cpfd =
         BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_PRE_FMT16);
 

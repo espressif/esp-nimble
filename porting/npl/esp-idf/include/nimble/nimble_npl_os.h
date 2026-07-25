@@ -96,6 +96,10 @@ ble_npl_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
 static inline void
 ble_npl_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
 {
+    if (evq == NULL || ev == NULL) {
+        return;
+    }
+
     btdm_osal_eventq_put(&evq->eventq, &ev->event);
 }
 

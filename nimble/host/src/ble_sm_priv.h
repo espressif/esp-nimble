@@ -339,6 +339,8 @@ int ble_sm_csis_generate_rsi(const uint8_t *sirk, uint8_t *out);
 int ble_sm_csis_encrypt_sirk(const uint8_t *ltk, const uint8_t *plaintext_sirk,
                              uint8_t *out);
 int ble_sm_csis_decrypt_sirk(const uint8_t *ltk, const uint8_t *enc_sirk, uint8_t *out);
+int ble_sm_csis_resolve_rsi(const uint8_t *rsi, const uint8_t *sirk,
+                            const ble_addr_t *ltk_peer_addr);
 
 void ble_sm_enc_change_rx(const struct ble_hci_ev_enrypt_chg *ev);
 void ble_sm_enc_key_refresh_rx(const struct ble_hci_ev_enc_key_refresh *ev);
@@ -389,10 +391,13 @@ void ble_sm_sc_deinit(void);
 #define ble_sm_sc_random_exec(proc, res)
 #define ble_sm_sc_random_rx(proc, res)
 #define ble_sm_sc_public_key_exec(proc, res, arg)
-#define ble_sm_sc_public_key_rx(conn_handle, op, om, res)
+#define ble_sm_sc_public_key_rx(conn_handle, om, res)
 #define ble_sm_sc_dhkey_check_exec(proc, res, arg)
-#define ble_sm_sc_dhkey_check_rx(conn_handle, op, om, res)
+#define ble_sm_sc_dhkey_check_rx(conn_handle, om, res)
 #define ble_sm_sc_init()
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#define ble_sm_sc_deinit()
+#endif
 
 #endif
 

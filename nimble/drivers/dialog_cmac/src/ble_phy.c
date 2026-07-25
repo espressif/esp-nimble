@@ -1365,6 +1365,7 @@ ble_phy_rx_set_start_time(uint32_t cputime, uint8_t rem_usecs)
     ble_phy_mode_apply(g_ble_phy_data.phy_mode_rx);
 #endif
 
+    assert(ble_rf_is_enabled());
     ble_phy_rx();
 
     /* Store LLT value at RX start, we'll need this to set wfr */
@@ -1658,7 +1659,7 @@ ble_phy_encrypt_disable(void)
 #endif
 
 static int8_t
-phy_txpower_round(int8_t dbm)
+phy_txpower_round(int dbm)
 {
     static const int8_t supported_pwr_levels[] = {-18, -12, -8, -6, -3, -2,
                                                   -1, 0, 1, 2, 3, 4, 5, 6 };

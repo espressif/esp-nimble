@@ -145,6 +145,10 @@ ble_l2cap_sig_coc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
                           struct os_mbuf *sdu_rx, ble_l2cap_event_fn *cb,
                           void *cb_arg)
 {
+    /* Real implementation takes ownership of sdu_rx on entry; honor the
+     * same contract in the stub so callers never leak the mbuf chain.
+     */
+    os_mbuf_free_chain(sdu_rx);
     return BLE_HS_ENOTSUP;
 }
 
@@ -159,6 +163,7 @@ ble_l2cap_sig_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
                              struct os_mbuf *sdu_rx, ble_l2cap_event_fn *cb,
                              void *cb_arg)
 {
+    os_mbuf_free_chain(sdu_rx);
     return BLE_HS_ENOTSUP;
 }
 
@@ -204,6 +209,13 @@ ble_l2cap_sig_ecoc_connect(uint16_t conn_handle, uint16_t psm, uint16_t mtu,
                            uint8_t num, struct os_mbuf *sdu_rx[],
                            ble_l2cap_event_fn *cb, void *cb_arg)
 {
+    uint8_t i;
+
+    if (sdu_rx != NULL) {
+        for (i = 0; i < num; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
+    }
     return BLE_HS_ENOTSUP;
 }
 
@@ -220,6 +232,11 @@ ble_l2cap_sig_ecoc_connect_nolock(uint16_t conn_handle, uint16_t psm, uint16_t m
                                   uint8_t num, struct os_mbuf *sdu_rx[],
                                   ble_l2cap_event_fn *cb, void *cb_arg)
 {
+    if (sdu_rx != NULL) {
+        for (uint8_t i = 0; i < num; i++) {
+            os_mbuf_free_chain(sdu_rx[i]);
+        }
+    }
     return BLE_HS_ENOTSUP;
 }
 

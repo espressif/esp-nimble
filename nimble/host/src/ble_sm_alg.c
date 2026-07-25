@@ -340,7 +340,7 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
     status = psa_import_key(&key_attributes, key, 16, &key_id);
     if (status != PSA_SUCCESS) {
         ESP_LOGE(TAG, "Failed to import key: %d", status);
-        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__,BLE_HS_EUNKNOWN);
+        BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
     psa_reset_key_attributes(&key_attributes);
@@ -370,11 +370,10 @@ ble_sm_alg_aes_cmac(const uint8_t *key, const uint8_t *in, size_t len,
         psa_mac_abort(&operation);
         psa_destroy_key(key_id);
         BLE_HS_LOG(ERROR, "%s:%d rc=%d\n", __func__, __LINE__, BLE_HS_EUNKNOWN);
-        return BLE_HS_EUNKNOWN; 
+        return BLE_HS_EUNKNOWN;
     }
 
     psa_destroy_key(key_id);
-
     return 0;
 #else
     int rc = BLE_HS_EUNKNOWN;
@@ -704,18 +703,24 @@ ble_sm_alg_csis_k1(const uint8_t *n, size_t n_len, const uint8_t *salt,
     /* T = AES-CMAC_SALT (N) */
     rc = ble_sm_alg_aes_cmac(salt_be, n_be, n_len, t);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     /* AES-CMAC_T (P) */
     rc = ble_sm_alg_aes_cmac(t, p, p_len, out);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     swap_in_place(out, 16);
 
-    return 0;
+done:
+    memset(t, 0, sizeof(t));
+    memset(salt_be, 0, sizeof(salt_be));
+    memset(n_be, 0, sizeof(n_be));
+    __asm__ volatile("" : : "r"(t), "r"(salt_be), "r"(n_be) : "memory");
+
+    return rc;
 }
 
 int
@@ -807,10 +812,12 @@ ble_sm_alg_csis_sih(const uint8_t *k, const uint8_t *r, uint8_t *out)
 
     rc = ble_sm_alg_encrypt(k, r1, r1);
     if (rc != 0) {
+        ble_sm_alg_secure_zero(r1, sizeof(r1));
         return rc;
     }
 
     memcpy(out, r1, 3);
+    ble_sm_alg_secure_zero(r1, sizeof(r1));
 
     return 0;
 }
@@ -872,7 +879,7 @@ exit:
         keypair_ptr = nimble_platform_mem_calloc(1, sizeof(mbedtls_ecp_keypair));
         if (!keypair_ptr) {
             rc = BLE_HS_ENOMEM;
-	    goto exit;
+            goto exit_cleanup;
         }
     }
 #endif

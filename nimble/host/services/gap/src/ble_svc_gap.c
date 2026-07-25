@@ -237,19 +237,26 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
         ble_hs_unlock();
         return BLE_ATT_ERR_UNLIKELY;
     }
-    // Free old name if already allocated
-    if (ble_hs_gap_svc_ctx->svc_gap_name) {
-        nimble_platform_mem_free(ble_hs_gap_svc_ctx->svc_gap_name);
-        ble_hs_gap_svc_ctx->svc_gap_name = NULL;
+
+    char *new_name = nimble_platform_mem_calloc(1, om_len + 1);
+    if (!new_name) {
+        ble_hs_unlock();
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
-    ble_hs_gap_svc_ctx->svc_gap_name = nimble_platform_mem_calloc(1, om_len + 1);
-    if (!ble_hs_gap_svc_ctx->svc_gap_name) {
+    rc = ble_hs_mbuf_to_flat(ctxt->om, new_name, om_len, NULL);
+    if (rc != 0) {
+        nimble_platform_mem_free(new_name);
         ble_hs_unlock();
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-        return BLE_HS_ENOMEM;
+        return BLE_ATT_ERR_UNLIKELY;
     }
-#endif
+
+    if (ble_hs_gap_svc_ctx->svc_gap_name) {
+        nimble_platform_mem_free(ble_hs_gap_svc_ctx->svc_gap_name);
+    }
+    ble_hs_gap_svc_ctx->svc_gap_name = new_name;
+#else
 
     rc = ble_hs_mbuf_to_flat(ctxt->om, ble_svc_gap_name, om_len, NULL);
 
@@ -257,6 +264,7 @@ ble_svc_gap_device_name_write_access(struct ble_gatt_access_ctxt *ctxt)
         ble_hs_unlock();
         return BLE_ATT_ERR_UNLIKELY;
     }
+#endif
 
     ble_svc_gap_name[om_len] = '\0';
 
@@ -276,6 +284,12 @@ ble_svc_gap_appearance_read_access(struct ble_gatt_access_ctxt *ctxt)
     int rc;
 
     ble_hs_lock();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_gap_svc_ctx) {
+        ble_hs_unlock();
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
     appearance = htole16(ble_svc_gap_appearance);
     ble_hs_unlock();
 
@@ -300,6 +314,12 @@ ble_svc_gap_appearance_write_access(struct ble_gatt_access_ctxt *ctxt)
     }
 
     ble_hs_lock();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_gap_svc_ctx) {
+        ble_hs_unlock();
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+#endif
     rc = ble_hs_mbuf_to_flat(ctxt->om, &ble_svc_gap_appearance, om_len, NULL);
     if (rc != 0) {
         ble_hs_unlock();
@@ -411,15 +431,28 @@ ble_svc_gap_access(uint16_t conn_handle, uint16_t attr_handle,
 #endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
-    case BLE_SVC_GAP_CHR_UUID16_KEY_MATERIAL:
+    case BLE_SVC_GAP_CHR_UUID16_KEY_MATERIAL: {
+        uint8_t local_session_key[sizeof(ble_svc_gap_km.session_key)];
+        uint8_t local_iv[sizeof(ble_svc_gap_km.iv)];
+
         assert(ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR);
-        rc = os_mbuf_append(ctxt->om, &(ble_svc_gap_km.session_key), sizeof(ble_svc_gap_km.session_key));
+        /* Snapshot key material under the host lock to avoid a torn read
+         * concurrent with ble_svc_gap_device_key_material_set().
+         */
+        ble_hs_lock();
+        memcpy(local_session_key, ble_svc_gap_km.session_key,
+               sizeof(local_session_key));
+        memcpy(local_iv, ble_svc_gap_km.iv, sizeof(local_iv));
+        ble_hs_unlock();
+
+        rc = os_mbuf_append(ctxt->om, local_session_key, sizeof(local_session_key));
         if (rc != 0) {
             return BLE_ATT_ERR_INSUFFICIENT_RES;
         }
-        rc = os_mbuf_append(ctxt->om, &(ble_svc_gap_km.iv), sizeof(ble_svc_gap_km.iv));
+        rc = os_mbuf_append(ctxt->om, local_iv, sizeof(local_iv));
 
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
 #endif
 
 #if MYNEWT_VAL(BLE_SVC_GAP_GATT_SECURITY_LEVEL)
@@ -569,8 +602,8 @@ ble_svc_gap_device_key_material_set(uint8_t *session_key, uint8_t *iv)
 
     memcpy(&ble_svc_gap_km.session_key, session_key, BLE_EAD_KEY_SIZE);
     memcpy(&ble_svc_gap_km.iv, iv, BLE_EAD_IV_SIZE);
-    ble_gatts_chr_updated(ble_svc_gap_enc_adv_data_handle);
     ble_hs_unlock();
+    ble_gatts_chr_updated(ble_svc_gap_enc_adv_data_handle);
     return 0;
 }
 #endif

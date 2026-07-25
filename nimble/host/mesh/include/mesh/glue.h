@@ -194,6 +194,18 @@ extern "C" {
 #define BT_GAP_ADV_SLOW_INT_MIN                 0x0640  /* 1 s      */
 #define BT_GAP_ADV_SLOW_INT_MAX                 0x0780  /* 1.2 s    */
 
+#if defined(ESP_PLATFORM) && !defined(BLE_NPL_LOG)
+#ifndef BLE_NPL_LOG_MODULE
+#define BLE_NPL_LOG_MODULE BLE_MESH_LOG
+#endif
+#ifndef _BLE_NPL_LOG_CAT
+#define _BLE_NPL_LOG_CAT(a, ...) _BLE_NPL_LOG_PRIMITIVE_CAT(a, __VA_ARGS__)
+#define _BLE_NPL_LOG_PRIMITIVE_CAT(a, ...) a ## __VA_ARGS__
+#endif
+#define BLE_NPL_LOG(lvl, ...) \
+    _BLE_NPL_LOG_CAT(BLE_NPL_LOG_MODULE, _BLE_NPL_LOG_CAT(_, lvl))(__VA_ARGS__)
+#endif
+
 #define BT_DBG(fmt, ...)    BLE_NPL_LOG(DEBUG, "%s: " fmt "\n", __func__, ## __VA_ARGS__);
 #define BT_INFO(fmt, ...)   BLE_NPL_LOG(INFO, "%s: " fmt "\n", __func__, ## __VA_ARGS__);
 #define BT_WARN(fmt, ...)   BLE_NPL_LOG(WARN, "%s: " fmt "\n", __func__, ## __VA_ARGS__);

@@ -172,13 +172,6 @@ ble_sm_sc_io_action(struct ble_sm_proc *proc, uint8_t *action)
     } else if (pair_req->oob_data_flag == BLE_SM_PAIR_OOB_YES ||
         pair_rsp->oob_data_flag == BLE_SM_PAIR_OOB_YES) {
         *action = BLE_SM_IOACT_OOB_SC;
-#if MYNEWT_VAL(STATIC_PASSKEY)
-    } else if (ble_hs_cfg.sm_static_passkey) {
-        *action = BLE_SM_IOACT_STATIC;
-        proc->pair_alg = BLE_SM_PAIR_ALG_PASSKEY;
-        proc->flags |= BLE_SM_PROC_F_AUTHENTICATED;
-        return 0;
-#endif
     } else if (!(pair_req->authreq & BLE_SM_PAIR_AUTHREQ_MITM) &&
                !(pair_rsp->authreq & BLE_SM_PAIR_AUTHREQ_MITM)) {
 
@@ -192,6 +185,13 @@ ble_sm_sc_io_action(struct ble_sm_proc *proc, uint8_t *action)
     } else {
         *action = ble_sm_sc_resp_ioa[pair_rsp->io_cap][pair_req->io_cap];
     }
+
+#if MYNEWT_VAL(STATIC_PASSKEY)
+    if ((*action == BLE_SM_IOACT_NONE || *action == BLE_SM_IOACT_INPUT ||
+         *action == BLE_SM_IOACT_DISP) && ble_hs_cfg.sm_static_passkey) {
+        *action = BLE_SM_IOACT_STATIC;
+    }
+#endif
 
     switch (*action) {
     case BLE_SM_IOACT_NONE:

@@ -1653,6 +1653,14 @@ struct ble_gap_event {
             uint8_t length;
         } unhandled_hci;
 #endif
+#else
+       /* Legacy 1.6.0-idf field name; layout intentionally identical. */
+        struct {
+            bool is_le_meta;
+            bool is_vs;
+            const void *ev;
+            uint8_t length;
+        } vs_hci;
 #endif
 
         /**
@@ -4081,7 +4089,7 @@ int ble_gap_read_le_phy(uint16_t conn_handle, uint8_t *tx_phy, uint8_t *rx_phy);
 #define BLE_GAP_LE_PHY_CODED_MASK           0x04
 
 /** Bitmask for any PHY. */
-#define BLE_GAP_LE_PHY_ANY_MASK             0x0F
+#define BLE_GAP_LE_PHY_ANY_MASK             0x07
 
 /** @} */
 
@@ -4595,6 +4603,8 @@ int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_
                                  uint8_t *out_addr);
 #endif
 
+#if MYNEWT_VAL(BLE_HS_PVCY)
+
 /**
  * Read local IRK command
  *
@@ -4604,6 +4614,7 @@ int ble_gap_rd_local_resolv_addr(uint8_t peer_addr_type, const ble_addr_t *peer_
  *
  */
 int ble_gap_read_local_irk(uint8_t * out_irk);
+#endif
 
 #if MYNEWT_VAL(BLE_CHANNEL_SOUNDING)
 /**

@@ -72,6 +72,9 @@ hci_ipc_alloc(struct hci_ipc_sm *sm)
         sm->om = ble_transport_alloc_iso_from_ll();
 #endif
         break;
+    default:
+        assert(0);
+        break;
     }
 
     sm->rem_len = sm->hdr.length;
@@ -122,8 +125,10 @@ hci_ipc_frame(struct hci_ipc_sm *sm)
         break;
     default:
         assert(0);
-        break;
+        return;
     }
+
+    assert(rc == 0);
 
     sm->hdr.type = 0;
     sm->hdr.length = 0;
@@ -247,7 +252,7 @@ hci_ipc_init(volatile struct hci_ipc_shm *shm, struct hci_ipc_sm *sm)
             ble_npl_time_delay(1); /* 1 tick delay every 1000 iterations */
         }
     }
-    if (timeout == 0) {
+    if (shm->n2a_num_evt_disc == 0) {
         abort(); /* Timeout waiting for host initialization */
     }
     /* Memory barrier to ensure we see updated values from host */

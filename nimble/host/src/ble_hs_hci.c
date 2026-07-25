@@ -246,11 +246,6 @@ static void esp_hci_err_to_name(int error_code, uint16_t *opcode)
        esp_core_err_to_name(error_code, opcode);
        return;
     }
-    else if (error_code - 0x200 < 0) {
-        /* Converts error code to HCI base */
-        error_code = BLE_HS_HCI_ERR(error_code);
-    }
-
     for (int i = 0; i<sizeof(err_code_list) / sizeof(err_code_list[0]); i++) {
         if (err_code_list[i].error_code == error_code) {
             if (opcode == NULL) {
@@ -610,8 +605,8 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
         ble_transport_free((uint8_t *)l_ble_hs_hci_ack);
 #endif
         l_ble_hs_hci_ack = NULL;
-        ble_npl_sem_pend(&ble_hs_hci_sem, 0);
     }
+    ble_npl_sem_pend(&ble_hs_hci_sem, 0);
     BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
 
     rc = ble_hs_hci_cmd_send_buf(opcode, cmd, cmd_len);
@@ -726,9 +721,9 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
 #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
     uint16_t len = hci_ev[1] + 3;
     if (host_recv_adv_packet(hci_ev)) {
-        bt_hci_log_record_hci_adv(HCI_LOG_DATA_TYPE_ADV, &hci_ev[2], hci_ev[1]);
+        bt_hci_log_record_hci_adv(HCI_LOG_DATA_TYPE_ADV, &hci_ev[1], len - 2);
 #if BT_HCI_INSIGHTS_INCLUDED
-        bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_ADV, &hci_ev[2], hci_ev[1]);
+        bt_hci_log_record_insights(HCI_LOG_DATA_TYPE_ADV, &hci_ev[1], len - 2);
 #endif
     } else {
         bt_hci_log_record_hci_data(0x04, &hci_ev[0], len - 1);
@@ -1072,7 +1067,7 @@ ble_hs_hci_init(void)
 
     rc = ble_npl_mutex_init(&ble_hs_hci_mutex);
     if (rc != 0) {
-        goto err;
+        goto err_sem;
     }
 
     rc = mem_init_mbuf_pool(ble_hs_hci_frag_data,
@@ -1083,11 +1078,16 @@ ble_hs_hci_init(void)
                             "ble_hs_hci_frag");
 
     if (rc != 0) {
-        goto err;
+        goto err_mutex;
     }
 
     return 0;
 
+err_mutex:
+    os_mempool_unregister(&ble_hs_hci_frag_mempool);
+    ble_npl_mutex_deinit(&ble_hs_hci_mutex);
+err_sem:
+    ble_npl_sem_deinit(&ble_hs_hci_sem);
 err:
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_hci_frag_data) {

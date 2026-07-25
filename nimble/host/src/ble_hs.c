@@ -45,6 +45,7 @@
 
 #if MYNEWT_VAL(BLE_ISO)
 #include "host/ble_hs_iso.h"
+#include "host/ble_iso.h"
 #endif /* MYNEWT_VAL(BLE_ISO) */
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
@@ -187,8 +188,8 @@ extern void ble_hs_flow_init(void);
 extern void ble_hs_flow_deinit(void);
 extern void ble_monitor_deinit(void);
 
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_store_config_deinit(void);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 extern void ble_hs_hci_ctx_free(void);
 #endif
 
@@ -485,7 +486,7 @@ ble_hs_sync(void)
     ble_hs_timer_sched(retry_tmo_ticks);
 
     if (rc == 0) {
-#if NIMBLE_BLE_CONNECT
+#if NIMBLE_BLE_CONNECT && NIMBLE_BLE_SM
         rc = ble_hs_misc_restore_irks();
         if (rc != 0) {
             BLE_HS_LOG(INFO, "Failed to restore IRKs from store; status=%d\n",
@@ -716,12 +717,14 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
 
-    if (ev && ble_hs_evq->eventq) {
+    if (ev && ble_hs_evq) {
         memset (ev, 0, sizeof *ev);
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
         ble_npl_eventq_put(ble_hs_evq, ev);
     } else {
-        /* Either ev is NULL or queue doesn't exist */
+        if (ev) {
+            os_memblock_put(&ble_hs_hci_ev_pool, ev);
+        }
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
         ble_transport_free(BLE_HCI_EVT, hci_evt);
 #else
@@ -750,9 +753,15 @@ ble_hs_notifications_sched(void)
 void
 ble_hs_sched_reset(int reason)
 {
-    BLE_HS_DBG_ASSERT(ble_hs_reset_reason == 0);
+    ble_hs_lock_nested();
+    if (ble_hs_reset_reason != 0) {
+        ble_hs_unlock_nested();
+        return;
+    }
 
     ble_hs_reset_reason = reason;
+    ble_hs_unlock_nested();
+
     ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_reset);
 }
 
@@ -952,7 +961,15 @@ ble_hs_init(void)
     ble_npl_event_init(&ble_hs_ev_start_stage2, ble_hs_event_start_stage2,
                        NULL);
 
-    ble_hs_hci_init();
+    rc = ble_npl_mutex_init(&ble_hs_mutex);
+    SYSINIT_PANIC_ASSERT(rc == 0);
+
+#if MYNEWT_VAL(BLE_HS_DEBUG)
+    ble_hs_dbg_mutex_locked = 0;
+#endif
+
+    rc = ble_hs_hci_init();
+    SYSINIT_PANIC_ASSERT(rc == 0);
 
 #if NIMBLE_BLE_CONNECT
     rc = ble_hs_conn_init();
@@ -963,7 +980,6 @@ ble_hs_init(void)
     rc = ble_hs_periodic_sync_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
-
 
 #if NIMBLE_BLE_CONNECT
     rc = ble_l2cap_init();
@@ -1008,13 +1024,6 @@ ble_hs_init(void)
         STATS_HDR(ble_hs_stats), STATS_SIZE_INIT_PARMS(ble_hs_stats,
         STATS_SIZE_32), STATS_NAME_INIT_PARMS(ble_hs_stats), "ble_hs");
     SYSINIT_PANIC_ASSERT(rc == 0);
-
-    rc = ble_npl_mutex_init(&ble_hs_mutex);
-    SYSINIT_PANIC_ASSERT(rc == 0);
-
-#if MYNEWT_VAL(BLE_HS_DEBUG)
-    ble_hs_dbg_mutex_locked = 0;
-#endif
 
 #ifdef MYNEWT
     ble_hs_evq_set((struct ble_npl_eventq *)os_eventq_dflt_get());
@@ -1079,17 +1088,25 @@ ble_transport_hs_init(void)
 void
 ble_hs_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_ctx) {
+        return;
+    }
+#endif
     ble_hs_flow_deinit();
 
 #if BLE_MONITOR
     ble_monitor_deinit();
 #endif
 
-    ble_npl_mutex_deinit(&ble_hs_mutex);
-
     ble_mqueue_deinit(&ble_hs_rx_q);
 
     ble_hs_stop_deinit();
+
+#if CONFIG_BT_NIMBLE_AOA_AOD
+    extern void ble_svc_cte_deinit(void);
+    ble_svc_cte_deinit();
+#endif
 
     ble_gap_deinit();
 
@@ -1111,9 +1128,9 @@ ble_hs_deinit(void)
     ble_gattc_cache_conn_free_all_mem();
 #endif
 
+    ble_att_deinit();
     ble_l2cap_deinit();
 
-    ble_att_deinit();
 #endif
 
 #if MYNEWT_VAL(BLE_GATTS)
@@ -1136,29 +1153,18 @@ ble_hs_deinit(void)
 #if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
     ble_hs_resolv_deinit();
 #endif
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_hs_ctx) {
-        ble_hs_ctx->parent_task = NULL;
-        if (ble_hs_ctx->hci_os_event_buf) {
-            nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
-            ble_hs_ctx->hci_os_event_buf = NULL;
-        }
-        os_mempool_unregister(&ble_hs_hci_ev_pool);
-        
-        nimble_platform_mem_free(ble_hs_ctx);
-        ble_hs_ctx = NULL;
-    }
-
-    if (ble_hs_state_ctx) {
-        nimble_platform_mem_free(ble_hs_state_ctx);
-        ble_hs_state_ctx = NULL;
-    }
+    ble_store_config_deinit();
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
     ble_hs_periodic_sync_deinit();
 #endif
 
-    ble_store_config_deinit();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* Must be called before ble_hs_ctx is freed — uses ble_hs_lock() which
+     * expands to ble_hs_ctx->mutex under BLE_STATIC_TO_DYNAMIC. */
+#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
+    ble_svc_gap_deinit();
+#endif
 
     ble_hs_adv_parse_free();
 
@@ -1172,8 +1178,33 @@ ble_hs_deinit(void)
 
     ble_uuid_deinit();
 
-#if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_GAP_SERVICE
-    ble_svc_gap_deinit();
+    if (ble_hs_ctx) {
+        ble_hs_ctx->parent_task = NULL;
+        if (ble_hs_ctx->hci_os_event_buf) {
+            nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
+            ble_hs_ctx->hci_os_event_buf = NULL;
+        }
+        os_mempool_unregister(&ble_hs_hci_ev_pool);
+
+        /* ble_hs_mutex expands to ble_hs_ctx->mutex here; deinit before
+         * freeing the context that contains it. */
+        ble_npl_mutex_deinit(&ble_hs_mutex);
+
+        nimble_platform_mem_free(ble_hs_ctx);
+        ble_hs_ctx = NULL;
+    }
+
+    if (ble_hs_state_ctx) {
+        nimble_platform_mem_free(ble_hs_state_ctx);
+        ble_hs_state_ctx = NULL;
+    }
+
+#else
+    /* Non-dynamic build: ble_hs_mutex is a static variable; destroy it last
+     * once all subsystems that call ble_hs_lock() have been torn down. */
+#if MYNEWT_VAL(BLE_HS_PVCY)
+    ble_hs_pvcy_irk_deinit();
 #endif
+    ble_npl_mutex_deinit(&ble_hs_mutex);
 #endif
 }

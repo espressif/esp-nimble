@@ -168,9 +168,6 @@ int ble_store_config_persist_eads(void);
 int ble_store_config_persist_rpa_recs(void);
 int ble_store_config_persist_local_irk(void);
 void ble_store_config_conf_init(void);
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-void ble_store_config_deinit(void);
-#endif
 #else
 
 static inline int ble_store_config_persist_our_secs(void)   { return 0; }
@@ -183,11 +180,11 @@ static inline int ble_store_config_persist_eads(void)       { return 0; }
 static inline int ble_store_config_persist_rpa_recs(void)   { return 0; }
 static inline int ble_store_config_persist_local_irk(void)   { return 0; }
 static inline void ble_store_config_conf_init(void)         { }
-//static inline void ble_store_config_deinit(void)            { }
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 static inline int ble_store_persist_peer_records(void)      { return 0; }
 #endif
 #endif /* MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST) */
+void ble_store_config_deinit(void);
 
 #ifdef __cplusplus
 }

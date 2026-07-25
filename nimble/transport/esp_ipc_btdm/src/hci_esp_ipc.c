@@ -23,7 +23,11 @@ ble_transport_dummy_host_recv_cb(hci_driver_data_type_t type, uint8_t *data, uin
     } else if (type == HCI_DRIVER_TYPE_ISO) {
         free(data);
     } else {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, data);
+#else
         ble_transport_free(data);
+#endif
     }
     return 0;
 }
@@ -51,7 +55,11 @@ ble_transport_host_recv_cb(hci_driver_data_type_t type, uint8_t *data, uint16_t 
     else if (type == HCI_DRIVER_TYPE_EVT) {
         rc = ble_transport_to_hs_evt(data);
     } else {
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+        ble_transport_free(BLE_HCI_EVT, data);
+#else
         ble_transport_free(data);
+#endif
     }
     return rc;
 }
@@ -104,8 +112,16 @@ ble_transport_alloc_cmd(void)
     return pkt->data;   
 }
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+void
+ble_transport_free(uint8_t type, void *buf)
+{
+    r_ble_hci_trans_buf_free(buf);
+}
+#else
 void
 ble_transport_free(void *buf)
 {
     r_ble_hci_trans_buf_free(buf);
 }
+#endif

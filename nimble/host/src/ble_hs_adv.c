@@ -65,7 +65,7 @@ ble_hs_adv_set_hdr(uint8_t type, uint8_t data_len, uint8_t max_len,
     int rc;
 
     if (om ) {
-        if (data_len > 254) {
+        if (data_len == 255) { /* uint8_t max; +1 below would wrap to 0 */
             return BLE_HS_EMSGSIZE;
         }
         data_len++;
@@ -97,8 +97,7 @@ ble_hs_adv_set_flat_mbuf(uint8_t type, int data_len, const void *data,
 {
     int rc;
 
-    BLE_HS_DBG_ASSERT(data_len > 0);
-    if (data_len > 254) {
+    if (data_len <= 0 || data_len > 254) {
         return BLE_HS_EMSGSIZE;
     }
 
@@ -158,7 +157,10 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
         } else {
             /* elems is const ble_uuid16_t*; u.type is always BLE_UUID_TYPE_16
              * by construction; ble_uuid_flat writes exactly 2 bytes for 16-bit UUIDs */
-            ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            rc = ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            if (rc != 0) {
+                return rc;
+            }
             *dst_len += 2;
         }
     }
@@ -233,8 +235,9 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
                 return rc;
             }
         } else {
-            if (ble_uuid_flat(&elems[i].u, dst + *dst_len) != 0) {
-                return BLE_HS_EINVAL;
+            rc = ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            if (rc != 0) {
+                return rc;
             }
             *dst_len += 16;
         }
@@ -641,6 +644,17 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 #endif
 #endif
 
+    /*** 0x30 - Broadcast name. */
+    if (adv_fields->broadcast_name != NULL && adv_fields->broadcast_name_len > 0) {
+        rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_BROADCAST_NAME,
+                                      adv_fields->broadcast_name_len,
+                                      adv_fields->broadcast_name,
+                                      dst, &dst_len_local, max_len, om);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+
     /*** 0xff - Manufacturer specific data. */
     if ((adv_fields->mfg_data != NULL) && (adv_fields->mfg_data_len >= 2)) {
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_MFG_DATA,
@@ -802,7 +816,7 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
      * type are present in advertising data.
      */
 
-    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(ble_uuid128_t)) - adv_fields->num_uuids128;
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / 16) - adv_fields->num_uuids128;
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
@@ -1089,10 +1103,11 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         break;
 
     case BLE_HS_ADV_TYPE_LE_SUPP_FEAT:
-        if (data_len != BLE_HS_ADV_LE_SUPP_FEAT_LEN) {
+        if (data_len < 1 || data_len > BLE_HS_ADV_LE_SUPP_FEAT_LEN) {
             return BLE_HS_EBADDATA;
         }
-        memcpy(adv_fields->le_supp_feat, data, BLE_HS_ADV_LE_SUPP_FEAT_LEN);
+        memset(adv_fields->le_supp_feat, 0, BLE_HS_ADV_LE_SUPP_FEAT_LEN);
+        memcpy(adv_fields->le_supp_feat, data, data_len);
         adv_fields->le_supp_feat_is_present = 1;
         break;
 
@@ -1111,6 +1126,11 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
         adv_fields->enc_adv_data_len = data_len;
         break;
 #endif
+    case BLE_HS_ADV_TYPE_BROADCAST_NAME:
+        adv_fields->broadcast_name = data;
+        adv_fields->broadcast_name_len = data_len;
+        break;
+
     case BLE_HS_ADV_TYPE_MFG_DATA:
         adv_fields->mfg_data = data;
         adv_fields->mfg_data_len = data_len;
