@@ -21,7 +21,7 @@ void ble_hs_deinit(void);
 /**
  * Initializes the Bluetooth advertising list and associated mutex lock.
  */
-void ble_adv_list_init(void);
+int ble_adv_list_init(void);
 
 /**
  * Deinitializes the Bluetooth advertising list, releasing allocated memory and resources.
@@ -31,7 +31,7 @@ void ble_adv_list_deinit(void);
 /**
  * Adds a Bluetooth advertising packet to the list.
  */
-void ble_adv_list_add_packet(void *data);
+bool ble_adv_list_add_packet(void *data);
 
 /**
  * Returns the count of Bluetooth advertising packets in the list.

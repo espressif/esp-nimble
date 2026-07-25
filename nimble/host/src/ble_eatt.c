@@ -195,7 +195,10 @@ ble_eatt_wakeup_cb(struct ble_npl_event *ev)
     struct os_mbuf *txom;
     struct os_mbuf_pkthdr *omp;
     struct ble_l2cap_chan_info info;
-    int rc;
+    struct ble_l2cap_chan *chan;
+    uint16_t conn_handle;
+    uint16_t cid;
+    int rc = 0;
 
     eatt = ble_npl_event_get_arg(ev);
     assert(eatt);
@@ -211,17 +214,36 @@ ble_eatt_wakeup_cb(struct ble_npl_event *ev)
 
         txom = OS_MBUF_PKTHDR_TO_MBUF(omp);
         ble_l2cap_get_chan_info(eatt->chan, &info);
-        
-        /* We need to unlock before calling ble_eatt_tx because it might lock again or trigger callbacks */
+        chan = eatt->chan;
+        conn_handle = eatt->conn_handle;
+        cid = info.scid;
+
         ble_hs_unlock();
-        rc = ble_eatt_tx(eatt->conn_handle, info.scid, txom);
+        rc = ble_l2cap_send(chan, txom);
         ble_hs_lock();
 
-        /* Break if channel is stalled or busy - both will reschedule wakeup */
-        if (rc == BLE_HS_ESTALLED || rc == BLE_HS_EBUSY) {
+        /* Re-validate channel after lock drop: disconnect handler may have freed eatt */
+        eatt = ble_eatt_find(conn_handle, cid);
+        if (eatt == NULL) {
+            if (rc == BLE_HS_EBUSY || (rc != 0 && rc != BLE_HS_ESTALLED)) {
+                os_mbuf_free_chain(txom);
+            }
             break;
         }
-        /* On success (0) or other errors: continue to next packet */
+
+        if (rc == BLE_HS_EBUSY) {
+            STAILQ_INSERT_HEAD(&eatt->eatt_tx_q, OS_MBUF_PKTHDR(txom), omp_next);
+            ble_npl_eventq_put(ble_hs_evq_get(), &eatt->wakeup_ev);
+            break;
+        }
+
+        if (rc == BLE_HS_ESTALLED) {
+            break;
+        }
+
+        if (rc != 0) {
+            os_mbuf_free_chain(txom);
+        }
     }
     ble_hs_unlock();
 }
@@ -258,7 +280,9 @@ ble_eatt_free_nolock(struct ble_eatt *eatt)
     struct os_mbuf_pkthdr *omp;
 
     ble_npl_eventq_remove(ble_hs_evq_get(), &eatt->setup_ev);
+    ble_npl_event_deinit(&eatt->setup_ev);
     ble_npl_eventq_remove(ble_hs_evq_get(), &eatt->wakeup_ev);
+    ble_npl_event_deinit(&eatt->wakeup_ev);
 
     while ((omp = STAILQ_FIRST(&eatt->eatt_tx_q)) != NULL) {
         STAILQ_REMOVE_HEAD(&eatt->eatt_tx_q, omp_next);
@@ -272,9 +296,9 @@ ble_eatt_free_nolock(struct ble_eatt *eatt)
 static void
 ble_eatt_free(struct ble_eatt *eatt)
 {
-    ble_hs_lock();
+    ble_hs_lock_nested();
     ble_eatt_free_nolock(eatt);
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 }
 
 static int
@@ -410,14 +434,6 @@ ble_eatt_setup_cb(struct ble_npl_event *ev)
     if (rc) {
         BLE_EATT_LOG_ERROR("eatt: Failed to connect EATT on conn_handle 0x%04x (status=%d)\n",
                            eatt->conn_handle, rc);
-        /* ble_l2cap_enhanced_connect only frees the mbuf if it was consumed. 
-         * If rc is non-zero, it means it failed before consuming it in most cases, 
-         * but we need to be careful about double-free. 
-         * The bug report says it double-frees because ble_l2cap_enhanced_connect 
-         * already frees it on many error paths. */
-        if (om) {
-            os_mbuf_free_chain(om);
-        }
         ble_eatt_free(eatt);
     }
 }
@@ -593,10 +609,13 @@ ble_eatt_get_available_chan_cid(uint16_t conn_handle, uint8_t op)
     default_cid = ble_att_get_default_bearer_cid(conn_handle);
     if (default_cid) {
         eatt = ble_eatt_find(conn_handle, default_cid);
+        if (eatt && eatt->client_op) {
+            eatt = ble_eatt_find_not_busy(conn_handle);
+        }
     } else {
         eatt = ble_eatt_find_not_busy(conn_handle);
     }
-    if (!eatt || eatt->client_op != 0) {
+    if (!eatt) {
         cid = BLE_L2CAP_CID_ATT;
         goto done;
     }
@@ -646,28 +665,32 @@ ble_eatt_tx(uint16_t conn_handle, uint16_t cid, struct os_mbuf *txom)
     }
 
     ble_att_truncate_to_mtu(eatt->chan, txom);
-    rc = ble_l2cap_send(eatt->chan, txom);
+    struct ble_l2cap_chan *chan = eatt->chan;
+    ble_hs_unlock();
+    rc = ble_l2cap_send(chan, txom);
     if (rc == 0) {
-        ble_hs_unlock();
         goto done;
     }
 
     if (rc == BLE_HS_ESTALLED) {
         BLE_EATT_LOG_DEBUG("ble_eatt_tx: Eatt stalled");
-        /* L2CAP owns the mbuf; COC_TX_UNSTALLED event will fire when ready */
-        /* Do NOT re-queue - this would cause use-after-free */
-        ble_hs_unlock();
         return rc;
     } else if (rc == BLE_HS_EBUSY) {
         BLE_EATT_LOG_DEBUG("ble_eatt_tx: Message queued");
-        STAILQ_INSERT_HEAD(&eatt->eatt_tx_q, OS_MBUF_PKTHDR(txom), omp_next);
-        ble_npl_eventq_put(ble_hs_evq_get(), &eatt->wakeup_ev);
-        ble_hs_unlock();
-        return 0;
+        ble_hs_lock();
+        eatt = ble_eatt_find(conn_handle, cid);
+        if (eatt) {
+            STAILQ_INSERT_HEAD(&eatt->eatt_tx_q, OS_MBUF_PKTHDR(txom), omp_next);
+            ble_npl_eventq_put(ble_hs_evq_get(), &eatt->wakeup_ev);
+            ble_hs_unlock();
+            return 0;
+        } else {
+            os_mbuf_free_chain(txom);
+            ble_hs_unlock();
+            return BLE_HS_ENOENT;
+        }
     } else {
         BLE_EATT_LOG_ERROR("eatt: %s, ERROR %d ", __func__, rc);
-        /* Free mbuf and return error gracefully instead of crashing */
-        ble_hs_unlock();
         os_mbuf_free_chain(txom);
         return rc;
     }
@@ -836,6 +859,8 @@ err:
     nimble_platform_mem_free(ble_eatt_conn_mem);
     ble_eatt_conn_mem = NULL;
 #endif
+    os_mempool_unregister(&ble_eatt_sdu_mbuf_mempool);
+    os_mempool_unregister(&ble_eatt_conn_pool);
     nimble_platform_mem_free(ble_eatt_ctx);
     ble_eatt_ctx = NULL;
 #endif

@@ -119,8 +119,8 @@ int ble_ead_encrypt(const uint8_t session_key[BLE_EAD_KEY_SIZE], const uint8_t i
     }
 
     if (payload_size == 0) {
-        BLE_HS_LOG(DEBUG, "payload_size is set to 0. The encrypted result will only contain the "
-                   "Randomizer and the MIC.");
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     }
 
     /* Ensure payload_size isn't too large to wrap around when adding overhead */
@@ -140,7 +140,7 @@ static int ead_decrypt(const uint8_t session_key[BLE_EAD_KEY_SIZE], const uint8_
     uint8_t nonce[BLE_EAD_NONCE_SIZE];
 
     /* Defense-in-depth: Validate size to prevent underflow (size_t is unsigned) */
-    if (encrypted_payload_size < BLE_EAD_RANDOMIZER_SIZE + BLE_EAD_MIC_SIZE) {
+    if (encrypted_payload_size < BLE_EAD_RANDOMIZER_SIZE + BLE_EAD_MIC_SIZE + 1) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
@@ -196,8 +196,8 @@ int ble_ead_decrypt(const uint8_t session_key[BLE_EAD_KEY_SIZE], const uint8_t i
         return BLE_HS_EINVAL;
     }
 
-    /* The underlying ead_decrypt already validates minimum size (Randomizer + MIC).
-     * BT spec allows empty AD structure sequences, so we don't enforce +2 bytes. */
+    /* The underlying ead_decrypt already validates minimum size (Randomizer + MIC + 1).
+     * 1 is added because BT spec mandates that the plaintext shall consist of one or more AD structures. (CSS Part A Section 1.23.2) */
 
     return ead_decrypt(session_key, iv, encrypted_payload, encrypted_payload_size, payload);
 }

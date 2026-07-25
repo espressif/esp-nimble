@@ -448,6 +448,10 @@ void ble_buf_free(void)
 {
     os_msys_buf_free();
 
+#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
+    return;
+#endif
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_trans_ctx == NULL) {
         return;

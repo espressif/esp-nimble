@@ -370,7 +370,9 @@ ble_cs_wr_cached_rem_supp_cap(const struct ble_cs_wr_cached_rem_supp_cap_cp *cmd
                                       BLE_HCI_OCF_LE_CS_WR_CACHED_REM_SUPP_CAP),
                            &cp, sizeof(cp), &rp, sizeof(rp));
 
-    rsp->conn_handle = le16toh(rp.conn_handle);
+    if (rc == 0) {
+        rsp->conn_handle = le16toh(rp.conn_handle);
+    }
 
     return rc;
 }
@@ -571,7 +573,8 @@ ble_hs_hci_evt_le_cs_rd_rem_supp_cap_complete(uint8_t subevent, const void *data
 
     if (ev->status) {
         BLE_HS_LOG(ERROR, "%s status error=%d\n", __func__, ev->status);
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle),
+                                         BLE_HS_HCI_ERR(ev->status));
         return BLE_HS_ECONTROLLER;
     }
 
@@ -714,7 +717,8 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
         BLE_HS_LOG(INFO, "Remote has No_FAE, continuing to config");
     } else if (ev->status) {
         BLE_HS_LOG(ERROR, "FAE read failed with status 0x%02x, aborting", ev->status);
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_ECONTROLLER);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle),
+                                         BLE_HS_HCI_ERR(ev->status));
         return BLE_HS_ECONTROLLER;
     }
 
@@ -749,6 +753,7 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
 
     rc = ble_gap_conn_find(cmd.conn_handle, &desc);
     if (rc != 0) {
+        ble_cs_call_procedure_complete_cb(cmd.conn_handle, rc);
         return rc;
     }
 
@@ -780,7 +785,8 @@ ble_hs_hci_evt_le_cs_rd_rem_fae_complete(uint8_t subevent, const void *data,
    if (desc.role == BLE_GAP_ROLE_MASTER) {
         rc = ble_cs_create_config(&cmd);
         if (rc) {
-            BLE_HS_LOG(INFO, "Failed to create CS config");
+            BLE_HS_LOG(ERROR, "Failed to create CS config, rc=%d", rc);
+            ble_cs_call_procedure_complete_cb(cmd.conn_handle, rc);
         }
     }
     return rc;
@@ -804,7 +810,7 @@ ble_hs_hci_evt_le_cs_sec_enable_complete(uint8_t subevent, const void *data,
 
     if (ev->status) {
         BLE_HS_LOG(INFO, "Failed to enable CS security status=%d", ev->status);
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_HCI_ERR(ev->status));
         return BLE_HS_ECONTROLLER;
     }
 
@@ -895,8 +901,13 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
 
     if (ev->status) {
         BLE_HS_LOG(ERROR, "%s status error=%d\n", __func__, ev->status);
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_HCI_ERR(ev->status));
         return BLE_HS_ECONTROLLER;
+    }
+
+    if (ev->action != 0x01) {
+        BLE_HS_LOG(DEBUG, "CS config removed or invalid action, skipping security enable");
+        return 0;
     }
 
     cmd.conn_handle = le16toh(ev->conn_handle);
@@ -909,17 +920,13 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
         return rc;
     }
 
-    if (ev->action != 0x01) {
-        BLE_HS_LOG(DEBUG, "CS config removed or invalid action, skipping security enable");
-        return 0;
-    }
-
     if (desc.role == BLE_GAP_ROLE_MASTER) {
 
         rc = ble_cs_sec_enable(&cmd);
         if (rc) {
             BLE_HS_LOG(DEBUG, "Failed to enable CS security");
-            ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_ERR_UNSPECIFIED);
+            ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle),
+                                                BLE_HS_HCI_ERR(BLE_ERR_UNSPECIFIED));
             return rc;
         }
     }
@@ -940,7 +947,7 @@ ble_hs_hci_evt_le_cs_proc_enable_complete(uint8_t subevent, const void *data,
 
     if (ev->status) {
         BLE_HS_LOG(ERROR, "%s status error=%d\n", __func__, ev->status);
-        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), ev->status);
+        ble_cs_call_procedure_complete_cb(le16toh(ev->conn_handle), BLE_HS_HCI_ERR(ev->status));
         return BLE_HS_ECONTROLLER;
     }
 

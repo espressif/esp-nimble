@@ -61,7 +61,9 @@ ble_npl_sem_pend(struct ble_npl_sem *sem, uint32_t timeout)
     }
 
     if (timeout == BLE_NPL_TIME_FOREVER) {
-        err = sem_wait(&sem->lock);
+        do {
+            err = sem_wait(&sem->lock);
+        } while (err != 0 && errno == EINTR);
     } else {
         err = clock_gettime(CLOCK_REALTIME, &wait);
         if (err) {
@@ -70,6 +72,10 @@ ble_npl_sem_pend(struct ble_npl_sem *sem, uint32_t timeout)
 
         wait.tv_sec  += timeout / 1000;
         wait.tv_nsec += (timeout % 1000) * 1000000;
+        if (wait.tv_nsec >= 1000000000) {
+            wait.tv_sec += wait.tv_nsec / 1000000000;
+            wait.tv_nsec %= 1000000000;
+        }
 
         while ((err = sem_timedwait(&sem->lock, &wait)) != 0) {
             switch (errno) {

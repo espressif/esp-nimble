@@ -942,15 +942,28 @@ int ble_store_config_persist_local_irk(void)
         ESP_LOGD(TAG, "Deleting Local IRK, nvs idx = %d", nvs_idx);
         return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_LOCAL_IRK, nvs_idx);
     } else {
-        /* Equal counts - this could be an update, sync all entries */
+        /* Equal counts - this is a resync/resequence. The previous
+         * implementation deleted all entries first and then re-wrote them,
+         * which could leave NVS with fewer entries than RAM on a partial
+         * write failure. Instead, overwrite slots 1..N in place (newer
+         * values win), then delete any extras only after every write
+         * succeeded.
+         */
+        char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
         ESP_LOGD(TAG, "Syncing Local IRK values to NVS...");
-        /* Delete existing entries first to avoid duplication/corruption */
-        for (int i = 1; i <= nvs_count; i++) {
-            ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_LOCAL_IRK, i);
-        }
         for (int i = 0; i < ble_store_config_num_local_irks; i++) {
             val.local_irk = ble_store_config_local_irks[i];
-            int rc = ble_store_nvs_write(BLE_STORE_OBJ_TYPE_LOCAL_IRK, &val);
+            get_nvs_key_string(BLE_STORE_OBJ_TYPE_LOCAL_IRK, i + 1, key_string);
+            int rc = ble_nvs_write_key_value(key_string, &val.local_irk,
+                                             sizeof(struct ble_store_value_local_irk));
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        /* No extras expected since counts are equal, but be defensive. */
+        for (int i = ble_store_config_num_local_irks + 1;
+             i <= get_nvs_max_obj_value(BLE_STORE_OBJ_TYPE_LOCAL_IRK); i++) {
+            int rc = ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_LOCAL_IRK, i);
             if (rc != 0) {
                 return rc;
             }
@@ -985,6 +998,25 @@ int ble_store_config_persist_rpa_recs(void)
         }
         ESP_LOGD(TAG, "Deleting RPA_REC, nvs idx = %d", nvs_idx);
         return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_ADDR, nvs_idx);
+    } else {
+        char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
+        ESP_LOGD(TAG, "Syncing RPA_RECS values to NVS...");
+        for (int i = 0; i < ble_store_config_num_rpa_recs; i++) {
+            val.rpa_rec = ble_store_config_rpa_recs[i];
+            get_nvs_key_string(BLE_STORE_OBJ_TYPE_PEER_ADDR, i + 1, key_string);
+            int rc = ble_nvs_write_key_value(key_string, &val.rpa_rec,
+                                             sizeof(struct ble_store_value_rpa_rec));
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        for (int i = ble_store_config_num_rpa_recs + 1;
+             i <= get_nvs_max_obj_value(BLE_STORE_OBJ_TYPE_PEER_ADDR); i++) {
+            int rc = ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_ADDR, i);
+            if (rc != 0) {
+                return rc;
+            }
+        }
     }
     return 0;
 
@@ -1019,6 +1051,25 @@ int ble_store_config_persist_peer_secs(void)
         }
         ESP_LOGD(TAG, "Deleting peer sec, nvs idx = %d", nvs_idx);
         return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_SEC, nvs_idx);
+    } else {
+        char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
+        ESP_LOGD(TAG, "Syncing peer sec values to NVS...");
+        for (int i = 0; i < ble_store_config_num_peer_secs; i++) {
+            val.sec = ble_store_config_peer_secs[i];
+            get_nvs_key_string(BLE_STORE_OBJ_TYPE_PEER_SEC, i + 1, key_string);
+            int rc = ble_nvs_write_key_value(key_string, &val.sec,
+                                             sizeof(struct ble_store_value_sec));
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        for (int i = ble_store_config_num_peer_secs + 1;
+             i <= get_nvs_max_obj_value(BLE_STORE_OBJ_TYPE_PEER_SEC); i++) {
+            int rc = ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_PEER_SEC, i);
+            if (rc != 0) {
+                return rc;
+            }
+        }
     }
     return 0;
 }
@@ -1052,6 +1103,25 @@ int ble_store_config_persist_our_secs(void)
         }
         ESP_LOGD(TAG, "Deleting our sec, nvs idx = %d", nvs_idx);
         return ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_OUR_SEC, nvs_idx);
+    } else {
+        char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
+        ESP_LOGD(TAG, "Syncing our sec values to NVS...");
+        for (int i = 0; i < ble_store_config_num_our_secs; i++) {
+            val.sec = ble_store_config_our_secs[i];
+            get_nvs_key_string(BLE_STORE_OBJ_TYPE_OUR_SEC, i + 1, key_string);
+            int rc = ble_nvs_write_key_value(key_string, &val.sec,
+                                             sizeof(struct ble_store_value_sec));
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        for (int i = ble_store_config_num_our_secs + 1;
+             i <= get_nvs_max_obj_value(BLE_STORE_OBJ_TYPE_OUR_SEC); i++) {
+            int rc = ble_nvs_delete_value(BLE_STORE_OBJ_TYPE_OUR_SEC, i);
+            if (rc != 0) {
+                return rc;
+            }
+        }
     }
     return 0;
 }

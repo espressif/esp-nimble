@@ -239,7 +239,8 @@ mem_init_mbuf_pool(void *mem, struct os_mempool *mempool,
     if (num_blocks < 0 || num_blocks > UINT16_MAX) {
         return OS_EINVAL;
     }
-    if (block_size < 0 || block_size > UINT16_MAX) {
+    if (block_size <= 0 || block_size > UINT16_MAX ||
+        block_size < (int)sizeof(struct os_mbuf)) {
         return OS_EINVAL;
     }
 

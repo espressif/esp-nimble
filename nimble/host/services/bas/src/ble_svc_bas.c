@@ -37,6 +37,7 @@ static uint16_t ble_svc_bas_battery_handle;
 /* Battery level */
 static uint8_t ble_svc_bas_battery_level;
 static bool ble_svc_bas_initialized;
+static bool ble_svc_bas_counted;
 
 /* Access function */
 static int
@@ -138,6 +139,7 @@ ble_svc_bas_deinit(void)
 {
     ble_gatts_free_svcs();
     ble_svc_bas_initialized = false;
+    ble_svc_bas_counted = false;
 }
 
 /**
@@ -154,10 +156,13 @@ ble_svc_bas_init(void)
 
     ble_svc_bas_battery_level = 0;
 
-    rc = ble_gatts_count_cfg(ble_svc_bas_defs);
-    if (rc != 0) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
-        return;
+    if (!ble_svc_bas_counted) {
+        rc = ble_gatts_count_cfg(ble_svc_bas_defs);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, rc);
+            return;
+        }
+        ble_svc_bas_counted = true;
     }
 
     rc = ble_gatts_add_svcs(ble_svc_bas_defs);
@@ -166,7 +171,6 @@ ble_svc_bas_init(void)
         return;
     }
 
-    ble_svc_bas_battery_level = 0;
     ble_svc_bas_initialized = true;
 }
 #endif

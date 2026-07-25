@@ -32,6 +32,7 @@
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "services/hid/ble_svc_hid.h"
+#include "../../../src/ble_hs_priv.h"
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "esp_nimble_mem.h"
 #endif
@@ -335,6 +336,7 @@ fill_boot_mouse_inp(uint16_t instance)
 
     chr = ble_svc_hid_get_chr_block();
     if (!chr) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
     memcpy(chr, &demo_chr, sizeof(struct ble_gatt_chr_def));
@@ -915,9 +917,12 @@ ble_svc_hid_init(void)
     /* Ensure this function only gets called by sysinit. */
     SYSINIT_ASSERT_ACTIVE();
 
+    ble_hs_lock();
     if (!ble_gatts_mutable()) {
+        ble_hs_unlock();
         return;
     }
+    ble_hs_unlock();
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_svc_hid_static_vars == NULL) {

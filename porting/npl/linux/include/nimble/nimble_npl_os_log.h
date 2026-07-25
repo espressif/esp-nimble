@@ -24,11 +24,12 @@
 #include <stdio.h>
 
 /* Example on how to use macro to generate module logging functions */
-#define BLE_NPL_LOG_IMPL(lvl)                                                 \
+#define BLE_NPL_LOG_IMPL(lvl, lvl_value)                                      \
     static inline void _BLE_NPL_LOG_CAT(                                      \
         BLE_NPL_LOG_MODULE, _BLE_NPL_LOG_CAT(_, lvl))(const char *fmt, ...)   \
     {                                                                         \
         va_list args;                                                         \
+        (void)(lvl_value);                                                    \
         va_start(args, fmt);                                                  \
         vprintf(fmt, args);                                                   \
         va_end(args);                                                         \

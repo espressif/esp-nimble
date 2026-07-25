@@ -19,6 +19,11 @@
 
 #if MYNEWT_VAL(BLE_GATTS) && CONFIG_BT_NIMBLE_PROX_SERVICE
 
+#define BLE_SVC_PROX_ALERT_NONE         0
+#define BLE_SVC_PROX_ALERT_MILD         1
+#define BLE_SVC_PROX_ALERT_HIGH         2
+#define BLE_SVC_PROX_CONN_HANDLE_NONE   0xffff
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 
 typedef struct {
@@ -42,11 +47,6 @@ static ble_svc_prox_ctx_t * ble_svc_prox_ctx = NULL;
 /* Characteristic values */
 static uint8_t ble_svc_prox_alert;
 static int8_t ble_svc_prox_tx_pwr_lvl;
-
-#define BLE_SVC_PROX_ALERT_NONE      0
-#define BLE_SVC_PROX_ALERT_MILD      1
-#define BLE_SVC_PROX_ALERT_HIGH      2
-#define BLE_SVC_PROX_CONN_HANDLE_NONE 0xffff
 
 #endif /* MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
@@ -140,7 +140,7 @@ ble_svc_prox_conn_slot(uint16_t conn_handle, int allocate)
         ble_svc_prox_conn[free_slot].immediate_alert = false;
     }
 
-    return free_slot;
+    return allocate ? free_slot : -1;
 }
 
 static const struct ble_gatt_svc_def ble_svc_prox_defs[] = {
@@ -457,14 +457,20 @@ ble_svc_prox_init(void)
         ble_svc_prox_conn[i].immediate_alert = false;
     }
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_svc_prox_ctx->_ble_prox_task_handle == NULL) {
+        BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task",
+                                     4096, NULL, 10,
+                                     &ble_svc_prox_ctx->_ble_prox_task_handle);
+        SYSINIT_PANIC_ASSERT(ret == pdPASS);
+    }
+#else
     static TaskHandle_t ble_prox_task_handle;
     if (ble_prox_task_handle == NULL) {
         BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task",
                                      4096, NULL, 10, &ble_prox_task_handle);
         SYSINIT_PANIC_ASSERT(ret == pdPASS);
     }
-
-    BaseType_t ret = xTaskCreate(ble_prox_prph_task, "ble_prox_prph_task", 4096, NULL, 10, &ble_prox_task_handle);
-    SYSINIT_PANIC_ASSERT(ret == pdPASS);
+#endif
 }
 #endif

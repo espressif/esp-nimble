@@ -317,6 +317,8 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
     }
 #endif
 
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
     switch (id_addr_type) {
     case BLE_ADDR_PUBLIC:
     case BLE_ADDR_PUBLIC_ID:
@@ -372,7 +374,6 @@ static int
 ble_hs_id_addr_type_usable(uint8_t own_addr_type)
 {
     uint8_t id_addr_type;
-    const uint8_t *id_addr_ptr;
     int nrpa;
     int rc;
 
@@ -387,18 +388,17 @@ ble_hs_id_addr_type_usable(uint8_t own_addr_type)
 
     case BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT:
     case BLE_OWN_ADDR_RPA_RANDOM_DEFAULT:
+#if !MYNEWT_VAL(BLE_HS_PVCY)
+        return BLE_HS_ENOTSUP;
+#endif
         id_addr_type = ble_hs_misc_own_addr_type_to_id(own_addr_type);
-        rc = ble_hs_id_addr(id_addr_type, &id_addr_ptr, &nrpa);
+        rc = ble_hs_id_addr(id_addr_type, NULL, &nrpa);
         if (rc != 0) {
             return rc;
         }
         if (nrpa) {
             return BLE_HS_ENOADDR;
         }
-
-#if !MYNEWT_VAL(BLE_HS_PVCY)
-        return BLE_HS_ENOTSUP;
-#endif
         break;
 
     default:

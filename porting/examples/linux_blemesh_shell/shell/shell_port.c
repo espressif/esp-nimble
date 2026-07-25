@@ -217,6 +217,7 @@ shell_nlip_input_register(shell_nlip_input_func_t nf, void *arg)
 int
 shell_nlip_output(struct os_mbuf *m)
 {
+    os_mbuf_free_chain(m);
     return 0;
 }
 #endif

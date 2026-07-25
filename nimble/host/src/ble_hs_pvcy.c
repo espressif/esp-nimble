@@ -81,8 +81,8 @@ ble_hs_pvcy_set_addr_timeout(uint16_t timeout)
     struct ble_hci_le_set_rpa_tmo_cp cmd;
 
     if (timeout == 0 || timeout > BLE_MAX_RPA_TIMEOUT_VAL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS));
-        return BLE_HS_HCI_ERR(BLE_ERR_INV_HCI_CMD_PARMS);
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     }
 
     cmd.rpa_timeout = htole16(timeout);
@@ -209,17 +209,19 @@ ble_hs_pvcy_remove_entry(uint8_t addr_type, const uint8_t *addr)
     cmd.peer_addr_type = addr_type;
     memcpy(cmd.peer_id_addr, addr, BLE_DEV_ADDR_LEN);
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_hs_lock();
+    rc = ble_hs_resolv_list_rmv(addr_type, &cmd.peer_id_addr[0]);
+    ble_hs_unlock();
+#else
     ble_gap_preempt();
     ble_hs_lock();
-#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-    rc = ble_hs_resolv_list_rmv(addr_type, &cmd.peer_id_addr[0]);
-#else
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                BLE_HCI_OCF_LE_RMV_RESOLV_LIST),
                                &cmd, sizeof(cmd), NULL, 0);
-#endif
     ble_hs_unlock();
     ble_gap_preempt_done();
+#endif
 
     return rc;
 }
@@ -260,7 +262,7 @@ ble_hs_pvcy_add_entry_hci(const uint8_t *addr, uint8_t addr_type,
 #endif
 
     if (addr_type > BLE_ADDR_RANDOM) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+        return BLE_HS_EINVAL;
     }
 
     cmd.peer_addr_type = addr_type;
@@ -397,10 +399,10 @@ ble_hs_pvcy_ensure_started(void)
     }
 #endif
 
-    ble_hs_lock();
+    ble_hs_lock_nested();
 
     if (ble_hs_pvcy_started) {
-        ble_hs_unlock();
+        ble_hs_unlock_nested();
         return 0;
     }
 
@@ -420,13 +422,13 @@ ble_hs_pvcy_ensure_started(void)
     }
 
     if (rc != 0) {
-        ble_hs_unlock();
+        ble_hs_unlock_nested();
         return rc;
     }
 
     ble_hs_pvcy_started = 1;
 
-    ble_hs_unlock();
+    ble_hs_unlock_nested();
 
     return 0;
 }
@@ -527,7 +529,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
 {
     uint8_t tmp_addr[6];
     uint8_t new_irk[16];
-    int rc;
+    int rc = 0;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_pvcy_ctx == NULL) {
@@ -555,7 +557,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
             ble_hs_resolv_enable(0);
        }
 
-       ble_hs_resolv_list_clear_all(false);
+       ble_hs_resolv_list_clear_all();
 
        if (rpa_state) {
              ble_hs_resolv_enable(1);
@@ -580,7 +582,7 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
 done:
     ble_gap_preempt_done();
     if (rc != 0) {
-       return rc;
+        goto pvcy_done;
     }
 
 #endif
@@ -597,11 +599,20 @@ done:
     memset(tmp_addr, 0, 6);
     rc = ble_hs_pvcy_add_entry(tmp_addr, 0, zero_irk);
     if (rc != 0) {
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        goto pvcy_done;
+#else
         return rc;
+#endif
     }
 #endif
 
-    return 0;
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+pvcy_done:
+    ble_gap_preempt_done();
+#endif
+
+    return rc;
 }
 
 int
@@ -670,17 +681,16 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
 {
     int rc = 0;
 
-    ble_hs_lock();
-#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-    ble_gap_preempt();
-#endif
-
     if (enable != NIMBLE_HOST_DISABLE_PRIVACY) {
         rc = ble_hs_pvcy_ensure_started();
         if (rc != 0) {
-            goto done;
+            return rc;
         }
+    }
 
+    ble_hs_lock();
+
+    if (enable != NIMBLE_HOST_DISABLE_PRIVACY) {
         ble_hs_resolv_enable(true);
 
         /* Configure NRPA address related flags according to input parameter */
@@ -689,12 +699,10 @@ ble_hs_pvcy_rpa_config(uint8_t enable)
         } else {
             ble_hs_resolv_nrpa_disable();
         }
-
     } else {
         ble_hs_resolv_enable(false);
     }
 
-done:
     ble_hs_unlock();
 
     if (rc == 0 && enable != NIMBLE_HOST_DISABLE_PRIVACY) {
@@ -704,9 +712,6 @@ done:
         rc = ble_hs_gen_own_private_rnd();
         ble_gap_preempt_done();
     }
-#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-    ble_gap_preempt_done();
-#endif
 
     return rc;
 }

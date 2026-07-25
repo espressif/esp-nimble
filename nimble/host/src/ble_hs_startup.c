@@ -502,8 +502,6 @@ ble_hs_startup_reset_tx(void)
 int
 ble_hs_startup_go(void)
 {
-    struct ble_store_gen_key gen_key;
-    int key_rc;
     int rc;
 
     rc = ble_hs_startup_reset_tx();
@@ -562,30 +560,43 @@ ble_hs_startup_go(void)
         return rc;
     }
 
+#if MYNEWT_VAL(BLE_HS_PVCY) && NIMBLE_BLE_SM
+    struct ble_store_gen_key gen_key;
+    int key_rc;
+
     if (ble_hs_cfg.store_gen_key_cb) {
         memset(&gen_key, 0, sizeof(gen_key));
         key_rc = ble_hs_cfg.store_gen_key_cb(BLE_STORE_GEN_KEY_IRK, &gen_key,
                                          BLE_HS_CONN_HANDLE_NONE);
-#if MYNEWT_VAL(BLE_HS_PVCY)
         if (key_rc == 0) {
             rc = ble_hs_pvcy_set_our_irk(gen_key.irk);
             if (rc != 0) {
                 BLE_HS_LOG(WARN, "ble_hs_pvcy_set_our_irk (stored) rc=%d\n", rc);
+                return rc;
             }
         }
-#endif
     } else {
         key_rc = -1;
     }
 
-#if MYNEWT_VAL(BLE_HS_PVCY)
     if (key_rc != 0) {
         ble_hs_pvcy_set_default_irk();
 
         rc = ble_hs_pvcy_set_our_irk(NULL);
         if (rc != 0) {
             BLE_HS_LOG(WARN, "ble_hs_pvcy_set_our_irk (default) rc=%d\n", rc);
+            return rc;
         }
+    }
+#elif MYNEWT_VAL(BLE_HS_PVCY)
+    /* SM disabled: no bond store or AES for IRK/RPA; skip privacy init. */
+#else
+    if (ble_hs_cfg.store_gen_key_cb) {
+        struct ble_store_gen_key gen_key;
+
+        memset(&gen_key, 0, sizeof(gen_key));
+        (void)ble_hs_cfg.store_gen_key_cb(BLE_STORE_GEN_KEY_IRK, &gen_key,
+                                          BLE_HS_CONN_HANDLE_NONE);
     }
 #endif
 

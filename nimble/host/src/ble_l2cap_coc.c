@@ -66,15 +66,6 @@ static struct os_mempool ble_l2cap_coc_srv_pool;
 static struct ble_l2cap_coc_srv_list ble_l2cap_coc_srvs;
 #endif
 
-
-#ifndef min
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
-#ifndef max
-#define max(a, b) ((a) > (b) ? (a) : (b))
-#endif
-
 static struct ble_l2cap_coc_srv *
 ble_l2cap_coc_srv_find(uint16_t psm);
 
@@ -151,6 +142,7 @@ int
 ble_l2cap_coc_remove_server_nolock(uint16_t psm)
 {
     struct ble_l2cap_coc_srv *srv;
+    int rc;
 
     srv = ble_l2cap_coc_srv_find(psm);
     if (!srv) {
@@ -159,7 +151,8 @@ ble_l2cap_coc_remove_server_nolock(uint16_t psm)
 
     STAILQ_REMOVE(&ble_l2cap_coc_srvs, srv, ble_l2cap_coc_srv, next);
 
-    os_memblock_put(&ble_l2cap_coc_srv_pool, srv);
+    rc = os_memblock_put(&ble_l2cap_coc_srv_pool, srv);
+    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
     return 0;
 }
 
@@ -215,6 +208,19 @@ ble_l2cap_coc_get_cid(uint32_t *cid_mask)
     return BLE_L2CAP_COC_CID_START + bit;
 }
 
+static uint16_t
+ble_l2cap_coc_calc_initial_credits(uint16_t mtu, uint16_t mps)
+{
+    uint16_t credits;
+
+    credits = mtu / mps;
+    if (mtu % mps) {
+        credits++;
+    }
+
+    return credits;
+}
+
 static void
 ble_l2cap_event_coc_received_data(struct ble_l2cap_chan *chan,
                                   struct os_mbuf *om)
@@ -243,6 +249,11 @@ ble_l2cap_coc_rx_fn(struct ble_l2cap_chan *chan, struct os_mbuf **om)
     int rc;
 
     sdu_idx = chan->coc_rx.current_sdu_idx;
+    if (rx->sdus[sdu_idx] == NULL) {
+        BLE_HS_LOG(ERROR, "CoC RX with no buffer armed (sdu_idx=%u)\n", sdu_idx);
+        ble_l2cap_disconnect(chan);
+        return BLE_HS_EINVAL;
+    }
     BLE_HS_DBG_ASSERT(rx->sdus[sdu_idx] != NULL);
 
     om_total = OS_MBUF_PKTLEN(*om);
@@ -378,10 +389,7 @@ ble_l2cap_coc_set_new_mtu_mps(struct ble_l2cap_chan *chan, uint16_t mtu,
     }
     chan->my_coc_mps = mps;
     chan->coc_rx.mtu = mtu;
-    chan->initial_credits = mtu / chan->my_coc_mps;
-    if (mtu % chan->my_coc_mps) {
-        chan->initial_credits++;
-    }
+    chan->initial_credits = ble_l2cap_coc_calc_initial_credits(mtu, mps);
 }
 
 struct ble_l2cap_chan *
@@ -425,14 +433,12 @@ ble_l2cap_coc_chan_alloc(struct ble_hs_conn *conn, uint16_t psm, uint16_t mtu,
     }
 
     /* Number of credits should allow to send full SDU with on given
-     * L2CAP MTU
+     * L2CAP MTU.  Keep local credits at initial_credits so that
+     * recv_ready() during the accept callback does not send a duplicate
+     * Flow Control Credit indication before the connection response.
      */
-    chan->coc_rx.credits = mtu / chan->my_coc_mps;
-    if (mtu % chan->my_coc_mps) {
-        chan->coc_rx.credits++;
-    }
-
-    chan->initial_credits = chan->coc_rx.credits;
+    chan->initial_credits = ble_l2cap_coc_calc_initial_credits(mtu, chan->my_coc_mps);
+    chan->coc_rx.credits = chan->initial_credits;
     return chan;
 }
 
@@ -637,7 +643,7 @@ failed:
         os_mbuf_free_chain(tx->sdus[0]);
     }
     tx->sdus[0] = NULL;
-    if (tx->data_offset > 0) {
+    if (tx->data_offset > 0 && rc != BLE_HS_ENOTCONN) {
         ble_l2cap_sig_disconnect_nolock(chan);
     }
     tx->data_offset = 0;
@@ -738,17 +744,9 @@ ble_l2cap_coc_recv_ready(struct ble_l2cap_chan *chan, struct os_mbuf *sdu_rx)
         ble_hs_unlock();
         ble_l2cap_sig_le_credits(cached_conn_handle, cached_scid,
                                  credits_to_send);
-        ble_hs_lock();
-        /* Re-validate connection and channel after relock -- they could have
-         * been freed while the lock was released. Credits were already updated
-         * before unlocking; no further update needed here. */
-        conn = ble_hs_conn_find(cached_conn_handle);
-        if (conn != NULL) {
-            c = ble_hs_conn_chan_find_by_scid(conn, cached_scid);
-        }
+    } else {
+        ble_hs_unlock();
     }
-
-    ble_hs_unlock();
 
     return 0;
 }

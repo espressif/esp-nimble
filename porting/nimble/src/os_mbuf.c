@@ -235,8 +235,8 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
     struct os_mbuf *m;
     struct os_mbuf_pool *pool;
 
-    if (user_hdr_len > 0xFF00) {
-        goto err;
+    if (user_hdr_len > (255 - sizeof(struct os_mbuf_pkthdr))) {
+        goto err_hdr;
     }
 
     total_pkthdr_len =  user_hdr_len + sizeof(struct os_mbuf_pkthdr);
@@ -247,6 +247,13 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
 
     m = os_mbuf_get_pkthdr(pool, user_hdr_len);
     return (m);
+err_hdr:
+    log_count++;
+    if ((log_count % 100) == 0) {
+        ESP_LOGI("ESP_LOG_INFO", "user_hdr_len too large (%u)\n", user_hdr_len);
+        log_count = 0;
+    }
+    return (NULL);
 err:
     log_count ++;
     if ((log_count % 100) == 0) {
@@ -961,7 +968,7 @@ done:
     /* Fix up the packet header, if one is present. */
     if (OS_MBUF_IS_PKTHDR(om)) {
         OS_MBUF_PKTHDR(om)->omp_len =
-            max(OS_MBUF_PKTHDR(om)->omp_len, (uint16_t)total_len);
+            max(OS_MBUF_PKTHDR(om)->omp_len, total_len);
     }
 
     return rc;

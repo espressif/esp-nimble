@@ -258,8 +258,8 @@ ble_l2cap_enhanced_connect(uint16_t conn_handle,
     ble_hs_unlock();
 
     if (rc != 0) {
-        /* Ownership of sdu_rx mbufs is not transferred to the stack on failure.
-         * The caller is responsible for freeing them.
+        /* Ownership of sdu_rx mbufs is transferred to the stack.
+         * The stack is responsible for freeing them even on failure.
          */
     }
 
@@ -405,7 +405,6 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
     struct ble_l2cap_chan *chan;
     struct ble_l2cap_hdr hdr;
     struct os_mbuf *rx_frags;
-    uint16_t rx_len;
     uint16_t rx_cid;
     int rc;
 
@@ -474,8 +473,8 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
 
         chan = ble_hs_conn_chan_find_by_scid(conn, hdr.cid);
         if (chan) {
-            if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
-                chan->dcid <= BLE_L2CAP_COC_CID_END && hdr.len > chan->my_coc_mps) {
+            if (chan->scid >= BLE_L2CAP_COC_CID_START &&
+                chan->scid <= BLE_L2CAP_COC_CID_END && hdr.len > chan->my_coc_mps) {
                 ble_l2cap_sig_disconnect_nolock(chan);
                 ble_l2cap_rx_free(conn);
                 rc = BLE_HS_EBADDATA;
@@ -483,7 +482,10 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
             }
 
             if (hdr.len > ble_l2cap_get_mtu(chan)) {
-                ble_l2cap_sig_disconnect_nolock(chan);
+                if (chan->scid >= BLE_L2CAP_COC_CID_START &&
+                    chan->scid <= BLE_L2CAP_COC_CID_END) {
+                    ble_l2cap_sig_disconnect_nolock(chan);
+                }
                 ble_l2cap_rx_free(conn);
                 rc = BLE_HS_EBADDATA;
                 goto done;
@@ -501,7 +503,6 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
     }
 
     rx_frags = conn->rx_frags;
-    rx_len = conn->rx_len;
     rx_cid = conn->rx_cid;
 
     conn->rx_frags = NULL;
@@ -523,18 +524,15 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         return 0;
     }
 
-    if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
-        chan->dcid <= BLE_L2CAP_COC_CID_END && rx_len > chan->my_coc_mps) {
+#if MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM) != 0
+    if (chan->scid >= BLE_L2CAP_COC_CID_START &&
+        chan->scid <= BLE_L2CAP_COC_CID_END &&
+        chan->coc_rx.sdus[chan->coc_rx.current_sdu_idx] == NULL) {
         ble_l2cap_disconnect(chan);
         os_mbuf_free_chain(rx_frags);
-        return BLE_HS_EBADDATA;
+        return BLE_HS_EINVAL;
     }
-
-    if (rx_len > ble_l2cap_get_mtu(chan)) {
-        ble_l2cap_disconnect(chan);
-        os_mbuf_free_chain(rx_frags);
-        return BLE_HS_EBADDATA;
-    }
+#endif
 
     rc = chan->rx_fn(chan, &rx_frags);
     os_mbuf_free_chain(rx_frags);
@@ -600,14 +598,14 @@ ble_l2cap_init(void)
     size_t chan_mem_bytes = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_L2CAP_MAX_CHANS) +
                          MYNEWT_VAL(BLE_L2CAP_COC_MAX_NUM),
                          sizeof (struct ble_l2cap_chan)) * sizeof(os_membuf_t);
-    if (ble_l2cap_chan_mem == NULL) {
+    if (ble_l2cap_chan_mem == NULL && chan_mem_bytes != 0) {
         ble_l2cap_chan_mem = (os_membuf_t *)nimble_platform_mem_calloc(1, chan_mem_bytes);
-        if (ble_l2cap_chan_mem == NULL) {
-            nimble_platform_mem_free(ble_l2cap_ctx);
-            ble_l2cap_ctx = NULL;
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-            return BLE_HS_ENOMEM;
-        }
+    }
+    if (ble_l2cap_chan_mem == NULL && chan_mem_bytes != 0) {
+        nimble_platform_mem_free(ble_l2cap_ctx);
+        ble_l2cap_ctx = NULL;
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+        return BLE_HS_ENOMEM;
     }
 #endif
 #endif

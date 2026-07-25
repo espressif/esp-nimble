@@ -68,6 +68,25 @@ static struct {
 #endif
 
 #if MYNEWT_VAL(BLE_MONITOR_UART)
+static int
+monitor_uart_available_space(void)
+{
+    int head;
+    int tail;
+    int space;
+
+    head = tx_ringbuf_head;
+    tail = tx_ringbuf_tail;
+
+    if (head >= tail) {
+        space = sizeof(tx_ringbuf) - (head - tail) - 1;
+    } else {
+        space = tail - head - 1;
+    }
+
+    return space;
+}
+
 static inline int
 inc_and_wrap(int i, int max)
 {
@@ -345,14 +364,19 @@ ble_monitor_deinit(void)
 int
 ble_monitor_send(uint16_t opcode, const void *data, size_t len)
 {
-    os_sr_t sr;
+    ble_npl_mutex_pend(&lock, OS_TIMEOUT_NEVER);
 
-    OS_ENTER_CRITICAL(sr);
+#if MYNEWT_VAL(BLE_MONITOR_UART)
+    if (monitor_uart_available_space() < (int)(len + 32)) {
+        ble_npl_mutex_release(&lock);
+        return BLE_HS_ENOMEM;
+    }
+#endif
 
     monitor_write_header(opcode, len);
     monitor_write(data, len);
 
-    OS_EXIT_CRITICAL(sr);
+    ble_npl_mutex_release(&lock);
 
     return 0;
 }
@@ -405,11 +429,6 @@ ble_monitor_log(int level, const char *fmt, ...)
     static const char id[] = "nimble";
     struct ble_monitor_user_logging ulog;
     va_list va;
-    int len;
-
-    va_start(va, fmt);
-    len = vsnprintf(NULL, 0, fmt, va);
-    va_end(va);
 
     switch (level) {
     case LOG_LEVEL_ERROR:
@@ -512,9 +531,7 @@ ble_transport_to_ll_cmd(void *buf)
     struct ble_hci_cmd *cmd;
 
 #if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
-    if (cmd_buf[0] == 0x01) {
-        cmd_buf++;
-    }
+    cmd_buf++;
 #endif
 
     cmd = (void *)cmd_buf;

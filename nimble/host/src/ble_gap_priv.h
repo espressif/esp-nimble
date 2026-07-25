@@ -84,10 +84,12 @@ void ble_gap_rx_le_scan_timeout(void);
 void ble_gap_rx_ext_adv_report(struct ble_gap_ext_disc_desc *desc);
 void ble_gap_rx_adv_set_terminated(const struct ble_hci_ev_le_subev_adv_set_terminated *ev);
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
-void ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv_sync_estab *ev);
+void ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv_sync_estab *ev, uint8_t subevent);
 void ble_gap_rx_periodic_adv_rpt(const struct ble_hci_ev_le_subev_periodic_adv_rpt *ev);
 void ble_gap_rx_periodic_adv_sync_lost(const struct ble_hci_ev_le_subev_periodic_adv_sync_lost *ev);
-void ble_gap_rx_periodic_adv_sync_transfer(const struct ble_hci_ev_le_subev_periodic_adv_sync_transfer *ev);
+void ble_gap_rx_periodic_adv_sync_transfer(
+    const struct ble_hci_ev_le_subev_periodic_adv_sync_transfer *ev,
+    uint8_t subevent);
 #endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_BIGINFO_REPORTS) && !MYNEWT_VAL(BLE_ISO)
 void ble_gap_rx_biginfo_adv_rpt(const struct ble_hci_ev_le_subev_biginfo_adv_report *ev);

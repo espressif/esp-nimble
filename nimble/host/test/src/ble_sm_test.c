@@ -430,7 +430,7 @@ TEST_CASE_SELF(ble_sm_test_case_peer_sec_req_inval)
 
 TEST_CASE_SELF(ble_sm_test_case_peer_sec_req_reject)
 {
-    struct ble_sm_sec_req sec_req;
+    struct ble_sm_sec_req sec_req = {0};
     int rc;
 
     struct ble_sm_pair_cmd pair_rsp = {0x04, 0, 0x0D, 10, 0x02, 0x02};

@@ -27,15 +27,8 @@
 #if (BT_HCI_LOG_INCLUDED == TRUE)
 #include "hci_log/bt_hci_log.h"
 #endif // (BT_HCI_LOG_INCLUDED == TRUE)
-/*
- * HCI Command Header
- *
- * Comprises the following fields
- *  -> Opcode group field & Opcode command field (2)
- *  -> Parameter Length                          (1)
- *      Length of all the parameters (does not include any part of the hci
- *      command header
- */
+
+/* Length of the HCI command header (opcode 2 bytes + length 1 byte) */
 #define BLE_HCI_CMD_HDR_LEN                 (3)
 
 static int
@@ -64,10 +57,6 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     int rc;
 
     cmd = (struct ble_hci_cmd *)ble_transport_alloc_cmd();
-    if (cmd == NULL) {
-        return BLE_HS_ENOMEM_EVT;
-    }
-    BLE_HS_DBG_ASSERT(cmd != NULL);
     if (cmd == NULL) {
         return BLE_HS_ENOMEM;
     }

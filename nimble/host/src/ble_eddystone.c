@@ -116,11 +116,16 @@ ble_eddystone_set_svc_data_base(uint8_t frame_type)
  */
 static int
 ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
+                               const uint8_t *svc_data,
                                uint8_t svc_data_len)
 {
+    struct ble_hs_adv_fields fields;
+    ble_uuid16_t uuids16[BLE_EDDYSTONE_MAX_UUIDS16 + 1];
     int rc;
 
-    if (adv_fields->num_uuids16 > BLE_EDDYSTONE_MAX_UUIDS16) {
+    fields = *adv_fields;
+
+    if (fields.num_uuids16 > BLE_EDDYSTONE_MAX_UUIDS16) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
@@ -128,36 +133,35 @@ ble_eddystone_set_adv_data_gen(struct ble_hs_adv_fields *adv_fields,
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
-    if (adv_fields->num_uuids16 > 0 && !adv_fields->uuids16_is_complete) {
+    if (fields.num_uuids16 > 0 && !fields.uuids16_is_complete) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
-    if (adv_fields->svc_data_uuid16_len != 0) {
+    if (fields.svc_data_uuid16_len != 0) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }
 
-    ble_eddystone_uuids16[0] =
-        (ble_uuid16_t) BLE_UUID16_INIT(BLE_EDDYSTONE_SERVICE_UUID);
+    uuids16[0] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_EDDYSTONE_SERVICE_UUID);
 
     /* Only copy if there are UUIDs and the pointer is valid */
-    if (adv_fields->num_uuids16 > 0) {
-        if (adv_fields->uuids16 == NULL) {
+    if (fields.num_uuids16 > 0) {
+        if (fields.uuids16 == NULL) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
-        memmove(ble_eddystone_uuids16 + 1, adv_fields->uuids16,
-                adv_fields->num_uuids16 * sizeof(ble_uuid16_t));
+        memmove(uuids16 + 1, fields.uuids16,
+                fields.num_uuids16 * sizeof(ble_uuid16_t));
     }
-    adv_fields->uuids16 = ble_eddystone_uuids16;
-    adv_fields->num_uuids16++;
-    adv_fields->uuids16_is_complete = 1;
+    fields.uuids16 = uuids16;
+    fields.num_uuids16++;
+    fields.uuids16_is_complete = 1;
 
-    adv_fields->svc_data_uuid16 = ble_eddystone_svc_data;
-    adv_fields->svc_data_uuid16_len = svc_data_len +
+    fields.svc_data_uuid16 = svc_data;
+    fields.svc_data_uuid16_len = svc_data_len +
                                       BLE_EDDYSTONE_SVC_DATA_BASE_SZ;
 
-    rc = ble_gap_adv_set_fields(adv_fields);
+    rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         return rc;
     }
@@ -169,6 +173,7 @@ int
 ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
                                const void *uid, int8_t measured_power)
 {
+    uint8_t svc_data_copy[BLE_EDDYSTONE_MAX_SVC_DATA_LEN];
     uint8_t *svc_data;
     int rc;
 
@@ -208,9 +213,13 @@ ble_eddystone_set_adv_data_uid(struct ble_hs_adv_fields *adv_fields,
     svc_data[1 + BLE_EDDYSTONE_UID_LEN] = 0x00;
     svc_data[1 + BLE_EDDYSTONE_UID_LEN + 1] = 0x00;
 
+    memcpy(svc_data_copy, ble_eddystone_svc_data,
+           BLE_EDDYSTONE_UID_SVC_DATA_LEN + BLE_EDDYSTONE_SVC_DATA_BASE_SZ);
+
     ble_hs_unlock();
 
-    rc = ble_eddystone_set_adv_data_gen(adv_fields, BLE_EDDYSTONE_UID_SVC_DATA_LEN);
+    rc = ble_eddystone_set_adv_data_gen(adv_fields, svc_data_copy,
+                                        BLE_EDDYSTONE_UID_SVC_DATA_LEN);
 
     return rc;
 }
@@ -221,6 +230,7 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
                                uint8_t url_body_len, uint8_t url_suffix,
                                int8_t measured_power)
 {
+    uint8_t svc_data_copy[BLE_EDDYSTONE_MAX_SVC_DATA_LEN];
     uint8_t *svc_data;
     int url_len;
     int rc;
@@ -278,9 +288,13 @@ ble_eddystone_set_adv_data_url(struct ble_hs_adv_fields *adv_fields,
         svc_data[2 + url_body_len] = url_suffix;
     }
 
+    memcpy(svc_data_copy, ble_eddystone_svc_data,
+           url_len + 2 + BLE_EDDYSTONE_SVC_DATA_BASE_SZ);
+
     ble_hs_unlock();
 
-    rc = ble_eddystone_set_adv_data_gen(adv_fields, url_len + 2);
+    rc = ble_eddystone_set_adv_data_gen(adv_fields, svc_data_copy,
+                                        url_len + 2);
 
     return rc;
 }

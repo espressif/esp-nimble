@@ -106,6 +106,9 @@ int ble_restore_our_sec_nvs(void)
 
     qsort(temp_our_secs, temp_count, sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
 
+    /* Copy sorted order back to global array before assigning sequential bond counts */
+    memcpy(ble_store_config_our_secs, temp_our_secs, temp_count * sizeof(struct ble_store_value_sec));
+
     ble_store_config_our_bond_count = 0;
 
     for (int i = 0; i < temp_count; i++) {
@@ -127,6 +130,9 @@ int ble_restore_peer_sec_nvs(void)
     temp_count = ble_store_config_num_peer_secs;
 
     qsort(temp_peer_secs, temp_count, sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
+
+    /* Copy sorted order back to global array before assigning sequential bond counts */
+    memcpy(ble_store_config_peer_secs, temp_peer_secs, temp_count * sizeof(struct ble_store_value_sec));
 
     ble_store_config_peer_bond_count = 0;
 
@@ -1202,16 +1208,9 @@ ble_store_config_delete(int obj_type, const union ble_store_key *key)
     }
 }
 
-/* Track initialization state for idempotency */
-static bool g_ble_store_config_initialized = false;
-
 void
 ble_store_config_init(void)
 {
-    if (g_ble_store_config_initialized) {
-        return;
-    }
-
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_store_config_vars == NULL) {
         ble_store_config_vars = nimble_platform_mem_calloc(1, sizeof(ble_store_config_vars_t));
@@ -1240,8 +1239,6 @@ ble_store_config_init(void)
     ble_store_config_num_rpa_recs = 0;
     ble_store_config_num_local_irks=0;
     ble_store_config_conf_init();
-
-    g_ble_store_config_initialized = true;
 }
 
 void
@@ -1257,7 +1254,4 @@ ble_store_config_deinit(void)
     ble_hs_cfg.store_read_cb = NULL;
     ble_hs_cfg.store_write_cb = NULL;
     ble_hs_cfg.store_delete_cb = NULL;
-
-    /* Reset initialization flag to allow re-initialization */
-    g_ble_store_config_initialized = false;
 }

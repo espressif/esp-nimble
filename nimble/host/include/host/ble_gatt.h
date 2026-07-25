@@ -415,16 +415,6 @@ struct ble_hs_cfg;
 
 /** @} */
 
-/*** @server. */
-/** Represents one notification tuple in a multi notification PDU */
-struct ble_gatt_notif_entry {
-    /** The attribute handle on which to notify. */
-    uint16_t handle;
-
-    /** The notification value. */
-    struct os_mbuf *value;
-};
-
 /*** @client. */
 /** Represents a GATT error. */
 struct ble_gatt_error {
@@ -784,10 +774,6 @@ int ble_gattc_read_mult(uint16_t conn_handle, const uint16_t *handles,
                         uint8_t num_handles, ble_gatt_attr_fn *cb,
                         void *cb_arg);
 
-int ble_gattc_read_mult_var(uint16_t conn_handle, const uint16_t *handles,
-                            uint8_t num_handles, ble_gatt_attr_mult_fn *cb,
-                            void *cb_arg);
-
 /**
  * Initiates GATT procedure: Read Multiple Variable Length Characteristic Values.
  *
@@ -981,22 +967,6 @@ int ble_gatts_notify_multiple_custom(uint16_t conn_handle,
                                      struct ble_gatt_notif *tuples);
 
 /**
- * Sends multiple characteristic notifications on the specified
- * attribute handles. This function consumes the mbuf of the
- * notification value after sending notification.
- *
- * @param conn_handle           The connection over which to execute the
- *                                  procedure.
- * @param tuples                The list of attribute handles and notification
- *                                  value tuples.
- * @param num_tuples            The number of notifications to send.
- *
- * @return                      0 on success; nonzero on failure.
- */
-int ble_gatts_multi_notify_custom(uint16_t conn_handle,
-                                  struct ble_gatt_notif_entry *tuples, uint16_t num_tuples);
-
-/**
  * @deprecated Should not be used. Use ble_gatts_notify_custom instead.
  *
  * @param conn_handle           The connection over which to execute the
@@ -1006,9 +976,8 @@ int ble_gatts_multi_notify_custom(uint16_t conn_handle,
  * @param om                    The value to write to the characteristic.
  *
  * @return                      0 on success; nonzero on failure.
+ * @deprecated Use ble_gatts_notify_custom() instead.
  */
-int ble_gattc_notify_custom(uint16_t conn_handle, uint16_t att_handle,
-                            struct os_mbuf *om);
 
 /**
  * Sends a characteristic notification.  The content of the message is read

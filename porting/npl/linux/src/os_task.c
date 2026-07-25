@@ -61,20 +61,27 @@ ble_npl_task_init(struct ble_npl_task *t, const char *name, ble_npl_task_func_t 
         return err;
 
     err = pthread_attr_getschedparam(&t->attr, &t->param);
-    if (err)
+    if (err) {
+        pthread_attr_destroy(&t->attr);
         return err;
+    }
 
     err = pthread_attr_setschedpolicy(&t->attr, SCHED_RR);
-    if (err)
+    if (err) {
+        pthread_attr_destroy(&t->attr);
         return err;
+    }
 
     t->param.sched_priority = prio;
     err = pthread_attr_setschedparam(&t->attr, &t->param);
-    if (err)
+    if (err) {
+        pthread_attr_destroy(&t->attr);
         return err;
+    }
 
     t->name = name;
     err = pthread_create(&t->handle, &t->attr, func, arg);
+    pthread_attr_destroy(&t->attr);
 
     return err;
 }

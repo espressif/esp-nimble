@@ -425,22 +425,21 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         ble_svc_ras_od_rd_seg_len = 0;
                     }
                     /* Reset the ranging buffers */
-                    ble_svc_ras_cp_val[0]= 0x02;
+                    ble_svc_ras_cp_val[0] = RASCP_RSP_OPCODE_RSP_CODE;
                     /*Table 3.12. Response Code Values associated with Op Code 0x02*/
-                    ble_svc_ras_cp_val[1]=0x01; // Success
-                    ble_svc_ras_cp_val[2]=0x00; /* Clear stale 3rd byte */
+                    ble_svc_ras_cp_val[1]=0x01; /* RASCP_OPCODE_ACK_RD (Request Op Code) */
+                    ble_svc_ras_cp_val[2]=0x01; /* Success */
                     ble_gatts_chr_updated(ble_svc_ras_cp_val_handle);
                     MODLOG_DFLT(INFO, "Successfully completed the Ranging procedure\n");
 
                     for (int i = 0; i < BLE_RAS_MAX_SUBEVENTS_PER_PROCEDURE; i++) {
-                        if (ranging_buffers[i].conn == conn_handle && ranging_buffers[i].isacked == false) {
+                        if (ranging_buffers[i].conn == conn_handle) {
                             ranging_buffers[i].conn = -1; /* Release buffer */
                             ranging_buffers[i].isacked = false;
                             ranging_buffers[i].isbusy = false;
                             ranging_buffers[i].isready = false;
                             ranging_buffers[i].ranging_counter = 0;
                             ranging_buffers[i].subevent_cursor = 0;
-                            break;
                         }
                     }
 
@@ -523,7 +522,11 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     buf->ranging_data.ranging_header.ranging_counter = ranging_subevent.subev_result.procedure_counter;
   //  buf->ranging_data.ranging_header.selected_tx_power = ranging_subevent.subev_result.selected_tx_power;
     uint8_t num_paths = ranging_subevent.subev_result.num_antenna_paths;
-    buf->ranging_data.ranging_header.antenna_paths_mask = (num_paths > 0) ? ((1 << num_paths) - 1) : 0;
+    if (num_paths > 4) {
+        MODLOG_DFLT(WARN, "Unexpected num_antenna_paths: %d, capping to 4\n", num_paths);
+        num_paths = 4;
+    }
+    buf->ranging_data.ranging_header.antenna_paths_mask = (num_paths > 0) ? ((1u << num_paths) - 1) : 0;
 
     uint16_t max_subevent_data = BLE_RAS_PROCEDURE_MEM - sizeof(struct ranging_header);
 

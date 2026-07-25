@@ -177,7 +177,7 @@ struct ble_iso_event {
          *     o BLE_ISO_EVENT_BIG_SYNC_TERMINATED
          */
         struct {
-            uint16_t big_handle;
+            uint8_t big_handle;
             uint8_t reason;
         } big_terminated;
 

@@ -141,8 +141,9 @@ ble_svc_lls_access(uint16_t conn_handle, uint16_t attr_handle,
  * function when a BLE_GAP_EVENT_DISCONNECT event is received and
  * pass the disconnect reason into this function.
  *
- * Here, we then check if the disconnect reason is due to a timout, and if
- * so, we call the ble_svc_lls_event_fn callback with the current
+ * Here, we check if the disconnect reason indicates an unintentional link
+ * loss (not an explicit termination by the local host or remote user),
+ * and if so, call the ble_svc_lls_event_fn callback with the current
  * alert level. The actual alert implementation is left up to the
  * developer.
  *
@@ -152,10 +153,10 @@ ble_svc_lls_access(uint16_t conn_handle, uint16_t attr_handle,
 void
 ble_svc_lls_on_gap_disconnect(int reason)
 {
-    if (reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_SPVN_TMO) ||
-        reason == BLE_HS_HCI_ERR(BLE_ERR_LMP_LL_RSP_TMO) ||
-        reason == BLE_HS_HCI_ERR(BLE_ERR_INSTANT_PASSED) ||
-        reason == BLE_HS_HCI_ERR(BLE_ERR_CONN_TERM_MIC)) {
+    if (reason != BLE_HS_HCI_ERR(BLE_ERR_REM_USER_CONN_TERM) &&
+        reason != BLE_HS_HCI_ERR(BLE_ERR_RD_CONN_TERM_RESRCS) &&
+        reason != BLE_HS_HCI_ERR(BLE_ERR_RD_CONN_TERM_PWROFF) &&
+        reason != BLE_HS_HCI_ERR(BLE_ERR_CONN_TERM_LOCAL)) {
         if (ble_svc_lls_cb_fn != NULL) {
             ble_svc_lls_cb_fn(ble_svc_lls_alert_level);
         }

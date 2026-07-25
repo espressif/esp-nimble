@@ -20,11 +20,13 @@
 #ifndef H_BLE_ISO_PRIV_
 #define H_BLE_ISO_PRIV_
 
+#include "syscfg/syscfg.h"
 #include "nimble/hci_common.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#if MYNEWT_VAL(BLE_ISO)
 void
 ble_iso_rx_create_big_complete(const struct ble_hci_ev_le_subev_create_big_complete *ev);
 
@@ -39,6 +41,7 @@ ble_iso_rx_big_sync_lost(const struct ble_hci_ev_le_subev_big_sync_lost *ev);
 
 int
 ble_iso_rx_data(struct os_mbuf *om, void *arg);
+#endif /* MYNEWT_VAL(BLE_ISO) */
 
 #ifdef __cplusplus
 }

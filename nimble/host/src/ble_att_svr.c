@@ -1205,7 +1205,6 @@ ble_att_svr_fill_type_value(uint16_t conn_handle,
     struct ble_att_svr_entry *ha;
     uint8_t buf[16];
     uint16_t attr_len;
-    uint16_t req_val_len;
     uint16_t first;
     uint16_t prev;
     int any_entries;
@@ -1214,11 +1213,6 @@ ble_att_svr_fill_type_value(uint16_t conn_handle,
     first = 0;
     prev = 0;
     rc = 0;
-    attr_om = NULL;
-
-    /* Length of the attribute value in the request. */
-    req_val_len = OS_MBUF_PKTLEN(rxom) -
-                  sizeof(struct ble_att_find_type_value_req);
 
     /* Iterate through the attribute list, keeping track of the current
      * matching group.  For each attribute entry, determine if data needs to be
@@ -1290,8 +1284,6 @@ ble_att_svr_fill_type_value(uint16_t conn_handle,
     }
 
 done:
-    os_mbuf_free_chain(attr_om);
-
     any_entries = OS_MBUF_PKTHDR(txom)->omp_len >
                   BLE_ATT_FIND_TYPE_VALUE_RSP_BASE_SZ;
     if (rc == 0 && !any_entries) {
@@ -1413,6 +1405,9 @@ static void ble_att_svr_make_conn_aware(uint16_t conn_handle) {
     conn->bhc_gatt_svr.half_aware = 1;
 
     ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_conn_aware_states != NULL)
+#endif
     for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
 	if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                     addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1435,6 +1430,9 @@ static bool ble_att_svr_check_conn_aware(uint16_t conn_handle) {
         conn->bhc_gatt_svr.aware_state = true;
 
         ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states != NULL)
+#endif
         for(int i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                       addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1467,10 +1465,9 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
     struct ble_att_read_type_rsp *rsp;
     struct ble_att_svr_entry *entry;
     struct os_mbuf *txom;
-    struct os_mbuf *attr_om;
     uint16_t attr_len;
-    uint16_t max_attr_len;
     uint16_t mtu;
+    uint8_t buf[19];
     int entry_written;
     int txomlen;
     int prev_attr_len;
@@ -1501,12 +1498,6 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
 
     mtu = ble_att_mtu_by_cid(conn_handle, cid);
 
-    /* Per Core Spec: max attribute value length is min(ATT_MTU - 4, 253). */
-    max_attr_len = mtu - 4;
-    if (max_attr_len > 253) {
-        max_attr_len = 253;
-    }
-
     /* Find all matching attributes, writing a record for each. */
     entry = NULL;
     while (1) {
@@ -1524,9 +1515,8 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
                 goto done;
             }
 
-            attr_len = OS_MBUF_PKTLEN(attr_om);
-            if (attr_len > max_attr_len) {
-                attr_len = max_attr_len;
+            if (attr_len > mtu - 4) {
+                attr_len = mtu - 4;
             }
 
             if (prev_attr_len == 0) {
@@ -1549,14 +1539,12 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
             }
 
             data->handle = htole16(entry->ha_handle_id);
-            os_mbuf_copydata(attr_om, 0, attr_len, data->value);
+            memcpy(data->value, buf, attr_len);
             entry_written = 1;
         }
     }
 
 done:
-    os_mbuf_free_chain(attr_om);
-
     if (!entry_written) {
         /* No matching attributes. */
         if (*att_err == 0) {
@@ -1649,6 +1637,9 @@ ble_att_svr_rx_read_type(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
         conn->bhc_gatt_svr.half_aware = 0;
 
         ble_hs_conn_addrs(conn, &addrs);
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_gatts_conn_aware_states != NULL)
+#endif
         for(i = 0; i < MYNEWT_VAL(BLE_STORE_MAX_BONDS); i++) {
             if(memcmp(ble_gatts_conn_aware_states[i].peer_id_addr,
                         addrs.peer_id_addr.val, sizeof addrs.peer_id_addr.val) == 0) {
@@ -1734,6 +1725,7 @@ ble_att_svr_rx_read(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     if (ble_att_cmd_prepare(BLE_ATT_OP_READ_RSP, 0, txom) == NULL) {
         att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1799,6 +1791,7 @@ ble_att_svr_rx_read_blob(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rx
     if (ble_att_cmd_prepare(BLE_ATT_OP_READ_BLOB_RSP, 0, txom) == NULL) {
         att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1840,6 +1833,7 @@ ble_att_svr_build_read_mult_rsp(uint16_t conn_handle, uint16_t cid,
         *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         *err_handle = 0;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1946,6 +1940,7 @@ ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
         *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         *err_handle = 0;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1989,13 +1984,17 @@ ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
         uint16_t le_len = htole16(tuple_len);
         rc = os_mbuf_append(txom, &le_len, sizeof(le_len));
         if (rc != 0) {
+            *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
             *err_handle = handle;
+            rc = BLE_HS_ENOMEM;
             goto done;
         }
         if (tuple_len != 0) {
             rc = os_mbuf_appendfrom(txom, tmp, 0, tuple_len);
             if (rc != 0) {
+                *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
                 *err_handle = handle;
+                rc = BLE_HS_ENOMEM;
                 goto done;
             }
             if (tuple_len != 0) {
@@ -2598,8 +2597,12 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Strip the signature from the end of the mbuf. */
     os_mbuf_adj(*rxom, -(BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ - BLE_ATT_SIGNED_WRITE_DATA_OFFSET));
 
+    /* Extract received sign counter from the signature bytes */
+    uint32_t received_sign_counter;
+    memcpy(&received_sign_counter, sign, sizeof(received_sign_counter));
+
     /* Authentication procedure */
-    len = OS_MBUF_PKTLEN(*rxom) + sizeof(value_sec.sign_counter) + 1;
+    len = OS_MBUF_PKTLEN(*rxom) + sizeof(received_sign_counter) + 1;
     message = nimble_platform_mem_calloc(1,len);
     if (message == NULL) {
         rc = BLE_HS_ENOMEM;
@@ -2608,7 +2611,7 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
 
     message[0] = BLE_ATT_OP_SIGNED_WRITE_CMD;
     os_mbuf_copydata(*rxom, 0, OS_MBUF_PKTLEN(*rxom), &message[1]);
-    memcpy(&message[1 + OS_MBUF_PKTLEN(*rxom)], &value_sec.sign_counter, sizeof(value_sec.sign_counter));
+    memcpy(&message[1 + OS_MBUF_PKTLEN(*rxom)], &received_sign_counter, sizeof(received_sign_counter));
 
     /* Converting message into little endian format */
     swap_in_place(message, len);
@@ -2626,12 +2629,10 @@ ble_att_svr_rx_signed_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf *
     /* Converting cmac to little endian */
     swap_in_place(cmac, sizeof cmac);
 
-    /* Extract received sign counter from the signature bytes */
-    uint32_t received_sign_counter;
-    memcpy(&received_sign_counter, sign, sizeof(received_sign_counter));
-
-    /* Comparing sign counter — received must be > stored to prevent replay attacks */
-    if (received_sign_counter <= value_sec.sign_counter) {
+    /* Comparing sign counter — received must be > stored to prevent replay
+     * attacks. UINT32_MAX means no signed message received yet. */
+    if (value_sec.sign_counter != UINT32_MAX &&
+        received_sign_counter <= value_sec.sign_counter) {
         rc = BLE_HS_EAUTHEN;
         goto err;
     }
@@ -3089,6 +3090,7 @@ ble_att_svr_rx_exec_write(uint16_t conn_handle, uint16_t cid, struct os_mbuf **r
     if (ble_att_cmd_prepare(BLE_ATT_OP_EXEC_WRITE_RSP, 0, txom) == NULL) {
         att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 

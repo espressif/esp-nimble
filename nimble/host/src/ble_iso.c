@@ -17,9 +17,15 @@
  * under the License.
  */
 
+#include <stdint.h>
+#include <string.h>
+
 #include "syscfg/syscfg.h"
 
 #if MYNEWT_VAL(BLE_ISO)
+_Static_assert(MYNEWT_VAL(BLE_TRANSPORT_ISO_SIZE) > 4,
+              "BLE_TRANSPORT_ISO_SIZE must be > 4 for ISO SDU header");
+
 #include "os/os_mbuf.h"
 #include "host/ble_hs_log.h"
 #include "host/ble_hs.h"
@@ -62,7 +68,7 @@ enum ble_iso_conn_type {
 
 struct ble_iso_big {
     SLIST_ENTRY(ble_iso_big) next;
-    uint8_t handle;
+    uint16_t handle;
     uint16_t max_pdu;
     uint8_t bis_cnt;
 
@@ -73,7 +79,7 @@ struct ble_iso_big {
 struct ble_iso_conn {
     SLIST_ENTRY(ble_iso_conn) next;
     enum ble_iso_conn_type type;
-    uint8_t handle;
+    uint16_t handle;
 
     struct ble_iso_rx_data_info rx_info;
     struct os_mbuf *rx_buf;
@@ -95,6 +101,18 @@ static os_membuf_t ble_iso_big_mem[
 static struct os_mempool ble_iso_bis_pool;
 static os_membuf_t ble_iso_bis_mem[
     OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_ISO_MAX_BISES), sizeof (struct ble_iso_bis))];
+
+static void
+ble_iso_broadcast_code_set(uint8_t *dst, const char *src)
+{
+    size_t code_len;
+
+    memset(dst, 0, 16);
+    if (src != NULL) {
+        code_len = strnlen(src, 16);
+        memcpy(dst, src, code_len);
+    }
+}
 
 static void
 ble_iso_conn_append(struct ble_iso_conn *conn)
@@ -119,7 +137,7 @@ ble_iso_big_handle_set(struct ble_iso_big *big)
     uint8_t i;
 
     /* Set next free handle */
-    for (i = BLE_HCI_ISO_BIG_HANDLE_MIN; i < BLE_HCI_ISO_BIG_HANDLE_MAX; i++) {
+    for (i = BLE_HCI_ISO_BIG_HANDLE_MIN; i <= BLE_HCI_ISO_BIG_HANDLE_MAX; i++) {
         struct ble_iso_big *node = NULL;
 
         if (free_handle > BLE_HCI_ISO_BIG_HANDLE_MAX) {
@@ -134,7 +152,7 @@ ble_iso_big_handle_set(struct ble_iso_big *big)
             }
         }
 
-        if (node == NULL || node->handle != big->handle) {
+        if (node == NULL) {
             return 0;
         }
     }
@@ -209,12 +227,13 @@ static int
 ble_iso_big_free(struct ble_iso_big *big)
 {
     struct ble_iso_conn *conn;
+    struct ble_iso_conn *conn_tmp;
     struct ble_iso_bis *rem_bis[MYNEWT_VAL(BLE_ISO_MAX_BISES)] = {
         [0 ... MYNEWT_VAL(BLE_ISO_MAX_BISES) - 1] = NULL
     };
     uint8_t i = 0;
 
-    SLIST_FOREACH(conn, &ble_iso_conns, next) {
+    SLIST_FOREACH_SAFE(conn, &ble_iso_conns, next, conn_tmp) {
         struct ble_iso_bis *bis;
 
         if (conn->type != BLE_ISO_CONN_BIS) {
@@ -223,6 +242,11 @@ ble_iso_big_free(struct ble_iso_big *big)
 
         bis = CONTAINER_OF(conn, struct ble_iso_bis, conn);
         if (bis->big == big) {
+            if (conn->rx_buf != NULL) {
+                os_mbuf_free_chain(conn->rx_buf);
+                conn->rx_buf = NULL;
+                memset(&conn->rx_info, 0, sizeof(conn->rx_info));
+            }
             SLIST_REMOVE(&ble_iso_conns, conn, ble_iso_conn, next);
             rem_bis[i++] = bis;
         }
@@ -261,8 +285,7 @@ ble_iso_create_big(const struct ble_iso_create_big_params *create_params,
     struct ble_iso_big *big;
     int rc;
 
-    cp.adv_handle = create_params->adv_handle;
-    if (create_params->bis_cnt > MYNEWT_VAL(BLE_ISO_MAX_BISES)) {
+    if (create_params->bis_cnt == 0 || create_params->bis_cnt > MYNEWT_VAL(BLE_ISO_MAX_BISES)) {
         return BLE_HS_EINVAL;
     }
 
@@ -285,18 +308,23 @@ ble_iso_create_big(const struct ble_iso_create_big_params *create_params,
         }
     }
 
+    cp.big_handle = big->handle;
     cp.adv_handle = create_params->adv_handle;
     cp.num_bis = create_params->bis_cnt;
     put_le24(cp.sdu_interval, big_params->sdu_interval);
-    cp.max_sdu = big_params->max_sdu;
-    cp.max_transport_latency = big_params->max_transport_latency;
+    cp.max_sdu = htole16(big_params->max_sdu);
+    cp.max_transport_latency = htole16(big_params->max_transport_latency);
     cp.rtn = big_params->rtn;
     cp.phy = big_params->phy;
     cp.packing = big_params->packing;
     cp.framing = big_params->framing;
     cp.encryption = big_params->encryption;
     if (big_params->encryption) {
-        memcpy(cp.broadcast_code, big_params->broadcast_code, 16);
+        if (big_params->broadcast_code == NULL) {
+            ble_iso_big_free(big);
+            return BLE_HS_EINVAL;
+        }
+        ble_iso_broadcast_code_set(cp.broadcast_code, big_params->broadcast_code);
     }
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
@@ -339,6 +367,8 @@ ble_iso_rx_create_big_complete(const struct ble_hci_ev_le_subev_create_big_compl
 {
     struct ble_iso_event event;
     struct ble_iso_big *big;
+    ble_iso_event_fn *cb;
+    void *cb_arg;
 
     big = ble_iso_big_find_by_handle(ev->big_handle);
     if (big == NULL) {
@@ -346,9 +376,13 @@ ble_iso_rx_create_big_complete(const struct ble_hci_ev_le_subev_create_big_compl
         return;
     }
 
+    cb = big->cb;
+    cb_arg = big->cb_arg;
+
     memset(&event, 0, sizeof(event));
     event.type = BLE_ISO_EVENT_BIG_CREATE_COMPLETE;
     event.big_created.status = ev->status;
+    event.big_created.desc.big_handle = ev->big_handle;
 
     if (event.big_created.status != 0) {
         ble_iso_big_free(big);
@@ -356,14 +390,13 @@ ble_iso_rx_create_big_complete(const struct ble_hci_ev_le_subev_create_big_compl
         if (big->bis_cnt != ev->num_bis) {
             BLE_HS_LOG_ERROR("Unexpected num_bis=%d != bis_cnt=%d\n",
                              ev->num_bis, big->bis_cnt);
-            /* XXX: Should we destroy the group? */
         }
 
-        ble_iso_big_conn_handles_init(big, ev->conn_handle, ev->num_bis);
+        ble_iso_big_conn_handles_init(big, ev->conn_handle,
+                                      min(big->bis_cnt, ev->num_bis));
 
-        big->max_pdu = ev->max_pdu;
+        big->max_pdu = le16toh(ev->max_pdu);
 
-        event.big_created.desc.big_handle = ev->big_handle;
         event.big_created.desc.big_sync_delay = get_le24(ev->big_sync_delay);
         event.big_created.desc.transport_latency_big =
             get_le24(ev->transport_latency_big);
@@ -371,16 +404,18 @@ ble_iso_rx_create_big_complete(const struct ble_hci_ev_le_subev_create_big_compl
         event.big_created.desc.bn = ev->bn;
         event.big_created.desc.pto = ev->pto;
         event.big_created.desc.irc = ev->irc;
-        event.big_created.desc.max_pdu = ev->max_pdu;
-        event.big_created.desc.iso_interval = ev->iso_interval;
-        event.big_created.desc.num_bis = ev->num_bis;
-        memcpy(event.big_created.desc.conn_handle, ev->conn_handle,
-               ev->num_bis * sizeof(uint16_t));
+        event.big_created.desc.max_pdu = le16toh(ev->max_pdu);
+        event.big_created.desc.iso_interval = le16toh(ev->iso_interval);
+        event.big_created.desc.num_bis = min(big->bis_cnt, ev->num_bis);
+        for (uint8_t i = 0; i < event.big_created.desc.num_bis; i++) {
+            event.big_created.desc.conn_handle[i] =
+                le16toh(ev->conn_handle[i]);
+        }
         event.big_created.phy = ev->phy;
     }
 
-    if (big->cb != NULL) {
-        big->cb(&event, big->cb_arg);
+    if (cb != NULL) {
+        cb(&event, cb_arg);
     }
 }
 
@@ -396,15 +431,18 @@ ble_iso_rx_terminate_big_complete(const struct ble_hci_ev_le_subev_terminate_big
         return;
     }
 
+    ble_iso_event_fn *cb = big->cb;
+    void *cb_arg = big->cb_arg;
+
     event.type = BLE_ISO_EVENT_BIG_TERMINATE_COMPLETE;
     event.big_terminated.big_handle = ev->big_handle;
     event.big_terminated.reason = ev->reason;
 
-    if (big->cb != NULL) {
-        big->cb(&event, big->cb_arg);
-    }
-
     ble_iso_big_free(big);
+
+    if (cb != NULL) {
+        cb(&event, cb_arg);
+    }
 }
 
 static int
@@ -419,7 +457,10 @@ ble_iso_tx_complete(uint16_t conn_handle, const uint8_t *data,
         return BLE_HS_ENOMEM;
     }
 
-    os_mbuf_extend(om, 8);
+    if (os_mbuf_extend(om, 8) == NULL) {
+        os_mbuf_free_chain(om);
+        return BLE_HS_ENOMEM;
+    }
     /* Connection_Handle, PB_Flag, TS_Flag */
     put_le16(&om->om_data[0],
              BLE_HCI_ISO_HANDLE(conn_handle, BLE_HCI_ISO_PB_COMPLETE, 0));
@@ -428,11 +469,12 @@ ble_iso_tx_complete(uint16_t conn_handle, const uint8_t *data,
     /* Packet_Sequence_Number placeholder */
     put_le16(&om->om_data[4], 0);
     /* ISO_SDU_Length */
-    put_le16(&om->om_data[6], data_len);
+    put_le16(&om->om_data[6], data_len & BLE_HCI_ISO_SDU_LENGTH_MASK);
 
     rc = os_mbuf_append(om, data, data_len);
     if (rc) {
-        return rc;
+        os_mbuf_free_chain(om);
+        return BLE_HS_ENOMEM;
     }
 
     return ble_transport_to_ll_iso(om);
@@ -450,13 +492,16 @@ ble_iso_tx_segmented(uint16_t conn_handle, const uint8_t *data,
     int rc;
 
     while (data_left) {
-        packet_len = min(MYNEWT_VAL(BLE_TRANSPORT_ISO_SIZE), data_left);
         if (data_left == data_len) {
             pb = BLE_HCI_ISO_PB_FIRST;
-        } else if (packet_len == data_left) {
-            pb = BLE_HCI_ISO_PB_LAST;
+            packet_len = min(MYNEWT_VAL(BLE_TRANSPORT_ISO_SIZE) - 4, data_left);
         } else {
-            pb = BLE_HCI_ISO_PB_CONTINUATION;
+            packet_len = min(MYNEWT_VAL(BLE_TRANSPORT_ISO_SIZE), data_left);
+            if (packet_len == data_left) {
+                pb = BLE_HCI_ISO_PB_LAST;
+            } else {
+                pb = BLE_HCI_ISO_PB_CONTINUATION;
+            }
         }
 
         om = ble_hs_mbuf_bare_pkt();
@@ -464,7 +509,10 @@ ble_iso_tx_segmented(uint16_t conn_handle, const uint8_t *data,
             return BLE_HS_ENOMEM;
         }
 
-        os_mbuf_extend(om, pb == BLE_HCI_ISO_PB_FIRST ? 8: 4);
+        if (os_mbuf_extend(om, pb == BLE_HCI_ISO_PB_FIRST ? 8 : 4) == NULL) {
+            os_mbuf_free_chain(om);
+            return BLE_HS_ENOMEM;
+        }
 
         /* Connection_Handle, PB_Flag, TS_Flag */
         put_le16(&om->om_data[0],
@@ -476,20 +524,24 @@ ble_iso_tx_segmented(uint16_t conn_handle, const uint8_t *data,
             put_le16(&om->om_data[2], packet_len + 4);
 
             /* Packet_Sequence_Number placeholder */
-            put_le16(&om->om_data[8], 0);
+            put_le16(&om->om_data[4], 0);
 
-            /* ISO_SDU_Length */
-            put_le16(&om->om_data[10], packet_len);
+            /* ISO_SDU_Length: must be total SDU length, not fragment length (BT Spec 5.4.5) */
+            put_le16(&om->om_data[6], data_len & BLE_HCI_ISO_SDU_LENGTH_MASK);
         } else {
             put_le16(&om->om_data[2], packet_len);
         }
 
         rc = os_mbuf_append(om, data + offset, packet_len);
         if (rc) {
-            return rc;
+            os_mbuf_free_chain(om);
+            return BLE_HS_ENOMEM;
         }
 
-        ble_transport_to_ll_iso(om);
+        rc = ble_transport_to_ll_iso(om);
+        if (rc != 0) {
+            return rc;
+        }
 
         offset += packet_len;
         data_left -= packet_len;
@@ -503,7 +555,11 @@ ble_iso_tx(uint16_t conn_handle, void *data, uint16_t data_len)
 {
     int rc;
 
-    if (data_len <= MYNEWT_VAL(BLE_TRANSPORT_ISO_SIZE)) {
+    if (data_len > BLE_HCI_ISO_SDU_LENGTH_MASK) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (data_len <= MYNEWT_VAL(BLE_TRANSPORT_ISO_SIZE) - 4) {
         rc = ble_iso_tx_complete(conn_handle, data, data_len);
     } else {
         rc = ble_iso_tx_segmented(conn_handle, data, data_len);
@@ -523,6 +579,10 @@ ble_iso_big_sync_create(const struct ble_iso_big_sync_create_params *param,
     struct ble_iso_big *big;
     int rc;
 
+    if (param->bis_cnt == 0 || param->bis_cnt > MYNEWT_VAL(BLE_ISO_MAX_BISES)) {
+        return BLE_HS_EINVAL;
+    }
+
     big = ble_iso_big_alloc();
     if (big == NULL) {
         return BLE_HS_ENOMEM;
@@ -538,7 +598,7 @@ ble_iso_big_sync_create(const struct ble_iso_big_sync_create_params *param,
 
     if (param->broadcast_code != NULL) {
         cp->encryption = BLE_HCI_ISO_BIG_ENCRYPTION_ENCRYPTED;
-        memcpy(cp->broadcast_code, param->broadcast_code, sizeof(cp->broadcast_code));
+        ble_iso_broadcast_code_set(cp->broadcast_code, param->broadcast_code);
     } else {
         cp->encryption = BLE_HCI_ISO_BIG_ENCRYPTION_UNENCRYPTED;
         memset(cp->broadcast_code, 0, sizeof(cp->broadcast_code));
@@ -632,6 +692,7 @@ ble_iso_rx_big_sync_established(const struct ble_hci_ev_le_subev_big_sync_establ
     memset(&event, 0, sizeof(event));
     event.type = BLE_ISO_EVENT_BIG_SYNC_ESTABLISHED;
     event.big_sync_established.status = ev->status;
+    event.big_sync_established.desc.big_handle = ev->big_handle;
 
     if (event.big_sync_established.status != 0) {
         ble_iso_big_free(big);
@@ -639,12 +700,13 @@ ble_iso_rx_big_sync_established(const struct ble_hci_ev_le_subev_big_sync_establ
         if (big->bis_cnt != ev->num_bis) {
             BLE_HS_LOG_ERROR("Unexpected num_bis=%d != bis_cnt=%d\n",
                              ev->num_bis, big->bis_cnt);
-            /* XXX: Should we destroy the group? */
         }
 
-        ble_iso_big_conn_handles_init(big, ev->conn_handle, ev->num_bis);
+        ble_iso_big_conn_handles_init(big, ev->conn_handle,
+                                      min(big->bis_cnt, ev->num_bis));
 
-        event.big_sync_established.desc.big_handle = ev->big_handle;
+        big->max_pdu = le16toh(ev->max_pdu);
+
         event.big_sync_established.desc.transport_latency_big =
             get_le24(ev->transport_latency_big);
         event.big_sync_established.desc.nse = ev->nse;
@@ -653,9 +715,11 @@ ble_iso_rx_big_sync_established(const struct ble_hci_ev_le_subev_big_sync_establ
         event.big_sync_established.desc.irc = ev->irc;
         event.big_sync_established.desc.max_pdu = le16toh(ev->max_pdu);
         event.big_sync_established.desc.iso_interval = le16toh(ev->iso_interval);
-        event.big_sync_established.desc.num_bis = ev->num_bis;
-        memcpy(event.big_sync_established.desc.conn_handle, ev->conn_handle,
-               ev->num_bis * sizeof(uint16_t));
+        event.big_sync_established.desc.num_bis = min(big->bis_cnt, ev->num_bis);
+        for (uint8_t i = 0; i < event.big_sync_established.desc.num_bis; i++) {
+            event.big_sync_established.desc.conn_handle[i] =
+                le16toh(ev->conn_handle[i]);
+        }
     }
 
     if (cb != NULL) {
@@ -754,6 +818,9 @@ ble_iso_event_iso_rx_emit(struct ble_iso_conn *conn)
 
     if (conn->cb != NULL) {
         conn->cb(&event, conn->cb_arg);
+    } else {
+        os_mbuf_free_chain(conn->rx_buf);
+        conn->rx_buf = NULL;
     }
 }
 
@@ -849,7 +916,7 @@ ble_iso_rx_data(struct os_mbuf *om, void *arg)
     if (conn == NULL) {
         BLE_HS_LOG_DEBUG("Unknown handle=%d\n", conn_handle);
         os_mbuf_free_chain(om);
-        return BLE_HS_EMSGSIZE;
+        return BLE_HS_ENOTCONN;
     }
 
     rc = ble_iso_conn_rx_data_load(conn, om, pb_flag, ts_flag > 0, arg);
@@ -882,41 +949,51 @@ ble_iso_data_path_setup(const struct ble_iso_data_path_setup_params *param)
         return BLE_HS_EINVAL;
     }
 
-    cp = (void *)buf;
-    put_le16(&cp->conn_handle, param->conn_handle);
-    cp->data_path_dir = 0;
-
-    if (param->data_path_dir & BLE_ISO_DATA_DIR_TX) {
-        /* Input (Host to Controller) */
-        cp->data_path_dir |= BLE_HCI_ISO_DATA_PATH_DIR_INPUT;
+    if (param->codec_config_len > UINT8_MAX - sizeof(*cp)) {
+        return BLE_HS_EINVAL;
     }
 
-    if (param->data_path_dir & BLE_ISO_DATA_DIR_RX) {
+    cp = (void *)buf;
+    put_le16(&cp->conn_handle, param->conn_handle);
+    cp->data_path_id = param->data_path_id;
+
+    if (param->data_path_dir == BLE_ISO_DATA_DIR_TX) {
+        /* Input (Host to Controller) */
+        cp->data_path_dir = BLE_HCI_ISO_DATA_PATH_DIR_INPUT;
+    } else if (param->data_path_dir == BLE_ISO_DATA_DIR_RX) {
         /* Output (Controller to Host) */
-        cp->data_path_dir |= BLE_HCI_ISO_DATA_PATH_DIR_OUTPUT;
+        cp->data_path_dir = BLE_HCI_ISO_DATA_PATH_DIR_OUTPUT;
 
         if (cp->data_path_id == BLE_HCI_ISO_DATA_PATH_ID_HCI && param->cb == NULL) {
             BLE_HS_LOG_ERROR("param->cb is NULL\n");
             return BLE_HS_EINVAL;
         }
-
-        conn->cb = param->cb;
-        conn->cb_arg = param->cb_arg;
+    } else {
+        return BLE_HS_EINVAL;
     }
 
-    cp->data_path_id = param->data_path_id;
     cp->codec_id[0] = param->codec_id.format;
     put_le16(&cp->codec_id[1], param->codec_id.company_id);
     put_le16(&cp->codec_id[3], param->codec_id.vendor_specific);
+    if (param->ctrl_delay > 0xFFFFFFUL) {
+        return BLE_HS_EINVAL;
+    }
     put_le24(cp->controller_delay, param->ctrl_delay);
 
     cp->codec_config_len = param->codec_config_len;
-    memcpy(cp->codec_config, param->codec_config, cp->codec_config_len);
+    if (cp->codec_config_len > 0) {
+        memcpy(cp->codec_config, param->codec_config, cp->codec_config_len);
+    }
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_SETUP_ISO_DATA_PATH),
                            cp, sizeof(*cp) + cp->codec_config_len, &rp,
                            sizeof(rp));
+
+    if (rc == 0 && param->data_path_dir == BLE_ISO_DATA_DIR_RX) {
+        conn->cb = param->cb;
+        conn->cb_arg = param->cb_arg;
+    }
 
     return rc;
 }
@@ -937,22 +1014,33 @@ ble_iso_data_path_remove(const struct ble_iso_data_path_remove_params *param)
 
     put_le16(&cp.conn_handle, param->conn_handle);
 
-    if (param->data_path_dir & BLE_ISO_DATA_DIR_TX) {
-        /* Input (Host to Controller) */
-        cp.data_path_dir |= BLE_HCI_ISO_DATA_PATH_DIR_INPUT;
+    if (param->data_path_dir == BLE_ISO_DATA_DIR_TX) {
+        /* Remove Input path (Host to Controller) */
+        cp.data_path_dir |= BLE_HCI_ISO_REMOVE_DATA_PATH_INPUT;
     }
 
-    if (param->data_path_dir & BLE_ISO_DATA_DIR_RX) {
-        /* Output (Controller to Host) */
-        cp.data_path_dir |= BLE_HCI_ISO_DATA_PATH_DIR_OUTPUT;
+    if (param->data_path_dir == BLE_ISO_DATA_DIR_RX) {
+        /* Remove Output path (Controller to Host) */
+        cp.data_path_dir |= BLE_HCI_ISO_REMOVE_DATA_PATH_OUTPUT;
+    }
 
-        conn->cb = NULL;
-        conn->cb_arg = NULL;
+    if (cp.data_path_dir == 0) {
+        return BLE_HS_EINVAL;
     }
 
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_REMOVE_ISO_DATA_PATH),
                            &cp, sizeof(cp), &rp, sizeof(rp));
+
+    if (rc == 0 && (param->data_path_dir == BLE_ISO_DATA_DIR_RX)) {
+        if (conn->rx_buf != NULL) {
+            os_mbuf_free_chain(conn->rx_buf);
+            conn->rx_buf = NULL;
+            memset(&conn->rx_info, 0, sizeof(conn->rx_info));
+        }
+        conn->cb = NULL;
+        conn->cb_arg = NULL;
+    }
 
     return rc;
 }
@@ -963,6 +1051,7 @@ ble_iso_init(void)
     int rc;
 
     SLIST_INIT(&ble_iso_bigs);
+    SLIST_INIT(&ble_iso_conns);
 
     rc = os_mempool_init(&ble_iso_big_pool,
                          MYNEWT_VAL(BLE_ISO_MAX_BIGS),

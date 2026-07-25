@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -17,29 +17,20 @@
  * under the License.
  */
 
-#ifndef H_BLE_SVC_CTE_
-#define H_BLE_SVC_CTE_
+#ifndef __LOG_H__
+#define __LOG_H__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct ble_hs_cfg;
-
-#define BLE_SVC_CTE_UUID16                                      0x184A
-#define BLE_SVC_CTE_CHR_UUID16_ENABLE                           0x2BAD
-#define BLE_SVC_CTE_CHR_UUID16_MINIMUM_LENGTH                   0x2BAE
-#define BLE_SVC_CTE_CHR_UUID16_MINIMUM_TRANSMIT_COUNT           0x2BAF
-#define BLE_SVC_CTE_CHR_UUID16_TRANSMIT_DURATION                0x2BB0
-#define BLE_SVC_CTE_CHR_UUID16_INTERVAL                         0x2BB1
-#define BLE_SVC_CTE_CHR_UUID16_PHY                              0x2BB2
-
-
-void ble_svc_cte_init(void);
-void ble_svc_cte_deinit(void);
+#ifndef ESP_PLATFORM
+struct log {
+};
+#endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* __LOG_H__ */
