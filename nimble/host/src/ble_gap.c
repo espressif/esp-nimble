@@ -28,6 +28,7 @@
 #include "ble_hs_periodic_sync_priv.h"
 #include "ble_gap_priv.h"
 #include "ble_hs_resolv_priv.h"
+#include "ble_sm_priv.h"
 #include "ble_hs_pvcy_priv.h"
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
 #include "ble_att_priv.h"
@@ -1272,6 +1273,7 @@ static void ble_gap_notify_conn_event(uint16_t conn_handle,
 static enum ble_gap_defer_result
 ble_gap_defer_event(uint16_t conn_handle, const struct ble_gap_event *event,
                     const struct ble_gap_defer_meta *meta);
+static bool ble_gap_connect_delivered(uint16_t conn_handle);
 static void ble_gap_mark_connect_delivered(uint16_t conn_handle);
 
 static bool
@@ -1391,6 +1393,9 @@ ble_gap_notify_conn_event(uint16_t conn_handle, struct ble_gap_event *event)
         BLE_HS_LOG(ERROR,
                    "ble_gap_notify_conn_event: defer failed; type=%d conn=%u\n",
                    event->type, conn_handle);
+        if (!ble_gap_connect_delivered(conn_handle)) {
+            return;
+        }
         ble_gap_event_listener_call(event);
         ble_gap_call_conn_event_cb(event, conn_handle);
         break;
@@ -1569,6 +1574,20 @@ ble_gap_mark_connect_delivered(uint16_t conn_handle)
         conn->bhc_connect_delivered = 1;
     }
     ble_hs_unlock();
+}
+
+static bool
+ble_gap_connect_delivered(uint16_t conn_handle)
+{
+    struct ble_hs_conn *conn;
+    bool delivered;
+
+    ble_hs_lock();
+    conn = ble_hs_conn_find(conn_handle);
+    delivered = conn != NULL && conn->bhc_connect_delivered;
+    ble_hs_unlock();
+
+    return delivered;
 }
 
 void
@@ -10722,9 +10741,20 @@ ble_gap_rx_param_req(const struct ble_hci_ev_le_subev_rem_conn_param_req *ev)
                 BLE_HS_LOG(ERROR,
                            "ble_gap_rx_param_req: defer failed; conn=%u\n",
                            conn_handle);
+                if (!ble_gap_connect_delivered(conn_handle)) {
+                    rc = ble_gap_tx_param_neg_reply(conn_handle,
+                                                    BLE_ERR_CONN_PARMS);
+                    if (rc != 0) {
+                        BLE_HS_LOG(ERROR,
+                                   "ble_gap_rx_param_req: negative reply "
+                                   "failed; conn=%u rc=%d\n",
+                                   conn_handle, rc);
+                    }
+                    return;
+                }
             }
 
-            /* NOT_NEEDED or FAILED: fall through to the normal path. */
+            /* NOT_NEEDED, or FAILED after CONNECT was delivered: normal path. */
         }
     }
 #endif
@@ -11491,6 +11521,16 @@ ble_gap_passkey_event(uint16_t conn_handle,
         BLE_HS_LOG(ERROR,
                    "ble_gap_passkey_event: defer failed; conn=%u\n",
                    conn_handle);
+        if (!ble_gap_connect_delivered(conn_handle)) {
+            struct ble_sm_result res;
+
+            memset(&res, 0, sizeof res);
+            res.sm_err = BLE_SM_ERR_UNSPECIFIED;
+            res.app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_UNSPECIFIED);
+            res.enc_cb = 1;
+            ble_sm_process_result(conn_handle, &res, true);
+            return;
+        }
         ble_gap_call_conn_event_cb(&event, conn_handle);
         break;
     }
@@ -11529,6 +11569,11 @@ ble_gap_enc_event(uint16_t conn_handle, int status,
             BLE_HS_LOG(ERROR,
                        "ble_gap_enc_event: defer failed; conn=%u status=%d\n",
                        conn_handle, status);
+            if (!ble_gap_connect_delivered(conn_handle)) {
+                ble_gap_enc_side_effects(conn_handle, status,
+                                         security_restored, bonded);
+                return;
+            }
             break;
         }
     }
@@ -11654,6 +11699,9 @@ ble_gap_pairing_complete_event(uint16_t conn_handle, int status)
         BLE_HS_LOG(ERROR,
                    "ble_gap_pairing_complete_event: defer failed; conn=%u\n",
                    conn_handle);
+        if (!ble_gap_connect_delivered(conn_handle)) {
+            return;
+        }
         ble_gap_call_conn_event_cb(&event, conn_handle);
         break;
     }
@@ -11689,6 +11737,9 @@ ble_gap_assoc_event(uint16_t conn_handle, int status, uint8_t cache_state)
         BLE_HS_LOG(ERROR,
                    "ble_gap_assoc_event: defer failed; conn=%u\n",
                    conn_handle);
+        if (!ble_gap_connect_delivered(conn_handle)) {
+            return;
+        }
         ble_gap_call_conn_event_cb(&event, conn_handle);
         break;
     }
@@ -11765,6 +11816,10 @@ ble_gap_notify_rx_event(uint16_t conn_handle, uint16_t attr_handle,
             BLE_HS_LOG(ERROR,
                        "ble_gap_notify_rx_event: defer failed; conn=%u\n",
                        conn_handle);
+            if (!ble_gap_connect_delivered(conn_handle)) {
+                os_mbuf_free_chain(event.notify_rx.om);
+                return;
+            }
         }
     }
 #endif
