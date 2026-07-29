@@ -314,14 +314,16 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
 #if NIMBLE_BLE_CONNECT
 
     int rc;
+    int valid_peer_addr;
+
+    valid_peer_addr = ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY);
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) && MYNEWT_VAL(BLE_HS_PVCY)
     struct ble_store_key_sec key_sec;
     struct ble_store_value_sec old_sec;
     int replace_entry;
 
     replace_entry = 0;
-    if (ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY) &&
-        value_sec->irk_present) {
+    if (valid_peer_addr && value_sec->irk_present) {
         memset(&key_sec, 0, sizeof key_sec);
         key_sec.peer_addr = value_sec->peer_addr;
         rc = ble_store_read_peer_sec(&key_sec, &old_sec);
@@ -334,19 +336,20 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
         return rc;
     }
 
-    if (ble_addr_cmp(&value_sec->peer_addr, BLE_ADDR_ANY) &&
-        value_sec->irk_present) {
+    if (valid_peer_addr && value_sec->irk_present) {
 #if MYNEWT_VAL(BLE_HS_PVCY)
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
-        /* Do not update the controller resolving list while this peer is still
-         * connected. The bond is already persisted for the current link, and
-         * some controllers reject LE Add Device To Resolving List in this
-         * state even when GAP is preempted.
+        /* Defer the controller resolving-list update only until the CONNECT
+         * event has been delivered. Once the application knows about the
+         * connection, resolving-list setup must proceed so scanning can use
+         * the newly exchanged IRK while the connection remains active.
          */
 #if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
         ble_hs_lock();
         struct ble_hs_conn *conn = ble_hs_conn_find_by_addr(&value_sec->peer_addr);
-        if (conn != NULL) {
+        if (conn != NULL && !conn->bhc_connect_delivered) {
+            BLE_HS_LOG(INFO, "PVCY: deferring controller resolving-list add "
+                       "until CONNECT is delivered\n");
             conn->bhc_deferred_pvcy_add = 1;
             conn->bhc_deferred_pvcy_replace = replace_entry;
             conn->bhc_deferred_pvcy_addr = value_sec->peer_addr;
