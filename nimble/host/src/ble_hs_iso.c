@@ -226,7 +226,6 @@ ble_hs_hci_iso_tx_now(uint16_t conn_handle, const uint8_t *sdu, uint16_t sdu_len
      */
     rc = ble_hci_trans_hs_iso_tx(frag, BLE_HCI_ISO_DATA_HDR_SZ + dlh_len + sdu_len, NULL);
     if (rc) {
-        nimble_platform_mem_free(frag);
         return BLE_HS_ECONTROLLER;
     }
 
