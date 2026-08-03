@@ -823,6 +823,36 @@ ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
 
 
 #if NIMBLE_BLE_CONNECT
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+static bool
+ble_hs_hci_evt_pawr_slave_conn(struct ble_gap_conn_complete *evt)
+{
+    struct ble_hs_periodic_sync *psync;
+
+    if (evt->role != BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
+        return false;
+    }
+
+    ble_hs_lock();
+    /*
+     * Some controllers report a PAwR peripheral connection using the
+     * legacy enhanced connection-complete event.  That event has no
+     * PAwR handles and is not followed by Advertising Set Terminated.
+     * Associate it with an active PAwR sync only — regular periodic
+     * syncs share the same list and must not short-circuit the normal
+     * pending-connection / Advertising Set Terminated path.
+     */
+    psync = ble_hs_periodic_sync_find_pawr_locked();
+    if (psync != NULL) {
+        evt->adv_handle = 0;
+        evt->sync_handle = psync->sync_handle;
+    }
+    ble_hs_unlock();
+
+    return psync != NULL;
+}
+#endif
+
 static int
 ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
                                     unsigned int len)
@@ -899,6 +929,12 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
         if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE)
 #endif
         {
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+            if (evt.status == BLE_ERR_SUCCESS &&
+                ble_hs_hci_evt_pawr_slave_conn(&evt)) {
+                return ble_gap_rx_conn_complete(&evt, 0);
+            }
+#endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
             if (ble_hs_hci_ensure_ctx()) {
                 BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
@@ -989,6 +1025,12 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (evt.status == BLE_ERR_SUCCESS &&
+            ble_hs_hci_evt_pawr_slave_conn(&evt)) {
+            return ble_gap_rx_conn_complete(&evt, 0);
+        }
+#endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_hs_hci_ensure_ctx()) {
              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);

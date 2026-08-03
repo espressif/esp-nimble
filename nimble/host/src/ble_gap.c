@@ -3507,6 +3507,7 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
         event.periodic_sync.adv_clk_accuracy = ev->aca;
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
         if (subevent == BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_ESTAB_V2) {
+            ble_gap_sync.psync->num_subevents = ev->num_subevents;
             event.periodic_sync.num_subevents = ev->num_subevents;
             event.periodic_sync.subevent_interval = ev->subevent_interval;
             event.periodic_sync.response_slot_delay = ev->response_slot_delay;
@@ -3932,6 +3933,11 @@ ble_gap_rx_periodic_adv_sync_transfer(
         conn->psync->adv_sid = ev->sid;
         memcpy(conn->psync->advertiser_addr.val, ev->peer_addr, 6);
         conn->psync->advertiser_addr.type = ev->peer_addr_type;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (subevent == BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_TRANSFER_V2) {
+            conn->psync->num_subevents = ev->num_subevents;
+        }
+#endif
         ble_hs_periodic_sync_insert(conn->psync);
     }
 
@@ -4119,7 +4125,12 @@ ble_gap_rx_conn_comp_failed(const struct ble_gap_conn_complete *evt)
     event_link_estab.link_estab.sync_handle = evt->sync_handle;
     event_link_estab.link_estab.adv_handle = evt->adv_handle;
 
-    ble_gap_master_reset_state();
+    /*
+     * Peripheral-only failure path (PAwR sync or local advertising). Do not
+     * touch ble_gap_master: a bare reset would silently drop a concurrent
+     * master connect/scan without callback. Central failures are handled by
+     * ble_gap_master_connect_failure() in ble_gap_rx_conn_complete.
+     */
 
     cb = NULL;
     cb_arg = NULL;
@@ -4170,6 +4181,46 @@ ble_gap_rd_rem_ver_tx(uint16_t handle)
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LINK_CTRL,
                                         BLE_HCI_OCF_RD_REM_VER_INFO),
                              &cmd, sizeof(cmd), NULL, 0);
+}
+#endif
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) && NIMBLE_BLE_CONNECT
+/**
+ * Determines the local address type used for a PAwR peripheral connection.
+ *
+ * Such a link is established by the controller through the periodic sync, so
+ * no advertising instance describes it; the controller uses our identity
+ * address, or an RPA generated from it.
+ */
+static int
+ble_gap_pawr_conn_our_addr(const struct ble_gap_conn_complete *evt,
+                           uint8_t *out_own_addr_type,
+                           uint8_t *out_random_addr)
+{
+    uint8_t own_addr_type;
+    int privacy;
+    int rc;
+
+    privacy = memcmp(evt->local_rpa, BLE_ADDR_ANY->val, 6) != 0;
+
+    rc = ble_hs_id_infer_auto(privacy, &own_addr_type);
+    if (rc != 0) {
+        return rc;
+    }
+
+#if MYNEWT_VAL(BLE_EXT_ADV)
+    if (ble_hs_misc_own_addr_type_to_id(own_addr_type) == BLE_ADDR_RANDOM) {
+        rc = ble_hs_id_copy_addr(BLE_ADDR_RANDOM, out_random_addr, NULL);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+#else
+    (void)out_random_addr;
+#endif
+
+    *out_own_addr_type = own_addr_type;
+    return 0;
 }
 #endif
 
@@ -4276,6 +4327,13 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         break;
 
     case BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE:
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (evt->sync_handle != 0xFFFF) {
+            /* PAwR peripheral links are accepted by the controller through
+             * the synchronized connection procedure, not local advertising. */
+            rc = 0;
+        } else
+#endif
         rc = ble_gap_accept_slave_conn(instance);
         if (rc != 0) {
             return rc;
@@ -4309,7 +4367,26 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         if (!v1_evt && evt->sync_handle != 0xFFFF) {
             /* PAwR peripheral: application callback is on the periodic sync. */
             struct ble_hs_periodic_sync *psync;
+            uint8_t own_addr_type;
+#if MYNEWT_VAL(BLE_EXT_ADV)
+            uint8_t random_addr[BLE_DEV_ADDR_LEN];
+#endif
 
+#if MYNEWT_VAL(BLE_EXT_ADV)
+            rc = ble_gap_pawr_conn_our_addr(evt, &own_addr_type, random_addr);
+#else
+            rc = ble_gap_pawr_conn_our_addr(evt, &own_addr_type, NULL);
+#endif
+            if (rc == 0) {
+                conn->bhc_our_addr_type = own_addr_type;
+#if MYNEWT_VAL(BLE_EXT_ADV)
+                if (ble_hs_misc_own_addr_type_to_id(own_addr_type) ==
+                    BLE_ADDR_RANDOM) {
+                    memcpy(conn->bhc_our_rnd_addr, random_addr,
+                           BLE_DEV_ADDR_LEN);
+                }
+#endif
+            }
             ble_hs_lock();
             psync = ble_hs_periodic_sync_find_by_handle(evt->sync_handle);
             if (psync != NULL) {
