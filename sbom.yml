@@ -49,3 +49,23 @@ cve-exclude-list:
       Fixed in nimble-1.6.0
       commit:
          https://github.com/espressif/esp-nimble/commit/d8106042fadba152115bd97be715b41950e57ad0
+  - cve: CVE-2026-45811
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         8d1b44cc9fbc0eb93ab39b071120f2dffe175be5
+  - cve: CVE-2026-45815
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         b506b9226e6206ebddc96b66d3df376eb8f68c8f
+  - cve: CVE-2026-45816
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/1a714b03dcea55e58066e21213a5f150f2e50088
+  - cve: CVE-2026-46452
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         ddaed0064b74b04e3ef39f1085fdb15a07d2f847
