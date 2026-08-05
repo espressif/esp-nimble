@@ -3463,6 +3463,11 @@ ble_att_svr_free_start_mem(void)
         return;
     }
 #endif
+    /* Entries are allocated from the pool being torn down here; drop them
+     * first or the list heads keep dangling pointers across a restart.
+     */
+    ble_att_svr_reset();
+
     if (ble_att_svr_entry_mem) {
         nimble_platform_mem_free(ble_att_svr_entry_mem);
         ble_att_svr_entry_mem = NULL;
