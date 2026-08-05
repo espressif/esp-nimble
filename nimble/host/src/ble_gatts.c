@@ -1937,6 +1937,12 @@ ble_gatts_free_mem(void)
 void
 ble_gatts_stop(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        ble_att_svr_stop();
+        return;
+    }
+#endif
     ble_gatts_free_mem();
 
     ble_hs_max_services = 0;
