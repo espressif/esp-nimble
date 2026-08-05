@@ -1911,6 +1911,11 @@ ble_gatts_free_svc_defs(void)
 static void
 ble_gatts_free_mem(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        return;
+    }
+#endif
 #if !MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     int rc;
 #endif
@@ -1980,6 +1985,12 @@ ble_gatts_free_mem(void)
 void
 ble_gatts_stop(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        ble_att_svr_stop();
+        return;
+    }
+#endif
     ble_gatts_free_mem();
 
     ble_hs_max_services = 0;
