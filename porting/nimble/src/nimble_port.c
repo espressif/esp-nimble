@@ -52,6 +52,9 @@
 #endif
 #include "bt_osal.h"
 #include "bt_prf_task.h"
+#if CONFIG_BLE_LOG_ENABLED && !CONFIG_BT_CONTROLLER_ENABLED
+#include "ble_log.h"
+#endif
 
 #define NIMBLE_PORT_LOG_TAG          "BLE_INIT"
 
@@ -277,6 +280,12 @@ esp_err_t esp_nimble_init(void)
     }
 #endif
 
+#if CONFIG_BLE_LOG_ENABLED && !CONFIG_BT_CONTROLLER_ENABLED
+    if (!ble_log_init()) {
+        ESP_LOGW(NIMBLE_PORT_LOG_TAG, "BLE Log init failed");
+    }
+#endif
+
     return ESP_OK;
 }
 
@@ -294,6 +303,10 @@ esp_err_t esp_nimble_deinit(void)
         return ESP_OK;
     }
     ble_npl_deiniting = true;
+#endif
+
+#if CONFIG_BLE_LOG_ENABLED && !CONFIG_BT_CONTROLLER_ENABLED
+    ble_log_deinit();
 #endif
 
     ble_transport_ll_deinit();
