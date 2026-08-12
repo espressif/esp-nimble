@@ -2336,7 +2336,6 @@ ble_gattc_cache_conn_update(uint16_t conn_handle, uint16_t start_handle, uint16_
         peer->cache_state = CACHE_INVALID;
     }
 }
-#endif
 
 int ble_gattc_cache_refresh(ble_addr_t peer_addr)
 {
@@ -2496,6 +2495,7 @@ int ble_gattc_cache_clean(ble_addr_t peer_addr)
 
     return 0;
 }
+#endif
 
 uint16_t
 ble_gattc_cache_conn_get_svc_changed_handle(uint16_t conn_handle)
