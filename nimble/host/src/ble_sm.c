@@ -1607,7 +1607,12 @@ ble_sm_ltk_restore_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
             res->app_status = rc;
             res->enc_cb = 1;  /* Notify application of failure, similar to reply branch */
         } else {
-            res->app_status = 0;
+            /* Neg-reply sent: do not treat as restore success. app_status=0
+             * would enter ENC_RESTORE and wait for an enc-change that never
+             * arrives. PINKEY_MISSING also drives BLE_RESTART_PAIR.
+             */
+            res->app_status = BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING);
+            res->enc_cb = 1;
         }
 
     }

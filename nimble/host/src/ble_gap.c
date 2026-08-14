@@ -11334,7 +11334,9 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
 
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_PEER_SEC, &key, &value);
 
-    // Checking if the device is in ble_store
+    /* Prefer peer_sec for IRK removal; fall back to our_sec existence check.
+     * Always attempt delete_peer so partial/asymmetric bond records are cleared.
+     */
     if (!rc) {
         if (value.sec.irk_present) {
 #if MYNEWT_VAL(BLE_HS_PVCY)
@@ -11365,24 +11367,20 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             }
 #endif
         }
-
-	// Delete the Peer record from store as LTK is present
-        rc = ble_store_util_delete_peer(&key.sec.peer_addr);
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "Error while removing LTK , rc = %x\n",rc);
-            err = rc;
-        }
     } else {
         rc = ble_store_read(BLE_STORE_OBJ_TYPE_OUR_SEC, &key, &value);
-        if (!rc) {
-            rc = ble_store_util_delete_peer(&key.sec.peer_addr);
-            if (rc != 0) {
-                BLE_HS_LOG(ERROR, "Error while removing peer record, rc = %x\n", rc);
-                err = rc;
-            }
-        } else {
-            BLE_HS_LOG(ERROR,"No record found for the given address in ble store , rc = %x\n",rc);
-            err = rc ;
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "No record found for the given address in ble store, rc = %x\n",
+                       rc);
+            err = rc;
+        }
+    }
+
+    rc = ble_store_util_delete_peer(&key.sec.peer_addr);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "Error while removing peer records , rc = %x\n", rc);
+        if (err == 0) {
+            err = rc;
         }
     }
 

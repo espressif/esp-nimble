@@ -269,6 +269,10 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
 
     ble_store_config_our_secs[idx].bond_count = ++ble_store_config_our_bond_count;
 
+    /* Ensure entries are sorted at all times */
+    qsort(ble_store_config_our_secs, ble_store_config_num_our_secs,
+          sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
+
     rc = ble_store_config_persist_our_secs();
     if (rc != 0) {
         return rc;
@@ -427,6 +431,10 @@ ble_store_config_write_peer_sec(const struct ble_store_value_sec *value_sec)
     ble_store_config_peer_secs[idx] = *value_sec;
 
     ble_store_config_peer_secs[idx].bond_count = ++ble_store_config_peer_bond_count;
+
+    /* Ensure entries are sorted at all times */
+    qsort(ble_store_config_peer_secs, ble_store_config_num_peer_secs,
+          sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
 
     rc = ble_store_config_persist_peer_secs();
     if (rc != 0) {
