@@ -1034,15 +1034,28 @@ int ble_gatts_notify_multiple(uint16_t conn_handle,
                               const uint16_t *chr_val_handles);
 
 /**
- * Unregisters for notifications on a specified characteristic by writing to its
- * Client Characteristic Configuration Descriptor (CCCD).
+ * Unregisters for notifications and indications on a specified characteristic
+ * by writing to its Client Characteristic Configuration Descriptor (CCCD).
  *
  * This function initiates discovery of all descriptors associated with the given
  * characteristic value handle (`char_val_handle`). If a CCCD is found, it writes
- * a value to disable notifications.
+ * zero to disable both notifications and indications.
  *
  * @param conn_handle      The handle of the connection with the peer device.
- * @param char_val_handle  The value handle of the characteristic to unregister from notification.
+ * @param char_val_handle  The value handle of the characteristic to unregister
+ *                         from notifications and indications.
+ *
+ * @return                 0 on success, non-zero error code on failure.
+ */
+int ble_gattc_unregister_notif_indicate(uint16_t conn_handle,
+                                        uint16_t char_val_handle);
+
+/**
+ * Deprecated. Use ble_gattc_unregister_notif_indicate instead.
+ *
+ * @param conn_handle      The handle of the connection with the peer device.
+ * @param char_val_handle  The value handle of the characteristic to unregister
+ *                         from notifications and indications.
  *
  * @return                 0 on success, non-zero error code on failure.
  */
@@ -1062,6 +1075,21 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
  * @return                 0 on success, non-zero error code on failure.
  */
 int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_handle);
+
+/**
+ * Registers for indications on a specified characteristic by writing to its
+ * Client Characteristic Configuration Descriptor (CCCD).
+ *
+ * This function initiates discovery of all descriptors associated with the given
+ * characteristic value handle (`char_val_handle`). If a CCCD is found, it writes
+ * the appropriate value to enable indications.
+ *
+ * @param conn_handle      The handle of the connection with the peer device.
+ * @param char_val_handle  The value handle of the characteristic to register for indication.
+ *
+ * @return                 0 on success, non-zero error code on failure.
+ */
+int ble_gattc_register_for_indication(uint16_t conn_handle, uint16_t char_val_handle);
 
 /**
  * Sends a "free-form" characteristic indication.  The provided mbuf contains

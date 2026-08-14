@@ -5896,6 +5896,11 @@ ble_gattc_notify_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 
 #if MYNEWT_VAL(BLE_GATTC)
 #if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+struct ble_gattc_cccd_reg_arg {
+    bool active;
+    uint16_t value;
+};
+
 static int
 ble_gattc_cccd_write_complete_cb(uint16_t conn_handle,
                                  const struct ble_gatt_error *error,
@@ -5922,36 +5927,33 @@ static int ble_gattc_cccd_register_cb(uint16_t conn_handle, const struct ble_gat
                                       void *arg)
 {
     int rc = error->status;
-    bool *cccd_reg_flag = (bool *)arg;
+    struct ble_gattc_cccd_reg_arg *reg_arg = arg;
 
     if (error->status == BLE_HS_EDONE) {
         /* GATT procedure completed reset active flag */
         ble_hs_lock();
         gatt_proc_active = false;
         ble_hs_unlock();
-        if (cccd_reg_flag) {
-            nimble_platform_mem_free(cccd_reg_flag);
+        if (reg_arg) {
+            nimble_platform_mem_free(reg_arg);
         }
     } else if (error->status == 0) {
-        if (cccd_reg_flag && *cccd_reg_flag &&
+        if (reg_arg && reg_arg->active &&
             (ble_uuid_cmp(&dsc->uuid.u, BLE_UUID16_DECLARE(BLE_GATT_DSC_CLT_CFG_UUID16)) == 0)) {
             /* Prevent duplicate CCCD writes */
-            *cccd_reg_flag = false;
-            /* Enable notification */
-            uint8_t cccd_val[2] = {0x01, 0x00};
+            reg_arg->active = false;
+            uint8_t cccd_val[2] = {
+                reg_arg->value & 0xff,
+                (reg_arg->value >> 8) & 0xff,
+            };
 
-            /* write to CCCD to enable notifications */
             rc = ble_gattc_write_flat(conn_handle,
                                       dsc->handle,
                                       cccd_val, sizeof(cccd_val),
-                                      ble_gattc_cccd_write_complete_cb, cccd_reg_flag);
+                                      ble_gattc_cccd_write_complete_cb, reg_arg);
             if (rc != 0) {
-                BLE_HS_LOG(WARN, "Failed to Register for Notification, status = %d", rc);
-                ble_hs_lock();
-                gatt_proc_active = false;
-                ble_hs_unlock();
-                nimble_platform_mem_free(cccd_reg_flag);
-                return rc;
+                BLE_HS_LOG(WARN, "Failed to register for CCCD, status = %d", rc);
+                return 0;
             }
             return BLE_HS_EDONE;
         }
@@ -5960,15 +5962,17 @@ static int ble_gattc_cccd_register_cb(uint16_t conn_handle, const struct ble_gat
         ble_hs_lock();
         gatt_proc_active = false;
         ble_hs_unlock();
-        if (cccd_reg_flag) {
-            nimble_platform_mem_free(cccd_reg_flag);
+        if (reg_arg) {
+            nimble_platform_mem_free(reg_arg);
         }
      }
 
     return rc;
 }
 
-int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_handle)
+static int
+ble_gattc_register_for_cccd(uint16_t conn_handle, uint16_t char_val_handle,
+                            uint16_t cccd_value)
 {
     /* Check if a GATT procedure is already active */
     ble_hs_lock();
@@ -5981,27 +5985,43 @@ int ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_
     gatt_proc_active = true;
     ble_hs_unlock();
 
-    bool *cccd_reg_flag = (bool *)nimble_platform_mem_calloc(1,sizeof(bool));
-    if (!cccd_reg_flag) {
-        BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD Reg Flag.");
+    struct ble_gattc_cccd_reg_arg *reg_arg =
+        nimble_platform_mem_calloc(1, sizeof(*reg_arg));
+    if (!reg_arg) {
+        BLE_HS_LOG(ERROR, "Failed to allocate memory for CCCD registration.");
         ble_hs_lock();
         gatt_proc_active = false;
         ble_hs_unlock();
         return BLE_HS_ENOMEM;
     }
 
-    *cccd_reg_flag = true;
+    reg_arg->active = true;
+    reg_arg->value = cccd_value;
 
     int rc = ble_gattc_disc_all_dscs(conn_handle, char_val_handle, 0xffff,
-                                     ble_gattc_cccd_register_cb, cccd_reg_flag);
+                                     ble_gattc_cccd_register_cb, reg_arg);
     if (rc != 0) {
         ble_hs_lock();
         gatt_proc_active = false;
         ble_hs_unlock();
-        nimble_platform_mem_free(cccd_reg_flag);
+        nimble_platform_mem_free(reg_arg);
     }
 
     return rc;
+}
+
+int
+ble_gattc_register_for_notification(uint16_t conn_handle, uint16_t char_val_handle)
+{
+    return ble_gattc_register_for_cccd(conn_handle, char_val_handle,
+                                       BLE_GATT_CCCD_NOTIFY);
+}
+
+int
+ble_gattc_register_for_indication(uint16_t conn_handle, uint16_t char_val_handle)
+{
+    return ble_gattc_register_for_cccd(conn_handle, char_val_handle,
+                                       BLE_GATT_CCCD_INDICATE);
 }
 
 static int ble_gattc_cccd_unregister_cb(uint16_t conn_handle, const struct ble_gatt_error *error,
@@ -6027,18 +6047,16 @@ static int ble_gattc_cccd_unregister_cb(uint16_t conn_handle, const struct ble_g
             /* Disable notification or indication */
             uint8_t cccd_val[2] = {0x00, 0x00};
 
-            /* write to CCCD to disable notifications or indication */
+            /* Write to CCCD to disable notifications and indications. */
             rc = ble_gattc_write_flat(conn_handle,
                                       dsc->handle,
                                       cccd_val, sizeof(cccd_val),
                                       ble_gattc_cccd_write_complete_cb, cccd_unreg_flag);
             if (rc != 0) {
-                BLE_HS_LOG(WARN, "Failed to Unregister for Notification, status = %d", rc);
-                ble_hs_lock();
-                gatt_proc_active = false;
-                ble_hs_unlock();
-                nimble_platform_mem_free(cccd_unreg_flag);
-                return rc;
+                BLE_HS_LOG(WARN,
+                           "Failed to unregister for notifications or indications, status = %d",
+                           rc);
+                return 0;
             }
             return BLE_HS_EDONE;
         }
@@ -6056,7 +6074,9 @@ static int ble_gattc_cccd_unregister_cb(uint16_t conn_handle, const struct ble_g
 }
 
 
-int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_val_handle)
+int
+ble_gattc_unregister_notif_indicate(uint16_t conn_handle,
+                                    uint16_t char_val_handle)
 {
     ble_hs_lock();
     if (gatt_proc_active) {
@@ -6091,6 +6111,12 @@ int ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_va
     }
 
     return rc;
+}
+
+int
+ble_gattc_unregister_for_notification(uint16_t conn_handle, uint16_t char_val_handle)
+{
+    return ble_gattc_unregister_notif_indicate(conn_handle, char_val_handle);
 }
 #endif  //MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 #endif  //MYNEWT_VAL(BLE_GATTC)
