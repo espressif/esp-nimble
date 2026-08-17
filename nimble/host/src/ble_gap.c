@@ -2401,13 +2401,13 @@ ble_gap_conn_broken(uint16_t conn_handle, int reason)
         }
     }
 
+    ble_hs_unlock();
+
     post_connect_fail = conn != NULL && !send &&
                         !(conn->bhc_flags & BLE_HS_CONN_F_MASTER);
 
-    ble_hs_unlock();
-
-    /* If we never posted a connect event for a slave (send == 0), treat this as a
-     * connection failure and post a connect-failed event instead of a
+    /* If we never posted a connect event for a slave (send == 0), treat this as
+     * a connection failure and post a connect-failed event instead of a
      * disconnect. This allows applications to restart advertising.
      */
     if (post_connect_fail) {
@@ -10630,11 +10630,6 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
         return BLE_HS_EINVAL;
     }
 
-    /* Resolving-list removal is handled at the actual IRK removal site:
-     * controller privacy preempts GAP procedures, while host privacy updates
-     * the software resolving list directly.
-     */
-
     ble_hs_lock();
 
     conn = ble_hs_conn_find_by_addr(peer_addr);
@@ -10663,11 +10658,15 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
     if (!rc) {
         new_addr = &(value.rpa_rec.peer_addr);
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        /* Host privacy may lack peer_dev_rec while the identity still sits on
+         * the software RL (e.g. partial bond). Remove by resolved identity
+         * here so delete_peer cannot miss it.
+         */
         ble_hs_pvcy_remove_entry(new_addr->type, new_addr->val);
 #endif
     } else {
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-        /* If no rpa_rec, remove original addr directly */
+        /* No rpa_rec — remove using the address the app passed. */
         ble_hs_pvcy_remove_entry(peer_addr->type, peer_addr->val);
 #endif
     }
@@ -10677,7 +10676,9 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
 
     rc = ble_store_read(BLE_STORE_OBJ_TYPE_PEER_SEC, &key, &value);
 
-    // Checking if the device is in ble_store
+    /* Prefer peer_sec for IRK removal; fall back to our_sec existence check.
+     * Always attempt delete_peer so partial/asymmetric bond records are cleared.
+     */
     if (!rc) {
         if (value.sec.irk_present) {
 #if MYNEWT_VAL(BLE_HS_PVCY)
@@ -10708,23 +10709,20 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             }
 #endif
         }
-
-	// Delete the Peer record from store as LTK is present
-        rc = ble_store_util_delete_peer(&key.sec.peer_addr);
-        if (rc != 0) {
-            BLE_HS_LOG(ERROR, "Error while removing LTK , rc = %x\n",rc);
-            err = rc;
-        }
     } else {
         rc = ble_store_read(BLE_STORE_OBJ_TYPE_OUR_SEC, &key, &value);
-        if (!rc) {
-            rc = ble_store_util_delete_peer(&key.sec.peer_addr);
-            if (rc != 0) {
-                err = rc;
-            }
-        } else {
-            BLE_HS_LOG(ERROR,"No record found for the given address in ble store , rc = %x\n",rc);
-            err = rc ;
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "No record found for the given address in ble store, rc = %x\n",
+                       rc);
+            err = rc;
+        }
+    }
+
+    rc = ble_store_util_delete_peer(&key.sec.peer_addr);
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "Error while removing peer records , rc = %x\n", rc);
+        if (err == 0) {
+            err = rc;
         }
     }
 

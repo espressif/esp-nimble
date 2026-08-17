@@ -207,6 +207,44 @@ ble_store_persist_sec(int obj_type,
     rc = ble_store_write(obj_type, store_value);
     return rc;
 }
+
+#if MYNEWT_VAL(BLE_HS_PVCY) && MYNEWT_VAL(BLE_SM_SC)
+struct ble_store_pvcy_irk_cleanup_entry {
+    const uint8_t *irk;
+    ble_addr_t peer_addr;
+};
+
+static int
+ble_store_remove_stale_pvcy_entry_cb(int obj_type,
+                                     union ble_store_value *val,
+                                     void *arg)
+{
+    struct ble_store_pvcy_irk_cleanup_entry *cleanup = arg;
+
+    BLE_HS_DBG_ASSERT(obj_type == BLE_STORE_OBJ_TYPE_PEER_SEC);
+
+    /* Current peer is handled by add/replace below; only purge other peers
+     * that still hold this IRK in the controller resolving list.
+     */
+    if (ble_addr_cmp(&val->sec.peer_addr, &cleanup->peer_addr) == 0) {
+        return 0;
+    }
+
+    if (!val->sec.irk_present ||
+        memcmp(val->sec.irk, cleanup->irk, sizeof(val->sec.irk)) != 0) {
+        return 0;
+    }
+
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_preempt();
+#endif
+    ble_hs_pvcy_remove_entry(val->sec.peer_addr.type, val->sec.peer_addr.val);
+#if !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    ble_gap_preempt_done();
+#endif
+    return 0;
+}
+#endif
 #endif
 
 int
@@ -331,9 +369,36 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
         }
         ble_hs_unlock();
 #endif
+#endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
 
-        /* Write the peer IRK to the controller keycache
-         * There is not much to do here if it fails */
+#if MYNEWT_VAL(BLE_SM_SC)
+        /* Drop stale resolving-list entries that share this IRK (or this peer)
+         * before programming the controller. Skip when the add was deferred
+         * above (already returned). */
+        {
+            struct ble_store_pvcy_irk_cleanup_entry cleanup = {
+                .irk = value_sec->irk,
+                .peer_addr = value_sec->peer_addr,
+            };
+            int rc_iter;
+
+            rc_iter = ble_store_iterate(BLE_STORE_OBJ_TYPE_PEER_SEC,
+                                        ble_store_remove_stale_pvcy_entry_cb,
+                                        &cleanup);
+            if (rc_iter != 0) {
+                BLE_HS_LOG(WARN, "failed to clean stale IRK entries for peer; rc=%d\n",
+                           rc_iter);
+            }
+        }
+#endif
+
+        /* Write the peer IRK to the controller keycache.
+         * The bond is already persisted at this point, so if programming the
+         * controller resolving list fails (e.g. error 0x07 - Memory Capacity
+         * Exceeded), log the failure but do not fail the bond. This matches
+         * the best-effort handling in ble_hs_misc_restore_one_irk().
+         */
+#if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
         if (replace_entry) {
             rc = ble_hs_pvcy_replace_entry(value_sec->peer_addr.val,
                                            value_sec->peer_addr.type,
@@ -355,14 +420,13 @@ ble_store_write_peer_sec(const struct ble_store_value_sec *value_sec)
             }
         }
 #else
-        /* Write the peer IRK to the controller keycache
-         * There is not much to do here if it fails */
         rc = ble_hs_pvcy_add_entry(value_sec->peer_addr.val,
                                    value_sec->peer_addr.type,
                                    value_sec->irk);
 #endif /* MYNEWT_VAL(BLE_DEFER_CONN_EVENTS) */
         if (rc != 0) {
-            return rc;
+            BLE_HS_LOG(ERROR, "%s pvcy_add_entry failed; rc=%d\n",
+                       __func__, rc);
         }
 #endif
     }

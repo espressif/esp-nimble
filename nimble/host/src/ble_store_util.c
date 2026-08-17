@@ -163,26 +163,23 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 
     union ble_store_key key;
     int rc;
+    int err;
 
     memset(&key, 0, sizeof key);
     key.sec.peer_addr = *peer_id_addr;
-
-    rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_OUR_SEC, &key);
-    if (rc != 0) {
-        return rc;
-    }
+    err = 0;
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_SEC, &key);
-    if (rc != 0) {
-        return rc;
+    if (rc != 0 && err == 0) {
+        err = rc;
     }
 
     memset(&key, 0, sizeof key);
     key.cccd.peer_addr = *peer_id_addr;
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CCCD, &key);
-    if (rc != 0) {
-        return rc;
+    if (rc != 0 && err == 0) {
+        err = rc;
     }
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
@@ -190,8 +187,8 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
     key.ead.peer_addr = *peer_id_addr;
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_ENC_ADV_DATA, &key);
-    if (rc != 0) {
-        return rc;
+    if (rc != 0 && err == 0) {
+        err = rc;
     }
 #endif
 
@@ -199,16 +196,27 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
     key.rpa_rec.peer_rpa_addr = *peer_id_addr;
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_ADDR, &key);
-    if (rc != 0) {
-        return rc;
+    if (rc != 0 && err == 0) {
+        err = rc;
     }
 
     memset(&key, 0, sizeof key);
     key.csfc.peer_addr = *peer_id_addr;
 
     rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CSFC, &key);
-    if (rc != 0) {
-        return rc;
+    if (rc != 0 && err == 0) {
+        err = rc;
+    }
+
+    memset(&key, 0, sizeof key);
+    key.sec.peer_addr = *peer_id_addr;
+
+    /* Delete our_sec last so a partial failure does not hide the bond from
+     * eviction logic that walks the our_sec list.
+     */
+    rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_OUR_SEC, &key);
+    if (rc != 0 && err == 0) {
+        err = rc;
     }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -230,11 +238,8 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
         }
 
         rc = ble_rpa_remove_peer_dev_rec(peer_rec);
-        if (rc != 0) {
-            if (needs_unlock) {
-                ble_hs_unlock();
-            }
-            return rc;
+        if (rc != 0 && err == 0) {
+            err = rc;
         }
     }
     if (needs_unlock) {
@@ -242,7 +247,21 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
     }
 #endif
 
-    return 0;
+#if MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    /* Direct callers (delete_oldest_peer, repeat-pairing) may not go through
+     * ble_gap_unpair. Preempt so HCI remove is legal while advertising/scanning.
+     * Unpair already removes when irk_present (with defer-add skip); a second
+     * remove here is best-effort and may return an error — that is fine.
+     */
+    ble_gap_preempt();
+    rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type, key.sec.peer_addr.val);
+    ble_gap_preempt_done();
+    if (rc != 0) {
+        BLE_HS_LOG(DEBUG, "Peer Device was not removed from RL \n");
+    }
+#endif
+
+    return err;
 #else
     return BLE_HS_ENOTSUP;
 #endif

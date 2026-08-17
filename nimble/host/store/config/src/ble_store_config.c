@@ -309,6 +309,10 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
 
     ble_store_config_our_secs[idx].bond_count = ++ble_store_config_our_bond_count;
 
+    /* Ensure entries are sorted at all times */
+    qsort(ble_store_config_our_secs, ble_store_config_num_our_secs,
+          sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
+
     rc = ble_store_config_persist_our_secs();
     if (rc != 0) {
         return rc;
@@ -464,6 +468,10 @@ ble_store_config_write_peer_sec(const struct ble_store_value_sec *value_sec)
     ble_store_config_peer_secs[idx] = *value_sec;
 
     ble_store_config_peer_secs[idx].bond_count = ++ble_store_config_peer_bond_count;
+
+    /* Ensure entries are sorted at all times */
+    qsort(ble_store_config_peer_secs, ble_store_config_num_peer_secs,
+          sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
 
     rc = ble_store_config_persist_peer_secs();
     if (rc != 0) {
@@ -881,6 +889,22 @@ ble_store_config_find_rpa_rec(const struct ble_store_key_rpa_rec *key)
     }
     return -1;
 }
+
+static int
+ble_store_config_find_rpa_rec_by_peer_addr(const ble_addr_t *peer_addr)
+{
+    struct ble_store_value_rpa_rec *rpa_rec;
+    int i;
+
+    for (i = 0; i < ble_store_config_num_rpa_recs; i++) {
+        rpa_rec = ble_store_config_rpa_recs + i;
+
+        if (ble_addr_cmp(&rpa_rec->peer_addr, peer_addr) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
 #endif
 
 static int
@@ -907,7 +931,10 @@ ble_store_config_write_rpa_rec(const struct ble_store_value_rpa_rec *value_rpa_r
     int idx;
     int rc;
     ble_store_key_from_value_rpa_rec(&key_rpa_rec, value_rpa_rec);
-    idx = ble_store_config_find_rpa_rec(&key_rpa_rec);
+    idx = ble_store_config_find_rpa_rec_by_peer_addr(&value_rpa_rec->peer_addr);
+    if (idx == -1) {
+        idx = ble_store_config_find_rpa_rec(&key_rpa_rec);
+    }
 
     if (idx == -1) {
         if (ble_store_config_num_rpa_recs >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
