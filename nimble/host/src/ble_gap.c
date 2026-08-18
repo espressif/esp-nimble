@@ -4301,16 +4301,22 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 #endif
             break;
         case BLE_ERR_CONN_ESTABLISHMENT:
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
+            /*
+             * Failed enhanced connection-complete events do not contain
+             * valid role or PAwR handle fields.  Use host state to route
+             * failures before inspecting those fields.
+             */
+            if (ble_gap_conn_active()) {
+                ble_gap_master_connect_failure(
+                    BLE_HS_HCI_ERR(evt->status));
+                break;
+            }
+#endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
             if (!v1_evt) {
                 ble_gap_rx_conn_comp_failed(evt);
                 break;
-            }
-#endif
-#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
-            if (ble_gap_master_in_progress()) {
-                ble_gap_master_connect_failure(
-                    BLE_HS_HCI_ERR(evt->status));
             }
 #endif
             break;

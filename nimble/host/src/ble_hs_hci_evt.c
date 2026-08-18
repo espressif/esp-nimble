@@ -825,11 +825,17 @@ ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
 #if NIMBLE_BLE_CONNECT
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
 static bool
-ble_hs_hci_evt_pawr_slave_conn(struct ble_gap_conn_complete *evt)
+ble_hs_hci_evt_pawr_conn(struct ble_gap_conn_complete *evt)
 {
     struct ble_hs_periodic_sync *psync;
 
-    if (evt->role != BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
+    /*
+     * Role is valid on successful events. Do not associate a successful
+     * central connection with an unrelated PAwR sync. On failure, only
+     * status is valid, so host-side GAP state performs disambiguation.
+     */
+    if (evt->status == BLE_ERR_SUCCESS &&
+        evt->role != BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
         return false;
     }
 
@@ -917,21 +923,30 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
         evt.connection_handle = BLE_HS_CONN_HANDLE_NONE;
 #endif
     }
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    /*
+     * PAwR connection-complete failures contain only a valid status field,
+     * so associate the event with the active PAwR sync before inspecting role.
+     */
+    if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2 &&
+        ble_hs_hci_evt_pawr_conn(&evt)) {
+        return ble_gap_rx_conn_complete(&evt, 0);
+    }
+#endif
 #if MYNEWT_VAL(BLE_EXT_ADV)
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
 
-        /* PAwR slave connections use the V2 subevent (not ENH_CONN_COMPLETE).
-         * The controller does NOT send LE Advertising Set Terminated for PAwR,
-         * so we must NOT store them as pending — they would hang indefinitely.
-         * Fall through to the BLE_PERIODIC_ADV_WITH_RESPONSES handler instead. */
+        /* PAwR slave connections are not followed by LE Advertising Set
+         * Terminated, so they must not be stored as pending.
+         */
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
         if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE)
 #endif
         {
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
             if (evt.status == BLE_ERR_SUCCESS &&
-                ble_hs_hci_evt_pawr_slave_conn(&evt)) {
+                ble_hs_hci_evt_pawr_conn(&evt)) {
                 return ble_gap_rx_conn_complete(&evt, 0);
             }
 #endif
@@ -1027,7 +1042,7 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
         if (evt.status == BLE_ERR_SUCCESS &&
-            ble_hs_hci_evt_pawr_slave_conn(&evt)) {
+            ble_hs_hci_evt_pawr_conn(&evt)) {
             return ble_gap_rx_conn_complete(&evt, 0);
         }
 #endif
