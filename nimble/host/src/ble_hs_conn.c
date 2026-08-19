@@ -721,6 +721,11 @@ ble_hs_conn_deinit(void)
         return;
     }
 
+    /* The connection objects live in the pool memory released below, so the
+     * list must not keep referencing them; later teardown steps still walk it.
+     */
+    SLIST_INIT(&ble_hs_conns);
+
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
     if (ble_hs_conn_elem_mem) {
         nimble_platform_mem_free(ble_hs_conn_elem_mem);

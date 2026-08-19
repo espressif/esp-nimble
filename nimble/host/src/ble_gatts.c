@@ -1801,6 +1801,18 @@ ble_gatts_connection_broken(uint16_t conn_handle)
     int i;
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* The CCCD pool lives in the dynamically allocated context.  A disconnect
+     * can still be processed after ble_gatts_stop() released it, in which case
+     * there is nothing left to free.
+     */
+    if (ble_gatts_static_vars == NULL) {
+        BLE_HS_LOG(ERROR, "gatts conn broken after stop: ctx=NULL handle=%d\n",
+                   conn_handle);
+        return;
+    }
+#endif
+
     /* Find the specified connection and extract its CCCD entries.  Extracting
      * the clt_cfg pointer and setting the original to null is done for two
      * reasons:
@@ -1908,6 +1920,22 @@ ble_gatts_free_svc_defs(void)
 #endif
 }
 
+
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+static int
+ble_gatts_free_conn_clt_cfgs(struct ble_hs_conn *conn, void *arg)
+{
+    struct ble_gatts_clt_cfg *clt_cfg;
+
+    while ((clt_cfg = STAILQ_FIRST(&conn->bhc_gatt_svr.clt_cfgs)) != NULL) {
+        STAILQ_REMOVE_HEAD(&conn->bhc_gatt_svr.clt_cfgs, next);
+        ble_gatts_clt_cfg_free(clt_cfg);
+    }
+    conn->bhc_gatt_svr.num_clt_cfgs = 0;
+    return 0;
+}
+#endif
+
 static void
 ble_gatts_free_mem(void)
 {
@@ -1922,6 +1950,20 @@ ble_gatts_free_mem(void)
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_svc_entry *entry;
     struct ble_gatts_clt_cfg *clt_cfg;
+
+    /* Free per-connection CCCD nodes before freeing pool backing memory.
+     * Per-connection nodes are copies allocated from the same pool as the
+     * global list.  Freeing the pool backing while live connections still
+     * hold nodes from it leaves dangling pool references that crash on the
+     * next ble_gatts_clt_cfg_free() call (e.g. on disconnect).
+     *
+     * ble_gatts_start() holds the host mutex when it calls this function
+     * while ble_gatts_stop() does not, hence the nested lock.
+     */
+    ble_hs_lock_nested();
+    ble_hs_conn_foreach(ble_gatts_free_conn_clt_cfgs, NULL);
+    ble_hs_unlock_nested();
+
     /* free client configs memory */
     if (STAILQ_FIRST(&ble_gatts_clt_cfgs) != NULL) {
         clt_cfg = NULL;
@@ -2236,8 +2278,10 @@ ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn)
     struct ble_gatts_clt_cfg *clt_cfg;
     struct ble_gatts_clt_cfg *clt_cfg_new;
     struct ble_gatts_clt_cfg_list clt_cfgs;
+    int num_copied;
     int rc;
     STAILQ_INIT(&clt_cfgs);
+    num_copied = 0;
     rc = 0;
 
     if (ble_gatts_num_cfgable_chrs > 0) {
@@ -2250,9 +2294,14 @@ ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn)
             }
             memcpy(clt_cfg_new, clt_cfg, sizeof(struct ble_gatts_clt_cfg));
             STAILQ_INSERT_TAIL(&clt_cfgs, clt_cfg_new, next);
+            num_copied++;
         }
         memcpy(&(gatts_conn->clt_cfgs), &clt_cfgs, sizeof(struct ble_gatts_clt_cfg_list));
-        gatts_conn->num_clt_cfgs = ble_gatts_num_cfgable_chrs;
+        /* Track the number of nodes actually copied rather than the cached
+         * characteristic count; the two can differ if the global list was
+         * modified by a dynamic service add or delete.
+         */
+        gatts_conn->num_clt_cfgs = num_copied;
     } else {
         STAILQ_INIT(&(gatts_conn->clt_cfgs));
         gatts_conn->num_clt_cfgs = 0;
@@ -3076,12 +3125,80 @@ ble_gatts_bonding_restored(uint16_t conn_handle)
 }
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+/* Rejects pointers that cannot be a live object: NULL, misaligned, and the
+ * fill patterns left behind by the mempool poison and by freed heap blocks.
+ */
+static int
+ble_gatts_ptr_plausible(const void *ptr)
+{
+    uintptr_t addr = (uintptr_t)ptr;
+
+    if (addr == 0 || (addr & 0x3) != 0) {
+        return 0;
+    }
+
+    if (addr == 0xbebebebe || addr == 0xdeadbeef || addr == 0xa5a5a5a5 ||
+        addr == 0xefefefef || addr == 0xffffffff) {
+        return 0;
+    }
+
+    return 1;
+}
+
 static struct ble_gatts_svc_entry *
 ble_gatts_find_svc_entry_by_uuid(const ble_uuid_t *uuid)
 {
     struct ble_gatts_svc_entry *entry;
+    int max_entries;
+    int idx;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* The service list lives inside the dynamically allocated context, which
+     * is released by ble_gatts_stop().  Lookups can still arrive from the
+     * application (e.g. from a disconnect callback) after that point.
+     */
+    if (ble_gatts_static_vars == NULL) {
+        BLE_HS_LOG(ERROR, "gatts svc lookup after stop: ctx=NULL\n");
+        return NULL;
+    }
+#endif
+
+    max_entries = ble_hs_max_services > 0 ? ble_hs_max_services + 4 : 64;
+    idx = 0;
 
     STAILQ_FOREACH(entry, &ble_gatts_svc_entries, next) {
+        if (idx++ >= max_entries) {
+            BLE_HS_LOG(ERROR, "gatts svc list too long or looped: head=%p "
+                              "entry=%p idx=%d max=%d\n",
+                       (void *)STAILQ_FIRST(&ble_gatts_svc_entries),
+                       (void *)entry, idx, max_entries);
+            return NULL;
+        }
+
+        if (!ble_gatts_ptr_plausible(entry)) {
+            BLE_HS_LOG(ERROR, "gatts svc entry corrupt: head=%p entry=%p "
+                              "idx=%d\n",
+                       (void *)STAILQ_FIRST(&ble_gatts_svc_entries),
+                       (void *)entry, idx);
+            return NULL;
+        }
+
+        if (!ble_gatts_ptr_plausible(entry->svc)) {
+            BLE_HS_LOG(ERROR, "gatts svc def dangling: entry=%p svc=%p idx=%d "
+                              "handle=%d end=%d\n",
+                       (void *)entry, (void *)entry->svc, idx,
+                       entry->handle, entry->end_group_handle);
+            continue;
+        }
+
+        if (!ble_gatts_ptr_plausible(entry->svc->uuid)) {
+            BLE_HS_LOG(ERROR, "gatts svc uuid dangling: entry=%p svc=%p "
+                              "uuid=%p idx=%d handle=%d\n",
+                       (void *)entry, (void *)entry->svc,
+                       (const void *)entry->svc->uuid, idx, entry->handle);
+            continue;
+        }
+
         if (ble_uuid_cmp(uuid, entry->svc->uuid) == 0) {
             return entry;
         }
@@ -3167,6 +3284,23 @@ int
 ble_gatts_find_svc(const ble_uuid_t *uuid, uint16_t *out_handle)
 {
     struct ble_gatts_svc_entry *entry;
+    int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* The host mutex is part of the context released by ble_hs_deinit(), so
+     * bail out before locking once the server has been stopped.
+     */
+    if (ble_gatts_static_vars == NULL) {
+        BLE_HS_LOG(ERROR, "gatts find_svc after stop: ctx=NULL\n");
+        return BLE_HS_ENOENT;
+    }
+#endif
+
+    /* Callers run in application context while the host task can add or
+     * delete services concurrently; nested locking is used because internal
+     * callers may already hold the host mutex.
+     */
+    ble_hs_lock_nested();
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     entry = ble_gatts_find_svc_entry_by_uuid(uuid);
@@ -3174,13 +3308,18 @@ ble_gatts_find_svc(const ble_uuid_t *uuid, uint16_t *out_handle)
     entry = ble_gatts_find_svc_entry(uuid);
 #endif
     if (entry == NULL) {
-        return BLE_HS_ENOENT;
+        rc = BLE_HS_ENOENT;
+        goto done;
     }
 
     if (out_handle != NULL) {
         *out_handle = entry->handle;
     }
-    return 0;
+    rc = 0;
+
+done:
+    ble_hs_unlock_nested();
+    return rc;
 }
 
 int
@@ -3190,9 +3329,18 @@ ble_gatts_find_chr(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
     struct ble_att_svr_entry *att_chr;
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        BLE_HS_LOG(ERROR, "gatts find_chr after stop: ctx=NULL\n");
+        return BLE_HS_ENOENT;
+    }
+#endif
+
+    ble_hs_lock_nested();
+
     rc = ble_gatts_find_svc_chr_attr(svc_uuid, chr_uuid, NULL, &att_chr);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     if (out_def_handle) {
@@ -3201,7 +3349,10 @@ ble_gatts_find_chr(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
     if (out_val_handle) {
         *out_val_handle = att_chr->ha_handle_id;
     }
-    return 0;
+
+done:
+    ble_hs_unlock_nested();
+    return rc;
 }
 
 int
@@ -3214,38 +3365,55 @@ ble_gatts_find_dsc(const ble_uuid_t *svc_uuid, const ble_uuid_t *chr_uuid,
     uint16_t uuid16;
     int rc;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        BLE_HS_LOG(ERROR, "gatts find_dsc after stop: ctx=NULL\n");
+        return BLE_HS_ENOENT;
+    }
+#endif
+
+    ble_hs_lock_nested();
+
     rc = ble_gatts_find_svc_chr_attr(svc_uuid, chr_uuid, &svc_entry,
                                      &att_chr);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
 
     cur = STAILQ_NEXT(att_chr, ha_next);
     while (1) {
         if (cur == NULL) {
             /* Reached end of attribute list without a match. */
-            return BLE_HS_ENOENT;
+            rc = BLE_HS_ENOENT;
+            goto done;
         }
 
         if (cur->ha_handle_id > svc_entry->end_group_handle) {
             /* Reached end of service without a match. */
-            return BLE_HS_ENOENT;
+            rc = BLE_HS_ENOENT;
+            goto done;
         }
 
         uuid16 = ble_uuid_u16(cur->ha_uuid);
         if (uuid16 == BLE_ATT_UUID_CHARACTERISTIC) {
             /* Reached end of characteristic without a match. */
-            return BLE_HS_ENOENT;
+            rc = BLE_HS_ENOENT;
+            goto done;
         }
 
         if (ble_uuid_cmp(cur->ha_uuid, dsc_uuid) == 0) {
             if (out_handle != NULL) {
                 *out_handle = cur->ha_handle_id;
             }
-            return 0;
+            rc = 0;
+            goto done;
         }
         cur = STAILQ_NEXT(cur, ha_next);
     }
+
+done:
+    ble_hs_unlock_nested();
+    return rc;
 }
 
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
@@ -3516,7 +3684,15 @@ int ble_gatts_delete_svc(const ble_uuid_t *uuid) {
         allowed_flags = ble_gatts_chr_clt_cfg_allowed(chr);
         if (allowed_flags != 0) {
             chr_val_handle = ha->ha_handle_id + 1;
-            ble_gatts_remove_clt_cfg(&ble_gatts_clt_cfgs, chr_val_handle);
+            if (ble_gatts_remove_clt_cfg(&ble_gatts_clt_cfgs,
+                                         chr_val_handle) == 0 &&
+                ble_gatts_num_cfgable_chrs > 0) {
+                /* Keep the count in sync with the global CCCD list; a stale
+                 * count makes ble_gatts_conn_init() report a length that does
+                 * not match the per-connection list.
+                 */
+                ble_gatts_num_cfgable_chrs--;
+            }
 
             /* update connections */
             arg.action = CONN_CLT_CFG_REMOVE;
