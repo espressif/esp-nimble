@@ -671,7 +671,7 @@ ble_svc_gap_deinit_name(void)
 void
 ble_svc_gap_init(void)
 {
-#if NIMBLE_BLE_CONNECT
+#if NIMBLE_BLE_CONNECT || MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     int rc;
 #endif
     /* Ensure this function only gets called by sysinit. */

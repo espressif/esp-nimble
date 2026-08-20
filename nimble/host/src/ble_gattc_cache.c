@@ -261,6 +261,7 @@ ble_gattc_cacheReset(ble_addr_t *addr)
 
         /* Reduced the number address counter also */
         cache_env->num_addr--;
+        memset(&cache_env->cache_addr[cache_env->num_addr], 0, sizeof(cache_addr_info_t));
 
         /* Update addr list to storage flash */
         if (cache_env->num_addr > 0) {
@@ -628,6 +629,11 @@ ble_gattc_cache_save(struct ble_gattc_cache_conn *peer, size_t num_attr)
     uint8_t index = INVALID_ADDR_NUM;
     struct ble_gatt_nv_attr *nv_attr;
 
+    if (num_attr == 0) {
+        BLE_HS_LOG(INFO, "%s() skipped empty cache save", __func__);
+        return;
+    }
+
     nv_attr = (struct ble_gatt_nv_attr *) nimble_platform_mem_calloc(1,num_attr * sizeof(ble_gatt_nv_attr));
     if (nv_attr == NULL) {
         BLE_HS_LOG(ERROR, "Failed to allocate memory to nv_attr");
@@ -942,6 +948,7 @@ ble_gattc_cache_load(ble_addr_t peer_addr)
     cache_index = ble_gattc_cache_find_addr(peer_addr);
     if (cache_index == INVALID_ADDR_NUM) {
         BLE_HS_LOG(ERROR, "Address not found in cache");
+        cacheClose(peer_addr);
         return BLE_HS_ENOENT;
     }
     ble_gattc_cache_conn_load_hash(cache_env->cache_addr[cache_index].addr,

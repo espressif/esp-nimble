@@ -663,7 +663,10 @@ ble_gatts_val_access(uint16_t conn_handle, uint16_t attr_handle,
             attr_len = OS_MBUF_PKTLEN(gatt_ctxt->om) - initial_len - offset;
             if (attr_len >= 0) {
                 if (new_om) {
-                    os_mbuf_appendfrom(*om, gatt_ctxt->om, offset, attr_len);
+                    rc = os_mbuf_appendfrom(*om, gatt_ctxt->om, offset, attr_len);
+                    if (rc != 0) {
+                        rc = BLE_ATT_ERR_INSUFFICIENT_RES;
+                    }
                 }
             } else {
                 rc = BLE_ATT_ERR_INVALID_OFFSET;
@@ -2561,6 +2564,35 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
     }
 
     return 0;
+}
+
+void
+ble_gatts_conn_deinit(struct ble_gatts_conn *gatts_conn)
+{
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    struct ble_gatts_clt_cfg *clt_cfg;
+
+    if (gatts_conn == NULL) {
+        return;
+    }
+
+    while ((clt_cfg = STAILQ_FIRST(&gatts_conn->clt_cfgs)) != NULL) {
+        STAILQ_REMOVE_HEAD(&gatts_conn->clt_cfgs, next);
+        ble_gatts_clt_cfg_free(clt_cfg);
+    }
+    gatts_conn->num_clt_cfgs = 0;
+#else
+    int rc;
+
+    if (gatts_conn == NULL || gatts_conn->clt_cfgs == NULL) {
+        return;
+    }
+
+    rc = os_memblock_put(&ble_gatts_clt_cfg_pool, gatts_conn->clt_cfgs);
+    BLE_HS_DBG_ASSERT_EVAL(rc == 0);
+    gatts_conn->clt_cfgs = NULL;
+    gatts_conn->num_clt_cfgs = 0;
+#endif
 }
 
 void

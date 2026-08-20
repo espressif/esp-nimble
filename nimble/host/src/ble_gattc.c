@@ -5799,7 +5799,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
     }
 
     for (i = 0; i < chr_count; i++) {
-        if (OS_MBUF_PKTLEN(txom) + OS_MBUF_PKTLEN(tuples[i].value) > mtu && cur_chr_cnt < 2) {
+        if (OS_MBUF_PKTLEN(txom) + OS_MBUF_PKTLEN(tuples[i].value) + 4 > mtu && cur_chr_cnt < 2) {
             /* Flush any previously buffered characteristic first to maintain ordering */
             if (cur_chr_cnt == 1) {
                 /* Strip the 4-byte handle+length header and send as a standard
@@ -5827,7 +5827,7 @@ ble_gatts_notify_multiple_custom(uint16_t conn_handle,
                 goto done;
             }
             continue;
-        } else if (OS_MBUF_PKTLEN(txom) + OS_MBUF_PKTLEN(tuples[i].value) > mtu) {
+        } else if (OS_MBUF_PKTLEN(txom) + OS_MBUF_PKTLEN(tuples[i].value) + 4 > mtu) {
             rc = ble_att_clt_tx_multi_notify(conn_handle, txom);
             txom = NULL;
             if (rc != 0) {

@@ -224,17 +224,18 @@ static int
 ble_cs_call_event_cb(struct ble_cs_event *event)
 {
     int rc;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* After deinit, leftover HCI events must not re-allocate CS state. */
+    if (cs_state_ptr == NULL) {
+        return 0;
+    }
+#endif
+
     ble_hs_lock();
     ble_cs_event_fn *cb = cs_state.cb;
     void *cb_arg = cs_state.cb_arg;
     ble_hs_unlock();
-
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    rc = ble_cs_state_ensure_init();
-    if (rc != 0) {
-        return rc;
-    }
-#endif
 
     if (cb != NULL) {
         rc = cb(event, cb_arg);
@@ -965,6 +966,12 @@ ble_hs_hci_evt_le_cs_subevent_result(uint8_t subevent, const void *data,
     int steps_remaining = 0;
     int step_size = 0;
 
+    if (data == NULL || len < sizeof(*event)) {
+        BLE_HS_LOG(ERROR, "%s invalid length, rc=%d\n",
+                   __func__, BLE_HS_ECONTROLLER);
+        return BLE_HS_ECONTROLLER;
+    }
+
     expected_len += sizeof(*event);
     steps_remaining = event->num_steps_reported;
     step_ptr = (void *)event->steps;
@@ -1089,7 +1096,7 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
     cmd.conn_handle = params->conn_handle;
     rc = ble_cs_rd_rem_supp_cap(&cmd);
     if (rc) {
-        BLE_HS_LOG(DEBUG, "Failed to read local supported CS capabilities,"
+        BLE_HS_LOG(DEBUG, "Failed to read remote supported CS capabilities, "
                    "err %d", rc);
     }
 

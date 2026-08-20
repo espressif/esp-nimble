@@ -1005,6 +1005,7 @@ ble_att_svr_build_find_info_rsp(uint16_t conn_handle, uint16_t cid,
     if (rsp == NULL) {
         *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1318,6 +1319,7 @@ ble_att_svr_build_find_type_value_rsp(uint16_t conn_handle, uint16_t cid,
     if (buf == NULL) {
         *out_att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1493,6 +1495,7 @@ ble_att_svr_build_read_type_rsp(uint16_t conn_handle, uint16_t cid,
         *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         *err_handle = 0;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 
@@ -1997,13 +2000,6 @@ ble_att_svr_build_read_mult_rsp_var(uint16_t conn_handle, uint16_t cid,
                 rc = BLE_HS_ENOMEM;
                 goto done;
             }
-            if (tuple_len != 0) {
-                rc = os_mbuf_appendfrom(txom, tmp, 0, tuple_len);
-                if (rc != 0) {
-                    *err_handle = handle;
-                    goto done;
-                }
-            }
         }
 
         if (tuple_len != 0) {
@@ -2193,6 +2189,7 @@ ble_att_svr_build_read_group_type_rsp(uint16_t conn_handle, uint16_t cid,
     if (rsp == NULL) {
         *att_err = BLE_ATT_ERR_INSUFFICIENT_RES;
         rc = BLE_HS_ENOMEM;
+        txom = NULL;
         goto done;
     }
 

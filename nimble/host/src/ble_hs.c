@@ -293,8 +293,10 @@ ble_hs_lock_nested(void)
     counter_lock++;
     ble_hs_mutex_locked = 1;
     ble_hs_task_handle = xTaskGetCurrentTaskHandle();
-    ble_hs_task_handles[ble_hs_task_handle_index] = xTaskGetCurrentTaskHandle();
-    ble_hs_task_handle_index++;
+    if (ble_hs_task_handle_index < MAX_NESTED_LOCKS) {
+        ble_hs_task_handles[ble_hs_task_handle_index] = xTaskGetCurrentTaskHandle();
+        ble_hs_task_handle_index++;
+    }
 #endif
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -317,10 +319,15 @@ ble_hs_unlock_nested(void)
         if (counter_lock == 0) {
             ble_hs_mutex_locked = 0;
         }
-        if (ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
+        if (ble_hs_task_handle_index > 0 &&
+            ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
             ble_hs_task_handle_index--;
             ble_hs_task_handles[ble_hs_task_handle_index] = NULL;
-            ble_hs_task_handle = ble_hs_task_handles[ble_hs_task_handle_index -1];
+            if (ble_hs_task_handle_index > 0) {
+                ble_hs_task_handle = ble_hs_task_handles[ble_hs_task_handle_index - 1];
+            } else {
+                ble_hs_task_handle = NULL;
+            }
         }
     }
 #endif
@@ -928,6 +935,10 @@ ble_hs_init(void)
         ble_hs_state_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_state_ctx));
         if (!ble_hs_state_ctx) {
             MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_state_ctx (%zu bytes)\n", sizeof(*ble_hs_state_ctx));
+            nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
+            ble_hs_ctx->hci_os_event_buf = NULL;
+            nimble_platform_mem_free(ble_hs_ctx);
+            ble_hs_ctx = NULL;
             return;
         }
     }

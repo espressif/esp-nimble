@@ -900,7 +900,7 @@ ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
     if (position) {
         memmove(&g_ble_hs_resolv_list[position],
                 &g_ble_hs_resolv_list[position + 1],
-                (g_ble_hs_resolv_data.rl_cnt - position) * sizeof (struct
+                (g_ble_hs_resolv_data.rl_cnt - position - 1) * sizeof (struct
                         ble_hs_resolv_entry));
         --g_ble_hs_resolv_data.rl_cnt;
 

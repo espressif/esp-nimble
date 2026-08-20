@@ -121,7 +121,7 @@ int ble_svc_cts_curr_time_validate(struct ble_svc_cts_curr_time curr_time) {
        curr_time.et_256.d_d_t.d_t.hours > 23   ||
        curr_time.et_256.d_d_t.d_t.minutes > 59 ||
        curr_time.et_256.d_d_t.d_t.seconds > 59 ||
-       curr_time.adjust_reason >> 4 > 0
+       (curr_time.adjust_reason >> 4) > 0
        ) {
         return BLE_SVC_CTS_ERR_DATA_FIELD_IGNORED;
     }

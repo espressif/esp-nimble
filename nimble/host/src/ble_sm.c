@@ -161,8 +161,8 @@ ble_sm_state_dispatch[BLE_SM_PROC_STATE_CNT] = {
 static os_membuf_t *ble_sm_proc_mem = NULL;
 #else
 static os_membuf_t ble_sm_proc_mem[
-    OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_SM_MAX_PROCS),
-                    sizeof (struct ble_sm_proc))
+    OS_MEMPOOL_BYTES(MYNEWT_VAL(BLE_SM_MAX_PROCS),
+                     sizeof(struct ble_sm_proc)) / sizeof(os_membuf_t)
 ];
 #endif
 
@@ -3869,10 +3869,9 @@ ble_sm_init(void)
     }
 
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    size_t proc_mem_size = OS_MEMPOOL_SIZE(MYNEWT_VAL(BLE_SM_MAX_PROCS), sizeof(struct ble_sm_proc));
-
     if (!ble_sm_proc_mem) {
-        ble_sm_proc_mem = nimble_platform_mem_calloc(1,proc_mem_size  * sizeof(os_membuf_t));
+        ble_sm_proc_mem = nimble_platform_mem_calloc(1,
+                OS_MEMPOOL_BYTES(MYNEWT_VAL(BLE_SM_MAX_PROCS), sizeof(struct ble_sm_proc)));
         if (!ble_sm_proc_mem) {
             /* free the allocated memory */
             nimble_platform_mem_free(ble_sm_ctx);
@@ -4128,7 +4127,7 @@ ble_sm_csis_generate_rsi(const uint8_t *sirk, uint8_t *out)
     int rc;
 
     do {
-        rc = ble_hs_hci_rand(prand, 3);
+        rc = ble_hs_hci_util_rand(prand, 3);
         if (rc != 0) {
             return rc;
         }

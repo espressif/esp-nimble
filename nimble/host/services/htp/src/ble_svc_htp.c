@@ -392,7 +392,7 @@ ble_svc_htp_notify(uint16_t conn_handle, float temp, bool temp_unit)
 
     txom = ble_hs_mbuf_from_flat(measurement, sizeof(measurement));
     if (!txom) {
-        return ESP_FAIL;
+        return BLE_HS_ENOMEM;
     }
 
     rc = ble_gatts_notify_custom(conn_handle,
@@ -435,7 +435,7 @@ ble_svc_htp_indicate(uint16_t conn_handle, float temp, bool temp_unit)
 
     txom = ble_hs_mbuf_from_flat(measurement, sizeof(measurement));
     if (!txom) {
-        return ESP_FAIL;
+        return BLE_HS_ENOMEM;
     }
 
     rc = ble_gatts_indicate_custom(conn_handle,

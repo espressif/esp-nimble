@@ -313,6 +313,7 @@ ble_hs_conn_free(struct ble_hs_conn *conn)
 
 #if MYNEWT_VAL(BLE_GATTS)
     ble_att_svr_prep_clear(&conn->bhc_att_svr.basc_prep_list);
+    ble_gatts_conn_deinit(&conn->bhc_gatt_svr);
 #endif
 
     while ((chan = SLIST_FIRST(&conn->bhc_channels)) != NULL) {

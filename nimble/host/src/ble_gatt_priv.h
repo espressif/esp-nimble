@@ -264,6 +264,7 @@ extern struct ble_gatts_aware_state ble_gatts_conn_aware_states[MYNEWT_VAL(BLE_S
 /*** @misc. */
 int ble_gatts_conn_can_alloc(void);
 int ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn);
+void ble_gatts_conn_deinit(struct ble_gatts_conn *gatts_conn);
 int ble_gatts_init(void);
 #if MYNEWT_VAL(BLE_GATT_CACHING)
 int ble_gattc_cache_conn_init();

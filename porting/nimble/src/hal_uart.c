@@ -60,6 +60,14 @@ static void hci_uart_rx_task(void *pvParameters)
 {
     uart_event_t event;
     uint8_t* dtmp = (uint8_t*) nimble_platform_mem_calloc(1,RD_BUF_SIZE);
+    if (dtmp == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate UART RX buffer");
+        hci_uart.uart_opened = false;
+        hci_uart.rx_task_handler = NULL;
+        vTaskDelete(NULL);
+        return;
+    }
+
     while(hci_uart.uart_opened) {
         //Waiting for UART event.
         if(xQueueReceive(hci_uart.evt_queue, (void * )&event, (TickType_t)portMAX_DELAY)) {
@@ -122,12 +130,40 @@ static void hci_uart_rx_task(void *pvParameters)
 int hal_uart_config(int uart, int32_t speed, uint8_t data_bits, uint8_t stop_bits,
   enum hal_uart_parity parity, enum hal_uart_flow_ctl flow_ctl)
 {
+    uart_parity_t uart_parity;
+    uart_hw_flowcontrol_t uart_flow_ctrl;
+
+    switch (parity) {
+    case HAL_UART_PARITY_NONE:
+        uart_parity = UART_PARITY_DISABLE;
+        break;
+    case HAL_UART_PARITY_ODD:
+        uart_parity = UART_PARITY_ODD;
+        break;
+    case HAL_UART_PARITY_EVEN:
+        uart_parity = UART_PARITY_EVEN;
+        break;
+    default:
+        return -1;
+    }
+
+    switch (flow_ctl) {
+    case HAL_UART_FLOW_CTL_NONE:
+        uart_flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+        break;
+    case HAL_UART_FLOW_CTL_RTS_CTS:
+        uart_flow_ctrl = UART_HW_FLOWCTRL_CTS_RTS;
+        break;
+    default:
+        return -1;
+    }
+
     uart_config_t uart_cfg = {
         .baud_rate = speed,
         .data_bits = data_bits,
-        .parity    = parity,
+        .parity    = uart_parity,
         .stop_bits = stop_bits,
-        .flow_ctrl = flow_ctl,
+        .flow_ctrl = uart_flow_ctrl,
         .source_clk = UART_SCLK_DEFAULT,
     };
     hci_uart.port = uart;
@@ -147,7 +183,14 @@ int hal_uart_config(int uart, int32_t speed, uint8_t data_bits, uint8_t stop_bit
     ESP_LOGI(TAG, "set baud_rate:%d.\n", speed);
 
     //Create a task to handler UART event from ISR
-    xTaskCreate(hci_uart_rx_task, "hci_uart_rx_task", 2048, NULL, 12, &hci_uart.rx_task_handler);
+    if (xTaskCreate(hci_uart_rx_task, "hci_uart_rx_task", 2048, NULL, 12,
+                    &hci_uart.rx_task_handler) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create UART RX task");
+        hci_uart.uart_opened = false;
+        hci_uart.rx_task_handler = NULL;
+        uart_driver_delete(uart);
+        return -1;
+    }
     return 0;
 }
 

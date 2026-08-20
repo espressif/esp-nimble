@@ -224,7 +224,7 @@ void ble_gap_rx_frame_space_update_complete(const struct ble_hci_ev_le_subev_fra
 #endif
 
 #if MYNEWT_VAL(BLE_UTP_OTA)
-void ble_gap_rx_utp_receive(const struct ble_hci_ev_le_subev_utp_receive *ev, uint8_t len);
+void ble_gap_rx_utp_receive(const struct ble_hci_ev_le_subev_utp_receive *ev, unsigned int len);
 #endif
 
 #ifdef __cplusplus

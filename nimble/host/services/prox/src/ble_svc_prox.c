@@ -29,7 +29,7 @@
 typedef struct {
     uint8_t _ble_svc_prox_link_loss_alert;
     int8_t _ble_svc_prox_alert;
-    uint8_t _ble_svc_prox_tx_pwr_lvl;
+    int8_t _ble_svc_prox_tx_pwr_lvl;
     bool _ble_svc_prox_alert_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
     TaskHandle_t _ble_prox_task_handle;
 } ble_svc_prox_ctx_t;

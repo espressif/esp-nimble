@@ -1818,7 +1818,7 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
     struct ble_gattc_cache_conn_op *op;
     struct ble_hs_conn *hs_conn;
     const struct ble_gattc_cache_conn_chr *chr;
-    bool bonded;
+    bool bonded = false;
 
     peer->disc_prev_chr_val = 0;
     if (rc == 0) {
@@ -1831,18 +1831,21 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
         ble_addr_t peer_addr;
         ble_hs_lock();
         hs_conn = ble_hs_conn_find(peer->conn_handle);
-        BLE_HS_DBG_ASSERT(hs_conn != NULL);
-        bonded = hs_conn->bhc_sec_state.bonded;
-        peer_addr = hs_conn->bhc_peer_addr; /* Copy address while holding lock */
-        ble_hs_unlock();
+        if (hs_conn == NULL) {
+            ble_hs_unlock();
+        } else {
+            bonded = hs_conn->bhc_sec_state.bonded;
+            peer_addr = hs_conn->bhc_peer_addr; /* Copy address while holding lock */
+            ble_hs_unlock();
 
-        chr = ble_gattc_cache_conn_chr_find_uuid(peer,
-                                                 BLE_UUID16_DECLARE(BLE_GATT_SVC_UUID16),
-                                                 BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16));
-        if (bonded || chr != NULL) {
-            /* persist the cache */
-            ble_gattc_cacheReset(&peer_addr);
-            ble_gattc_cache_conn_cache_peer(peer); /* TODO */
+            chr = ble_gattc_cache_conn_chr_find_uuid(peer,
+                                                     BLE_UUID16_DECLARE(BLE_GATT_SVC_UUID16),
+                                                     BLE_UUID16_DECLARE(BLE_SVC_GATT_CHR_DATABASE_HASH_UUID16));
+            if (bonded || chr != NULL) {
+                /* persist the cache */
+                ble_gattc_cacheReset(&peer_addr);
+                ble_gattc_cache_conn_cache_peer(peer); /* TODO */
+            }
         }
     } else {
         peer->cache_state = CACHE_INVALID;

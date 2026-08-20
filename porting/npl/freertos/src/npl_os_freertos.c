@@ -593,6 +593,12 @@ npl_freertos_eventq_put(struct ble_npl_eventq *evq, struct ble_npl_event *ev)
         BLE_NPL_EXIT_CRITICAL_ISR();
 
         ret = xQueueSendToBackFromISR(eventq->q, &ev, &woken);
+        if (ret != pdPASS) {
+            BLE_NPL_ENTER_CRITICAL_ISR();
+            event->queued = false;
+            BLE_NPL_EXIT_CRITICAL_ISR();
+            return;
+        }
         if (woken == pdTRUE) {
             portYIELD_FROM_ISR();
         }

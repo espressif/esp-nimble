@@ -567,8 +567,11 @@ os_memblock_get(struct os_mempool *mp)
         bool need_alloc = false;
         void *allocated_block;
         uint32_t alloc_size;
+        uint16_t prev_min_free;
 
         OS_ENTER_CRITICAL(sr);
+
+        prev_min_free = mp->mp_min_free;
 
         if (mp->mp_num_free) {
 #if MYNEWT_VAL(MP_BLOCK_REUSED)
@@ -615,6 +618,7 @@ os_memblock_get(struct os_mempool *mp)
                 // Should not happen
                 OS_ENTER_CRITICAL(sr);
                 mp->mp_num_free++;
+                mp->mp_min_free = prev_min_free;
                 /* apply the changes: restore pre-incremented mp_alloc_blocks on
                  * malloc failure to keep counter consistent with actual allocations */
 #if MYNEWT_VAL(MP_BLOCK_REUSED)

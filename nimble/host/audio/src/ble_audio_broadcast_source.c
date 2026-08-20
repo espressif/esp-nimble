@@ -18,6 +18,7 @@
  */
 
 #include "host/ble_uuid.h"
+#include "host/ble_hs_hci.h"
 #include "audio/ble_audio_broadcast_source.h"
 
 #include "os/util.h"
@@ -140,7 +141,10 @@ ble_audio_broadcast_create(const struct ble_broadcast_create_params *params,
         return BLE_HS_EALREADY;
     }
 
-    ble_hs_hci_rand(broadcast_id, 3);
+    rc = ble_hs_hci_util_rand(broadcast_id, 3);
+    if (rc != 0) {
+        return rc;
+    }
     params->base->broadcast_id = get_le24(broadcast_id);
 
     broadcast = os_memblock_get(&ble_audio_broadcast_pool);

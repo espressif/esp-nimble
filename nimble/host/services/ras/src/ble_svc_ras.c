@@ -115,6 +115,9 @@ ble_svc_ras_ensure_ctx_init()
 {
     if (ble_svc_ras_ctx == NULL) {
         ble_svc_ras_ctx = nimble_platform_mem_calloc(1, sizeof(ble_svc_ras_ctx_t));
+        if (ble_svc_ras_ctx == NULL) {
+            return;
+        }
     }
 
     reset_ranging_buffer();
@@ -379,9 +382,11 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         sizeof(ble_svc_ras_rt_rd_val),
                         sizeof(ble_svc_ras_rt_rd_val),
                         &ble_svc_ras_rt_rd_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             } else if (attr_handle == ble_svc_ras_od_rd_val_handle) {
                 /* Ensure the buffer is allocated before writing to it */
@@ -456,18 +461,22 @@ static int gatt_svr_chr_access_ras_val(uint16_t conn_handle, uint16_t attr_handl
                         sizeof(ble_svc_ras_rd_val),
                         sizeof(ble_svc_ras_rd_val),
                         &ble_svc_ras_rd_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             } else if (attr_handle == ble_svc_ras_rd_ov_val_handle) {
                 rc = gatt_svr_write(ctxt->om,
                         sizeof(ble_svc_ras_rd_ov_val),
                         sizeof(ble_svc_ras_rd_ov_val),
                         &ble_svc_ras_rd_ov_val, NULL);
-                ble_gatts_chr_updated(attr_handle);
-                MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
-                "all subscribed peers.\n");
+                if (rc == 0) {
+                    ble_gatts_chr_updated(attr_handle);
+                    MODLOG_DFLT(INFO, "Notification/Indication scheduled for "
+                    "all subscribed peers.\n");
+                }
                 return rc;
             }
 
@@ -529,6 +538,7 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
     buf->ranging_data.ranging_header.antenna_paths_mask = (num_paths > 0) ? ((1u << num_paths) - 1) : 0;
 
     uint16_t max_subevent_data = BLE_RAS_PROCEDURE_MEM - sizeof(struct ranging_header);
+    uint16_t saved_cursor = buf->subevent_cursor;
 
     if (buf->subevent_cursor + sizeof(struct subevent_header) > max_subevent_data) {
         MODLOG_DFLT(ERROR, "Ranging buffer overflow on subevent header\n");
@@ -554,6 +564,7 @@ void ble_gatts_store_ranging_data(struct ble_cs_event ranging_subevent) {
 
         if (buf->subevent_cursor + BLE_RAS_STEP_MODE_LEN + step->data_len > max_subevent_data) {
             MODLOG_DFLT(ERROR, "Ranging buffer overflow on step data\n");
+            buf->subevent_cursor = saved_cursor;
             return;
         }
 

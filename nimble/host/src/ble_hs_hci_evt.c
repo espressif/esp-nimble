@@ -2226,7 +2226,7 @@ ble_hs_hci_evt_le_utp_receive(uint8_t subevent, const void *data, unsigned int l
     if (len < sizeof(*ev) || len != (sizeof(*ev) + ev->len)) {
         return BLE_HS_EBADDATA;
     }
-    ble_gap_rx_utp_receive(data, (uint8_t)len);
+    ble_gap_rx_utp_receive(data, len);
     return 0;
 }
 #endif
