@@ -136,6 +136,7 @@ struct ble_gattc_cache_conn {
     /* event to be posted to inform
     the application about the discovery results */
     struct ble_npl_event disc_ev;
+    uint8_t disc_ev_initialized;
 
 #if MYNEWT_VAL(BLE_GATT_CACHING_ASSOC_ENABLE)
     /** Indicates whether association was successful (0 = fail, 1 = success) */
