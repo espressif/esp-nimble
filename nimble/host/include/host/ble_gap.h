@@ -3587,10 +3587,12 @@ int ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
  * @param peer_addr             The address of the peer to connect to.
  *                                  If this parameter is NULL, the white list
  *                                  is used.
- * @param duration_ms           The duration of the discovery procedure.
- *                                  On expiration, the procedure ends and a
- *                                  BLE_GAP_EVENT_DISC_COMPLETE event is
- *                                  reported.  Units are milliseconds.
+ * @param duration_ms           The duration of the connect procedure.  On
+ *                                  expiration, the procedure is cancelled and
+ *                                  a BLE_GAP_EVENT_CONNECT event with a status
+ *                                  of BLE_HS_ETIMEOUT is reported.  Units are
+ *                                  milliseconds.  Specify BLE_HS_FOREVER to
+ *                                  wait indefinitely for the controller.
  * @param phy_mask              Define on which PHYs connection attempt should
  *                                  be done
  * @param phy_1m_conn_params     Additional arguments specifying the

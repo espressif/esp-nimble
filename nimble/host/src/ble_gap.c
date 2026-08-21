@@ -233,6 +233,10 @@ struct ble_gap_master_state {
             uint8_t using_wl:1;
             uint8_t our_addr_type:2;
             uint8_t cancel:1;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+            uint8_t synchronized:1;
+            uint8_t timeout_cancel_pending:1;
+#endif
             ble_addr_t peer_addr;
         } conn;
 
@@ -1686,6 +1690,10 @@ ble_gap_master_reset_state(void)
     ble_gap_master.op = BLE_GAP_OP_NULL;
     ble_gap_master.exp_set = 0;
     ble_gap_master.conn.cancel = 0;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    ble_gap_master.conn.synchronized = 0;
+    ble_gap_master.conn.timeout_cancel_pending = 0;
+#endif
     memset(&ble_gap_master.conn.peer_addr, 0,
            sizeof(ble_gap_master.conn.peer_addr));
 
@@ -4243,6 +4251,29 @@ ble_gap_pawr_conn_our_addr(const struct ble_gap_conn_complete *evt,
 }
 #endif
 
+#if NIMBLE_BLE_CONNECT
+/**
+ * Drops a link the host has no state for.  Such a connection can never be used
+ * or terminated by the application, so leaving it up would strand it until the
+ * supervision timeout expires.
+ */
+static void
+ble_gap_disconnect_unclaimed_conn(uint16_t conn_handle)
+{
+    struct ble_hci_lc_disconnect_cp cmd;
+    int rc;
+
+    cmd.conn_handle = htole16(conn_handle);
+    cmd.reason = BLE_ERR_REM_USER_CONN_TERM;
+
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LINK_CTRL,
+                                      BLE_HCI_OCF_DISCONNECT_CMD),
+                           &cmd, sizeof(cmd), NULL, 0);
+    BLE_HS_LOG(WARN, "GAP: no procedure owns conn_handle=%d; disconnecting; "
+                     "rc=%d\n", conn_handle, rc);
+}
+#endif
+
 /**
  * Processes an incoming connection-complete HCI event.
  * instance parameter is valid only for slave connection.
@@ -4347,6 +4378,7 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
     case BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER:
         rc = ble_gap_accept_master_conn();
         if (rc != 0) {
+            ble_gap_disconnect_unclaimed_conn(evt->connection_handle);
             return rc;
         }
         break;
@@ -4361,6 +4393,7 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 #endif
         rc = ble_gap_accept_slave_conn(instance);
         if (rc != 0) {
+            ble_gap_disconnect_unclaimed_conn(evt->connection_handle);
             return rc;
         }
         break;
@@ -4793,6 +4826,11 @@ ble_gap_master_timer(void)
 {
     uint32_t ticks_until_exp;
     uint8_t op;
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) && \
+    (MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER))
+    bool synchronized;
+    bool timeout_cancel_pending;
+#endif
 #if NIMBLE_BLE_CONNECT || (NIMBLE_BLE_SCAN && !MYNEWT_VAL(BLE_EXT_ADV))
     int rc;
 #endif
@@ -4800,6 +4838,13 @@ ble_gap_master_timer(void)
     ble_hs_lock();
     ticks_until_exp = ble_gap_master_ticks_until_exp();
     op = ble_gap_master.op;
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) && \
+    (MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER))
+    synchronized = op == BLE_GAP_OP_M_CONN &&
+                   ble_gap_master.conn.synchronized;
+    timeout_cancel_pending = op == BLE_GAP_OP_M_CONN &&
+                             ble_gap_master.conn.timeout_cancel_pending;
+#endif
     ble_hs_unlock();
 
     if (ticks_until_exp != 0) {
@@ -4812,11 +4857,63 @@ ble_gap_master_timer(void)
     switch (op) {
 #if NIMBLE_BLE_CONNECT
     case BLE_GAP_OP_M_CONN:
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) && \
+    (MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER))
+        if (timeout_cancel_pending) {
+            /*
+             * The controller accepted the cancel but did not report its
+             * connection-complete result within the grace period.
+             */
+            ble_hs_lock();
+            ble_gap_master.exp_set = 0;
+            ble_hs_unlock();
+
+            ble_gap_master_connect_cancelled();
+            break;
+        }
+#endif
         rc = ble_gap_conn_cancel_tx();
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
+        if (rc == BLE_HS_HCI_ERR(BLE_ERR_CMD_DISALLOWED) ||
+            rc == BLE_HS_HCI_ERR(BLE_ERR_UNKNOWN_HCI_CMD)) {
+            /* The controller has no connection attempt pending, so no
+             * connection complete event will follow the cancel.  Report the
+             * timeout here instead of retrying the cancel forever.
+             */
+            ble_hs_lock();
+            ble_gap_master.exp_set = 0;
+            ble_hs_unlock();
+
+            ble_gap_master_connect_cancelled();
+            break;
+        }
+#endif
         if (rc != 0) {
             /* Failed to stop connecting; try again in 100 ms. */
             return ble_npl_time_ms_to_ticks32(BLE_GAP_CANCEL_RETRY_TIMEOUT_MS);
         } else {
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) && \
+    (MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER))
+            /*
+             * A synchronized create-connection controller can fail to send
+             * the completion event after accepting cancel.  Allow the normal
+             * event a short grace period, then complete the host procedure if
+             * the controller remains silent.
+             */
+            if (synchronized) {
+                uint32_t grace_ticks =
+                    ble_npl_time_ms_to_ticks32(
+                        BLE_GAP_CANCEL_RETRY_TIMEOUT_MS);
+
+                ble_hs_lock();
+                ble_gap_master.conn.timeout_cancel_pending = 1;
+                ble_gap_master.exp_os_ticks =
+                    ble_npl_time_get() + grace_ticks;
+                ble_hs_unlock();
+                return grace_ticks;
+            }
+#endif
+
             /* Stop the timer now that the cancel command has been acked. */
             ble_hs_lock();
             ble_gap_master.exp_set = 0;
@@ -9474,6 +9571,7 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 ble_gap_event_fn *cb, void *cb_arg)
 {
+    uint32_t duration_ticks = 0;
     int rc;
 
     STATS_INC(ble_gap_stats, initiate);
@@ -9539,11 +9637,20 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
         duration_ms = BLE_GAP_CONN_DUR_DFLT;
     }
 
-	/* The connection creation timeout is not really useful for PAwR.
-	 * The controller will give a result for the connection attempt
-	 * within a periodic interval. We do not know the periodic interval
-	 * used, so disable the timeout.
-	 */
+    /* The controller reports the outcome of a synchronized connection attempt
+     * within a periodic interval, but a controller that never reports it would
+     * otherwise leave the initiate procedure pending forever with no event for
+     * the application.  Keep the host timeout as a recovery path; callers that
+     * do not want it can pass BLE_HS_FOREVER.
+     */
+    if (duration_ms != BLE_HS_FOREVER) {
+        rc = ble_npl_time_ms_to_ticks(duration_ms, &duration_ticks);
+        if (rc != 0) {
+            /* Duration too great. */
+            rc = BLE_HS_EINVAL;
+            goto done;
+        }
+    }
 
     /* Verify peer not already connected. */
     if (ble_hs_conn_find_by_addr(peer_addr) != NULL) {
@@ -9564,6 +9671,7 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
     ble_gap_master.conn.our_addr_type = own_addr_type;
+    ble_gap_master.conn.synchronized = 1;
     if (peer_addr != NULL) {
         ble_gap_master.conn.peer_addr = *peer_addr;
     } else {
@@ -9580,6 +9688,12 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
         ble_gap_master_reset_state();
         goto done;
     }
+
+#if MYNEWT_VAL(BLE_ROLE_CENTRAL)
+    if (duration_ms != BLE_HS_FOREVER) {
+        ble_gap_master_set_timer(duration_ticks);
+    }
+#endif
 
     rc = 0;
 
@@ -9935,6 +10049,9 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
     ble_gap_master.conn.our_addr_type = own_addr_type;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    ble_gap_master.conn.synchronized = 0;
+#endif
     if (peer_addr != NULL) {
         ble_gap_master.conn.peer_addr = *peer_addr;
     } else {
@@ -10122,6 +10239,9 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
     ble_gap_master.conn.our_addr_type = own_addr_type;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    ble_gap_master.conn.synchronized = 0;
+#endif
     if (peer_addr != NULL) {
         ble_gap_master.conn.peer_addr = *peer_addr;
     } else {
