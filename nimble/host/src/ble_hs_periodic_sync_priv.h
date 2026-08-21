@@ -31,6 +31,10 @@ struct ble_hs_periodic_sync {
     uint16_t   sync_handle;
     ble_addr_t advertiser_addr;
     uint8_t    adv_sid;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    /* From Sync Established/Transfer V2; >0 means PAwR sync. */
+    uint8_t    num_subevents;
+#endif
 
     ble_gap_event_fn *cb;
     void *cb_arg;
@@ -46,6 +50,9 @@ struct ble_hs_periodic_sync *ble_hs_periodic_sync_find_by_handle(uint16_t sync_h
 struct ble_hs_periodic_sync *ble_hs_periodic_sync_find(const ble_addr_t *addr,
                                                        uint8_t sid);
 struct ble_hs_periodic_sync *ble_hs_periodic_sync_first(void);
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+struct ble_hs_periodic_sync *ble_hs_periodic_sync_find_pawr_locked(void);
+#endif
 int ble_hs_periodic_sync_init(void);
 void ble_hs_periodic_sync_deinit(void);
 #ifdef __cplusplus

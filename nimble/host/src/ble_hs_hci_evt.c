@@ -17,6 +17,7 @@
  * under the License.
  */
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
@@ -761,6 +762,86 @@ ble_hs_hci_evt_le_meta(uint8_t event_code, const void *data, unsigned int len)
 
 
 #if NIMBLE_BLE_CONNECT
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+static void
+ble_hs_hci_evt_conn_norm_handles(struct ble_gap_conn_complete *evt)
+{
+    if (evt->status != BLE_ERR_SUCCESS) {
+        evt->adv_handle = 0xff;
+        evt->sync_handle = 0xffff;
+        return;
+    }
+
+    switch (evt->role) {
+    case BLE_HCI_LE_CONN_COMPLETE_ROLE_MASTER:
+        evt->sync_handle = 0xffff;
+        if (evt->adv_handle > 0xef) {
+            evt->adv_handle = 0xff;
+        }
+        break;
+
+    case BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE:
+        evt->adv_handle = 0xff;
+        if (evt->sync_handle > 0x0eff) {
+            evt->sync_handle = 0xffff;
+        }
+        break;
+
+    default:
+        evt->adv_handle = 0xff;
+        evt->sync_handle = 0xffff;
+        break;
+    }
+}
+
+static bool
+ble_hs_hci_evt_pawr_conn(struct ble_gap_conn_complete *evt,
+                         bool handles_present)
+{
+    struct ble_hs_periodic_sync *psync;
+
+    /* Only a peripheral is identified by the sync handle. */
+    if (evt->status == BLE_ERR_SUCCESS &&
+        evt->role != BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
+        return false;
+    }
+
+    ble_hs_lock();
+    /*
+     * The sync handle is only meaningful on a successful V2 event; it has
+     * already been dropped in all the circumstances where the spec requires the
+     * host to ignore it.  Regular periodic syncs share the same list, so a sync
+     * without subevents does not describe a PAwR train and must not
+     * short-circuit the pending-connection / Advertising Set Terminated path.
+     * That also rejects controllers reporting sync handle 0 for a connection
+     * established from extended advertising.
+     */
+    psync = NULL;
+    if (evt->status == BLE_ERR_SUCCESS && handles_present &&
+        evt->sync_handle != 0xffff) {
+        psync = ble_hs_periodic_sync_find_by_handle(evt->sync_handle);
+        if (psync != NULL && psync->num_subevents == 0) {
+            psync = NULL;
+        }
+    }
+
+    if (psync == NULL &&
+        (evt->status == BLE_ERR_CONN_ESTABLISHMENT ||
+         (evt->status == BLE_ERR_SUCCESS && !handles_present))) {
+        psync = ble_hs_periodic_sync_find_pawr_locked();
+    }
+
+    if (psync != NULL) {
+        evt->sync_handle = psync->sync_handle;
+    } else {
+        evt->sync_handle = 0xffff;
+    }
+    ble_hs_unlock();
+
+    return psync != NULL;
+}
+#endif
+
 static int
 ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
                                     unsigned int len)
@@ -790,6 +871,16 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
     memset(&evt, 0, sizeof(evt));
 
     evt.status = ev->status;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE) {
+        evt.adv_handle = 0xff;
+        evt.sync_handle = 0xffff;
+    } else {
+        evt.adv_handle = ev->adv_handle;
+        evt.sync_handle = le16toh(ev->sync_handle);
+    }
+#endif
 
     if (evt.status == BLE_ERR_SUCCESS) {
         evt.connection_handle = le16toh(ev->conn_handle);
@@ -824,10 +915,32 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
         evt.connection_handle = BLE_HS_CONN_HANDLE_NONE;
 #endif
     }
-#if MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    ble_hs_hci_evt_conn_norm_handles(&evt);
+
+    /*
+     * PAwR connection-complete failures contain only a valid status field,
+     * so associate the event with the active PAwR sync before inspecting role.
+     */
+    if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE_V2 &&
+        ble_hs_hci_evt_pawr_conn(&evt, true)) {
+        return ble_gap_rx_conn_complete(&evt, 0);
+    }
+#endif
+#if MYNEWT_VAL(BLE_EXT_ADV)
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
 
+        /* PAwR slave connections are not followed by LE Advertising Set
+         * Terminated, so they must not be stored as pending.
+         */
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (evt.status == BLE_ERR_SUCCESS &&
+            subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE &&
+            ble_hs_hci_evt_pawr_conn(&evt, false)) {
+            return ble_gap_rx_conn_complete(&evt, 0);
+        }
+#endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_hs_hci_ensure_ctx()) {
              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
@@ -843,16 +956,15 @@ ble_hs_hci_evt_le_enh_conn_complete(uint8_t subevent, const void *data,
 #endif
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-    if (subevent == BLE_HCI_LE_SUBEV_ENH_CONN_COMPLETE) {
-        evt.adv_handle = 0xFF;
-        evt.sync_handle = 0xFFFF;
-    } else {
-        evt.adv_handle = ev->adv_handle;
-        evt.sync_handle = ev->sync_handle;
-    }
-#endif
-    return ble_gap_rx_conn_complete(&evt, 0);
+    uint8_t instance = 0;
 
+    if (evt.adv_handle < BLE_ADV_INSTANCES) {
+        instance = evt.adv_handle;
+    }
+    return ble_gap_rx_conn_complete(&evt, instance);
+#else
+    return ble_gap_rx_conn_complete(&evt, 0);
+#endif
 }
 
 static int
@@ -870,6 +982,12 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
     memset(&evt, 0, sizeof(evt));
 
     evt.status = ev->status;
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    /* This event carries no PAwR handles. */
+    evt.adv_handle = 0xff;
+    evt.sync_handle = 0xffff;
+#endif
 
     if (evt.status == BLE_ERR_SUCCESS) {
         evt.connection_handle = le16toh(ev->conn_handle);
@@ -907,6 +1025,12 @@ ble_hs_hci_evt_le_conn_complete(uint8_t subevent, const void *data,
     if (evt.status == BLE_ERR_DIR_ADV_TMO ||
                             evt.role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (evt.status == BLE_ERR_SUCCESS &&
+            ble_hs_hci_evt_pawr_conn(&evt, false)) {
+            return ble_gap_rx_conn_complete(&evt, 0);
+        }
+#endif
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
         if (ble_hs_hci_ensure_ctx()) {
              BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
@@ -1477,13 +1601,25 @@ ble_hs_hci_evt_le_periodic_adv_sync_estab(uint8_t subevent, const void *data,
                                           unsigned int len)
 {
     const struct ble_hci_ev_le_subev_periodic_adv_sync_estab *ev = data;
+    unsigned int min_len;
 
-    if (len != sizeof(*ev)) {
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    if (subevent == BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_ESTAB) {
+        min_len = offsetof(struct ble_hci_ev_le_subev_periodic_adv_sync_estab,
+                           num_subevents);
+    } else {
+        min_len = sizeof(*ev);
+    }
+#else
+    min_len = sizeof(*ev);
+#endif
+
+    if (len < min_len) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
     }
 
-    ble_gap_rx_peroidic_adv_sync_estab(ev);
+    ble_gap_rx_peroidic_adv_sync_estab(ev, subevent);
 
     return 0;
 }
@@ -1564,22 +1700,25 @@ ble_hs_hci_evt_le_periodic_adv_sync_transfer(uint8_t subevent, const void *data,
 {
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_SYNC_TRANSFER)
     const struct ble_hci_ev_le_subev_periodic_adv_sync_transfer *ev = data;
-    struct ble_hci_ev_le_subev_periodic_adv_sync_transfer ev_copy;
+    unsigned int min_len;
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-    /* V1 event is 4 bytes shorter (lacks PAwR fields); accept both lengths */
-    unsigned int v1_len = sizeof(*ev) - 4;
-    if (len != sizeof(*ev) && len != v1_len) {
+    if (subevent == BLE_HCI_LE_SUBEV_PERIODIC_ADV_SYNC_TRANSFER) {
+        min_len = offsetof(struct ble_hci_ev_le_subev_periodic_adv_sync_transfer,
+                           num_subevents);
+    } else {
+        min_len = sizeof(*ev);
+    }
 #else
-    if (len != sizeof(*ev)) {
+    min_len = sizeof(*ev);
 #endif
+
+    if (len < min_len) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
-    memset(&ev_copy, 0, sizeof(ev_copy));
-    memcpy(&ev_copy, ev, len);
-    ble_gap_rx_periodic_adv_sync_transfer(&ev_copy);
+    ble_gap_rx_periodic_adv_sync_transfer(ev, subevent);
 
 #endif
     return 0;
