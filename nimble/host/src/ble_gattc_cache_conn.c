@@ -192,6 +192,12 @@ ble_gattc_cache_conn_disc_incs(struct ble_gattc_cache_conn *ble_gattc_cache_conn
 
 static void
 ble_gattc_cache_conn_disc_dscs(struct ble_gattc_cache_conn *peer);
+
+static void
+ble_gattc_cache_conn_pending_op_fail(struct ble_gattc_cache_conn *peer, int status);
+
+static struct ble_gatt_error *
+ble_gattc_cache_error(int status, uint16_t att_handle);
 #endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
@@ -1569,11 +1575,38 @@ ble_gattc_cache_conn_cache_peer(struct ble_gattc_cache_conn *peer)
 }
 #endif
 
+static void
+ble_gattc_cache_conn_disc_ev_deinit(struct ble_gattc_cache_conn *conn)
+{
+    if (!conn->disc_ev_initialized) {
+        return;
+    }
+
+    if (ble_npl_event_is_queued(&conn->disc_ev)) {
+        ble_npl_eventq_remove((struct ble_npl_eventq *)ble_hs_evq_get(),
+                              &conn->disc_ev);
+    }
+    ble_npl_event_deinit(&conn->disc_ev);
+    conn->disc_ev_initialized = 0;
+}
+
+#if MYNEWT_VAL(BLE_GATTC)
+static void
+ble_gattc_cache_conn_disc_ev_init(struct ble_gattc_cache_conn *conn,
+                                  ble_npl_event_fn *fn)
+{
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
+    ble_npl_event_init(&conn->disc_ev, fn, &conn->conn_handle);
+    conn->disc_ev_initialized = 1;
+}
+#endif
+
 void
 ble_gattc_cache_conn_broken(uint16_t conn_handle)
 {
     struct ble_gattc_cache_conn_svc *svc;
     struct ble_gattc_cache_conn *conn;
+    bool was_queued;
 
     conn = ble_gattc_cache_conn_find(conn_handle);
     if (conn == NULL) {
@@ -1584,15 +1617,22 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
     /* clean the cache_conn */
     SLIST_REMOVE(&ble_gattc_cache_conns, conn, ble_gattc_cache_conn, next);
 
-    /* Remove any pending disc_ev from the queue before freeing conn to
-     * avoid use-after-free when the event fires after the connection struct
-     * has been returned to the pool. Guard ev->event != NULL: conn struct is
-     * zeroed on creation so disc_ev may never have been initialized. */
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
-        ble_npl_eventq_remove((struct ble_npl_eventq *)ble_hs_evq_get(),
-                              &conn->disc_ev);
+    /* Remove any pending discovery event to prevent UAF after conn is freed. */
+    was_queued = false;
+    if (conn->disc_ev_initialized) {
+        was_queued = ble_npl_event_is_queued(&conn->disc_ev);
+        if (was_queued) {
+            ble_npl_eventq_remove((struct ble_npl_eventq *)ble_hs_evq_get(),
+                                  &conn->disc_ev);
+        }
     }
-    ble_npl_event_deinit(&conn->disc_ev);
+    if (conn->pending_op.cb != NULL &&
+        (was_queued || conn->cache_state != CACHE_VERIFIED)) {
+#if MYNEWT_VAL(BLE_GATTC)
+        ble_gattc_cache_conn_pending_op_fail(conn, BLE_HS_ENOTCONN);
+#endif
+    }
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     while ((svc = SLIST_FIRST(&conn->svcs)) != NULL) {
         SLIST_REMOVE_HEAD(&conn->svcs, next);
@@ -1711,13 +1751,70 @@ static void service_sanity_check(struct ble_gattc_cache_conn_svc_list *svcs)
     }
 }
 
+#if MYNEWT_VAL(BLE_GATTC)
+static void
+ble_gattc_cache_conn_pending_op_fail(struct ble_gattc_cache_conn *peer, int status)
+{
+    struct ble_gattc_cache_conn_op *op;
+    uint16_t conn_handle;
+    ble_gatt_disc_svc_fn *disc_svc_cb;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    ble_gatt_disc_incl_svc_fn *disc_incl_svc_cb;
+#endif
+    ble_gatt_chr_fn *chr_cb;
+    ble_gatt_dsc_fn *dsc_cb;
+    void *cb_arg;
+    uint8_t cb_type;
+
+    op = &peer->pending_op;
+    if (op->cb == NULL) {
+        return;
+    }
+
+    conn_handle = peer->conn_handle;
+    cb_type = op->cb_type;
+    cb_arg = op->cb_arg;
+    disc_svc_cb = (ble_gatt_disc_svc_fn *)op->cb;
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+    disc_incl_svc_cb = (ble_gatt_disc_incl_svc_fn *)op->cb;
+#endif
+    chr_cb = (ble_gatt_chr_fn *)op->cb;
+    dsc_cb = (ble_gatt_dsc_fn *)op->cb;
+    memset(op, 0, sizeof(*op));
+
+    switch (cb_type) {
+    case BLE_GATT_OP_DISC_ALL_SVCS:
+    case BLE_GATT_OP_DISC_SVC_UUID:
+        disc_svc_cb(conn_handle,
+                    ble_gattc_cache_error(status, 0), NULL, cb_arg);
+        break;
+    case BLE_GATT_OP_FIND_INC_SVCS:
+#if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
+        disc_incl_svc_cb(conn_handle,
+                         ble_gattc_cache_error(status, 0), NULL, cb_arg);
+#else
+        disc_svc_cb(conn_handle,
+                    ble_gattc_cache_error(status, 0), NULL, cb_arg);
+#endif
+        break;
+    case BLE_GATT_OP_DISC_ALL_CHRS:
+    case BLE_GATT_OP_DISC_CHR_UUID:
+        chr_cb(conn_handle,
+               ble_gattc_cache_error(status, 0), NULL, cb_arg);
+        break;
+    case BLE_GATT_OP_DISC_ALL_DSCS:
+        dsc_cb(conn_handle,
+               ble_gattc_cache_error(status, 0), 0, NULL, cb_arg);
+        break;
+    default:
+        break;
+    }
+}
+#endif
+
 static void
 ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
 {
-    /* TODO(issue-14): When rc != 0, the pending_op callback is invoked via
-     * search_all_svcs etc. which hardcode BLE_HS_EDONE, swallowing the real
-     * error. If rc != 0 invoke the application callback directly with the
-     * actual error code and return early, instead of re-running a search. */
     struct ble_gattc_cache_conn_op *op;
     struct ble_hs_conn *hs_conn;
     const struct ble_gattc_cache_conn_chr *chr;
@@ -1753,6 +1850,10 @@ ble_gattc_cache_conn_disc_complete(struct ble_gattc_cache_conn *peer, int rc)
     /* respond to the pending gatt op */
     op = &peer->pending_op;
     if (op->cb) {
+        if (rc != 0) {
+            ble_gattc_cache_conn_pending_op_fail(peer, rc);
+            return;
+        }
         switch (op->cb_type) {
         case BLE_GATT_OP_DISC_ALL_SVCS :
             rc = ble_gattc_cache_conn_search_all_svcs(peer->conn_handle, op->cb, op->cb_arg);
@@ -2707,7 +2808,7 @@ static void ble_gattc_cache_search_all_svcs_cb(struct ble_npl_event *ev)
         return;
     }
 
-    ble_npl_event_deinit(&conn->disc_ev);
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     op = &conn->pending_op;
     dcb = op->cb;
@@ -2771,18 +2872,15 @@ ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,
         return rc;
     }
 
-    /* Guard against re-init of a disc_ev that is already in the queue;
-     * re-init would memset the internal event struct and corrupt the queued flag.
-     * Check ev->event != NULL first: it is NULL when disc_ev was never initialized
-     * (conn struct is zeroed on creation), and npl_freertos_event_is_queued would
-     * dereference NULL causing a crash. */
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
+    /* Guard against re-init of a disc_ev that is already in the queue. */
+    if (conn->disc_ev_initialized && ble_npl_event_is_queued(&conn->disc_ev)) {
         return BLE_HS_EBUSY;
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_SVCS,
                            0, 0, NULL);
-    ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_search_all_svcs_cb, &conn->conn_handle);
+    /* put the event in the queue to mimic the gattc behaviour */
+    ble_gattc_cache_conn_disc_ev_init(conn, ble_gattc_cache_search_all_svcs_cb);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
@@ -2804,7 +2902,7 @@ ble_gattc_cache_conn_search_svc_by_uuid_cb(struct ble_npl_event *ev)
         return;
     }
 
-    ble_npl_event_deinit(&conn->disc_ev);
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     op = &conn->pending_op;
     dcb = op->cb;
@@ -2845,13 +2943,14 @@ ble_gattc_cache_conn_search_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *
         return rc;
     }
 
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
+    if (conn->disc_ev_initialized && ble_npl_event_is_queued(&conn->disc_ev)) {
         return BLE_HS_EBUSY;
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_SVC_UUID,
                            0, 0, uuid);
-    ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_svc_by_uuid_cb, &conn->conn_handle);
+    /* put the event in the queue to mimic the gattc behaviour */
+    ble_gattc_cache_conn_disc_ev_init(conn, ble_gattc_cache_conn_search_svc_by_uuid_cb);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
@@ -2879,7 +2978,7 @@ ble_gattc_cache_conn_search_inc_svcs_cb(struct ble_npl_event *ev)
         return;
     }
 
-    ble_npl_event_deinit(&conn->disc_ev);
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     op = &conn->pending_op;
     dcb = op->cb;
@@ -2938,19 +3037,15 @@ ble_gattc_cache_conn_search_inc_svcs(uint16_t conn_handle, uint16_t start_handle
         return rc;
     }
 
-    /* Guard against re-init of a disc_ev that is already in the queue;
-     * re-init would memset the internal event struct and corrupt the queued flag.
-     * Check ev->event != NULL first: it is NULL when disc_ev was never initialized
-     * (conn struct is zeroed on creation), and npl_freertos_event_is_queued would
-     * dereference NULL causing a crash. */
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
+    /* Guard against re-init of a disc_ev that is already in the queue. */
+    if (conn->disc_ev_initialized && ble_npl_event_is_queued(&conn->disc_ev)) {
         return BLE_HS_EBUSY;
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_FIND_INC_SVCS,
                            start_handle, end_handle, NULL);
     /* put the event in the queue to mimic the gattc behaviour */
-    ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_inc_svcs_cb, &conn->conn_handle);
+    ble_gattc_cache_conn_disc_ev_init(conn, ble_gattc_cache_conn_search_inc_svcs_cb);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
@@ -2972,7 +3067,7 @@ ble_gattc_cache_conn_search_all_chrs_cb(struct ble_npl_event *ev)
         return;
     }
 
-    ble_npl_event_deinit(&conn->disc_ev);
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     op = &conn->pending_op;
     dcb = op->cb;
@@ -3029,13 +3124,14 @@ ble_gattc_cache_conn_search_all_chrs(uint16_t conn_handle, uint16_t start_handle
         return rc;
     }
 
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
+    if (conn->disc_ev_initialized && ble_npl_event_is_queued(&conn->disc_ev)) {
         return BLE_HS_EBUSY;
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_CHRS,
                            start_handle, end_handle, NULL);
-    ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_all_chrs_cb, &conn->conn_handle);
+    /* put the event in the queue to mimic the gattc behaviour */
+    ble_gattc_cache_conn_disc_ev_init(conn, ble_gattc_cache_conn_search_all_chrs_cb);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
@@ -3057,7 +3153,7 @@ ble_gattc_cache_conn_search_chrs_by_uuid_cb(struct ble_npl_event *ev)
         return;
     }
 
-    ble_npl_event_deinit(&conn->disc_ev);
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     op = &conn->pending_op;
     dcb = op->cb;
@@ -3118,13 +3214,14 @@ ble_gattc_cache_conn_search_chrs_by_uuid(uint16_t conn_handle, uint16_t start_ha
         return rc;
     }
 
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
+    if (conn->disc_ev_initialized && ble_npl_event_is_queued(&conn->disc_ev)) {
         return BLE_HS_EBUSY;
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_CHR_UUID,
                            start_handle, end_handle, uuid);
-    ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_chrs_by_uuid_cb, &conn->conn_handle);
+    /* put the event in the queue to mimic the gattc behaviour */
+    ble_gattc_cache_conn_disc_ev_init(conn, ble_gattc_cache_conn_search_chrs_by_uuid_cb);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
@@ -3147,7 +3244,7 @@ ble_gattc_cache_conn_search_all_dscs_cb(struct ble_npl_event *ev)
         return;
     }
 
-    ble_npl_event_deinit(&conn->disc_ev);
+    ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     op = &conn->pending_op;
     dcb = op->cb;
@@ -3209,13 +3306,14 @@ ble_gattc_cache_conn_search_all_dscs(uint16_t conn_handle, uint16_t start_handle
         return rc;
     }
 
-    if (conn->disc_ev.event && ble_npl_event_is_queued(&conn->disc_ev)) {
+    if (conn->disc_ev_initialized && ble_npl_event_is_queued(&conn->disc_ev)) {
         return BLE_HS_EBUSY;
     }
 
     CHECK_CACHE_CONN_STATE(conn->cache_state, cb, cb_arg, BLE_GATT_OP_DISC_ALL_DSCS,
                            start_handle, end_handle, NULL);
-    ble_npl_event_init(&conn->disc_ev, ble_gattc_cache_conn_search_all_dscs_cb, &conn->conn_handle);
+    /* put the event in the queue to mimic the gattc behaviour */
+    ble_gattc_cache_conn_disc_ev_init(conn, ble_gattc_cache_conn_search_all_dscs_cb);
     ble_npl_eventq_put((struct ble_npl_eventq *)ble_hs_evq_get(), &conn->disc_ev);
     return 0;
 }
