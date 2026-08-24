@@ -2852,10 +2852,12 @@ ble_gap_rx_adv_report_sanity_check(const uint8_t *adv_data, uint8_t adv_data_len
         return -1;
     }
 
-    if (ble_gap_master.disc.observer || is_scan_rsp) {
-        /* Observer role is enabled; All adv reports regardless of
-         * Flags AD Type need to be discovered.
-	 * Also, ignore AD type checks for scan response data
+    if ((ble_gap_master.disc.observer && !ble_gap_master.disc.limited) ||
+        is_scan_rsp) {
+        /* Observation procedure accepts all adv reports regardless of
+         * Flags AD Type. Limited discovery is stricter and must still
+         * enforce BLE_HS_ADV_F_DISC_LTD.
+         * Also, ignore AD type checks for scan response data.
          */
         return 0;
     }
