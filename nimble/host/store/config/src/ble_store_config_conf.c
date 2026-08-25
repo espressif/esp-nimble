@@ -336,6 +336,16 @@ ble_store_config_persist_our_secs(void)
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+int
+ble_store_config_persist_our_sec_value(
+    const struct ble_store_value_sec *value_sec)
+{
+    (void)value_sec;
+    return ble_store_config_persist_our_secs();
+}
+#endif
+
 int
 ble_store_config_persist_peer_secs(void)
 {

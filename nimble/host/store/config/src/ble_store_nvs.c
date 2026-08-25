@@ -25,6 +25,7 @@
 
 #if MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST)
 
+#include <stdlib.h>
 #include <string.h>
 #include <esp_system.h>
 #include "sysinit/sysinit.h"
@@ -1488,6 +1489,40 @@ end:
     nvs_close(nimble_handle);
     return rc;
 }
+
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+int
+ble_store_config_persist_our_sec_value(
+    const struct ble_store_value_sec *value_sec)
+{
+    union ble_store_value val;
+    nvs_handle_t nimble_handle;
+    int nvs_idx;
+    int rc;
+
+    rc = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
+    if (rc != ESP_OK) {
+        ESP_LOGE(TAG, "NVS open operation failed");
+        return BLE_HS_ESTORE_FAIL;
+    }
+
+    nvs_idx = get_nvs_sec_identity_index(nimble_handle, value_sec,
+                                         BLE_STORE_OBJ_TYPE_OUR_SEC);
+    if (nvs_idx == -1) {
+        nvs_close(nimble_handle);
+        return BLE_HS_ENOENT;
+    }
+
+    val.sec = *value_sec;
+    rc = ble_store_nvs_update(nimble_handle, BLE_STORE_OBJ_TYPE_OUR_SEC,
+                              nvs_idx, &val);
+    if (rc == 0) {
+        rc = ble_nvs_commit_checked(nimble_handle);
+    }
+    nvs_close(nimble_handle);
+    return rc;
+}
+#endif
 
 int ble_store_config_persist_our_secs(void)
 {

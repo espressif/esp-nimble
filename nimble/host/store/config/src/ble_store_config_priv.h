@@ -151,6 +151,10 @@ extern int ble_store_config_num_local_irks;
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 int ble_store_config_persist_our_secs(void);
 int ble_store_config_persist_peer_secs(void);
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU)
+int ble_store_config_persist_our_sec_value(
+    const struct ble_store_value_sec *value_sec);
+#endif
 #endif
 #if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
 int ble_store_config_persist_cccds(void);
@@ -172,6 +176,15 @@ void ble_store_config_conf_init(void);
 
 static inline int ble_store_config_persist_our_secs(void)   { return 0; }
 static inline int ble_store_config_persist_peer_secs(void)  { return 0; }
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU)
+static inline int
+ble_store_config_persist_our_sec_value(
+    const struct ble_store_value_sec *value_sec)
+{
+    (void)value_sec;
+    return 0;
+}
+#endif
 static inline int ble_store_config_persist_cccds(void)      { return 0; }
 static inline int ble_store_config_persist_csfcs(void)      { return 0; }
 #if MYNEWT_VAL(ENC_ADV_DATA)
@@ -180,9 +193,6 @@ static inline int ble_store_config_persist_eads(void)       { return 0; }
 static inline int ble_store_config_persist_rpa_recs(void)   { return 0; }
 static inline int ble_store_config_persist_local_irk(void)   { return 0; }
 static inline void ble_store_config_conf_init(void)         { }
-#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-static inline int ble_store_persist_peer_records(void)      { return 0; }
-#endif
 #endif /* MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST) */
 void ble_store_config_deinit(void);
 

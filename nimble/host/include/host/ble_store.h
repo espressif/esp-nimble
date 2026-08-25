@@ -874,6 +874,11 @@ int ble_store_util_count(int type, int *out_count);
  * removal of important bonds by less relevant peers. It is more useful for
  * demonstration purposes and sample applications.
  *
+ * @note Retained for backward compatibility.  It follows the eviction policy
+ * selected at build time, so it removes the least recently used bond instead
+ * of the oldest one when the least-recently-used policy is enabled.  New
+ * applications should use ble_store_util_status_overflow().
+ *
  * @param event                 A pointer to the store status event.
  * @param arg                   A pointer to additional user-defined arguments.
  *
@@ -881,6 +886,45 @@ int ble_store_util_count(int type, int *out_count);
  *                              Non-zero on error.
  */
 int ble_store_util_status_rr(struct ble_store_status_event *event, void *arg);
+
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+/**
+ * @brief Least-recently-used status callback for store overflow events.
+ *
+ * Removes the least recently used, disconnected bond when storage is full.
+ * The peer associated with the record being written is never selected.
+ *
+ * @param event                 A pointer to the store status event.
+ * @param arg                   A pointer to additional user-defined arguments.
+ *
+ * @return                      0 on success;
+ *                              Non-zero on error.
+ */
+int ble_store_util_status_lfu(struct ble_store_status_event *event, void *arg);
+
+/**
+ * @brief Mark a bonded peer as recently used.
+ *
+ * Updates OUR_SEC recency so least-recently-used overflow eviction preserves
+ * this bond. Safe to call when no bond exists yet (returns 0).
+ */
+int ble_store_util_touch_peer(const ble_addr_t *peer_id_addr);
+#endif
+
+/**
+ * @brief Configured status callback for handling store status events.
+ *
+ * Dispatches to the bond eviction policy selected at build time: round-robin
+ * by default, or least recently used when BLE_STORE_OVERFLOW_LFU is enabled.
+ *
+ * @param event                 A pointer to the store status event.
+ * @param arg                   A pointer to additional user-defined arguments.
+ *
+ * @return                      0 on success;
+ *                              Non-zero on error.
+ */
+int ble_store_util_status_overflow(struct ble_store_status_event *event,
+                                   void *arg);
 
 /** @} */
 

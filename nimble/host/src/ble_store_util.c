@@ -454,6 +454,7 @@ ble_store_util_delete_ead_oldest_peer(void)
 }
 #endif
 
+#if !(MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS))
 /**
  * Round-robin status callback.  If a there is insufficient storage capacity
  * for a new record, delete the oldest bond and proceed with the persist
@@ -463,8 +464,8 @@ ble_store_util_delete_ead_oldest_peer(void)
  * uninteresting peers could cause important bonds to be deleted.  This is
  * useful for demonstrations and sample apps.
  */
-int
-ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
+static int
+ble_store_util_status_rr_evict(struct ble_store_status_event *event, void *arg)
 {
     switch (event->event_code) {
     case BLE_STORE_EVENT_OVERFLOW:
@@ -497,4 +498,182 @@ ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
         return BLE_HS_EUNKNOWN;
     }
+}
+#endif
+
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+struct ble_store_util_lfu {
+    const ble_addr_t *except_addr;
+    ble_addr_t peer_addr;
+    uint16_t bond_count;
+    bool found;
+};
+
+struct ble_store_util_conn_check {
+    const ble_addr_t *peer_id_addr;
+    bool found;
+};
+
+static int
+ble_store_util_conn_check(struct ble_hs_conn *conn, void *arg)
+{
+    struct ble_store_util_conn_check *check;
+    struct ble_hs_conn_addrs addrs;
+
+    check = arg;
+    ble_hs_conn_addrs(conn, &addrs);
+    if (ble_addr_cmp(&addrs.peer_id_addr, check->peer_id_addr) == 0) {
+        check->found = true;
+        return 1;
+    }
+
+    return 0;
+}
+
+static bool
+ble_store_util_peer_connected(const ble_addr_t *peer_id_addr)
+{
+    struct ble_store_util_conn_check check = {
+        .peer_id_addr = peer_id_addr,
+    };
+
+    ble_hs_lock();
+    ble_hs_conn_foreach(ble_store_util_conn_check, &check);
+    ble_hs_unlock();
+
+    return check.found;
+}
+
+static int
+ble_store_util_find_lfu(int obj_type, union ble_store_value *val, void *arg)
+{
+    struct ble_store_util_lfu *lfu;
+
+    BLE_HS_DBG_ASSERT(obj_type == BLE_STORE_OBJ_TYPE_OUR_SEC);
+
+    lfu = arg;
+    if (lfu->except_addr != NULL &&
+        ble_addr_cmp(&val->sec.peer_addr, lfu->except_addr) == 0) {
+        return 0;
+    }
+
+    /* Never remove a bond which belongs to an active connection. */
+    if (ble_store_util_peer_connected(&val->sec.peer_addr)) {
+        return 0;
+    }
+
+    if (!lfu->found || val->sec.bond_count < lfu->bond_count) {
+        lfu->peer_addr = val->sec.peer_addr;
+        lfu->bond_count = val->sec.bond_count;
+        lfu->found = true;
+    }
+
+    return 0;
+}
+
+static int
+ble_store_util_unpair_lfu(const ble_addr_t *except_addr)
+{
+    struct ble_store_util_lfu lfu = {
+        .except_addr = except_addr,
+    };
+    int rc;
+
+    rc = ble_store_iterate(BLE_STORE_OBJ_TYPE_OUR_SEC,
+                           ble_store_util_find_lfu, &lfu);
+    if (rc != 0) {
+        return rc;
+    }
+
+    if (!lfu.found) {
+        return BLE_HS_ESTORE_CAP;
+    }
+
+    return ble_gap_unpair(&lfu.peer_addr);
+}
+
+int
+ble_store_util_status_lfu(struct ble_store_status_event *event, void *arg)
+{
+    const ble_addr_t *except_addr;
+
+    switch (event->event_code) {
+    case BLE_STORE_EVENT_OVERFLOW:
+        except_addr = NULL;
+        switch (event->overflow.obj_type) {
+        case BLE_STORE_OBJ_TYPE_OUR_SEC:
+        case BLE_STORE_OBJ_TYPE_PEER_SEC:
+            except_addr = &event->overflow.value->sec.peer_addr;
+            break;
+        case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+            except_addr = &event->overflow.value->rpa_rec.peer_addr;
+            break;
+        case BLE_STORE_OBJ_TYPE_CCCD:
+            except_addr = &event->overflow.value->cccd.peer_addr;
+            break;
+        case BLE_STORE_OBJ_TYPE_CSFC:
+            except_addr = &event->overflow.value->csfc.peer_addr;
+            break;
+#if MYNEWT_VAL(ENC_ADV_DATA)
+        case BLE_STORE_OBJ_TYPE_ENC_ADV_DATA:
+            return ble_store_util_delete_ead_oldest_peer();
+#endif
+        default:
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+            return BLE_HS_EUNKNOWN;
+        }
+
+        return ble_store_util_unpair_lfu(except_addr);
+
+    case BLE_STORE_EVENT_FULL:
+        return 0;
+
+    default:
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EUNKNOWN);
+        return BLE_HS_EUNKNOWN;
+    }
+}
+#endif
+
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+int
+ble_store_util_touch_peer(const ble_addr_t *peer_id_addr)
+{
+    struct ble_store_key_sec key_sec = {0};
+    struct ble_store_value_sec value_sec;
+    int rc;
+
+    if (peer_id_addr == NULL ||
+        ble_addr_cmp(peer_id_addr, BLE_ADDR_ANY) == 0) {
+        return BLE_HS_EINVAL;
+    }
+
+    key_sec.peer_addr = *peer_id_addr;
+    rc = ble_store_read_our_sec(&key_sec, &value_sec);
+    if (rc == BLE_HS_ENOENT) {
+        /* Encryption can complete before bond keys are persisted. */
+        return 0;
+    }
+    if (rc != 0) {
+        return rc;
+    }
+
+    return ble_store_write_our_sec(&value_sec);
+}
+#endif
+
+int
+ble_store_util_status_overflow(struct ble_store_status_event *event, void *arg)
+{
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    return ble_store_util_status_lfu(event, arg);
+#else
+    return ble_store_util_status_rr_evict(event, arg);
+#endif
+}
+
+int
+ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
+{
+    return ble_store_util_status_overflow(event, arg);
 }
