@@ -49,7 +49,6 @@
 #include "host/ble_store.h"
 #include "ble_hs_priv.h"
 #include "ble_hs_resolv_priv.h"
-#include "../store/config/src/ble_store_config_priv.h"
 #include "esp_nimble_mem.h"
 #include "host/ble_hs_log.h"
 
@@ -1449,6 +1448,10 @@ ble_sm_enc_event_rx(uint16_t conn_handle, uint8_t evt_status, int encrypted)
     struct ble_sm_result res;
     struct ble_sm_proc *proc;
     bool terminate_conn;
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    struct ble_gap_conn_desc desc;
+    int rc;
+#endif
     int authenticated;
     int bonded;
     int key_size;
@@ -1559,6 +1562,16 @@ ble_sm_enc_event_rx(uint16_t conn_handle, uint8_t evt_status, int encrypted)
     if (terminate_conn) {
         ble_gap_terminate(conn_handle, BLE_ERR_AUTH_FAIL);
     }
+
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    if (evt_status == 0 && encrypted &&
+        ble_gap_conn_find(conn_handle, &desc) == 0) {
+        rc = ble_store_util_touch_peer(&desc.peer_id_addr);
+        if (rc != 0) {
+            BLE_HS_LOG(WARN, "failed to update bond recency; rc=%d\n", rc);
+        }
+    }
+#endif
 
     res.bonded = bonded;
     ble_sm_process_result(conn_handle, &res, true);

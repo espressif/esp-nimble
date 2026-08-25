@@ -19,6 +19,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "sysinit/sysinit.h"
@@ -284,6 +285,10 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
 {
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     struct ble_store_key_sec key_sec;
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU)
+    struct ble_store_value_sec persisted_sec;
+    int updated_existing;
+#endif
     int idx;
     int rc;
 
@@ -293,6 +298,9 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
     ble_store_key_from_value_sec(&key_sec, value_sec);
     idx = ble_store_config_find_sec(&key_sec, ble_store_config_our_secs,
                                     ble_store_config_num_our_secs);
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU)
+    updated_existing = idx != -1;
+#endif
     if (idx == -1) {
         if (ble_store_config_num_our_secs >= MYNEWT_VAL(BLE_STORE_MAX_BONDS)) {
             BLE_HS_LOG(DEBUG, "error persisting our sec; too many entries "
@@ -308,12 +316,25 @@ ble_store_config_write_our_sec(const struct ble_store_value_sec *value_sec)
     ble_store_config_our_secs[idx] = *value_sec;
 
     ble_store_config_our_secs[idx].bond_count = ++ble_store_config_our_bond_count;
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU)
+    persisted_sec = ble_store_config_our_secs[idx];
+#endif
 
     /* Ensure entries are sorted at all times */
     qsort(ble_store_config_our_secs, ble_store_config_num_our_secs,
           sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
 
-    rc = ble_store_config_persist_our_secs();
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU)
+    if (updated_existing) {
+        rc = ble_store_config_persist_our_sec_value(&persisted_sec);
+        if (rc == BLE_HS_ENOENT) {
+            rc = ble_store_config_persist_our_secs();
+        }
+    } else
+#endif
+    {
+        rc = ble_store_config_persist_our_secs();
+    }
     if (rc != 0) {
         return rc;
     }
