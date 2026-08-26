@@ -461,6 +461,10 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
     BaseType_t woken = pdFALSE;
     BaseType_t ret;
 
+    if (!eventq) {
+        return NULL;
+    }
+
     if (in_isr()) {
         BLE_LL_ASSERT(tmo == 0);
         woken = pdFALSE;
