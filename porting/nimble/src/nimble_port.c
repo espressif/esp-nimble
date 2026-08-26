@@ -103,9 +103,6 @@ static struct ble_hs_stop_listener stop_listener;
 extern void os_msys_init(void);
 extern void os_msys_buf_free(void);
 extern void os_mempool_module_init(void);
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-extern void os_mempool_deinit(void);
-#endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static int
@@ -366,7 +363,7 @@ esp_err_t esp_nimble_deinit(void)
     bt_osal_freertos_funcs_deinit();
 
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    os_mempool_deinit();
+    os_mempool_deinit_all(false);
 #endif
 
     return ret;
