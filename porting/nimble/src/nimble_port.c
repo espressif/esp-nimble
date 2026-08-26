@@ -100,9 +100,6 @@ static bool nimble_port_run_active;
 
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-extern void os_mempool_deinit(bool is_controller);
-#endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 static int
@@ -309,7 +306,7 @@ esp_err_t esp_nimble_deinit(void)
     bt_osal_freertos_funcs_deinit();
 
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-    os_mempool_deinit(0);
+    os_mempool_deinit_all(false);
 #endif
 
     return ESP_OK;
