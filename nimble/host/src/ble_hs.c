@@ -211,6 +211,7 @@ static struct ble_npl_callout ble_hs_timer;
 static struct ble_mqueue ble_hs_rx_q;
 
 static struct ble_npl_mutex ble_hs_mutex;
+static bool ble_hs_initialized;
 #endif // BLE_STATIC_TO_DYNAMIC
 
 STATS_SECT_DECL(ble_hs_stats) ble_hs_stats;
@@ -1040,6 +1041,9 @@ ble_hs_init(void)
 #endif
     /* Initialize npl variables related to hs flow control */
     ble_hs_flow_init();
+#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    ble_hs_initialized = true;
+#endif
 }
 
 /* Transport APIs for HS side */
@@ -1067,6 +1071,16 @@ ble_transport_hs_init(void)
 void
 ble_hs_deinit(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_ctx) {
+        return;
+    }
+#else
+    if (!ble_hs_initialized) {
+        return;
+    }
+    ble_hs_initialized = false;
+#endif
     ble_hs_flow_deinit();
 
 #if BLE_MONITOR

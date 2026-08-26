@@ -270,7 +270,9 @@ npl_freertos_event_init(struct ble_npl_event *ev, ble_npl_event_fn *fn,
 void
 npl_freertos_event_deinit(struct ble_npl_event *ev)
 {
-    BLE_LL_ASSERT(ev->event);
+    if (!ev->event) {
+        return;
+    }
 #if OS_MEM_ALLOC
 
     os_memblock_put(&ble_freertos_ev_pool,ev->event);
@@ -321,7 +323,9 @@ npl_freertos_eventq_deinit(struct ble_npl_eventq *evq)
 {
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
 
-    BLE_LL_ASSERT(eventq);
+    if (!eventq) {
+        return;
+    }
     vQueueDelete(eventq->q);
 #if OS_MEM_ALLOC
     os_memblock_put(&ble_freertos_evq_pool,eventq);
@@ -356,6 +360,10 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
     BaseType_t woken;
     BaseType_t ret;
+
+    if (!eventq) {
+        return NULL;
+    }
 
     if (in_isr()) {
         BLE_LL_ASSERT(tmo == 0);

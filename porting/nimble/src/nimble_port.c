@@ -422,6 +422,17 @@ void nimble_port_run(void)
 {
     struct ble_npl_event *ev;
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ctx == NULL) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble context not initialized, host task exiting");
+        return;
+    }
+#endif
+    if (g_eventq_dflt.eventq == NULL) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble event queue not initialized, host task exiting");
+        return;
+    }
+
     while (1) {
         ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
         if (ev) {
