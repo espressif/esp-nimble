@@ -191,6 +191,32 @@ ble_hs_periodic_sync_first(void)
     return psync;
 }
 
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+/**
+ * Find first PAwR sync (num_subevents > 0) in the active sync list.
+ *
+ * Regular periodic syncs share the same list; callers that need a PAwR
+ * association must not use ble_hs_periodic_sync_first().
+ *
+ * @note Host lock must be held.
+ */
+struct ble_hs_periodic_sync *
+ble_hs_periodic_sync_find_pawr_locked(void)
+{
+    struct ble_hs_periodic_sync *psync;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    SLIST_FOREACH(psync, &g_ble_hs_periodic_sync_handles, next) {
+        if (psync->num_subevents > 0) {
+            return psync;
+        }
+    }
+
+    return NULL;
+}
+#endif
+
 void
 ble_hs_periodic_sync_deinit(void)
 {
