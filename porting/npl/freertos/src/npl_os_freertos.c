@@ -353,7 +353,9 @@ npl_freertos_eventq_deinit(struct ble_npl_eventq *evq)
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
     struct ble_npl_event *ev;
 
-    BLE_LL_ASSERT(eventq);
+    if (!eventq) {
+        return;
+    }
 
     /* Drain the queue and clear the queued flag on all events */
     while (uxQueueMessagesWaiting(eventq->q) > 0) {
@@ -517,6 +519,10 @@ npl_freertos_eventq_get(struct ble_npl_eventq *evq, ble_npl_time_t tmo)
     struct ble_npl_eventq_freertos *eventq = (struct ble_npl_eventq_freertos *)evq->eventq;
     BaseType_t woken = pdFALSE;
     BaseType_t ret;
+
+    if (!eventq) {
+        return NULL;
+    }
 
     if (in_isr()) {
         BLE_LL_ASSERT(tmo == 0);

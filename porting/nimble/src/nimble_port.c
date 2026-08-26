@@ -510,6 +510,22 @@ IRAM_ATTR
 void nimble_port_run(void)
 {
     struct ble_npl_event *ev;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_npl_ctx == NULL) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble context not initialized, host task exiting");
+        return;
+    }
+#endif
+#if CONFIG_BT_DUAL_MODE_ARCH
+    if (g_eventq_dflt.eventq.eventq == NULL) {
+#else
+    if (g_eventq_dflt.eventq == NULL) {
+#endif
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble event queue not initialized, host task exiting");
+        return;
+    }
+
     /* Cache addresses before entering the loop. When BLE_STATIC_TO_DYNAMIC is
      * enabled these macros dereference ble_npl_ctx; caching prevents a race
      * where ble_npl_ctx is freed between the stop-event callback returning and
