@@ -901,24 +901,3 @@ os_mempool_module_init(void)
 #endif
 }
 
-#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
-void
-os_mempool_deinit(void)
-{
-    struct os_mempool *mp = NULL;
-
-    mp = STAILQ_FIRST(&g_os_mempool_list);
-
-    // All mempool blocks should be reclaimed after nimble deinit
-    while (mp) {
-        if (mp->mp_flags & OS_MEMPOOL_F_RUNTIME) {
-            os_mempool_clear(mp);
-        }
-        mp = STAILQ_NEXT(mp, mp_list);
-    }
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    STAILQ_INIT(&g_os_mempool_list);
-    g_os_mempool_list_inited = false;
-#endif
-}
-#endif
