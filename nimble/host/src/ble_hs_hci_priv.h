@@ -83,7 +83,13 @@ struct ble_hs_hci_sup_cmd {
     uint8_t commands[64];
 };
 
+uint16_t ble_hs_hci_get_avail_pkts(void);
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#define ble_hs_hci_avail_pkts         (ble_hs_hci_get_avail_pkts())
+#else
 extern uint16_t ble_hs_hci_avail_pkts;
+#endif
 
 /* This function is not waiting for command status/complete HCI events */
 int ble_hs_hci_cmd_tx_no_rsp(uint16_t opcode, const void *cmd, uint8_t cmd_len);

@@ -271,7 +271,7 @@ typedef struct {
     uint16_t             hci_max_pkts;
     uint64_t             hci_sup_feat;
     uint8_t              hci_version;
-    uint16_t             hci_avial_pkts;
+    uint16_t             hci_avail_pkts;
 
     struct os_mempool    hci_frag_mempool;      /* Memory pool for HCI fragments */
     os_membuf_t         *hci_frag_data;         /* Memory buffer backing HCI pool */
@@ -289,7 +289,8 @@ static ble_hs_hci_ctx_t *ble_hs_hci_ctx = NULL;
 #define ble_hs_hci_max_pkts           (ble_hs_hci_ctx->hci_max_pkts)
 #define ble_hs_hci_sup_feat           (ble_hs_hci_ctx->hci_sup_feat)
 #define ble_hs_hci_version            (ble_hs_hci_ctx->hci_version)
-#define ble_hs_hci_avail_pkts         (ble_hs_hci_ctx->hci_avial_pkts)
+#undef ble_hs_hci_avail_pkts
+#define ble_hs_hci_avail_pkts         (ble_hs_hci_ctx->hci_avail_pkts)
 
 #define ble_hs_hci_frag_mempool     (ble_hs_hci_ctx->hci_frag_mempool)
 #define ble_hs_hci_frag_data        (ble_hs_hci_ctx->hci_frag_data)
@@ -314,6 +315,9 @@ static uint8_t ble_hs_hci_version;
 uint16_t ble_hs_hci_avail_pkts;
 static struct ble_hci_ev *l_ble_hs_hci_ack;
 #endif //BLE_STATIC_TO_DYNAMIC
+
+/* Indicates HCI mutex / state has been initialized and can be safely read. */
+static uint8_t ble_hs_hci_initialized;
 
 #if CONFIG_BT_NIMBLE_LEGACY_VHCI_ENABLE
 #define BLE_HS_HCI_FRAG_DATABUF_SIZE    \
@@ -401,6 +405,26 @@ ble_hs_hci_set_buf_sz(uint16_t pktlen, uint16_t max_pkts)
     ble_hs_hci_avail_pkts = max_pkts;
 
     return 0;
+}
+
+/**
+ * Returns the number of available ACL transmit buffers on the controller.
+ * This can be used by applications to throttle notification enqueuing.
+ */
+uint16_t
+ble_hs_hci_get_avail_pkts(void)
+{
+    if (!ble_hs_hci_initialized) {
+        return 0;
+    }
+
+    uint16_t avail_pkts;
+
+    ble_hs_lock_nested();
+    avail_pkts = ble_hs_hci_avail_pkts;
+    ble_hs_unlock_nested();
+
+    return avail_pkts;
 }
 
 /**
@@ -1084,6 +1108,7 @@ ble_hs_hci_init(void)
         goto err_mutex;
     }
 
+    ble_hs_hci_initialized = 1;
     return 0;
 
 err_mutex:
@@ -1102,12 +1127,15 @@ err:
         ble_hs_hci_ctx = NULL;
     }
 #endif
+    ble_hs_hci_initialized = 0;
     return rc;
 }
 
 void ble_hs_hci_deinit(void)
 {
     int rc;
+
+    ble_hs_hci_initialized = 0;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_hci_ctx == NULL) {

@@ -102,6 +102,17 @@ int ble_hs_hci_set_chan_class(const uint8_t *chan_map);
  */
 int ble_hs_hci_util_rand(void *dst, int len);
 
+/**
+ * Returns the number of available ACL transmit buffers on the controller.
+ *
+ * Applications can use this to implement notification throttling — only
+ * enqueue new notifications when available buffers are above a waterline.
+ *
+ * @return  The number of ACL packet buffers the controller can currently
+ *          accept from the host.
+ */
+uint16_t ble_hs_hci_get_avail_pkts(void);
+
 #if MYNEWT_VAL(BLE_HCI_VS)
 /**
  * Send an arbitrary HCI command to the controller.
