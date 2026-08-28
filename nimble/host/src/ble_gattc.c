@@ -964,6 +964,11 @@ ble_gattc_proc_set_resume_timer(struct ble_gattc_proc *proc)
 static void
 ble_gattc_process_status(struct ble_gattc_proc *proc, int status)
 {
+    /* Alloc-fail paths historically reached here with proc == NULL. */
+    if (proc == NULL) {
+        return;
+    }
+
     switch (status) {
     case 0:
         if (!(proc->flags & BLE_GATTC_PROC_F_STALLED)) {
@@ -1961,8 +1966,8 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
     if (proc == NULL) {
         BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
                    "conn_handle=0x%04x op=disc_all_svcs\n", conn_handle);
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, disc_all_svcs_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_ALL_SVCS);
@@ -2199,8 +2204,8 @@ ble_gattc_disc_svc_by_uuid(uint16_t conn_handle, const ble_uuid_t *uuid,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, disc_svc_uuid_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_SVC_UUID);
@@ -2558,8 +2563,8 @@ ble_gattc_find_inc_svcs(uint16_t conn_handle, uint16_t start_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, find_inc_svcs_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_FIND_INC_SVCS);
@@ -2793,8 +2798,8 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, disc_all_chrs_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_ALL_CHRS);
@@ -3062,8 +3067,8 @@ ble_gattc_disc_chrs_by_uuid(uint16_t conn_handle, uint16_t start_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, disc_chrs_uuid_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_CHR_UUID);
@@ -3290,8 +3295,8 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
     if (proc == NULL) {
         BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
                    "conn_handle=0x%04x op=disc_all_dscs\n", conn_handle);
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, disc_all_dscs_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_DISC_ALL_DSCS);
@@ -3888,8 +3893,8 @@ ble_gattc_read(uint16_t conn_handle, uint16_t attr_handle,
     if (proc == NULL) {
         BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
                    "conn_handle=0x%04x op=read\n", conn_handle);
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, read_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_READ);
@@ -4051,8 +4056,8 @@ ble_gattc_read_by_uuid(uint16_t conn_handle, uint16_t start_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, read_uuid_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_READ_UUID);
@@ -4256,8 +4261,8 @@ ble_gattc_read_long(uint16_t conn_handle, uint16_t handle, uint16_t offset,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, read_long_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_READ_LONG);
@@ -4506,8 +4511,8 @@ ble_gattc_read_mult_internal(uint16_t conn_handle, const uint16_t *handles,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, read_mult_fail);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle,
@@ -4759,8 +4764,9 @@ ble_gattc_write(uint16_t conn_handle, uint16_t attr_handle,
         BLE_HS_LOG(INFO, "GATTC proc alloc failed; "
                    "conn_handle=0x%04x op=write attr=0x%04x\n",
                    conn_handle, attr_handle);
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, write_fail);
+        os_mbuf_free_chain(txom);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_WRITE);
@@ -5102,8 +5108,9 @@ ble_gattc_write_long(uint16_t conn_handle, uint16_t attr_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, write_long_fail);
+        os_mbuf_free_chain(txom);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_WRITE_LONG);
@@ -5405,8 +5412,12 @@ ble_gattc_write_reliable(uint16_t conn_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, write_reliable_fail);
+        for (i = 0; i < num_attrs; i++) {
+            os_mbuf_free_chain(attrs[i].om);
+            attrs[i].om = NULL;
+        }
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_WRITE_RELIABLE);
@@ -6038,8 +6049,10 @@ ble_gatts_indicate_custom(uint16_t conn_handle, uint16_t chr_val_handle,
 
     proc = ble_gattc_proc_alloc();
     if (proc == NULL) {
-        rc = BLE_HS_ENOMEM;
-        goto done;
+        STATS_INC(ble_gattc_stats, indicate_fail);
+        ble_gap_notify_tx_event(BLE_HS_ENOMEM, conn_handle, chr_val_handle, 1);
+        os_mbuf_free_chain(txom);
+        return BLE_HS_ENOMEM;
     }
 
     ble_gattc_proc_prepare(proc, conn_handle, BLE_GATT_OP_INDICATE);
