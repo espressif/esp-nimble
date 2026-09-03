@@ -255,6 +255,8 @@ struct ble_sm_proc {
     uint8_t state;
     uint8_t rx_key_flags;
     uint8_t key_size;
+    uint8_t sec_req_authreq;
+    uint8_t sec_req_valid;
 
     uint8_t pair_req[sizeof(struct ble_sm_hdr) + sizeof(struct ble_sm_pair_cmd)];
     uint8_t pair_rsp[sizeof(struct ble_sm_hdr) + sizeof(struct ble_sm_pair_cmd)];
@@ -290,6 +292,9 @@ struct ble_sm_result {
     unsigned bonded : 1;
     unsigned restore : 1;
     unsigned out_of_order : 1;
+    unsigned terminate : 1;
+    /* Hardened re-pair refusal: keep the stored bond despite remove-on-fail. */
+    unsigned keep_bond : 1;
 };
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
