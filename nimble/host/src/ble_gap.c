@@ -11374,8 +11374,8 @@ ble_gap_reset_irk(void)
 }
 #endif
 
-int
-ble_gap_unpair(const ble_addr_t *peer_addr)
+static int
+ble_gap_unpair_ex(const ble_addr_t *peer_addr, bool terminate)
 {
 
 #if NIMBLE_BLE_SM
@@ -11421,7 +11421,9 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
             defer_add_pending = 1;
         }
 #endif
-        ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
+        if (terminate) {
+            ble_gap_terminate_with_conn(conn, BLE_ERR_REM_USER_CONN_TERM);
+        }
     }
 
     ble_hs_unlock();
@@ -11518,8 +11520,21 @@ ble_gap_unpair(const ble_addr_t *peer_addr)
 
     return 0;
 #else
+    (void)terminate;
     return BLE_HS_ENOTSUP;
 #endif
+}
+
+int
+ble_gap_unpair(const ble_addr_t *peer_addr)
+{
+    return ble_gap_unpair_ex(peer_addr, true);
+}
+
+int
+ble_gap_unpair_keep_conn(const ble_addr_t *peer_addr)
+{
+    return ble_gap_unpair_ex(peer_addr, false);
 }
 
 int
