@@ -1872,20 +1872,28 @@ ble_gatts_free_svc_defs(void)
 }
 
 
-#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
 static int
 ble_gatts_free_conn_clt_cfgs(struct ble_hs_conn *conn, void *arg)
 {
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_clt_cfg *clt_cfg;
 
     while ((clt_cfg = STAILQ_FIRST(&conn->bhc_gatt_svr.clt_cfgs)) != NULL) {
         STAILQ_REMOVE_HEAD(&conn->bhc_gatt_svr.clt_cfgs, next);
         ble_gatts_clt_cfg_free(clt_cfg);
     }
+#else
+    /* The static build hands the connection a single block carved out of
+     * ble_gatts_clt_cfg_pool rather than a list of nodes.
+     */
+    if (conn->bhc_gatt_svr.clt_cfgs != NULL) {
+        os_memblock_put(&ble_gatts_clt_cfg_pool, conn->bhc_gatt_svr.clt_cfgs);
+        conn->bhc_gatt_svr.clt_cfgs = NULL;
+    }
+#endif
     conn->bhc_gatt_svr.num_clt_cfgs = 0;
     return 0;
 }
-#endif
 
 static void
 ble_gatts_free_mem(void)
@@ -1902,6 +1910,7 @@ ble_gatts_free_mem(void)
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_svc_entry *entry;
     struct ble_gatts_clt_cfg *clt_cfg;
+#endif
 
     /* Free per-connection CCCD nodes before freeing pool backing memory.
      * Per-connection nodes are copies allocated from the same pool as the
@@ -1916,6 +1925,7 @@ ble_gatts_free_mem(void)
     ble_hs_conn_foreach(ble_gatts_free_conn_clt_cfgs, NULL);
     ble_hs_unlock_nested();
 
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     /* free client configs memory */
     if (STAILQ_FIRST(&ble_gatts_clt_cfgs) != NULL) {
         clt_cfg = NULL;
@@ -2425,7 +2435,15 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
     int rc;
 #if MYNEWT_VAL(BLE_GATT_CACHING)
     uint16_t svc_change_handle;
+#endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        return BLE_HS_ENOENT;
+    }
+#endif
+
+#if MYNEWT_VAL(BLE_GATT_CACHING)
     svc_change_handle = ble_svc_gatt_changed_handle();
 #endif
 
@@ -2527,6 +2545,12 @@ ble_gatts_chr_updated(uint16_t chr_val_handle)
     int persist;
     int rc;
     int i;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        return;
+    }
+#endif
 
     /* Determine if notifications or indications are allowed for this
      * characteristic.  If not, return immediately.
@@ -2846,6 +2870,12 @@ void
 ble_gatts_tx_notifications(void)
 {
     uint16_t chr_val_handle;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        return;
+    }
+#endif
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_clt_cfg *clt_cfg;
     STAILQ_FOREACH(clt_cfg, &ble_gatts_clt_cfgs, next) {
@@ -2930,9 +2960,14 @@ ble_gatts_bonding_established(uint16_t conn_handle)
        oldest bond */
 #if (MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 0)
         ble_hs_conn_addrs(conn, &addrs);
-        new_idx = (last_conn_aware_state_index + 1) %
-                  MYNEWT_VAL(BLE_STORE_MAX_BONDS);
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        /* last_conn_aware_state_index lives in the context released by
+         * ble_gatts_stop(); there is no aware state cache left to update.
+         */
+        if (ble_gatts_static_vars == NULL) {
+            ble_hs_unlock();
+            return;
+        }
         if (ble_gatts_conn_aware_states == NULL) {
             ble_gatts_conn_aware_states = nimble_platform_mem_calloc(1, sizeof(struct ble_gatts_aware_state) * MYNEWT_VAL(BLE_STORE_MAX_BONDS));
             if (ble_gatts_conn_aware_states == NULL) {
@@ -2942,6 +2977,8 @@ ble_gatts_bonding_established(uint16_t conn_handle)
             }
         }
 #endif
+        new_idx = (last_conn_aware_state_index + 1) %
+                  MYNEWT_VAL(BLE_STORE_MAX_BONDS);
 	memset(&ble_gatts_conn_aware_states[new_idx], 0,
                sizeof(struct ble_gatts_aware_state));
         memcpy(ble_gatts_conn_aware_states[new_idx].peer_id_addr,
@@ -3190,6 +3227,17 @@ ble_gatts_find_svc_entry(const ble_uuid_t *uuid)
 {
     struct ble_gatts_svc_entry *entry;
     int i;
+
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    /* The service table lives inside the dynamically allocated context, which
+     * is released by ble_gatts_stop().  Lookups can still arrive from the
+     * application (e.g. from a disconnect callback) after that point.
+     */
+    if (ble_gatts_static_vars == NULL) {
+        BLE_HS_LOG(ERROR, "gatts svc lookup after stop: ctx=NULL\n");
+        return NULL;
+    }
+#endif
 
     for (i = 0; i < ble_gatts_num_svc_entries; i++) {
         entry = ble_gatts_svc_entries + i;
@@ -3835,6 +3883,11 @@ void ble_gatts_free_svcs(void)
 int
 ble_gatts_svc_set_visibility(uint16_t handle, int visible)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gatts_static_vars == NULL) {
+        return BLE_HS_ENOENT;
+    }
+#endif
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     struct ble_gatts_svc_entry *entry;
 
