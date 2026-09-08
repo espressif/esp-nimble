@@ -45,6 +45,8 @@ struct os_mbuf;
 #define BLE_HS_HCI_LE_FEAT_CSA2                         (0x00004000)
 #define BLE_HS_HCI_LE_FEAT_POWER_CLASS_1                (0x00008000)
 #define BLE_HS_HCI_LE_FEAT_MIN_NUM_USED_CHAN            (0x00010000)
+/* Bit 42: Decision-Based Advertising Filtering (Core Vol 6 Part B 4.6). */
+#define BLE_HS_HCI_LE_FEAT_DBAF                         (1ULL << 42)
 
 struct ble_hs_hci_ack {
     int bha_status;         /* A BLE_HS_E<...> error; NOT a naked HCI code. */

@@ -157,6 +157,9 @@ struct ble_gap_connect_reattempt_ctxt {
     uint8_t phy_mask;
     struct ble_gap_conn_params conn_params_2m;
     struct ble_gap_conn_params conn_params_coded;
+#if MYNEWT_VAL(BLE_DBAF)
+    uint8_t dbaf_filter_policy;
+#endif
 #endif // MYNEWT_VAL(BLE_EXT_ADV)
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
      ble_addr_t periodic_addr;
@@ -233,6 +236,10 @@ struct ble_gap_master_state {
             uint8_t using_wl:1;
             uint8_t our_addr_type:2;
             uint8_t cancel:1;
+#if MYNEWT_VAL(BLE_DBAF)
+            /* Effective Initiator_Filter_Policy sent to the controller. */
+            uint8_t filt_policy;
+#endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
             uint8_t synchronized:1;
             uint8_t timeout_cancel_pending:1;
@@ -1694,6 +1701,9 @@ ble_gap_master_reset_state(void)
     ble_gap_master.conn.synchronized = 0;
     ble_gap_master.conn.timeout_cancel_pending = 0;
 #endif
+#if MYNEWT_VAL(BLE_DBAF)
+    ble_gap_master.conn.filt_policy = BLE_HCI_CONN_FILT_NO_WL;
+#endif
     memset(&ble_gap_master.conn.peer_addr, 0,
            sizeof(ble_gap_master.conn.peer_addr));
 
@@ -1754,6 +1764,16 @@ ble_gap_master_conn_matches_slave_complete(const struct ble_gap_conn_complete *e
     if (ble_gap_master.op != BLE_GAP_OP_M_CONN || ble_gap_master.conn.using_wl) {
         return false;
     }
+
+#if MYNEWT_VAL(BLE_DBAF)
+    /* Policies 2-4 ignore Peer_Address (Core Vol 4 Part E 7.8.66). Policy 2
+     * does not use the Filter Accept List, so using_wl is false and would
+     * otherwise compare an address the controller will not honor.
+     */
+    if (ble_gap_master.conn.filt_policy >= BLE_HCI_CONN_FILT_DECISION_ONLY) {
+        return false;
+    }
+#endif
 
     evt_addr.type = evt->peer_addr_type;
     memcpy(evt_addr.val, evt->peer_addr, BLE_DEV_ADDR_LEN);
@@ -2027,6 +2047,17 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
 #endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
+#if MYNEWT_VAL(BLE_DBAF)
+        rc = ble_gap_ext_connect_dbaf(ble_conn_reattempt.own_addr_type,
+                                (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
+                                ble_conn_reattempt.duration_ms, ble_conn_reattempt.phy_mask,
+                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_1M_MASK ? &ble_conn_reattempt.conn_params_1m : NULL,
+                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_2M_MASK ? &ble_conn_reattempt.conn_params_2m : NULL,
+                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_CODED_MASK ? &ble_conn_reattempt.conn_params_coded : NULL,
+                                ble_conn_reattempt.dbaf_filter_policy,
+                                ble_conn_reattempt.cb,
+                                ble_conn_reattempt.cb_arg);
+#else
         rc = ble_gap_ext_connect(ble_conn_reattempt.own_addr_type,
                                 (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
                                 ble_conn_reattempt.duration_ms, ble_conn_reattempt.phy_mask,
@@ -2035,6 +2066,7 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
                                 ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_CODED_MASK ? &ble_conn_reattempt.conn_params_coded : NULL,
                                 ble_conn_reattempt.cb,
                                 ble_conn_reattempt.cb_arg);
+#endif
 #else
         rc = ble_gap_connect(ble_conn_reattempt.own_addr_type,
                              (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
@@ -6198,6 +6230,17 @@ ble_gap_set_ext_adv_params(struct ble_hci_le_set_ext_adv_params_cp *cmd,
     if (params->include_tx_power) {
         cmd->props |= BLE_HCI_LE_SET_EXT_ADV_PROP_INC_TX_PWR;
     }
+#if MYNEWT_VAL(BLE_DBAF)
+    if (params->use_decision_pdus) {
+        cmd->props |= BLE_HCI_LE_SET_EXT_ADV_PROP_USE_DECISION;
+    }
+    if (params->decision_include_adv_a) {
+        cmd->props |= BLE_HCI_LE_SET_EXT_ADV_PROP_DEC_INCL_ADVA;
+    }
+    if (params->decision_include_adi) {
+        cmd->props |= BLE_HCI_LE_SET_EXT_ADV_PROP_DEC_INCL_ADI;
+    }
+#endif
     if (params->legacy_pdu) {
         cmd->props |= BLE_HCI_LE_SET_EXT_ADV_PROP_LEGACY;
 
@@ -6407,13 +6450,37 @@ ble_gap_ext_adv_params_validate(const struct ble_gap_ext_adv_params *params)
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
+#if MYNEWT_VAL(BLE_DBAF)
+        if (params->use_decision_pdus ||
+            params->decision_include_adv_a ||
+            params->decision_include_adi) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
+#endif
     }
+
+#if MYNEWT_VAL(BLE_DBAF)
+    if ((params->decision_include_adv_a || params->decision_include_adi) &&
+        !params->use_decision_pdus) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+#endif
 
     if (params->directed) {
         if (params->scannable && params->connectable) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
+#if MYNEWT_VAL(BLE_DBAF)
+        /* Decision PDUs are permitted only for undirected advertising
+         * (Core Spec Vol 6 Part B 2.3.1.11, Table 2.10). */
+        if (params->use_decision_pdus) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
+#endif
     }
 
     if (!params->legacy_pdu) {
@@ -7189,6 +7256,106 @@ ble_gap_ext_adv_clear(void)
 
     return 0;
 }
+
+#if MYNEWT_VAL(BLE_DBAF)
+int
+ble_gap_set_decision_data(uint8_t instance, uint8_t decision_type_flags,
+                          const uint8_t *data, uint8_t data_len)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_set_decision_data_cp) +
+                BLE_HCI_DECISION_DATA_MAX_LEN];
+    struct ble_hci_le_set_decision_data_cp *cmd = (void *)buf;
+    uint16_t opcode;
+    uint8_t len;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    if ((ble_hs_hci_get_le_supported_feat() & BLE_HS_HCI_LE_FEAT_DBAF) == 0) {
+        return BLE_HS_ENOTSUP;
+    }
+
+    if (instance > 0xEF) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (data_len > BLE_HCI_DECISION_DATA_MAX_LEN) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (data_len > 0 && data == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    if ((decision_type_flags & BLE_HCI_DECISION_TYPE_RESOLVABLE_TAG) &&
+        data_len < 6) {
+        return BLE_HS_EINVAL;
+    }
+
+    memset(buf, 0, sizeof(buf));
+    cmd->adv_handle = instance;
+    cmd->decision_type_flags = decision_type_flags;
+    cmd->decision_data_len = data_len;
+    if (data_len > 0) {
+        memcpy(cmd->decision_data, data, data_len);
+    }
+
+    len = sizeof(*cmd) + data_len;
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_DECISION_DATA);
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, NULL, 0);
+}
+
+int
+ble_gap_set_decision_instructions(uint8_t num_tests,
+                                  const uint8_t *test_flags,
+                                  const uint8_t *test_fields,
+                                  const uint8_t *test_params)
+{
+    uint8_t buf[sizeof(struct ble_hci_le_set_decision_instructions_cp) +
+                BLE_HCI_DECISION_MAX_TESTS * sizeof(struct ble_hci_le_decision_test)];
+    struct ble_hci_le_set_decision_instructions_cp *cmd = (void *)buf;
+    uint16_t opcode;
+    uint8_t i;
+    uint8_t len;
+
+    if (!ble_hs_is_enabled()) {
+        return BLE_HS_EDISABLED;
+    }
+
+    if ((ble_hs_hci_get_le_supported_feat() & BLE_HS_HCI_LE_FEAT_DBAF) == 0) {
+        return BLE_HS_ENOTSUP;
+    }
+
+    if (num_tests == 0 || num_tests > BLE_HCI_DECISION_MAX_TESTS) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (test_flags == NULL || test_fields == NULL || test_params == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    if ((test_flags[0] & BLE_HCI_DECISION_TEST_FLAGS_NEW_GROUP) == 0) {
+        return BLE_HS_EINVAL;
+    }
+
+    memset(buf, 0, sizeof(buf));
+    cmd->num_tests = num_tests;
+    for (i = 0; i < num_tests; i++) {
+        cmd->tests[i].test_flags = test_flags[i];
+        cmd->tests[i].test_field = test_fields[i];
+        memcpy(cmd->tests[i].test_params,
+               test_params + (i * BLE_HCI_DECISION_TEST_PARAM_LEN),
+               BLE_HCI_DECISION_TEST_PARAM_LEN);
+    }
+
+    len = sizeof(*cmd) + num_tests * sizeof(struct ble_hci_le_decision_test);
+    opcode = BLE_HCI_OP(BLE_HCI_OGF_LE, BLE_HCI_OCF_LE_SET_DECISION_INSTRUCTIONS);
+
+    return ble_hs_hci_cmd_tx(opcode, cmd, len, NULL, 0);
+}
+#endif
 
 #if MYNEWT_VAL(BLE_PERIODIC_ADV)
 static int
@@ -8476,6 +8643,23 @@ int ble_gap_periodic_adv_sync_subev(uint16_t sync_handle, uint8_t include_tx_pow
  *****************************************************************************/
 
 #if MYNEWT_VAL(BLE_EXT_ADV) && NIMBLE_BLE_SCAN
+#if MYNEWT_VAL(BLE_DBAF)
+static int
+ble_gap_ext_scan_filter_policy_valid(uint8_t filter_policy)
+{
+    /* bits 4-7 reserved (must be 0). */
+    if (filter_policy & 0xF0) {
+        return 0;
+    }
+    /* bits 2-3: 0b00 / 0b01 / 0b11 valid; 0b10 reserved. */
+    if (((filter_policy >> 2) & 0x03) == 0x02) {
+        return 0;
+    }
+    /* bits 0-1: all values 0-3 valid per spec. */
+    return 1;
+}
+#endif
+
 static int
 ble_gap_ext_disc_tx_params(uint8_t own_addr_type, uint8_t filter_policy,
                        const struct ble_hs_hci_ext_scan_param *uncoded_params,
@@ -8492,9 +8676,24 @@ ble_gap_ext_disc_tx_params(uint8_t own_addr_type, uint8_t filter_policy,
     }
 
     /* Check scanner filter policy */
+#if MYNEWT_VAL(BLE_DBAF)
+    if (!ble_gap_ext_scan_filter_policy_valid(filter_policy)) {
+#else
     if (filter_policy > BLE_HCI_SCAN_FILT_MAX) {
+#endif
         return BLE_HS_EINVAL;
     }
+
+#if MYNEWT_VAL(BLE_DBAF)
+    /* Bits 2-3 are Decision-Based Advertising Filtering. A controller without
+     * LE feature bit 42 must not be sent these values (Core Vol 4 Part E
+     * 7.8.64, error 0x11). Values 0-3 keep the historical scan filter policy.
+     */
+    if ((filter_policy & BLE_HCI_SCAN_FILT_DECISION_MASK) != 0 &&
+        (ble_hs_hci_get_le_supported_feat() & BLE_HS_HCI_LE_FEAT_DBAF) == 0) {
+        return BLE_HS_ENOTSUP;
+    }
+#endif
 
     cmd = (void *) buf;
     params = cmd->scans;
@@ -9453,6 +9652,53 @@ ble_gap_check_conn_params(uint8_t phy, const struct ble_gap_conn_params *params)
 }
 #endif
 
+#if MYNEWT_VAL(BLE_DBAF) && \
+    (MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES) || \
+     (MYNEWT_VAL(BLE_EXT_ADV) && MYNEWT_VAL(BLE_ROLE_CENTRAL)))
+static int
+ble_gap_dbaf_initiator_filter_policy(const ble_addr_t *peer_addr,
+                                     uint8_t req_policy,
+                                     uint8_t *out_policy)
+{
+    uint8_t policy;
+
+    if (out_policy == NULL) {
+        return BLE_HS_EINVAL;
+    }
+
+    if (req_policy > BLE_HCI_CONN_FILT_MAX) {
+        *out_policy = BLE_HCI_CONN_FILT_NO_WL;
+        return BLE_HS_EINVAL;
+    }
+
+    /* Core Vol 4 Part E 7.8.66: policies other than 0x00 and 0x01 require
+     * Decision-Based Advertising Filtering. 0 and 1 keep the historical choice.
+     */
+    if (req_policy > BLE_HCI_CONN_FILT_USE_WL &&
+        (ble_hs_hci_get_le_supported_feat() & BLE_HS_HCI_LE_FEAT_DBAF) == 0) {
+        *out_policy = BLE_HCI_CONN_FILT_NO_WL;
+        return BLE_HS_ENOTSUP;
+    }
+
+    policy = (peer_addr == NULL) ? BLE_HCI_CONN_FILT_USE_WL :
+                                   BLE_HCI_CONN_FILT_NO_WL;
+    if (req_policy > BLE_HCI_CONN_FILT_USE_WL) {
+        policy = req_policy;
+    }
+
+    *out_policy = policy;
+    return 0;
+}
+
+static int
+ble_gap_initiator_policy_uses_fal(uint8_t policy)
+{
+    return policy == BLE_HCI_CONN_FILT_USE_WL ||
+           policy == BLE_HCI_CONN_FILT_FAL_ALL_PDUS ||
+           policy == BLE_HCI_CONN_FILT_DECISION_AND_FAL;
+}
+#endif
+
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
 static int
 ble_gap_ext_conn_create_conn_synced_tx(uint8_t own_addr_type,
@@ -9460,7 +9706,11 @@ ble_gap_ext_conn_create_conn_synced_tx(uint8_t own_addr_type,
     const ble_addr_t *peer_addr, uint8_t phy_mask,
     const struct ble_gap_conn_params *phy_1m_conn_params,
     const struct ble_gap_conn_params *phy_2m_conn_params,
-    const struct ble_gap_conn_params *phy_coded_conn_params)
+    const struct ble_gap_conn_params *phy_coded_conn_params
+#if MYNEWT_VAL(BLE_DBAF)
+    , uint8_t filter_policy
+#endif
+)
 {
     struct ble_hci_le_ext_create_conn_v2_cp *cmd;
     struct conn_params *params;
@@ -9490,7 +9740,9 @@ ble_gap_ext_conn_create_conn_synced_tx(uint8_t own_addr_type,
          * peer address type and peer address fields are ignored by the
          * controller; fill them with dummy values.
          */
+#if !MYNEWT_VAL(BLE_DBAF)
         cmd->filter_policy = BLE_HCI_CONN_FILT_USE_WL;
+#endif
         cmd->peer_addr_type = 0;
         memset(cmd->peer_addr, 0, sizeof(cmd->peer_addr));
     } else {
@@ -9499,10 +9751,16 @@ ble_gap_ext_conn_create_conn_synced_tx(uint8_t own_addr_type,
             return BLE_HS_EINVAL;
         }
 
+#if !MYNEWT_VAL(BLE_DBAF)
         cmd->filter_policy = BLE_HCI_CONN_FILT_NO_WL;
+#endif
         cmd->peer_addr_type = peer_addr->type;
         memcpy(cmd->peer_addr, peer_addr->val, sizeof(cmd->peer_addr));
     }
+
+#if MYNEWT_VAL(BLE_DBAF)
+    cmd->filter_policy = filter_policy;
+#endif
 
     cmd->own_addr_type = own_addr_type;
     cmd->init_phy_mask = phy_mask & BLE_GAP_LE_PHY_ANY_MASK;
@@ -9573,6 +9831,17 @@ ble_gap_ext_conn_create_conn_synced_tx(uint8_t own_addr_type,
 }
 
 
+#if MYNEWT_VAL(BLE_DBAF)
+static int
+ble_gap_connect_with_synced_policy(uint8_t own_addr_type, uint8_t advertising_handle,
+                uint8_t subevent, const ble_addr_t *peer_addr,
+                int32_t duration_ms, uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                uint8_t dbaf_filter_policy,
+                ble_gap_event_fn *cb, void *cb_arg)
+#else
 int
 ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
                 uint8_t subevent, const ble_addr_t *peer_addr,
@@ -9581,8 +9850,12 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
                 const struct ble_gap_conn_params *phy_2m_conn_params,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 ble_gap_event_fn *cb, void *cb_arg)
+#endif
 {
     uint32_t duration_ticks = 0;
+#if MYNEWT_VAL(BLE_DBAF)
+    uint8_t policy;
+#endif
     int rc;
 
     STATS_INC(ble_gap_stats, initiate);
@@ -9669,6 +9942,16 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
         goto done;
     }
 
+#if MYNEWT_VAL(BLE_DBAF)
+    policy = (peer_addr == NULL) ? BLE_HCI_CONN_FILT_USE_WL :
+                                 BLE_HCI_CONN_FILT_NO_WL;
+    rc = ble_gap_dbaf_initiator_filter_policy(peer_addr, dbaf_filter_policy,
+                                              &policy);
+    if (rc != 0) {
+        goto done;
+    }
+#endif
+
     /* XXX: Verify conn_params. */
 
     rc = ble_hs_id_use_addr(own_addr_type);
@@ -9680,7 +9963,12 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
 
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
+#if MYNEWT_VAL(BLE_DBAF)
+    ble_gap_master.conn.filt_policy = policy;
+    ble_gap_master.conn.using_wl = ble_gap_initiator_policy_uses_fal(policy);
+#else
     ble_gap_master.conn.using_wl = peer_addr == NULL;
+#endif
     ble_gap_master.conn.our_addr_type = own_addr_type;
     ble_gap_master.conn.synchronized = 1;
     if (peer_addr != NULL) {
@@ -9694,7 +9982,11 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
 
     rc = ble_gap_ext_conn_create_conn_synced_tx(own_addr_type,advertising_handle,subevent, peer_addr, phy_mask,
                                     phy_1m_conn_params, phy_2m_conn_params,
-                                    phy_coded_conn_params);
+                                    phy_coded_conn_params
+#if MYNEWT_VAL(BLE_DBAF)
+                                    , policy
+#endif
+                                    );
     if (rc != 0) {
         ble_gap_master_reset_state();
         goto done;
@@ -9717,6 +10009,48 @@ done:
     return rc;
 
 }
+
+#if MYNEWT_VAL(BLE_DBAF)
+int
+ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
+                uint8_t subevent, const ble_addr_t *peer_addr,
+                int32_t duration_ms, uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                ble_gap_event_fn *cb, void *cb_arg)
+{
+    return ble_gap_connect_with_synced_policy(own_addr_type, advertising_handle,
+                subevent, peer_addr, duration_ms, phy_mask,
+                phy_1m_conn_params, phy_2m_conn_params, phy_coded_conn_params,
+                0, cb, cb_arg);
+}
+
+int
+ble_gap_connect_with_synced_dbaf(uint8_t own_addr_type,
+                uint8_t advertising_handle, uint8_t subevent,
+                const ble_addr_t *peer_addr, int32_t duration_ms,
+                uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                uint8_t filter_policy, ble_gap_event_fn *cb, void *cb_arg)
+{
+    /* Core Vol 4 Part E 7.8.66: Initiator_Filter_Policy is ignored when
+     * Advertising_Handle and Subevent are not 0xFF, so DBAF policies do not
+     * apply. Accepting them would mark the Filter Accept List busy and skip
+     * peer-address matching while the controller still uses Peer_Address.
+     */
+    if (filter_policy > BLE_HCI_CONN_FILT_USE_WL) {
+        return BLE_HS_EINVAL;
+    }
+
+    return ble_gap_connect_with_synced_policy(own_addr_type, advertising_handle,
+                subevent, peer_addr, duration_ms, phy_mask,
+                phy_1m_conn_params, phy_2m_conn_params, phy_coded_conn_params,
+                filter_policy, cb, cb_arg);
+}
+#endif
 #endif
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
@@ -9727,7 +10061,11 @@ ble_gap_ext_conn_create_tx(
     uint8_t own_addr_type, const ble_addr_t *peer_addr, uint8_t phy_mask,
     const struct ble_gap_conn_params *phy_1m_conn_params,
     const struct ble_gap_conn_params *phy_2m_conn_params,
-    const struct ble_gap_conn_params *phy_coded_conn_params)
+    const struct ble_gap_conn_params *phy_coded_conn_params
+#if MYNEWT_VAL(BLE_DBAF)
+    , uint8_t filter_policy
+#endif
+)
 {
     struct ble_hci_le_ext_create_conn_cp *cmd;
     struct conn_params *params;
@@ -9757,7 +10095,9 @@ ble_gap_ext_conn_create_tx(
          * peer address type and peer address fields are ignored by the
          * controller; fill them with dummy values.
          */
+#if !MYNEWT_VAL(BLE_DBAF)
         cmd->filter_policy = BLE_HCI_CONN_FILT_USE_WL;
+#endif
         cmd->peer_addr_type = 0;
         memset(cmd->peer_addr, 0, sizeof(cmd->peer_addr));
     } else {
@@ -9766,10 +10106,16 @@ ble_gap_ext_conn_create_tx(
             return BLE_HS_EINVAL;
         }
 
+#if !MYNEWT_VAL(BLE_DBAF)
         cmd->filter_policy = BLE_HCI_CONN_FILT_NO_WL;
+#endif
         cmd->peer_addr_type = peer_addr->type;
         memcpy(cmd->peer_addr, peer_addr->val, sizeof(cmd->peer_addr));
     }
+
+#if MYNEWT_VAL(BLE_DBAF)
+    cmd->filter_policy = filter_policy;
+#endif
 
     cmd->own_addr_type = own_addr_type;
     cmd->init_phy_mask = phy_mask & BLE_GAP_LE_PHY_ANY_MASK;
@@ -9941,6 +10287,16 @@ ble_gap_ext_conn_create_tx(
  *                                  connected;
  *                              Other nonzero on error.
  */
+#if MYNEWT_VAL(BLE_DBAF)
+static int
+ble_gap_ext_connect_policy(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                int32_t duration_ms, uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                uint8_t dbaf_filter_policy,
+                ble_gap_event_fn *cb, void *cb_arg)
+#else
 int
 ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 int32_t duration_ms, uint8_t phy_mask,
@@ -9948,9 +10304,13 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 const struct ble_gap_conn_params *phy_2m_conn_params,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 ble_gap_event_fn *cb, void *cb_arg)
+#endif
 {
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL)
     ble_npl_time_t duration_ticks;
+#if MYNEWT_VAL(BLE_DBAF)
+    uint8_t policy;
+#endif
     int rc;
 
     STATS_INC(ble_gap_stats, initiate);
@@ -10047,6 +10407,16 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
         goto done;
     }
 
+#if MYNEWT_VAL(BLE_DBAF)
+    policy = (peer_addr == NULL) ? BLE_HCI_CONN_FILT_USE_WL :
+                                 BLE_HCI_CONN_FILT_NO_WL;
+    rc = ble_gap_dbaf_initiator_filter_policy(peer_addr, dbaf_filter_policy,
+                                              &policy);
+    if (rc != 0) {
+        goto done;
+    }
+#endif
+
     /* XXX: Verify conn_params. */
 
     rc = ble_hs_id_use_addr(own_addr_type);
@@ -10058,7 +10428,12 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
+#if MYNEWT_VAL(BLE_DBAF)
+    ble_gap_master.conn.filt_policy = policy;
+    ble_gap_master.conn.using_wl = ble_gap_initiator_policy_uses_fal(policy);
+#else
     ble_gap_master.conn.using_wl = peer_addr == NULL;
+#endif
     ble_gap_master.conn.our_addr_type = own_addr_type;
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     ble_gap_master.conn.synchronized = 0;
@@ -10085,6 +10460,9 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_conn_reattempt.duration_ms = duration_ms;
     ble_conn_reattempt.phy_mask = phy_mask;
+#if MYNEWT_VAL(BLE_DBAF)
+    ble_conn_reattempt.dbaf_filter_policy = dbaf_filter_policy;
+#endif
 
     if (phy_mask & BLE_GAP_LE_PHY_1M_MASK) {
         memcpy(&ble_conn_reattempt.conn_params_1m,
@@ -10111,7 +10489,11 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     rc = ble_gap_ext_conn_create_tx(own_addr_type, peer_addr, phy_mask,
                                     phy_1m_conn_params, phy_2m_conn_params,
-                                    phy_coded_conn_params);
+                                    phy_coded_conn_params
+#if MYNEWT_VAL(BLE_DBAF)
+                                    , policy
+#endif
+                                    );
     if (rc != 0) {
         ble_gap_master_reset_state();
         goto done;
@@ -10131,10 +10513,44 @@ done:
     }
     return rc;
 #else
+#if MYNEWT_VAL(BLE_DBAF)
+    (void)dbaf_filter_policy;
+#endif
     return BLE_HS_ENOTSUP;
 #endif
 
 }
+
+#if MYNEWT_VAL(BLE_DBAF)
+int
+ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                int32_t duration_ms, uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                ble_gap_event_fn *cb, void *cb_arg)
+{
+    return ble_gap_ext_connect_policy(own_addr_type, peer_addr, duration_ms,
+                                      phy_mask, phy_1m_conn_params,
+                                      phy_2m_conn_params, phy_coded_conn_params,
+                                      0, cb, cb_arg);
+}
+
+int
+ble_gap_ext_connect_dbaf(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                int32_t duration_ms, uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                uint8_t filter_policy,
+                ble_gap_event_fn *cb, void *cb_arg)
+{
+    return ble_gap_ext_connect_policy(own_addr_type, peer_addr, duration_ms,
+                                      phy_mask, phy_1m_conn_params,
+                                      phy_2m_conn_params, phy_coded_conn_params,
+                                      filter_policy, cb, cb_arg);
+}
+#endif
 #endif
 
 int
@@ -10249,6 +10665,11 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
     ble_gap_master.cb = cb;
     ble_gap_master.cb_arg = cb_arg;
     ble_gap_master.conn.using_wl = peer_addr == NULL;
+#if MYNEWT_VAL(BLE_DBAF)
+    ble_gap_master.conn.filt_policy = (peer_addr == NULL) ?
+                                      BLE_HCI_CONN_FILT_USE_WL :
+                                      BLE_HCI_CONN_FILT_NO_WL;
+#endif
     ble_gap_master.conn.our_addr_type = own_addr_type;
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     ble_gap_master.conn.synchronized = 0;

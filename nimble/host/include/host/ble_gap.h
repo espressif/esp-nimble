@@ -2679,6 +2679,17 @@ struct ble_gap_ext_adv_params {
     /** If enable scan request notification  */
     unsigned int scan_req_notif:1;
 
+#if MYNEWT_VAL(BLE_DBAF)
+    /** If use ADV_DECISION_IND on the primary advertising channel */
+    unsigned int use_decision_pdus:1;
+
+    /** If include AdvA in the extended header of all decision PDUs */
+    unsigned int decision_include_adv_a:1;
+
+    /** If include ADI in the extended header of all decision PDUs */
+    unsigned int decision_include_adi:1;
+#endif
+
     /** Minimum advertising interval in 0.625ms units, if 0 stack use sane
      *  defaults
      */
@@ -2829,6 +2840,38 @@ int ble_gap_ext_adv_remove(uint8_t instance);
  *                      other error code on failure.
  */
 int ble_gap_ext_adv_clear(void);
+
+#if MYNEWT_VAL(BLE_DBAF)
+/**
+ * Set decision data for an advertising set (DBAF).
+ *
+ * @param instance            Advertising set handle (0x00-0xEF)
+ * @param decision_type_flags Decision_Type_Flags (bit0 = Resolvable Tag)
+ * @param data                Decision data (Resolvable Tag = hash || prand)
+ * @param data_len            Length of data, 0-8
+ *
+ * @return                    0 on success; nonzero on failure.
+ */
+int ble_gap_set_decision_data(uint8_t instance, uint8_t decision_type_flags,
+                              const uint8_t *data, uint8_t data_len);
+
+/**
+ * Set decision instructions used when scanning or initiating (DBAF).
+ *
+ * Controller supports at least 8 tests. Test_Flags[0] bit0 must be 1.
+ *
+ * @param num_tests           Number of tests (1-8)
+ * @param test_flags          Per-test flags (num_tests octets)
+ * @param test_fields         Per-test fields (num_tests octets)
+ * @param test_params         Per-test parameters (num_tests * 16 octets)
+ *
+ * @return                    0 on success; nonzero on failure.
+ */
+int ble_gap_set_decision_instructions(uint8_t num_tests,
+                                      const uint8_t *test_flags,
+                                      const uint8_t *test_fields,
+                                      const uint8_t *test_params);
+#endif
 
 /**
  * Indicates whether an advertisement procedure is currently in progress on
@@ -3478,6 +3521,9 @@ int ble_gap_disc(uint8_t own_addr_type, int32_t duration_ms,
  *                                      - BLE_HCI_SCAN_FILT_NO_WL_INITA
  *                                      - BLE_HCI_SCAN_FILT_USE_WL_INITA
  *                                      - BLE_HCI_SCAN_FILT_MAX
+ *                              DBAF (Core 6.0) may OR bits 2-3:
+ *                                      - BLE_HCI_SCAN_FILT_DECISION_ALL
+ *                                      - BLE_HCI_SCAN_FILT_DECISION_ONLY
  *                              This parameter is ignored unless
  *                              @p filter_duplicates is set.
  * @param limited               If limited discovery procedure should be used.
@@ -3635,6 +3681,30 @@ int ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handl
                 const struct ble_gap_conn_params *phy_2m_conn_params,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 ble_gap_event_fn *cb, void *cb_arg);
+
+#if MYNEWT_VAL(BLE_DBAF)
+/**
+ * Same as ble_gap_connect_with_synced(), with an explicit Initiator_Filter_Policy.
+ *
+ * filter_policy 0 or 1 keeps the historical choice (peer NULL -> Filter Accept
+ * List, otherwise the peer address).
+ *
+ * Policies 2-4 are rejected. Core Vol 4 Part E 7.8.66: when Advertising_Handle
+ * and Subevent are not 0xFF, the controller ignores Initiator_Filter_Policy and
+ * connects to the supplied peer address. Use ble_gap_ext_connect_dbaf() for
+ * DBAF initiator policies.
+ *
+ * @return BLE_HS_EINVAL if filter_policy is greater than 1.
+ */
+int ble_gap_connect_with_synced_dbaf(uint8_t own_addr_type,
+                uint8_t advertising_handle, uint8_t subevent,
+                const ble_addr_t *peer_addr, int32_t duration_ms,
+                uint8_t phy_mask,
+                const struct ble_gap_conn_params *phy_1m_conn_params,
+                const struct ble_gap_conn_params *phy_2m_conn_params,
+                const struct ble_gap_conn_params *phy_coded_conn_params,
+                uint8_t filter_policy, ble_gap_event_fn *cb, void *cb_arg);
+#endif
 #endif
 /**
  * Initiates an extended connect procedure.
@@ -3693,6 +3763,31 @@ int ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                         const struct ble_gap_conn_params *phy_2m_conn_params,
                         const struct ble_gap_conn_params *phy_coded_conn_params,
                         ble_gap_event_fn *cb, void *cb_arg);
+
+#if MYNEWT_VAL(BLE_DBAF) && MYNEWT_VAL(BLE_EXT_ADV)
+/**
+ * Same as ble_gap_ext_connect(), with an explicit Initiator_Filter_Policy.
+ *
+ * Do not add this policy to ble_gap_conn_params. Callers fill that struct
+ * field by field, so a new byte is uninitialized stack garbage.
+ *
+ * filter_policy 0 or 1 keeps the historical choice (peer NULL -> Filter Accept
+ * List, otherwise the peer address). Values 2-4 are the Core 6.0 DBAF policies
+ * (BLE_HCI_CONN_FILT_DECISION_ONLY / FAL_ALL_PDUS / DECISION_AND_FAL).
+ * Peer_Address is ignored by the controller for 2-4 (Vol 4 Part E 7.8.66).
+ *
+ * @return BLE_HS_EINVAL if filter_policy is greater than 4;
+ *         BLE_HS_ENOTSUP if filter_policy is 2-4 and the controller does not
+ *         support Decision-Based Advertising Filtering (LE feature bit 42).
+ */
+int ble_gap_ext_connect_dbaf(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                        int32_t duration_ms, uint8_t phy_mask,
+                        const struct ble_gap_conn_params *phy_1m_conn_params,
+                        const struct ble_gap_conn_params *phy_2m_conn_params,
+                        const struct ble_gap_conn_params *phy_coded_conn_params,
+                        uint8_t filter_policy,
+                        ble_gap_event_fn *cb, void *cb_arg);
+#endif
 
 #if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
 /**
