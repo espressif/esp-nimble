@@ -547,6 +547,7 @@ ble_l2cap_coc_continue_tx(struct ble_l2cap_chan *chan)
     struct ble_hs_conn *conn;
     uint16_t sdu_size_offset;
     int rc;
+    int partial_sdu;
 
     /* If there is no data to send, just return success */
     tx = &chan->coc_tx;
@@ -658,12 +659,23 @@ failed:
     tx->sdus[0] = NULL;
 
     os_mbuf_free_chain(txom);
+
+    /* Partial SDU already on air; disconnect so peer is not left hanging.
+     * Unlock first: ble_l2cap_sig_disconnect() locks via ble_l2cap_sig_tx().
+     */
+    partial_sdu = (tx->data_offset > 0);
+    tx->data_offset = 0;
+
     if (tx->flags & BLE_L2CAP_COC_FLAG_STALLED) {
         tx->flags &= ~BLE_L2CAP_COC_FLAG_STALLED;
         ble_hs_unlock();
         ble_l2cap_event_coc_unstalled(chan, rc);
     } else {
         ble_hs_unlock();
+    }
+
+    if (partial_sdu && rc != BLE_HS_ENOTCONN) {
+        ble_l2cap_sig_disconnect(chan);
     }
 
     return rc;
