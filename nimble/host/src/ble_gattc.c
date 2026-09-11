@@ -6214,6 +6214,7 @@ ble_gattc_notify(uint16_t conn_handle, uint16_t chr_val_handle)
 /*****************************************************************************
  * $indicate                                                                 *
  *****************************************************************************/
+#if MYNEWT_VAL(BLE_GATTS)
 /**
  * Handles an incoming ATT error response for the specified indication proc.
  * A device should never send an error in response to an indication.  If this
@@ -7198,3 +7199,5 @@ ble_gattc_deinit(void)
 #endif
 }
 #endif
+
+#endif /* NIMBLE_BLE_CONNECT */
