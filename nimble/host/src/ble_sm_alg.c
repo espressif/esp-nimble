@@ -48,9 +48,9 @@
 #include "tinycrypt/aes.h"
 #include "tinycrypt/constants.h"
 #include "tinycrypt/utils.h"
+#include "tinycrypt/cmac_mode.h"
 
 #if MYNEWT_VAL(BLE_SM_SC)
-#include "tinycrypt/cmac_mode.h"
 #include "tinycrypt/ecc_dh.h"
 #if MYNEWT_VAL(TRNG)
 #include "trng/trng.h"
