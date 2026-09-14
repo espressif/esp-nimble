@@ -24,7 +24,11 @@
 #include "settings.h"
 #include "pb_gatt_srv.h"
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#include "psa/crypto.h"
+#else
 #include "mbedtls/ecdh.h"
+#endif
 
 static void send_pub_key(void);
 static void pub_key_ready(const uint8_t *pkey);
@@ -297,6 +301,43 @@ static void prov_dh_key_cb(const uint8_t dhkey[BT_DH_KEY_LEN])
 	dh_key_gen_complete();
 }
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+int bt_mesh_dhkey_gen(const uint8_t *remote_pk, const uint8_t *private_key_be,
+		      uint8_t *dhkey)
+{
+	psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
+	psa_key_id_t key_id = 0;
+	uint8_t uncompressed_pk[65];
+	size_t output_len = 0;
+	psa_status_t status;
+
+	uncompressed_pk[0] = 0x04;
+	memcpy(&uncompressed_pk[1], remote_pk, 64);
+
+	psa_set_key_type(&key_attributes,
+			 PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
+	psa_set_key_bits(&key_attributes, 256);
+	psa_set_key_algorithm(&key_attributes, PSA_ALG_ECDH);
+	psa_set_key_usage_flags(&key_attributes, PSA_KEY_USAGE_DERIVE);
+
+	status = psa_import_key(&key_attributes, private_key_be, 32, &key_id);
+	psa_reset_key_attributes(&key_attributes);
+	if (status != PSA_SUCCESS) {
+		return -EIO;
+	}
+
+	status = psa_raw_key_agreement(PSA_ALG_ECDH, key_id, uncompressed_pk,
+				       sizeof(uncompressed_pk), dhkey, 32,
+				       &output_len);
+	psa_destroy_key(key_id);
+
+	if (status != PSA_SUCCESS || output_len != 32) {
+		return -EIO;
+	}
+
+	return 0;
+}
+#else
 static int
 mbedtls_rand(void *arg, unsigned char *buf, size_t size)
 {
@@ -352,6 +393,7 @@ done:
 
 	return ret;
 }
+#endif /* CONFIG_MBEDTLS_VER_4_X_SUPPORT */
 
 static void prov_dh_key_gen(void)
 {

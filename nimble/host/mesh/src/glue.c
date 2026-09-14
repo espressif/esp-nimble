@@ -33,7 +33,11 @@
 #include "base64/base64.h"
 #endif
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#include <psa/crypto.h>
+#else
 #include <mbedtls/aes.h>
+#endif
 
 extern uint8_t g_mesh_addr_type;
 
@@ -137,6 +141,37 @@ void net_buf_simple_clone(const struct os_mbuf *original,
 }
 
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+int
+bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
+{
+	psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
+	psa_key_id_t key_id = 0;
+	size_t output_len = 0;
+	psa_status_t status;
+
+	psa_set_key_usage_flags(&key_attributes, PSA_KEY_USAGE_ENCRYPT);
+	psa_set_key_algorithm(&key_attributes, PSA_ALG_ECB_NO_PADDING);
+	psa_set_key_type(&key_attributes, PSA_KEY_TYPE_AES);
+	psa_set_key_bits(&key_attributes, 128);
+
+	status = psa_import_key(&key_attributes, key, 16, &key_id);
+	psa_reset_key_attributes(&key_attributes);
+	if (status != PSA_SUCCESS) {
+		return BLE_HS_EUNKNOWN;
+	}
+
+	status = psa_cipher_encrypt(key_id, PSA_ALG_ECB_NO_PADDING, plaintext, 16,
+				    enc_data, 16, &output_len);
+	psa_destroy_key(key_id);
+
+	if (status != PSA_SUCCESS || output_len != 16) {
+		return BLE_HS_EUNKNOWN;
+	}
+
+	return 0;
+}
+#else
 int
 bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 {
@@ -156,6 +191,7 @@ bt_encrypt_be(const uint8_t *key, const uint8_t *plaintext, uint8_t *enc_data)
 
 	return 0;
 }
+#endif /* CONFIG_MBEDTLS_VER_4_X_SUPPORT */
 
 uint16_t
 net_buf_simple_pull_le16(struct os_mbuf *om)

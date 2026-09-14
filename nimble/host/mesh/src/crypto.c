@@ -15,7 +15,11 @@
 #include <stdbool.h>
 #include <errno.h>
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+#include <psa/crypto.h>
+#else
 #include <mbedtls/cmac.h>
+#endif
 
 #include "crypto.h"
 
@@ -23,6 +27,52 @@
 #define APP_MIC_LEN(aszmic) ((aszmic) ? 8 : 4)
 
 
+#if CONFIG_MBEDTLS_VER_4_X_SUPPORT
+int bt_mesh_aes_cmac(const uint8_t key[16], struct bt_mesh_sg *sg,
+		     size_t sg_len, uint8_t mac[16])
+{
+	psa_key_attributes_t key_attributes = PSA_KEY_ATTRIBUTES_INIT;
+	psa_mac_operation_t operation = PSA_MAC_OPERATION_INIT;
+	psa_key_id_t key_id = 0;
+	size_t mac_len = 0;
+	int err = -EIO;
+
+	psa_set_key_usage_flags(&key_attributes, PSA_KEY_USAGE_SIGN_MESSAGE);
+	psa_set_key_algorithm(&key_attributes, PSA_ALG_CMAC);
+	psa_set_key_type(&key_attributes, PSA_KEY_TYPE_AES);
+	psa_set_key_bits(&key_attributes, 128);
+
+	if (psa_import_key(&key_attributes, key, 16, &key_id) != PSA_SUCCESS) {
+		psa_reset_key_attributes(&key_attributes);
+		return -EIO;
+	}
+	psa_reset_key_attributes(&key_attributes);
+
+	if (psa_mac_sign_setup(&operation, key_id, PSA_ALG_CMAC) != PSA_SUCCESS) {
+		goto done;
+	}
+
+	for (; sg_len; sg_len--, sg++) {
+		if (psa_mac_update(&operation, sg->data, sg->len) != PSA_SUCCESS) {
+			goto done;
+		}
+	}
+
+	if (psa_mac_sign_finish(&operation, mac, 16, &mac_len) != PSA_SUCCESS ||
+	    mac_len != 16) {
+		goto done;
+	}
+
+	err = 0;
+
+done:
+	if (err) {
+		psa_mac_abort(&operation);
+	}
+	psa_destroy_key(key_id);
+	return err;
+}
+#else
 int bt_mesh_aes_cmac(const uint8_t key[16], struct bt_mesh_sg *sg,
 		     size_t sg_len, uint8_t mac[16])
 {
@@ -56,6 +106,7 @@ done:
 	mbedtls_cipher_free(&ctx);
 	return err;
 }
+#endif /* CONFIG_MBEDTLS_VER_4_X_SUPPORT */
 
 int bt_mesh_k1(const uint8_t *ikm, size_t ikm_len, const uint8_t salt[16],
 	       const char *info, uint8_t okm[16])
