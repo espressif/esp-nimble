@@ -464,7 +464,11 @@ void nimble_port_run(void)
         return;
     }
 #endif
+#if CONFIG_BT_DUAL_MODE_ARCH
+    if (g_eventq_dflt.eventq.eventq == NULL) {
+#else
     if (g_eventq_dflt.eventq == NULL) {
+#endif
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "nimble event queue not initialized, host task exiting");
         return;
     }
