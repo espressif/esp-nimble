@@ -2839,6 +2839,8 @@ void
 ble_gap_rx_cis_request(const struct ble_hci_ev_le_subev_cis_request *ev)
 {
     struct ble_gap_event event;
+    ble_gap_event_fn *cb;
+    void *cb_arg;
 
     memset(&event, 0, sizeof(event));
 
@@ -2851,15 +2853,10 @@ ble_gap_rx_cis_request(const struct ble_hci_ev_le_subev_cis_request *ev)
 
     ble_gap_event_listener_call(&event);
 
-#if NIMBLE_BLE_CONNECT
-    ble_gap_event_fn *cb;
-    void *cb_arg;
-
     ble_gap_extract_conn_cb(le16toh(ev->acl_conn_handle), &cb, &cb_arg);
     if (cb) {
         cb(&event, cb_arg);
     }
-#endif
 }
 
 void
@@ -2902,8 +2899,6 @@ void
 ble_gap_rx_term_big_comp(const struct ble_hci_ev_le_subev_terminate_big_complete *ev)
 {
     struct ble_gap_event event;
-    ble_gap_event_fn *cb;
-    void *cb_arg;
 
     memset(&event, 0, sizeof(event));
 
@@ -2912,18 +2907,9 @@ ble_gap_rx_term_big_comp(const struct ble_hci_ev_le_subev_terminate_big_complete
     event.term_big_comp.big_handle = ev->big_handle;
     event.term_big_comp.reason = ev->reason;
 
-    ble_hs_lock();
-
-    cb = ble_gap_big_brd.cb;
-    cb_arg = ble_gap_big_brd.cb_arg;
-    ble_gap_big_brd.cb = NULL;
-    ble_gap_big_brd.cb_arg = NULL;
-
-    ble_hs_unlock();
-
     ble_gap_event_listener_call(&event);
-    if (cb) {
-        cb(&event, cb_arg);
+    if (ble_gap_big_brd.cb) {
+        ble_gap_big_brd.cb(&event, ble_gap_big_brd.cb_arg);
     }
 }
 
@@ -2931,8 +2917,6 @@ void
 ble_gap_rx_big_sync_estab(const struct ble_hci_ev_le_subev_big_sync_established *ev)
 {
     struct ble_gap_event event;
-    ble_gap_event_fn *cb;
-    void *cb_arg;
     bool invalid_bis;
 
     memset(&event, 0, sizeof(event));
@@ -2963,19 +2947,9 @@ ble_gap_rx_big_sync_estab(const struct ble_hci_ev_le_subev_big_sync_established 
         }
     }
 
-    /* Copy cb/cb_arg under lock before invoking the application callback. */
-    ble_hs_lock();
-    cb = ble_gap_big_snc.cb;
-    cb_arg = ble_gap_big_snc.cb_arg;
-    if (ev->status != 0 || invalid_bis) {
-        ble_gap_big_snc.cb = NULL;
-        ble_gap_big_snc.cb_arg = NULL;
-    }
-    ble_hs_unlock();
-
     ble_gap_event_listener_call(&event);
-    if (cb) {
-        cb(&event, cb_arg);
+    if (ble_gap_big_snc.cb) {
+        ble_gap_big_snc.cb(&event, ble_gap_big_snc.cb_arg);
     }
 }
 
@@ -2983,8 +2957,6 @@ void
 ble_gap_rx_big_sync_lost(const struct ble_hci_ev_le_subev_big_sync_lost *ev)
 {
     struct ble_gap_event event;
-    ble_gap_event_fn *cb;
-    void *cb_arg;
 
     memset(&event, 0, sizeof(event));
 
@@ -2993,16 +2965,9 @@ ble_gap_rx_big_sync_lost(const struct ble_hci_ev_le_subev_big_sync_lost *ev)
     event.big_sync_lost.big_handle = ev->big_handle;
     event.big_sync_lost.reason = ev->reason;
 
-    ble_hs_lock();
-    cb = ble_gap_big_snc.cb;
-    cb_arg = ble_gap_big_snc.cb_arg;
-    ble_gap_big_snc.cb = NULL;
-    ble_gap_big_snc.cb_arg = NULL;
-    ble_hs_unlock();
-
     ble_gap_event_listener_call(&event);
-    if (cb) {
-        cb(&event, cb_arg);
+    if (ble_gap_big_snc.cb) {
+        ble_gap_big_snc.cb(&event, ble_gap_big_snc.cb_arg);
     }
 }
 
