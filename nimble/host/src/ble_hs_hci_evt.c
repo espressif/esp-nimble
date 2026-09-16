@@ -443,7 +443,8 @@ ble_hs_hci_evt_dispatch_find(uint16_t event_code)
 
 static const uint8_t ble_hs_conn_null_addr[6];
 
-#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY) && \
+    MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
 static inline void
 ble_hs_hci_evt_resolve_rpa(ble_addr_t *addr)
 {
@@ -1218,7 +1219,9 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
      */
     desc.ota_addr = desc.addr;
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
     ble_hs_hci_evt_resolve_rpa(&desc.addr);
+#endif
 #endif
 
         desc.length_data = rpt->data_len;
@@ -1257,7 +1260,9 @@ ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, const void *data, unsigned int l
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
         desc.ota_addr = desc.addr;
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
         ble_hs_hci_evt_resolve_rpa(&desc.addr);
+#endif
 #endif
         ble_gap_rx_adv_report(&desc);
     }
@@ -1662,7 +1667,9 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
         desc.ota_addr = desc.addr;
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
         ble_hs_hci_evt_resolve_rpa(&desc.addr);
+#endif
 #endif
 
         ble_gap_rx_ext_adv_report(&desc);
