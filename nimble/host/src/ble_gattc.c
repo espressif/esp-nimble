@@ -112,6 +112,14 @@
 /** Procedure stalled due to resource exhaustion. */
 #define BLE_GATTC_PROC_F_STALLED                0x01
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+/** Procedure is still referenced by its public API caller. */
+#define BLE_GATTC_PROC_F_API_LOCKED             0x02
+
+/** Procedure free was deferred until its public API caller returns. */
+#define BLE_GATTC_PROC_F_FREE_PENDING           0x04
+#endif
+
 /** Represents an in-progress GATT procedure. */
 struct ble_gattc_proc {
     STAILQ_ENTRY(ble_gattc_proc) next;
@@ -244,9 +252,6 @@ struct ble_gattc_proc {
 };
 
 
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-static struct ble_gattc_proc_list temp_proc_list;
-#endif
 STAILQ_HEAD(ble_gattc_proc_list, ble_gattc_proc);
 
 /**
@@ -872,6 +877,16 @@ ble_gattc_proc_free(struct ble_gattc_proc *proc)
     int i;
 
     if (proc != NULL) {
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+        ble_hs_lock_nested();
+        if (proc->flags & BLE_GATTC_PROC_F_API_LOCKED) {
+            proc->flags |= BLE_GATTC_PROC_F_FREE_PENDING;
+            ble_hs_unlock_nested();
+            return;
+        }
+        ble_hs_unlock_nested();
+#endif
+
         ble_gattc_dbg_assert_proc_not_inserted(proc);
 
         switch (proc->op) {
@@ -931,12 +946,83 @@ ble_gattc_proc_insert(struct ble_gattc_proc *proc)
     ble_hs_unlock();
 }
 
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+static int
+ble_gattc_proc_remove_locked(struct ble_gattc_proc *proc)
+{
+    struct ble_gattc_proc *cur;
+    struct ble_gattc_proc *prev;
+
+    BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
+
+    prev = NULL;
+    cur = STAILQ_FIRST(&ble_gattc_procs);
+    while (cur != NULL) {
+        if (cur == proc) {
+            if (prev == NULL) {
+                STAILQ_REMOVE_HEAD(&ble_gattc_procs, next);
+            } else {
+                STAILQ_REMOVE_AFTER(&ble_gattc_procs, prev, next);
+            }
+            return 1;
+        }
+
+        prev = cur;
+        cur = STAILQ_NEXT(cur, next);
+    }
+
+    return 0;
+}
+#endif
+
 static void
 ble_gattc_proc_set_exp_timer(struct ble_gattc_proc *proc)
 {
     proc->exp_os_ticks = ble_npl_time_get() +
                          ble_npl_time_ms_to_ticks32(BLE_GATTC_UNRESPONSIVE_TIMEOUT_MS);
 }
+
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+static void
+ble_gattc_proc_preempt_insert(struct ble_gattc_proc *proc)
+{
+    if (!(proc->flags & BLE_GATTC_PROC_F_STALLED)) {
+        ble_gattc_proc_set_exp_timer(proc);
+    }
+
+    ble_hs_lock();
+    proc->flags |= BLE_GATTC_PROC_F_API_LOCKED;
+    STAILQ_INSERT_TAIL(&ble_gattc_procs, proc, next);
+    ble_hs_unlock();
+
+    ble_hs_timer_resched();
+}
+
+static void
+ble_gattc_proc_preempt_complete(struct ble_gattc_proc *proc, int status)
+{
+    int free_proc;
+
+    free_proc = 0;
+
+    ble_hs_lock();
+    if (status != 0) {
+        free_proc = ble_gattc_proc_remove_locked(proc);
+    }
+
+    if (proc->flags & BLE_GATTC_PROC_F_FREE_PENDING) {
+        proc->flags &= ~BLE_GATTC_PROC_F_FREE_PENDING;
+        free_proc = 1;
+    }
+
+    proc->flags &= ~BLE_GATTC_PROC_F_API_LOCKED;
+    ble_hs_unlock();
+
+    if (free_proc) {
+        ble_gattc_proc_free(proc);
+    }
+}
+#endif
 
 #if MYNEWT_VAL(BLE_GATTC)
 static void
@@ -1182,13 +1268,11 @@ ble_gattc_extract(ble_gattc_match_fn *cb, void *arg, int max_procs,
     struct ble_gattc_proc *proc;
     struct ble_gattc_proc *prev;
     struct ble_gattc_proc *next;
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    struct ble_gattc_proc *cur;
-    uint8_t flag = 0;
-#endif
     int num_extracted;
 
-    /* Only the parent task is allowed to remove entries from the list. */
+    /* Parent task performs normal extraction. The preemption-protect TX
+     * failure path may also remove an active proc while holding ble_hs_lock.
+     */
     BLE_HS_DBG_ASSERT(ble_hs_is_parent_task());
 
     STAILQ_INIT(dst_list);
@@ -1197,27 +1281,6 @@ ble_gattc_extract(ble_gattc_match_fn *cb, void *arg, int max_procs,
     ble_hs_lock();
 
     prev = NULL;
-
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    proc = STAILQ_FIRST(&temp_proc_list);
-    while (proc != NULL) {
-        next = STAILQ_NEXT(proc, next);
-        STAILQ_FOREACH(cur, &ble_gattc_procs, next) {
-            if (proc == cur) {
-                flag = 1;
-                break;
-            }
-        }
-        if (!flag) {
-        /* Detected a preemption case */
-            STAILQ_INSERT_TAIL(&ble_gattc_procs, proc, next);
-        }
-        flag = 0;
-        proc = next;
-    }
-    /* Clear the temp proc list */
-    STAILQ_INIT(&temp_proc_list);
-#endif
 
     proc = STAILQ_FIRST(&ble_gattc_procs);
     while (proc != NULL) {
@@ -1812,7 +1875,9 @@ ble_gattc_disc_all_svcs_tx(struct ble_gattc_proc *proc)
     ble_uuid16_t uuid = BLE_UUID16_INIT(BLE_ATT_UUID_PRIMARY_SERVICE);
     int rc;
 
+#if !MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
     ble_gattc_dbg_assert_proc_not_inserted(proc);
+#endif
 
     rc = ble_att_clt_tx_read_group_type(proc->conn_handle, proc->cid,
                                         proc->disc_all_svcs.prev_handle + 1,
@@ -1977,9 +2042,7 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
     proc->disc_all_svcs.cb_arg = cb_arg;
 
 #if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    ble_hs_lock();
-    STAILQ_INSERT_TAIL(&temp_proc_list, proc, next);
-    ble_hs_unlock();
+    ble_gattc_proc_preempt_insert(proc);
 #endif
     ble_gattc_log_proc_init("discover all services\n");
 
@@ -1989,20 +2052,16 @@ ble_gattc_disc_all_svcs(uint16_t conn_handle, ble_gatt_disc_svc_fn *cb,
     }
 
 done:
-    /* One ble_gattc_proc cannot be part of multiple linked lists.
-     * Hence it needs to be removed before going into ble_gattc_process_status.
-     */
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    if (proc != NULL) {
-        ble_hs_lock();
-        STAILQ_REMOVE(&temp_proc_list, proc, ble_gattc_proc, next);
-        ble_hs_unlock();
-    }
-#endif
-
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_svcs_fail);
     }
+
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    if (proc != NULL) {
+        ble_gattc_proc_preempt_complete(proc, rc);
+        return rc;
+    }
+#endif
 
     ble_gattc_process_status(proc, rc);
     return rc;
@@ -2645,7 +2704,9 @@ ble_gattc_disc_all_chrs_tx(struct ble_gattc_proc *proc)
     ble_uuid16_t uuid = BLE_UUID16_INIT(BLE_ATT_UUID_CHARACTERISTIC);
     int rc;
 
+#if !MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
     ble_gattc_dbg_assert_proc_not_inserted(proc);
+#endif
 
     rc = ble_att_clt_tx_read_type(proc->conn_handle, proc->cid,
                                   proc->disc_all_chrs.prev_handle + 1,
@@ -2809,12 +2870,10 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
     proc->disc_all_chrs.cb = cb;
     proc->disc_all_chrs.cb_arg = cb_arg;
 
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    ble_hs_lock();
-    STAILQ_INSERT_TAIL(&temp_proc_list, proc, next);
-    ble_hs_unlock();
-#endif
     ble_gattc_log_disc_all_chrs(proc);
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    ble_gattc_proc_preempt_insert(proc);
+#endif
 
     rc = ble_gattc_disc_all_chrs_tx(proc);
     if (rc != 0) {
@@ -2822,20 +2881,16 @@ ble_gattc_disc_all_chrs(uint16_t conn_handle, uint16_t start_handle,
     }
 
 done:
-    /* One ble_gattc_proc cannot be part of multiple linked lists.
-     * Hence it needs to be removed before going into ble_gattc_process_status.
-     */
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    if (proc != NULL) {
-        ble_hs_lock();
-        STAILQ_REMOVE(&temp_proc_list, proc, ble_gattc_proc, next);
-        ble_hs_unlock();
-    }
-#endif
-
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_chrs_fail);
     }
+
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    if (proc != NULL) {
+        ble_gattc_proc_preempt_complete(proc, rc);
+        return rc;
+    }
+#endif
 
     ble_gattc_process_status(proc, rc);
     return rc;
@@ -3149,7 +3204,9 @@ ble_gattc_disc_all_dscs_tx(struct ble_gattc_proc *proc)
 {
     int rc;
 
+#if !MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
     ble_gattc_dbg_assert_proc_not_inserted(proc);
+#endif
 
     rc = ble_att_clt_tx_find_info(proc->conn_handle, proc->cid,
                                   proc->disc_all_dscs.prev_handle + 1,
@@ -3307,12 +3364,10 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
     proc->disc_all_dscs.cb = cb;
     proc->disc_all_dscs.cb_arg = cb_arg;
 
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    ble_hs_lock();
-    STAILQ_INSERT_TAIL(&temp_proc_list, proc, next);
-    ble_hs_unlock();
-#endif
     ble_gattc_log_disc_all_dscs(proc);
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    ble_gattc_proc_preempt_insert(proc);
+#endif
 
     rc = ble_gattc_disc_all_dscs_tx(proc);
     if (rc != 0) {
@@ -3320,20 +3375,16 @@ ble_gattc_disc_all_dscs(uint16_t conn_handle, uint16_t start_handle,
     }
 
 done:
-    /* One ble_gattc_proc cannot be part of multiple linked lists.
-     * Hence it needs to be removed before going into ble_gattc_process_status.
-     */
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    if (proc != NULL) {
-        ble_hs_lock();
-        STAILQ_REMOVE(&temp_proc_list,proc,ble_gattc_proc, next);
-        ble_hs_unlock();
-    }
-#endif
-
     if (rc != 0) {
         STATS_INC(ble_gattc_stats, disc_all_dscs_fail);
     }
+
+#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
+    if (proc != NULL) {
+        ble_gattc_proc_preempt_complete(proc, rc);
+        return rc;
+    }
+#endif
 
     ble_gattc_process_status(proc, rc);
     return rc;
@@ -6829,9 +6880,6 @@ ble_gattc_init(void)
     }
 #endif
 
-#if MYNEWT_VAL(BLE_GATTC_PROC_PREEMPTION_PROTECT)
-    STAILQ_INIT(&temp_proc_list);
-#endif
     STAILQ_INIT(&ble_gattc_procs);
 #if MYNEWT_VAL(BLE_GATTC_AUTO_PAIR)
     STAILQ_INIT(&ble_gattc_cached_procs);
