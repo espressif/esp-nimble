@@ -440,6 +440,27 @@ ble_hs_hci_evt_dispatch_find(uint8_t event_code)
 
 static const uint8_t ble_hs_conn_null_addr[6];
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY) && \
+    MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
+static inline void
+ble_hs_hci_evt_resolve_rpa(ble_addr_t *addr)
+{
+    struct ble_hs_resolv_entry *rl;
+
+    ble_hs_lock();
+    rl = ble_hs_resolv_rpa_addr(addr->val, addr->type);
+    if (rl != NULL) {
+        if (addr->type == BLE_ADDR_RANDOM) {
+            rl->rl_isrpa = 1;
+        }
+
+        memcpy(addr->val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
+        addr->type = rl->rl_addr_type;
+    }
+    ble_hs_unlock();
+}
+#endif
+
 static ble_hs_hci_evt_le_fn *
 ble_hs_hci_evt_le_dispatch_find(uint8_t event_code)
 {
@@ -1163,19 +1184,9 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
      */
     desc.ota_addr = desc.addr;
 
-    struct ble_hs_resolv_entry *rl = NULL;
-    ble_hs_lock();
-    rl = ble_hs_resolv_rpa_addr(desc.addr.val, desc.addr.type);
-
-    if (rl != NULL) {
-        if (desc.addr.type == 1) {
-            rl->rl_isrpa = 1;
-	}
-
-        memcpy(desc.addr.val, rl->rl_identity_addr, BLE_DEV_ADDR_LEN);
-        desc.addr.type = rl->rl_addr_type;
-    }
-    ble_hs_unlock();
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
+    ble_hs_hci_evt_resolve_rpa(&desc.addr);
+#endif
 #endif
 
         desc.length_data = rpt->data_len;
@@ -1213,8 +1224,10 @@ ble_hs_hci_evt_le_dir_adv_rpt(uint8_t subevent, const void *data, unsigned int l
         desc.rssi = ev->reports[i].rssi;
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
-        /* Directed adv path does not perform identity-swap; mirror OTA addr. */
         desc.ota_addr = desc.addr;
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
+        ble_hs_hci_evt_resolve_rpa(&desc.addr);
+#endif
 #endif
         ble_gap_rx_adv_report(&desc);
     }
@@ -1586,6 +1599,12 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
         desc.sec_phy = report->sec_phy;
         desc.periodic_adv_itvl = report->periodic_itvl;
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        desc.ota_addr = desc.addr;
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY_RESOLVE_ON_SCAN)
+        ble_hs_hci_evt_resolve_rpa(&desc.addr);
+#endif
+#endif
         ble_gap_rx_ext_adv_report(&desc);
 
         report = (const void *) &report->data[report->data_len];

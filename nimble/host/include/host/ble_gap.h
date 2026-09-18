@@ -499,6 +499,11 @@ struct ble_gap_ext_disc_desc {
      * set (BLE_ADDR_ANY otherwise).
      */
     ble_addr_t direct_addr;
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    /** Original RPA address */
+    ble_addr_t ota_addr;
+#endif
 };
 #endif
 
