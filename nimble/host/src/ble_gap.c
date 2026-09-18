@@ -4284,9 +4284,17 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
 #endif
 
     if (evt->role == BLE_HCI_LE_CONN_COMPLETE_ROLE_SLAVE) {
-        ble_gap_rd_rem_ver_tx(evt->connection_handle);
+        rc = ble_gap_rd_rem_ver_tx(evt->connection_handle);
+        if (rc != 0) {
+            conn->slave_conn = 1;
+            ble_gap_event_connect_call(htole16(evt->connection_handle), 0);
+        }
     } else {
-        ble_gap_rd_rem_sup_feat_tx(evt->connection_handle);
+        int rc_feat = ble_gap_rd_rem_sup_feat_tx(evt->connection_handle);
+        if (rc_feat != 0) {
+            /* Connection is established even if the follow-up HCI command fails. */
+            ble_gap_event_connect_call(htole16(evt->connection_handle), 0);
+        }
     }
 
     return 0;
@@ -4364,12 +4372,10 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
 {
 #if NIMBLE_BLE_CONNECT
     struct ble_hs_conn *conn;
-
-    ble_hs_lock();
-
-    conn = ble_hs_conn_find(le16toh(ev->conn_handle));
-
-    ble_hs_unlock();
+    uint16_t conn_handle;
+    bool conn_found;
+    bool is_master;
+    int rc;
 
     /* Only these statuses mean controller already dropped the ACL.
      * Other non-zero: link may still be up → continue rem-ver / notify app. */
@@ -4379,7 +4385,16 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
         return;
     }
 
-    if ((conn != NULL) && (conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
+    conn_handle = le16toh(ev->conn_handle);
+
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find(conn_handle);
+    conn_found = conn != NULL;
+    is_master = false;
+    if (conn_found) {
+        /* Snapshot the role and update feature state under the host lock. */
+        is_master = conn->bhc_flags & BLE_HS_CONN_F_MASTER;
         if (ev->status == 0) {
 #if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
             conn->supported_feat = !!(get_le32(ev->features) & BLE_HS_HCI_LE_FEAT_CONN_PARAM_REQUEST);
@@ -4387,21 +4402,35 @@ ble_gap_rx_rd_rem_sup_feat_complete(const struct ble_hci_ev_le_subev_rd_rem_used
             conn->supported_feat = get_le32(ev->features);
 #endif
         }
-        ble_gap_rd_rem_ver_tx(ev->conn_handle);
-    } else {
-        if (conn != NULL) {
-            if (ev->status == 0) {
-#if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
-                conn->supported_feat = !!(get_le32(ev->features) & BLE_HS_HCI_LE_FEAT_CONN_PARAM_REQUEST);
-#else
-                conn->supported_feat = get_le32(ev->features);
-#endif
-            }
-            ble_gap_event_connect_call(ev->conn_handle, ev->status);
+        if (!is_master) {
+            /* CONNECT is delivered after releasing the host lock below. */
             conn->slave_conn = 1;
-        } else if (ev->status != 0) {
-            ble_gap_event_connect_call(ev->conn_handle, ev->status);
         }
+    }
+
+    ble_hs_unlock();
+
+    /* Ignore a stale completion for a connection already removed. */
+    if (!conn_found) {
+        return;
+    }
+
+    if (is_master) {
+        /*
+         * Feature discovery is optional. Continue with remote-version
+         * discovery even when the feature event reports a nonfatal error.
+         */
+        rc = ble_gap_rd_rem_ver_tx(conn_handle);
+        if (rc != 0) {
+            /* The ACL is established even if the metadata command fails. */
+            ble_gap_event_connect_call(htole16(conn_handle), 0);
+        }
+    } else {
+        /*
+         * This is the last peripheral-side metadata step. Do not propagate
+         * the feature-read status as a connection failure.
+         */
+        ble_gap_event_connect_call(htole16(conn_handle), 0);
     }
 #endif
 }
@@ -4412,31 +4441,37 @@ ble_gap_rx_rd_rem_ver_info_complete(const struct ble_hci_ev_rd_rem_ver_info_cmp 
 #if NIMBLE_BLE_CONNECT
     struct ble_hs_conn *conn;
 
-    ble_hs_lock();
-
-    conn = ble_hs_conn_find(le16toh(ev->conn_handle));
-
-    ble_hs_unlock();
-
-    /* 0x3E, 0x08, 0x22: controller tore down the link; do nothing and let
-     * the guaranteed HCI_Disconnection_Complete notify the app. */
+    /* Only these statuses mean controller already dropped the ACL.
+     * Other non-zero: link may still be up → continue rem-ver / notify app. */
     if (ev->status == BLE_ERR_CONN_ESTABLISHMENT ||
         ev->status == BLE_ERR_CONN_SPVN_TMO      ||
         ev->status == BLE_ERR_LMP_LL_RSP_TMO) {
         return;
     }
 
+    ble_hs_lock();
+
+    conn = ble_hs_conn_find(le16toh(ev->conn_handle));
+    if (conn != NULL) {
+        /* Update under lock to prevent races with ble_gap_read_rem_ver_info. */
+        conn->bhc_rd_rem_ver_params.version = ev->version;
+        conn->bhc_rd_rem_ver_params.manufacturer = ev->manufacturer;
+        conn->bhc_rd_rem_ver_params.subversion = ev->subversion;
+    }
+
+    ble_hs_unlock();
+
     /* Check conn before dereferencing */
     if (conn == NULL) {
         return;
     }
 
-    conn->bhc_rd_rem_ver_params.version = ev->version;
-    conn->bhc_rd_rem_ver_params.manufacturer = le16toh(ev->manufacturer);
-    conn->bhc_rd_rem_ver_params.subversion = le16toh(ev->subversion);
-
     if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER)) {
-        ble_gap_rd_rem_sup_feat_tx(le16toh(ev->conn_handle));
+        int rc_feat = ble_gap_rd_rem_sup_feat_tx(le16toh(ev->conn_handle));
+        if (rc_feat != 0) {
+            conn->slave_conn = 1;
+            ble_gap_event_connect_call(ev->conn_handle, 0);
+        }
     } else {
         ble_gap_event_connect_call(ev->conn_handle, 0);
     }
