@@ -302,6 +302,12 @@ ble_hs_id_addr(uint8_t id_addr_type, const uint8_t **out_id_addr,
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_id_ctx == NULL) {
+        return BLE_HS_ENOADDR;
+    }
+#endif
+
     switch (id_addr_type) {
     case BLE_ADDR_PUBLIC:
     case BLE_ADDR_PUBLIC_ID:
