@@ -1044,6 +1044,11 @@ ble_hs_hci_set_le_supported_feat(uint64_t feat)
 uint64_t
 ble_hs_hci_get_le_supported_feat(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (!ble_hs_hci_ctx) {
+        return 0;
+    }
+#endif
     return ble_hs_hci_sup_feat;
 }
 

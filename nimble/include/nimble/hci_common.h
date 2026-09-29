@@ -1318,6 +1318,40 @@ struct ble_hci_le_set_ext_adv_params_v2_cp {
     uint8_t sec_phy_opt;
 } __attribute__((packed));
 
+/* HCI LE Set Decision Data (OCF 0x0080), Core 6.0 Vol 4 Part E 7.8.144 */
+#define BLE_HCI_OCF_LE_SET_DECISION_DATA            (0x0080)
+#define BLE_HCI_DECISION_DATA_MAX_LEN               (8)
+#define BLE_HCI_DECISION_TYPE_RESOLVABLE_TAG        (0x01)
+struct ble_hci_le_set_decision_data_cp {
+    uint8_t adv_handle;
+    uint8_t decision_type_flags;
+    uint8_t decision_data_len;
+    uint8_t decision_data[0];
+} __attribute__((packed));
+
+/* HCI LE Set Decision Instructions (OCF 0x0081), Core 6.0 Vol 4 Part E 7.8.145 */
+#define BLE_HCI_OCF_LE_SET_DECISION_INSTRUCTIONS    (0x0081)
+#define BLE_HCI_DECISION_MAX_TESTS                  (8)
+#define BLE_HCI_DECISION_TEST_PARAM_LEN             (16)
+#define BLE_HCI_DECISION_TEST_FLAGS_NEW_GROUP       (0x01)
+#define BLE_HCI_DECISION_TEST_FLAGS_PASS_IF_OK      (0x02)
+#define BLE_HCI_DECISION_TEST_FLAGS_PASS_IF_FAIL    (0x04)
+#define BLE_HCI_DECISION_TEST_FLAGS_PASS_IF_ABSENT  (0x08)
+#define BLE_HCI_DECISION_TEST_FIELD_RESOLVABLE_TAG  (0)
+#define BLE_HCI_DECISION_TEST_FIELD_ADV_MODE        (6)
+#define BLE_HCI_DECISION_TEST_FIELD_RSSI            (7)
+#define BLE_HCI_DECISION_TEST_FIELD_PATH_LOSS       (8)
+#define BLE_HCI_DECISION_TEST_FIELD_ADVA            (9)
+struct ble_hci_le_decision_test {
+    uint8_t test_flags;
+    uint8_t test_field;
+    uint8_t test_params[BLE_HCI_DECISION_TEST_PARAM_LEN];
+} __attribute__((packed));
+struct ble_hci_le_set_decision_instructions_cp {
+    uint8_t num_tests;
+    struct ble_hci_le_decision_test tests[0];
+} __attribute__((packed));
+
 #define BLE_HCI_OCF_LE_SET_PERIODIC_ADV_SUBEV_DATA  (0x0082)
 struct periodic_adv_subevents {
     uint8_t subevent;
@@ -1814,6 +1848,11 @@ struct ble_hci_vs_set_event_mask_cp {
 #define BLE_HCI_SCAN_FILT_NO_WL_INITA       (2)
 #define BLE_HCI_SCAN_FILT_USE_WL_INITA      (3)
 #define BLE_HCI_SCAN_FILT_MAX               (3)
+/* Scanning_Filter_Policy bits 2-3 (Core 6.0 DBAF). Combine with bits 0-1. */
+#define BLE_HCI_SCAN_FILT_DECISION_NONE     (0x00)
+#define BLE_HCI_SCAN_FILT_DECISION_ALL      (0x04)
+#define BLE_HCI_SCAN_FILT_DECISION_ONLY     (0x0C)
+#define BLE_HCI_SCAN_FILT_DECISION_MASK     (0x0C)
 
 /* Whitelist commands */
 #define BLE_HCI_ADD_WHITE_LIST_LEN          (7)
@@ -1824,7 +1863,10 @@ struct ble_hci_vs_set_event_mask_cp {
 #define BLE_HCI_CONN_ITVL                   (1250)  /* usecs */
 #define BLE_HCI_CONN_FILT_NO_WL             (0)
 #define BLE_HCI_CONN_FILT_USE_WL            (1)
-#define BLE_HCI_CONN_FILT_MAX               (1)
+#define BLE_HCI_CONN_FILT_DECISION_ONLY     (2)
+#define BLE_HCI_CONN_FILT_FAL_ALL_PDUS      (3)
+#define BLE_HCI_CONN_FILT_DECISION_AND_FAL  (4)
+#define BLE_HCI_CONN_FILT_MAX               (4)
 /* Bluetooth Core Spec minimum connection interval (7.5 ms in 1.25 ms units). */
 #define BLE_HCI_CONN_ITVL_MIN               (0x0006)
 /* Host-side validation floor for connection interval (1.25 ms units). When
@@ -1909,7 +1951,13 @@ struct ble_hci_vs_set_event_mask_cp {
 #define BLE_HCI_LE_SET_EXT_ADV_PROP_LEGACY          (0x0010)
 #define BLE_HCI_LE_SET_EXT_ADV_PROP_ANON_ADV        (0x0020)
 #define BLE_HCI_LE_SET_EXT_ADV_PROP_INC_TX_PWR      (0x0040)
+#define BLE_HCI_LE_SET_EXT_ADV_PROP_USE_DECISION    (0x0080)
+#define BLE_HCI_LE_SET_EXT_ADV_PROP_DEC_INCL_ADVA   (0x0100)
+#define BLE_HCI_LE_SET_EXT_ADV_PROP_DEC_INCL_ADI    (0x0200)
+#define BLE_HCI_LE_SET_EXT_ADV_PROP_DECISION_MASK   (0x0380)
 #define BLE_HCI_LE_SET_EXT_ADV_PROP_MASK            (0x7F)
+/* Full Core 6.0 property mask including decision-PDU bits (host-side DBAF). */
+#define BLE_HCI_LE_SET_EXT_ADV_PROP_MASK_DBAF       (0x03FF)
 
 #define BLE_HCI_LE_SET_EXT_ADV_PROP_LEGACY_IND      (0x0013)
 #define BLE_HCI_LE_SET_EXT_ADV_PROP_LEGACY_LD_DIR   (0x0015)
