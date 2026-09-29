@@ -462,8 +462,8 @@ ble_store_util_delete_ead_oldest_peer(void)
  * uninteresting peers could cause important bonds to be deleted.  This is
  * useful for demonstrations and sample apps.
  */
-static int
-ble_store_util_status_rr_evict(struct ble_store_status_event *event, void *arg)
+int
+ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
 {
     switch (event->event_code) {
     case BLE_STORE_EVENT_OVERFLOW:
@@ -658,16 +658,11 @@ ble_store_util_touch_peer(const ble_addr_t *peer_id_addr)
 
     return ble_store_write_our_sec(&value_sec);
 }
-#endif
 
 int
 ble_store_util_status_overflow(struct ble_store_status_event *event, void *arg)
 {
-#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     return ble_store_util_status_lfu(event, arg);
-#else
-    return ble_store_util_status_rr_evict(event, arg);
-#endif
 }
 
 int
@@ -675,3 +670,4 @@ ble_store_util_status_rr(struct ble_store_status_event *event, void *arg)
 {
     return ble_store_util_status_overflow(event, arg);
 }
+#endif

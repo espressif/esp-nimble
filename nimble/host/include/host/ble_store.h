@@ -513,8 +513,16 @@ int ble_store_util_touch_peer(const ble_addr_t *peer_id_addr);
  * @return                      0 on success;
  *                              Non-zero on error.
  */
+#if MYNEWT_VAL(BLE_STORE_OVERFLOW_LFU) && MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 int ble_store_util_status_overflow(struct ble_store_status_event *event,
                                    void *arg);
+#else
+static inline int
+ble_store_util_status_overflow(struct ble_store_status_event *event, void *arg)
+{
+    return ble_store_util_status_rr(event, arg);
+}
+#endif
 
 #ifdef __cplusplus
 }
