@@ -71,6 +71,21 @@ static bool ble_gap_deferred_pvcy_replace;
 
 #define SET_BIT(t, n)  (t |= 1UL << (n))
 
+/* Public APIs start at zero; only internal retries carry the old budget. */
+#if MYNEWT_VAL(BLE_EXT_ADV)
+static int ble_gap_ext_connect_internal(uint8_t own_addr_type,
+    const ble_addr_t *peer_addr, int32_t duration_ms, uint8_t phy_mask,
+    const struct ble_gap_conn_params *phy_1m_conn_params,
+    const struct ble_gap_conn_params *phy_2m_conn_params,
+    const struct ble_gap_conn_params *phy_coded_conn_params,
+    uint8_t dbaf_filter_policy, ble_gap_event_fn *cb, void *cb_arg,
+    uint8_t reattempt_count);
+#endif
+static int ble_gap_connect_internal(uint8_t own_addr_type,
+    const ble_addr_t *peer_addr, int32_t duration_ms,
+    const struct ble_gap_conn_params *conn_params,
+    ble_gap_event_fn *cb, void *cb_arg, uint8_t reattempt_count);
+
 /**
  * GAP - Generic Access Profile.
  *
@@ -144,6 +159,9 @@ static const struct ble_gap_conn_params ble_gap_conn_params_dflt = {
 
 #if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 struct ble_gap_connect_reattempt_ctxt {
+    /* ACL that owns these parameters; NONE while initiating. */
+    uint16_t conn_handle;
+    bool conn_handle_valid;
     uint8_t own_addr_type;
     ble_addr_t peer_addr;
     uint8_t peer_addr_present:1;
@@ -225,6 +243,9 @@ struct ble_gap_master_state {
             uint8_t using_wl:1;
             uint8_t our_addr_type:2;
             uint8_t cancel:1;
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+            uint8_t reattempt_count;
+#endif
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
             uint8_t synchronized:1;
             uint8_t timeout_cancel_pending:1;
@@ -1681,6 +1702,9 @@ ble_gap_master_reset_state(void)
     ble_gap_master.op = BLE_GAP_OP_NULL;
     ble_gap_master.exp_set = 0;
     ble_gap_master.conn.cancel = 0;
+#if NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    ble_gap_master.conn.reattempt_count = 0;
+#endif
     ble_gap_master.cb = NULL;
     ble_gap_master.cb_arg = NULL;
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
@@ -1974,20 +1998,36 @@ ble_gap_update_notify(uint16_t conn_handle, int status);
 
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
 int
-ble_gap_master_connect_reattempt(uint16_t conn_handle)
+ble_gap_master_connect_reattempt(uint16_t conn_handle, uint8_t reattempt_count)
 {
     struct ble_gap_snapshot snap;
     struct ble_gap_conn_desc conn;
     struct ble_gap_update_entry *entry;
+    struct ble_gap_event event;
+    struct ble_gap_connect_reattempt_ctxt retry;
+    struct ble_hs_conn *hs_conn;
     int rc = BLE_HS_EUNKNOWN;
 
     snap.desc = &conn;
-    rc = ble_gap_find_snapshot(conn_handle, &snap);
-    if (rc != 0) {
-        return rc;
+    ble_hs_lock();
+    hs_conn = ble_hs_conn_find(conn_handle);
+    if (hs_conn == NULL) {
+        ble_hs_unlock();
+        return BLE_HS_ENOTCONN;
     }
+    ble_gap_conn_to_snapshot(hs_conn, &snap);
+    if (!ble_conn_reattempt.conn_handle_valid ||
+        ble_conn_reattempt.conn_handle != conn_handle) {
+        /* Another procedure has replaced the shared parameter cache. */
+        ble_hs_unlock();
+        return BLE_HS_EBUSY;
+    }
+    retry = ble_conn_reattempt;
+    ble_hs_unlock();
 
     if (conn.role == BLE_GAP_ROLE_MASTER) {
+        /* Snapshot first: application callbacks may initiate another link. */
+        ble_gap_reattempt_count(conn_handle, reattempt_count);
         /* If there was a connection update in progress, indicate to the
          * application that it did not complete.
          */
@@ -2008,6 +2048,9 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
 #if MYNEWT_VAL(BLE_GATTC)
 	ble_gattc_connection_broken(conn_handle);
 #endif
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+        ble_gattc_cache_conn_broken(conn_handle);
+#endif
         ble_hs_flow_connection_broken(conn_handle);;
 
         rc = ble_hs_atomic_conn_delete(conn_handle);
@@ -2021,33 +2064,23 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
 #endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
+        rc = ble_gap_ext_connect_internal(retry.own_addr_type,
+                                retry.peer_addr_present ? &retry.peer_addr : NULL,
+                                retry.duration_ms, retry.phy_mask,
+                                retry.phy_mask & BLE_GAP_LE_PHY_1M_MASK ? &retry.conn_params_1m : NULL,
+                                retry.phy_mask & BLE_GAP_LE_PHY_2M_MASK ? &retry.conn_params_2m : NULL,
+                                retry.phy_mask & BLE_GAP_LE_PHY_CODED_MASK ? &retry.conn_params_coded : NULL,
 #if MYNEWT_VAL(BLE_DBAF)
-        rc = ble_gap_ext_connect_dbaf(ble_conn_reattempt.own_addr_type,
-                                (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
-                                ble_conn_reattempt.duration_ms, ble_conn_reattempt.phy_mask,
-                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_1M_MASK ? &ble_conn_reattempt.conn_params_1m : NULL,
-                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_2M_MASK ? &ble_conn_reattempt.conn_params_2m : NULL,
-                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_CODED_MASK ? &ble_conn_reattempt.conn_params_coded : NULL,
-                                ble_conn_reattempt.dbaf_filter_policy,
-                                ble_conn_reattempt.cb,
-                                ble_conn_reattempt.cb_arg);
+                                retry.dbaf_filter_policy,
 #else
-        rc = ble_gap_ext_connect(ble_conn_reattempt.own_addr_type,
-                                (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
-                                ble_conn_reattempt.duration_ms, ble_conn_reattempt.phy_mask,
-                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_1M_MASK ? &ble_conn_reattempt.conn_params_1m : NULL,
-                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_2M_MASK ? &ble_conn_reattempt.conn_params_2m : NULL,
-                                ble_conn_reattempt.phy_mask & BLE_GAP_LE_PHY_CODED_MASK ? &ble_conn_reattempt.conn_params_coded : NULL,
-                                ble_conn_reattempt.cb,
-                                ble_conn_reattempt.cb_arg);
+                                0,
 #endif
+                                snap.cb, snap.cb_arg, reattempt_count);
 #else
-        rc = ble_gap_connect(ble_conn_reattempt.own_addr_type,
-                             (ble_conn_reattempt.peer_addr_present == 1 ? &ble_conn_reattempt.peer_addr : NULL),
-                             ble_conn_reattempt.duration_ms,
-                             &ble_conn_reattempt.conn_params_1m,
-                             ble_conn_reattempt.cb,
-                             ble_conn_reattempt.cb_arg);
+        rc = ble_gap_connect_internal(retry.own_addr_type,
+                             retry.peer_addr_present ? &retry.peer_addr : NULL,
+                             retry.duration_ms, &retry.conn_params_1m,
+                             snap.cb, snap.cb_arg, reattempt_count);
 #endif // #if MYNEWT_VAL(BLE_EXT_ADV)
 
 #if MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
@@ -2055,6 +2088,16 @@ ble_gap_master_connect_reattempt(uint16_t conn_handle)
 #endif // MYNEWT_VAL(OPTIMIZE_MULTI_CONN)
 
         if (rc != 0) {
+            /* The ACL was deleted above: the normal disconnect path can no
+             * longer find its callback. Deliver exactly one terminal event.
+             */
+            memset(&event, 0, sizeof(event));
+            event.type = BLE_GAP_EVENT_DISCONNECT;
+            event.disconnect.conn = conn;
+            event.disconnect.reason = rc;
+            ble_gap_event_listener_call(&event);
+            ble_gap_call_event_cb(&event, snap.cb, snap.cb_arg);
+            STATS_INC(ble_gap_stats, disconnect);
             return rc;
         }
     } else {
@@ -2072,7 +2115,7 @@ void ble_gap_reattempt_count(uint16_t conn_handle, uint8_t count)
     memset(&event, 0, sizeof event);
     event.type = BLE_GAP_EVENT_REATTEMPT_COUNT;
     event.reattempt_cnt.count = count;
-    event.reattempt_cnt.conn_handle = le16toh(conn_handle);
+    event.reattempt_cnt.conn_handle = handle;
 
     ble_gap_event_listener_call(&event);
     ble_gap_call_conn_event_cb(&event, handle);
@@ -3355,7 +3398,7 @@ ble_gap_rx_peroidic_adv_sync_estab(const struct ble_hci_ev_le_subev_periodic_adv
                 ble_hs_unlock();
 
                 /* Make application aware of the reattempt */
-                ble_gap_reattempt_count(ev->sync_handle, ble_conn_reattempt.count);
+                ble_gap_reattempt_count(le16toh(ev->sync_handle), ble_conn_reattempt.count);
 
 		rc = ble_gap_periodic_adv_sync_create(&ble_conn_reattempt.periodic_addr,
                                               ble_conn_reattempt.adv_sid,
@@ -4188,6 +4231,16 @@ ble_gap_rx_conn_complete(struct ble_gap_conn_complete *evt, uint8_t instance)
         conn->bhc_cb_arg = ble_gap_master.cb_arg;
         conn->bhc_flags |= BLE_HS_CONN_F_MASTER;
         conn->bhc_our_addr_type = ble_gap_master.conn.our_addr_type;
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+        conn->bhc_reattempt_count = ble_gap_master.conn.reattempt_count;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+        if (!ble_gap_master.conn.synchronized)
+#endif
+        {
+            ble_conn_reattempt.conn_handle = evt->connection_handle;
+            ble_conn_reattempt.conn_handle_valid = true;
+        }
+#endif
         ble_gap_master_reset_state();
     } else {
 #if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
@@ -9443,6 +9496,11 @@ ble_gap_connect_with_synced(uint8_t own_addr_type, uint8_t advertising_handle,
 #endif
     ble_gap_master.conn.our_addr_type = own_addr_type;
     ble_gap_master.conn.synchronized = 1;
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
+    /* Synchronized create does not populate the ordinary retry parameters. */
+    ble_conn_reattempt.conn_handle_valid = false;
+    ble_gap_master.conn.reattempt_count = 0;
+#endif
     if (peer_addr != NULL) {
         ble_gap_master.conn.peer_addr = *peer_addr;
     } else {
@@ -9760,25 +9818,17 @@ ble_gap_ext_conn_create_tx(
  *                                  connected;
  *                              Other nonzero on error.
  */
-#if MYNEWT_VAL(BLE_DBAF)
 static int
-ble_gap_ext_connect_policy(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+ble_gap_ext_connect_internal(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 int32_t duration_ms, uint8_t phy_mask,
                 const struct ble_gap_conn_params *phy_1m_conn_params,
                 const struct ble_gap_conn_params *phy_2m_conn_params,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 uint8_t dbaf_filter_policy,
-                ble_gap_event_fn *cb, void *cb_arg)
-#else
-int
-ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
-                int32_t duration_ms, uint8_t phy_mask,
-                const struct ble_gap_conn_params *phy_1m_conn_params,
-                const struct ble_gap_conn_params *phy_2m_conn_params,
-                const struct ble_gap_conn_params *phy_coded_conn_params,
-                ble_gap_event_fn *cb, void *cb_arg)
-#endif
+                ble_gap_event_fn *cb, void *cb_arg, uint8_t reattempt_count)
 {
+    (void)reattempt_count;
+    (void)dbaf_filter_policy;
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL)
     ble_npl_time_t duration_ticks;
 #if MYNEWT_VAL(BLE_DBAF)
@@ -9926,6 +9976,8 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
     ble_conn_reattempt.own_addr_type = own_addr_type;
+    ble_conn_reattempt.conn_handle = BLE_HS_CONN_HANDLE_NONE;
+    ble_conn_reattempt.conn_handle_valid = false;
 
     if (peer_addr != NULL) {
         ble_conn_reattempt.peer_addr_present = 1;
@@ -9937,6 +9989,7 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
     ble_conn_reattempt.duration_ms = duration_ms;
     ble_conn_reattempt.phy_mask = phy_mask;
+    ble_gap_master.conn.reattempt_count = reattempt_count;
 
     if (phy_mask & BLE_GAP_LE_PHY_1M_MASK) {
         memcpy(&ble_conn_reattempt.conn_params_1m,
@@ -9998,7 +10051,6 @@ done:
 
 }
 
-#if MYNEWT_VAL(BLE_DBAF)
 int
 ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 int32_t duration_ms, uint8_t phy_mask,
@@ -10007,12 +10059,13 @@ ble_gap_ext_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 const struct ble_gap_conn_params *phy_coded_conn_params,
                 ble_gap_event_fn *cb, void *cb_arg)
 {
-    return ble_gap_ext_connect_policy(own_addr_type, peer_addr, duration_ms,
+    return ble_gap_ext_connect_internal(own_addr_type, peer_addr, duration_ms,
                                       phy_mask, phy_1m_conn_params,
                                       phy_2m_conn_params, phy_coded_conn_params,
-                                      0, cb, cb_arg);
+                                      0, cb, cb_arg, 0);
 }
 
+#if MYNEWT_VAL(BLE_DBAF)
 int
 ble_gap_ext_connect_dbaf(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 int32_t duration_ms, uint8_t phy_mask,
@@ -10022,10 +10075,10 @@ ble_gap_ext_connect_dbaf(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 uint8_t filter_policy,
                 ble_gap_event_fn *cb, void *cb_arg)
 {
-    return ble_gap_ext_connect_policy(own_addr_type, peer_addr, duration_ms,
+    return ble_gap_ext_connect_internal(own_addr_type, peer_addr, duration_ms,
                                       phy_mask, phy_1m_conn_params,
                                       phy_2m_conn_params, phy_coded_conn_params,
-                                      filter_policy, cb, cb_arg);
+                                      filter_policy, cb, cb_arg, 0);
 }
 #endif
 #endif
@@ -10036,11 +10089,22 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
                 const struct ble_gap_conn_params *conn_params,
                 ble_gap_event_fn *cb, void *cb_arg)
 {
+    return ble_gap_connect_internal(own_addr_type, peer_addr, duration_ms,
+                                    conn_params, cb, cb_arg, 0);
+}
+
+static int
+ble_gap_connect_internal(uint8_t own_addr_type, const ble_addr_t *peer_addr,
+                int32_t duration_ms,
+                const struct ble_gap_conn_params *conn_params,
+                ble_gap_event_fn *cb, void *cb_arg, uint8_t reattempt_count)
+{
+    (void)reattempt_count;
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL)
 #if MYNEWT_VAL(BLE_EXT_ADV)
-    return ble_gap_ext_connect(own_addr_type, peer_addr, duration_ms,
+    return ble_gap_ext_connect_internal(own_addr_type, peer_addr, duration_ms,
                                BLE_GAP_LE_PHY_1M_MASK,
-                               conn_params, NULL, NULL, cb, cb_arg);
+                               conn_params, NULL, NULL, 0, cb, cb_arg, reattempt_count);
 #else
     uint32_t duration_ticks;
     ble_addr_t bhc_peer_addr;
@@ -10178,9 +10242,13 @@ ble_gap_connect(uint8_t own_addr_type, const ble_addr_t *peer_addr,
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT) && NIMBLE_BLE_CONNECT
     ble_conn_reattempt.own_addr_type = own_addr_type;
+    ble_conn_reattempt.conn_handle = BLE_HS_CONN_HANDLE_NONE;
+    ble_conn_reattempt.conn_handle_valid = false;
+    ble_gap_master.conn.reattempt_count = reattempt_count;
     if (peer_addr != NULL) {
         ble_conn_reattempt.peer_addr_present = 1;
-        memcpy(&ble_conn_reattempt.peer_addr, &bhc_peer_addr,
+        /* Retain identity so retries can resolve a fresh peer RPA. */
+        memcpy(&ble_conn_reattempt.peer_addr, peer_addr,
                sizeof(ble_addr_t));
     } else {
         ble_conn_reattempt.peer_addr_present = 0;

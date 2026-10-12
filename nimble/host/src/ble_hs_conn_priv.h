@@ -82,6 +82,9 @@ struct ble_att_deferred_req {
 struct ble_hs_conn {
     SLIST_ENTRY(ble_hs_conn) bhc_next;
     uint8_t bhc_our_addr_type;
+#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
+    uint8_t bhc_reattempt_count;
+#endif
     uint8_t slave_conn : 1;
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
     uint8_t bhc_connect_delivered : 1;
