@@ -211,6 +211,9 @@ int ble_gap_dbg_update_active(uint16_t conn_handle);
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 void ble_gap_reattempt_count(uint16_t conn_handle, uint8_t count);
+#if NIMBLE_BLE_CONNECT && (MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER))
+int ble_gap_master_connect_reattempt(uint16_t conn_handle, uint8_t reattempt_count);
+#endif
 #endif
 
 void ble_gap_rx_data_len_change(const struct ble_hci_ev_le_subev_data_len_chg *ev);

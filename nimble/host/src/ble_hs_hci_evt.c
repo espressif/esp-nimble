@@ -35,16 +35,6 @@
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
 
-#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-struct ble_gap_reattempt_ctxt {
-    ble_addr_t peer_addr;
-    uint8_t count;
-}reattempt_conn;
-#endif
-
-#if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
-extern int ble_gap_master_connect_reattempt(uint16_t conn_handle);
-#endif
 #if MYNEWT_VAL(BLE_ROLE_PERIPHERAL)  || MYNEWT_VAL(BLE_ROLE_BROADCASTER)
 extern int ble_gap_slave_adv_reattempt(void);
 #endif
@@ -56,21 +46,13 @@ extern int slave_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 
-#if (NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)) || \
-    (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)) || \
+#if (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)) || \
     (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV)) || \
      MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) || \
     (MYNEWT_VAL(BLE_EXT_ADV) && ((NIMBLE_BLE_CONNECT && (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER))) || \
                                   (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER))))
 
 typedef struct {
-
-#if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
-    struct ble_gap_reattempt_ctxt {
-        ble_addr_t peer_addr;
-        uint8_t count;
-    } reattempt_ctx;
-#endif
 
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
     struct ble_npl_mutex list_lock;
@@ -87,7 +69,6 @@ typedef struct {
 
 static ble_hci_ctx_t *ble_hci_ctx;
 
-#define reattempt_conn      (ble_hci_ctx->reattempt_ctx)
 #if MYNEWT_VAL(BLE_QUEUE_CONG_CHECK)
 #define adv_list_lock       (ble_hci_ctx->list_lock)
 #define ble_adv_list_count  (ble_hci_ctx->adv_list_count)
@@ -386,8 +367,7 @@ static ble_hs_hci_evt_le_fn * const ble_hs_hci_evt_le_dispatch[] = {
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 
-#if (NIMBLE_BLE_CONNECT && MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)) || \
-    (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)) || \
+#if (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV) && !MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)) || \
     (NIMBLE_BLE_CONNECT &&  MYNEWT_VAL(BLE_EXT_ADV)) || \
      MYNEWT_VAL(BLE_QUEUE_CONG_CHECK) || \
     (MYNEWT_VAL(BLE_EXT_ADV) && (MYNEWT_VAL(BLE_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_ROLE_BROADCASTER)))
@@ -504,6 +484,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     const struct ble_hs_conn *conn;
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
     uint32_t conn_flags = 0;
+    uint8_t reattempt_count = 0;
     int conn_slave = 0;
     bool conn_found = false;
 #endif
@@ -523,6 +504,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
         ble_hs_hci_add_avail_pkts(conn->bhc_outstanding_pkts);
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
         conn_flags = conn->bhc_flags;
+        reattempt_count = conn->bhc_reattempt_count;
         conn_slave = conn->slave_conn;
         conn_found = true;
 #endif
@@ -530,7 +512,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
     ble_hs_unlock();
 
 #if MYNEWT_VAL(BLE_ENABLE_CONN_REATTEMPT)
-    if (conn_found) {
+    if (conn_found && ev->status == 0) {
 	    int rc;
         uint16_t conn_handle = le16toh(ev->conn_handle);
 
@@ -543,32 +525,20 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 	 *   b. Connect event was not posted and 0x8 was received
 	 *  Restart advertising in above reasons for slave.
 	 */
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-	if (ble_hs_hci_ensure_ctx()) {
-	    BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-	    goto skip_reattempt;
-	}
-#endif
-
         if ((conn_flags & BLE_HS_CONN_F_MASTER) && \
 	    (ev->reason == BLE_ERR_CONN_ESTABLISHMENT)) {  // master
-	    if (reattempt_conn.count < MAX_REATTEMPT_ALLOWED) {
+	    if (reattempt_count < MAX_REATTEMPT_ALLOWED) {
                 /* Go for connection */
                 BLE_HS_LOG(INFO, "Reattempt connection; reason = 0x%x, status = %d,"
                                  "reattempt count = %d ", ev->reason, ev->status,
-                                  reattempt_conn.count);
-                reattempt_conn.count += 1;
-
-		ble_gap_reattempt_count(conn_handle, reattempt_conn.count);
+                                  reattempt_count);
+                reattempt_count += 1;
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
-                rc = ble_gap_master_connect_reattempt(conn_handle);
+                rc = ble_gap_master_connect_reattempt(conn_handle, reattempt_count);
 		if (rc != 0) {
 		    BLE_HS_LOG(INFO, "Master reconnect attempt failed; rc = %d", rc);
 		}
 #endif
-	    } else {
-	        /* Exhausted attempts */
-		memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
 	    }
 	}
 #if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
@@ -606,15 +576,7 @@ ble_hs_hci_evt_disconn_complete(uint8_t event_code, const void *data,
 
             return 0;  // Restart advertising, so don't post disconnect event
 #endif
-	} else {
-            /* Normal disconnect. Reset the structure */
-            memset(&reattempt_conn, 0x0, sizeof (struct ble_gap_reattempt_ctxt));
 	}
-
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-skip_reattempt:
-        ;
-#endif
     }
 #endif
 
