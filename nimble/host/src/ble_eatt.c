@@ -499,6 +499,7 @@ ble_gatt_eatt_read_svr_uuid(struct ble_npl_event *ev)
     uint16_t conn_handle;
 
     conn_handle = (uint16_t)((uintptr_t)(ble_npl_event_get_arg(ev)));
+    ble_npl_event_deinit(ev);
     nimble_platform_mem_free(ev);
 
     ble_gattc_read_by_uuid(conn_handle, 1, 0xffff,
@@ -512,6 +513,7 @@ ble_gatt_eatt_read_cl_uuid(struct ble_npl_event *ev)
     uint16_t conn_handle;
 
     conn_handle = (uint16_t)((uintptr_t)(ble_npl_event_get_arg(ev)));
+    ble_npl_event_deinit(ev);
     nimble_platform_mem_free(ev);
 
     ble_gattc_read_by_uuid(conn_handle, 1, 0xffff,
