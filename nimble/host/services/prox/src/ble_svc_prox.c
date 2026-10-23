@@ -23,7 +23,7 @@
 
 typedef struct {
     uint8_t _ble_svc_prox_link_loss_alert;
-    int8_t _ble_svc_prox_alert;
+    uint8_t _ble_svc_prox_alert;
     uint8_t _ble_svc_prox_tx_pwr_lvl;
     bool _ble_svc_prox_alert_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
     TaskHandle_t _ble_prox_task_handle;
@@ -41,7 +41,7 @@ static ble_svc_prox_ctx_t * ble_svc_prox_ctx = NULL;
 
 /* Characteristic values */
 static uint8_t ble_svc_prox_link_loss_alert;
-static int8_t ble_svc_prox_alert;
+static uint8_t ble_svc_prox_alert;
 static uint8_t ble_svc_prox_tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
 
 static bool ble_svc_prox_alert_conn[MYNEWT_VAL(BLE_MAX_CONNECTIONS) + 1];
@@ -54,8 +54,9 @@ static uint16_t ble_svc_prox_link_loss_val_handle;
 static uint16_t ble_svc_prox_immediate_alert_loc_val_handle;
 static uint16_t ble_svc_prox_tx_pwr_lvl_val_handle;
 
-#define BLE_SVC_PROX_HIGH_THRESHOLD  (-70)
-#define BLE_SVC_PROX_LOW_THRESHOLD   (-100)
+#define BLE_SVC_PROX_ALERT_NONE      0
+#define BLE_SVC_PROX_ALERT_MILD      1
+#define BLE_SVC_PROX_ALERT_HIGH      2
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 int
@@ -184,7 +185,7 @@ ble_prox_prph_task(void *pvParameters)
     while (1) {
         for (int i = 0; i <= MYNEWT_VAL(BLE_MAX_CONNECTIONS); i++) {
             if (ble_svc_prox_alert_conn[i]) {
-                MODLOG_DFLT(INFO, "Path loss increased for device connected with conn_handle %d", i);
+                MODLOG_DFLT(INFO, "Immediate alert active for device connected with conn_handle %d", i);
             }
         }
         vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -198,16 +199,17 @@ ble_prox_prph_alert_unalert(uint16_t conn_handle)
         MODLOG_DFLT(ERROR, "conn_handle %d exceeds max connections", conn_handle);
         return;
     }
-    if (ble_svc_prox_alert > BLE_SVC_PROX_HIGH_THRESHOLD &&
-        !ble_svc_prox_alert_conn[conn_handle]) {
-        MODLOG_DFLT(INFO, "Path loss exceeded threshold, starting alert for device with "
-                    "conn_handle %d", conn_handle);
-        ble_svc_prox_alert_conn[conn_handle] = true;
-    } else if (ble_svc_prox_alert < BLE_SVC_PROX_LOW_THRESHOLD &&
-               ble_svc_prox_alert_conn[conn_handle]) {
-        MODLOG_DFLT(INFO, "Path loss lower than threshold, stopping alert for device with "
-                    "conn_handle %d", conn_handle);
+    if (ble_svc_prox_alert == BLE_SVC_PROX_ALERT_NONE) {
+        if (ble_svc_prox_alert_conn[conn_handle]) {
+            MODLOG_DFLT(INFO, "Stopping alert for device with conn_handle %d", conn_handle);
+        }
         ble_svc_prox_alert_conn[conn_handle] = false;
+    } else {
+        if (!ble_svc_prox_alert_conn[conn_handle]) {
+            MODLOG_DFLT(INFO, "Starting alert level %d for device with conn_handle %d",
+                        ble_svc_prox_alert, conn_handle);
+        }
+        ble_svc_prox_alert_conn[conn_handle] = true;
     }
 }
 
@@ -276,11 +278,17 @@ ble_svc_prox_imm_alert_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (uuid16) {
     case BLE_SVC_PROX_CHR_UUID16_ALERT_LVL:
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-            int rc = ble_svc_prox_chr_write(ctxt->om, 1, 1, &ble_svc_prox_alert, NULL);
+            uint8_t alert_lvl;
+            int rc = ble_svc_prox_chr_write(ctxt->om, 1, 1, &alert_lvl, NULL);
             if (rc != 0) {
                 return rc;
             }
-            MODLOG_DFLT(INFO, "Path loss = %d", ble_svc_prox_alert);
+            if (alert_lvl > BLE_SVC_PROX_ALERT_HIGH) {
+                return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+            }
+            ble_svc_prox_alert = alert_lvl;
+
+            MODLOG_DFLT(INFO, "Alert level = %d", ble_svc_prox_alert);
 
             ble_prox_prph_alert_unalert(conn_handle);
             return 0;
