@@ -512,6 +512,11 @@ ble_gatt_eatt_read_uuid_cb(uint16_t conn_handle,
         if (ev) {
             ble_npl_event_init(ev, ble_gatt_eatt_read_cl_uuid, (void *)((uintptr_t) conn_handle));
             ble_npl_eventq_put(ble_hs_evq_get(), ev);
+            if (!ble_npl_event_is_queued(ev)) {
+                BLE_EATT_LOG_ERROR("eatt: eventq full, drop client supported feature read\n");
+                ble_npl_event_deinit(ev);
+                nimble_platform_mem_free(ev);
+            }
         }
     }
     return BLE_HS_EDONE;
@@ -576,6 +581,11 @@ ble_eatt_gap_event(struct ble_gap_event *event, void *arg)
         if (ev) {
             ble_npl_event_init(ev, ble_gatt_eatt_read_svr_uuid, (void *)((uintptr_t)(event->enc_change.conn_handle)));
             ble_npl_eventq_put(ble_hs_evq_get(), ev);
+            if (!ble_npl_event_is_queued(ev)) {
+                BLE_EATT_LOG_ERROR("eatt: eventq full, drop server supported feature read\n");
+                ble_npl_event_deinit(ev);
+                nimble_platform_mem_free(ev);
+            }
         }
 
         break;
