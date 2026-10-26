@@ -24,7 +24,7 @@
 #include "services/tps/ble_svc_tps.h"
 
 /* XXX: We shouldn't be including the host's private header files.  The host
- * API needs to be updated with a function to query the advertising transmit
+ * API needs to be updated with a function to query the connection transmit
  * power.
  */
 #include "../src/ble_hs_hci_priv.h"
@@ -70,6 +70,8 @@ static int
 ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
                    struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
+    struct ble_hci_cb_read_tx_pwr_cp cmd;
+    struct ble_hci_cb_read_tx_pwr_rp rsp;
     int8_t tx_power_level;
     int rc;
 
@@ -77,10 +79,15 @@ ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
 
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
-        rc = ble_hs_hci_util_read_adv_tx_pwr(&tx_power_level);
+        cmd.conn_handle = htole16(conn_handle);
+        cmd.type = 0x00; /* Read current transmit power level. */
+        rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND,
+                                          BLE_HCI_OCF_CB_READ_TX_PWR),
+                               &cmd, sizeof(cmd), &rsp, sizeof(rsp));
         if (rc != 0) {
             return BLE_ATT_ERR_UNLIKELY;
         }
+        tx_power_level = rsp.tx_level;
 
         rc = os_mbuf_append(ctxt->om, &tx_power_level,
                             sizeof tx_power_level);
