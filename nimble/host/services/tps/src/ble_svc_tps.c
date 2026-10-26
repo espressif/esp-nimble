@@ -80,7 +80,7 @@ ble_svc_tps_access(uint16_t conn_handle, uint16_t attr_handle,
     switch (ctxt->op) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
         cmd.conn_handle = htole16(conn_handle);
-        cmd.type = 0x01;
+        cmd.type = 0x00; /* Read current transmit power level. */
         rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND,
                                           BLE_HCI_OCF_CB_READ_TX_PWR),
                                &cmd, sizeof(cmd), &rsp, sizeof(rsp));
