@@ -466,7 +466,10 @@ typedef struct {
     struct ble_npl_mutex _preempt_done_mutex;
 
 #if MYNEWT_VAL(BLE_EXT_ADV)
-#if MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE) <= BLE_HCI_MAX_EXT_ADV_DATA_LEN
+#if MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE) < BLE_HS_ADV_MAX_SZ
+    uint8_t _ext_buf[sizeof(struct ble_hci_le_set_ext_adv_data_cp) + \
+            BLE_HS_ADV_MAX_SZ];
+#elif MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE) <= BLE_HCI_MAX_EXT_ADV_DATA_LEN
     uint8_t _ext_buf[sizeof(struct ble_hci_le_set_ext_adv_data_cp) + \
             MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE)];
 #else
@@ -6997,8 +7000,13 @@ ble_gap_ext_adv_set(uint8_t instance, uint16_t opcode, struct os_mbuf **data)
     /* in that case we always fit all data in single HCI command */
 #if MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE) <= BLE_HCI_MAX_EXT_ADV_DATA_LEN
 #if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+#if MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE) < BLE_HS_ADV_MAX_SZ
+    static uint8_t ext_buf[sizeof(struct ble_hci_le_set_ext_adv_data_cp) + \
+                       BLE_HS_ADV_MAX_SZ];
+#else
     static uint8_t ext_buf[sizeof(struct ble_hci_le_set_ext_adv_data_cp) + \
                        MYNEWT_VAL(BLE_EXT_ADV_MAX_SIZE)];
+#endif
 #endif /*MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
     struct ble_hci_le_set_ext_adv_data_cp *cmd = (void *)ext_buf;
     uint16_t len = OS_MBUF_PKTLEN(*data);
@@ -9560,6 +9568,11 @@ int
 ble_gap_disc_active(void)
 {
 #if MYNEWT_VAL(BLE_ROLE_CENTRAL) || MYNEWT_VAL(BLE_ROLE_OBSERVER)
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_gap_vars == NULL) {
+        return false;
+    }
+#endif
     /* Assume read is atomic; mutex not necessary. */
     return ble_gap_master.op == BLE_GAP_OP_M_DISC;
 #else

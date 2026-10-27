@@ -1545,23 +1545,28 @@ void ble_gattc_get_gatt_db(uint16_t conn_handle,
         *count = 0;
     }
 
+    ble_hs_lock();
     cache_conn = ble_gattc_cache_conn_find(conn_handle);
 
     if (cache_conn == NULL) {
           BLE_HS_LOG(ERROR, "Unknown conn ID: %d", conn_handle);
+          ble_hs_unlock();
           return;
     }
 
     if (cache_conn->cache_state != CACHE_VERIFIED){
         BLE_HS_LOG(ERROR, "server cache not available, server state = %d",cache_conn->cache_state);
+        ble_hs_unlock();
         return;
     }
 
     if (SLIST_EMPTY(&cache_conn->svcs)) {
           BLE_HS_LOG(ERROR, "the service cache is empty.");
+          ble_hs_unlock();
           return;
     }
     ble_gattc_get_gatt_db_impl(cache_conn, start_handle, end_handle, db, count, db_num);
+    ble_hs_unlock();
 
 }
 
@@ -1607,12 +1612,16 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
     struct ble_gattc_cache_conn_svc *svc;
     struct ble_gattc_cache_conn *conn;
     bool was_queued;
+#if MYNEWT_VAL(BLE_GATTC)
+    bool fail_pending;
+#endif
 
+    ble_hs_lock();
     conn = ble_gattc_cache_conn_find(conn_handle);
     if (conn == NULL) {
+        ble_hs_unlock();
         return;
     }
-    BLE_HS_DBG_ASSERT(conn != NULL);
 
     /* clean the cache_conn */
     SLIST_REMOVE(&ble_gattc_cache_conns, conn, ble_gattc_cache_conn, next);
@@ -1626,12 +1635,22 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
                                   &conn->disc_ev);
         }
     }
-    if (conn->pending_op.cb != NULL &&
-        (was_queued || conn->cache_state != CACHE_VERIFIED)) {
 #if MYNEWT_VAL(BLE_GATTC)
-        ble_gattc_cache_conn_pending_op_fail(conn, BLE_HS_ENOTCONN);
+    fail_pending = conn->pending_op.cb != NULL &&
+                   (was_queued || conn->cache_state != CACHE_VERIFIED);
+#else
+    (void)was_queued;
 #endif
+    ble_hs_unlock();
+
+    /* Invoke app callback without host lock. */
+#if MYNEWT_VAL(BLE_GATTC)
+    if (fail_pending) {
+        ble_gattc_cache_conn_pending_op_fail(conn, BLE_HS_ENOTCONN);
     }
+#endif
+
+    ble_hs_lock();
     ble_gattc_cache_conn_disc_ev_deinit(conn);
 
     while ((svc = SLIST_FIRST(&conn->svcs)) != NULL) {
@@ -1640,6 +1659,7 @@ ble_gattc_cache_conn_broken(uint16_t conn_handle)
 
     }
     os_memblock_put(&ble_gattc_cache_conn_pool, conn);
+    ble_hs_unlock();
 }
 
 void
@@ -1651,12 +1671,13 @@ ble_gattc_cache_conn_bonding_established(uint16_t conn_handle)
     struct ble_gattc_cache_conn *peer;
     static const uint8_t zero_addr[BLE_DEV_ADDR_LEN];
 
+    ble_hs_lock();
+
     peer = ble_gattc_cache_conn_find(conn_handle);
     if (peer == NULL) {
+        ble_hs_unlock();
         return;
     }
-
-    ble_hs_lock();
 
     conn = ble_hs_conn_find(conn_handle);
     BLE_HS_DBG_ASSERT(conn != NULL);
@@ -1676,15 +1697,21 @@ ble_gattc_cache_conn_bonding_restored(uint16_t conn_handle)
     struct ble_hs_conn *conn;
     struct ble_hs_conn_addrs addrs = {0};
     struct ble_gattc_cache_conn *peer;
+    ble_addr_t load_addr;
     int rc;
+    bool do_load;
     static const uint8_t zero_addr[BLE_DEV_ADDR_LEN];
+
+    do_load = false;
+    memset(&load_addr, 0, sizeof load_addr);
+
+    ble_hs_lock();
 
     peer = ble_gattc_cache_conn_find(conn_handle);
     if (peer == NULL) {
+        ble_hs_unlock();
         return;
     }
-
-    ble_hs_lock();
 
     conn = ble_hs_conn_find(conn_handle);
     BLE_HS_DBG_ASSERT(conn != NULL);
@@ -1693,26 +1720,32 @@ ble_gattc_cache_conn_bonding_restored(uint16_t conn_handle)
         addrs.peer_id_addr = conn->bhc_peer_addr;
         addrs.peer_id_addr.type = ble_hs_misc_peer_addr_type_to_id(conn->bhc_peer_addr.type);
     }
-    /* Use the resolved Identity Address so the cache entry remains valid
-     * across reconnections where the peer rotates its RPA. */
+    /* Cache key is identity address, not RPA. */
     peer->ble_gattc_cache_conn_addr = addrs.peer_id_addr;
 
-    ble_hs_unlock();
-    /* try to load if not loaded */
+    /* ble_gattc_cache_load() blocks; drop host lock first. */
     if (peer->cache_state == CACHE_INVALID) {
-        rc = ble_gattc_cache_load(peer->ble_gattc_cache_conn_addr);
-        if (rc == 0) {
-            /* connection is bonded,
-            so it is safe to set the state to
-                CACHE_VERIFIED */
-            /* if the cache is changed after disconnect
-            then the indication will be received */
-            peer->cache_state = CACHE_VERIFIED;
-        }
-    }
-    if (peer->cache_state == CACHE_LOADED) {
+        load_addr = peer->ble_gattc_cache_conn_addr;
+        do_load = true;
+    } else if (peer->cache_state == CACHE_LOADED) {
         peer->cache_state = CACHE_VERIFIED;
     }
+
+    ble_hs_unlock();
+
+    if (!do_load) {
+        return;
+    }
+
+    rc = ble_gattc_cache_load(load_addr);
+
+    ble_hs_lock();
+    peer = ble_gattc_cache_conn_find(conn_handle);
+    if (peer != NULL && rc == 0 && peer->cache_state == CACHE_INVALID) {
+        /* Bonded peer: loaded cache is verified until Service Changed. */
+        peer->cache_state = CACHE_VERIFIED;
+    }
+    ble_hs_unlock();
 }
 
 #if MYNEWT_VAL(BLE_GATTC)

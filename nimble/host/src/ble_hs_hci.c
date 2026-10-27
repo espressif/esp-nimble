@@ -619,8 +619,10 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
                   void *rsp, uint8_t rsp_len)
 {
     struct ble_hs_hci_ack ack;
+    int reset_reason;
     int rc;
 
+    reset_reason = 0;
     ble_hs_hci_lock();
     if (l_ble_hs_hci_ack != NULL) {
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
@@ -641,25 +643,26 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
     rc = ble_hs_hci_wait_for_ack();
     if (rc != 0) {
         BLE_HS_LOG(ERROR, "HCI wait for ack returned %d \n", rc);
-        ble_hs_sched_reset(rc);
-        goto done;
-    }
+    } else {
+        rc = ble_hs_hci_process_ack(opcode, rsp, rsp_len, &ack);
+        if (rc != 0) {
+            BLE_HS_LOG(ERROR, "HCI process ack returned %d \n", rc);
+        } else {
+            rc = ack.bha_status;
+            if (rc != 0) {
+                /* Return controller error to caller. */
+                goto done;
+            }
 
-    rc = ble_hs_hci_process_ack(opcode, rsp, rsp_len, &ack);
+            /* Response length must match rsp_len. */
+            if (ack.bha_params_len != rsp_len) {
+                BLE_HS_LOG(ERROR, "Received status %d \n", rc);
+                rc = BLE_HS_ECONTROLLER;
+            }
+        }
+    }
     if (rc != 0) {
-        BLE_HS_LOG(ERROR, "HCI process ack returned %d \n", rc);
-        ble_hs_sched_reset(rc);
-        goto done;
-    }
-
-    rc = ack.bha_status;
-
-    /* on success we should always get full response */
-    if (!rc && (ack.bha_params_len != rsp_len)) {
-        BLE_HS_LOG(ERROR, "Received status %d \n", rc);
-        rc = BLE_HS_ECONTROLLER;
-        ble_hs_sched_reset(rc);
-        goto done;
+        reset_reason = rc;
     }
 done:
     if (l_ble_hs_hci_ack != NULL) {
@@ -672,6 +675,10 @@ done:
     }
 
     ble_hs_hci_unlock();
+    if (reset_reason != 0) {
+        /* ble_hs_sched_reset() takes host lock; release HCI lock first. */
+        ble_hs_sched_reset(reset_reason);
+    }
 #if MYNEWT_VAL(BLE_ERR_NAME)
     esp_hci_err_to_name(rc, &opcode);
 #endif

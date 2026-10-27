@@ -29,9 +29,7 @@
 #include "host/ble_gatt.h"
 #include "esp_nimble_mem.h"
 #include "host/ble_hs_log.h"
-#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #include "nvs.h"
-#endif
 
 #define GATT_CACHE_PREFIX "gatt_cache"
 #define INVALID_ADDR_NUM 0xff
@@ -1058,18 +1056,14 @@ ble_gattc_cache_init(void *storage_cb)
             if ((rc = cacheRead(fp, cache_key, p_buf, &length)) != 0) {
                 BLE_HS_LOG(DEBUG, "%s, Line = %d, storage flash get blob data fail, err_code = 0x%x",
                            __func__, __LINE__, rc);
+                /* No cache blob yet (e.g. first boot). */
+                if (rc == ESP_ERR_NVS_NOT_FOUND) {
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-                /*
-                 * This is expected scenario during first boot or
-                 * when no GATT cache exists yet and should not
-                 * be treated as a fatal error.
-                 */
-                if (rc == ESP_ERR_NVS_NOT_FOUND){
                     no_cached_blob = 1;
+#endif
                     nimble_platform_mem_free(p_buf);
                     return 0;
                 }
-#endif
                 goto error;
             }
 

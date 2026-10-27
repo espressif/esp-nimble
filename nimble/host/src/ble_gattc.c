@@ -1446,24 +1446,11 @@ ble_gattc_extract_with_rx_entry(uint16_t conn_handle, uint16_t cid,
  * @return                      The matching proc entry on success;
  *                                  null on failure.
  */
-#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 #define BLE_GATTC_RX_EXTRACT_RX_ENTRY(conn_handle, cid, rx_entries, out_rx_entry)  \
     ble_gattc_extract_with_rx_entry(                                          \
         (conn_handle), (cid), (rx_entries),                                   \
         sizeof (rx_entries) / sizeof (rx_entries)[0],                         \
         (const void **)(out_rx_entry))
-#else
-/*
- * When memory optimization flag is enabled:
- * RX entry table is dynamically allocated with 4 entries
- * to optimize memory usage and reduce static allocation.
- */
-#define BLE_GATTC_RX_EXTRACT_RX_ENTRY(conn_handle, cid, rx_entries, out_rx_entry)  \
-    ble_gattc_extract_with_rx_entry(                                          \
-        (conn_handle), (cid), (rx_entries),                                   \
-        4,                                                                    \
-        (const void **)(out_rx_entry))
-#endif
 #endif
 
 /**

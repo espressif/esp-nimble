@@ -357,9 +357,9 @@ ble_eatt_l2cap_event_fn(struct ble_l2cap_event *event, void *arg)
             return BLE_HS_EREJECT;
         }
         opcode = event->receive.sdu_rx->om_data[0];
-        if (ble_att_is_response_op(opcode)) {
+        if (ble_eatt_supported_rsp(opcode)) {
             ble_npl_eventq_put(ble_hs_evq_get(), &eatt->wakeup_ev);
-        } else if (!ble_att_is_request_op(opcode)) {
+        } else if (!ble_eatt_supported_req(opcode)) {
             /* As per BLE 5.4 Standard, Vol. 3, Part G, section 5.3.2
              * (ENHANCED ATT BEARER L2CAP INTEROPERABILITY REQUIREMENTS:
              * Channel Requirements):
