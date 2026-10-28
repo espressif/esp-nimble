@@ -1,3 +1,4 @@
+if: 'BT_NIMBLE_ENABLED'
 name: 'Apache Mynewt Nimble'
 version: '1.6.0'
 supplier: 'Organization: Espressif Systems (Shanghai) CO LTD'
