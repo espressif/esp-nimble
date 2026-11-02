@@ -588,8 +588,11 @@ ble_hs_timer_reset(uint32_t ticks)
     int rc;
 
     if (!ble_hs_is_enabled()) {
+        /* Stop only. The host task may already have dequeued this callout.
+         * Freeing it here races npl_freertos_event_run(). Destroy in
+         * ble_hs_deinit(), after nimble_port_stop() has left the host loop.
+         */
         ble_npl_callout_stop(&ble_hs_timer);
-        ble_npl_callout_deinit(&ble_hs_timer);
     } else {
         rc = ble_npl_callout_reset(&ble_hs_timer, ticks);
         BLE_HS_DBG_ASSERT_EVAL(rc == 0);
@@ -602,6 +605,10 @@ ble_hs_timer_sched(int32_t ticks_from_now)
     ble_npl_time_t abs_time;
 
     if (ticks_from_now == BLE_HS_FOREVER) {
+        return;
+    }
+
+    if (!ble_hs_is_enabled()) {
         return;
     }
 
