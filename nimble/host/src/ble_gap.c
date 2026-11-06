@@ -5100,10 +5100,11 @@ ble_gap_update_timer(void)
         ble_hs_unlock();
 
         if (entry != NULL) {
+            /* Bookkeeping only. A missing LE Connection Update Complete is
+             * not link loss. ble_gap_update_notify(BLE_HS_ETIMEOUT) would
+             * ble_gap_terminate() and drop the ACL.
+             */
             ble_gap_update_entry_free(entry);
-#if NIMBLE_BLE_CONNECT
-            ble_gap_update_notify(conn_handle, BLE_HS_ETIMEOUT);
-#endif
         }
     } while (entry != NULL);
 
@@ -11522,6 +11523,13 @@ ble_gap_update_params(uint16_t conn_handle,
     entry->exp_os_ticks = ble_npl_time_get() +
                           ble_npl_time_ms_to_ticks32(BLE_GAP_UPDATE_TIMEOUT_MS);
 
+    /* Link before the HCI command. LE Connection Update Complete can be
+     * processed as soon as the controller accepts it. Linking only after
+     * unlock leaves that event with nothing to cancel, so the 40 s timer
+     * later fires for a procedure that already finished.
+     */
+    SLIST_INSERT_HEAD(&ble_gap_update_entries, entry, next);
+
     BLE_HS_LOG(INFO, "GAP procedure initiated: ");
     ble_gap_log_update(conn_handle, params);
     BLE_HS_LOG(INFO, "\n");
@@ -11555,30 +11563,33 @@ ble_gap_update_params(uint16_t conn_handle,
         }
     }
 
+    if (rc != 0) {
+        entry = ble_gap_update_entry_remove(conn_handle);
+        ble_gap_update_entry_free(entry);
+    }
+
 done:
     ble_hs_unlock();
 
-    if (!l2cap_update) {
-        ble_hs_timer_resched();
-    } else {
+    if (l2cap_update) {
         ble_gap_update_to_l2cap(params, &l2cap_params);
 
         rc = ble_l2cap_sig_update(conn_handle, &l2cap_params,
-                                              ble_gap_update_l2cap_cb, NULL);
+                                  ble_gap_update_l2cap_cb, NULL);
+        if (rc != 0) {
+            /* Failed start does not run ble_gap_update_l2cap_cb. */
+            ble_hs_lock();
+            entry = ble_gap_update_entry_remove(conn_handle);
+            ble_hs_unlock();
+            ble_gap_update_entry_free(entry);
+        }
     }
 
-    ble_hs_lock();
-    dup = ble_gap_update_entry_find(conn_handle, NULL);
-    if (rc == 0 && dup == NULL) {
-        SLIST_INSERT_HEAD(&ble_gap_update_entries, entry, next);
-    } else {
-        ble_gap_update_entry_free(entry);
-        if (dup != NULL) {
-            rc = BLE_HS_EALREADY;
-        }
+    if (rc != 0) {
         STATS_INC(ble_gap_stats, update_fail);
     }
-    ble_hs_unlock();
+
+    ble_hs_timer_resched();
 
     return rc;
 #else
