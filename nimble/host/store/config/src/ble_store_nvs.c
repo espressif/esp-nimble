@@ -783,9 +783,11 @@ static int
 ble_nvs_restore_sec_keys(void)
 {
     int err;
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 1
     int flag = 0;
-    nvs_handle_t nimble_handle;
     extern int ble_store_config_compare_bond_count(const void *a, const void *b);
+#endif
+    nvs_handle_t nimble_handle;
 
     err = nvs_open(NIMBLE_NVS_NAMESPACE, NVS_READWRITE, &nimble_handle);
     if (err != ESP_OK) {
@@ -809,7 +811,10 @@ ble_nvs_restore_sec_keys(void)
         goto end;
     }
 
-    /* Only check for out-of-order entries if we have valid data */
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 1
+    /* One bond slot has nothing to reorder. Compiling this out avoids a
+     * false -Warray-bounds on [i+1] when the array length is 1.
+     */
     if (ble_store_config_num_our_secs > 1 || ble_store_config_num_peer_secs > 1) {
         /* Use actual populated count, not max config value */
         int our_check_limit = (ble_store_config_num_our_secs > 1) ? (ble_store_config_num_our_secs - 1) : 0;
@@ -835,6 +840,7 @@ ble_nvs_restore_sec_keys(void)
         qsort(ble_store_config_peer_secs, ble_store_config_num_peer_secs,
             sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
     }
+#endif
 
     /* Only access array if we have valid entries to prevent index -1 access */
     if (ble_store_config_num_our_secs > 0) {
