@@ -1153,7 +1153,9 @@ ble_hs_deinit(void)
 
     ble_npl_mutex_deinit(&ble_hs_mutex);
 
+#if NIMBLE_BLE_CONNECT
     ble_mqueue_deinit(&ble_hs_rx_q);
+#endif
 
     ble_hs_stop_deinit();
 
