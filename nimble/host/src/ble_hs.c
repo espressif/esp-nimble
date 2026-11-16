@@ -1126,7 +1126,9 @@ ble_hs_deinit(void)
     ble_monitor_deinit();
 #endif
 
+#if NIMBLE_BLE_CONNECT
     ble_mqueue_deinit(&ble_hs_rx_q);
+#endif
 
     ble_hs_stop_deinit();
 
@@ -1164,7 +1166,7 @@ ble_hs_deinit(void)
      ble_att_svr_deinit();
 #endif
 
-#if NIMBLE_BLE_SM
+#if NIMBLE_BLE_CONNECT && NIMBLE_BLE_SM
     ble_sm_deinit();
 #endif
 #endif
