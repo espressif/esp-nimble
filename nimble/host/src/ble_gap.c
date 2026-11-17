@@ -6185,6 +6185,15 @@ ble_gap_ext_adv_set_addr(uint8_t instance, const ble_addr_t *addr)
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
             return BLE_HS_EINVAL;
         }
+    } else if (BLE_ADDR_IS_RPA(addr)) {
+        /* prand random part is the low 22 bits. Core: not all 0, not all 1. */
+        uint8_t prand_hi = addr->val[5] & BLE_NON_RPA_MASK;
+        if ((prand_hi == 0x00 && addr->val[4] == 0x00 && addr->val[3] == 0x00) ||
+            (prand_hi == BLE_NON_RPA_MASK &&
+             addr->val[4] == 0xff && addr->val[3] == 0xff)) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
     } else {
         BLE_HS_LOG(ERROR, "Invalid random address \n");
         return BLE_HS_EINVAL;

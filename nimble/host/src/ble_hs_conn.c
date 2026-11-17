@@ -518,12 +518,29 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
      * instance and requires special handling here.
      */
 
+    /* The per-instance random address is an identity address only when it is
+     * a static random address. A private address is the address on air;
+     * Identity Address Information distributes a public or static random
+     * address only (Vol 3 Part H 3.6.5).
+     */
     if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER) &&
-            addrs->our_id_addr.type == BLE_ADDR_RANDOM) {
+            addrs->our_id_addr.type == BLE_ADDR_RANDOM &&
+            (conn->bhc_our_rnd_addr[5] & 0xc0) == 0xc0) {
         our_id_addr_val = conn->bhc_our_rnd_addr;
     } else {
+        int per_set_rpa;
+
+        /* Per-instance RPA is the address on air, not an identity.
+         * Identity Address Information is public or static only. */
+        per_set_rpa = !(conn->bhc_flags & BLE_HS_CONN_F_MASTER) &&
+                      addrs->our_id_addr.type == BLE_ADDR_RANDOM;
         ble_hs_lock_nested();
         rc = ble_hs_id_addr(addrs->our_id_addr.type, &our_id_addr_val, NULL);
+        if (per_set_rpa &&
+                (rc != 0 || (our_id_addr_val[5] & 0xc0) != 0xc0)) {
+            addrs->our_id_addr.type = BLE_ADDR_PUBLIC;
+            rc = ble_hs_id_addr(BLE_ADDR_PUBLIC, &our_id_addr_val, NULL);
+        }
         ble_hs_unlock_nested();
         if (rc != 0) {
             return;
@@ -542,6 +559,20 @@ ble_hs_conn_addrs(const struct ble_hs_conn *conn,
 
     if (memcmp(conn->bhc_our_rpa_addr.val, ble_hs_conn_null_addr, 6) == 0) {
         addrs->our_ota_addr = addrs->our_id_addr;
+#if MYNEWT_VAL(BLE_EXT_ADV)
+        /* A per-instance private address is the address on air for this
+         * connection; it is never the identity address. With own address
+         * type public, the controller used the public address on air.
+         */
+        if (!(conn->bhc_flags & BLE_HS_CONN_F_MASTER) &&
+                ble_hs_misc_own_addr_type_to_id(conn->bhc_our_addr_type) ==
+                    BLE_ADDR_RANDOM &&
+                (conn->bhc_our_rnd_addr[5] & 0xc0) != 0xc0) {
+            addrs->our_ota_addr.type = BLE_ADDR_RANDOM;
+            memcpy(addrs->our_ota_addr.val, conn->bhc_our_rnd_addr,
+                   BLE_DEV_ADDR_LEN);
+        }
+#endif
     } else {
         addrs->our_ota_addr = conn->bhc_our_rpa_addr;
     }

@@ -2487,6 +2487,11 @@ int ble_gap_ext_adv_configure(uint8_t instance,
 /**
  * Set random address for configured advertising instance.
  *
+ * Accepts a random address of type static (0b11), non-resolvable (0b00),
+ * or resolvable (0b01). The random part must not be all 0 or all 1.
+ * Sub-type 0b10 is rejected. A resolvable address is the over-the-air
+ * address for that instance, not the identity address.
+ *
  * @param instance            Instance ID
  * @param addr                Random address to be set
  *
