@@ -250,8 +250,6 @@ ble_store_util_delete_peer(const ble_addr_t *peer_id_addr)
 #if MYNEWT_VAL(BLE_HS_PVCY) && !MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     /* Direct callers (delete_oldest_peer, repeat-pairing) may not go through
      * ble_gap_unpair. Preempt so HCI remove is legal while advertising/scanning.
-     * Unpair already removes when irk_present (with defer-add skip); a second
-     * remove here is best-effort and may return an error — that is fine.
      */
     ble_gap_preempt();
     rc = ble_hs_pvcy_remove_entry(key.sec.peer_addr.type, key.sec.peer_addr.val);
@@ -560,7 +558,9 @@ ble_store_util_find_lfu(int obj_type, union ble_store_value *val, void *arg)
         return 0;
     }
 
-    if (!lfu->found || val->sec.bond_count < lfu->bond_count) {
+    /* Same wrap rule as ble_store_config_compare_bond_count(). */
+    if (!lfu->found ||
+        (int16_t)(val->sec.bond_count - lfu->bond_count) < 0) {
         lfu->peer_addr = val->sec.peer_addr;
         lfu->bond_count = val->sec.bond_count;
         lfu->found = true;

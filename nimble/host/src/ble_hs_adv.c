@@ -111,6 +111,10 @@ ble_hs_adv_set_flat_mbuf(uint8_t type, int data_len, const void *data,
 {
     int rc;
 
+    if (data_len <= 0 || data_len > 254) {
+        return BLE_HS_EMSGSIZE;
+    }
+
     BLE_HS_DBG_ASSERT(data_len > 0);
 
     rc = ble_hs_adv_set_hdr(type, data_len, max_len, dst, dst_len, om);
@@ -154,6 +158,12 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
         return BLE_HS_EINVAL;
     }
 
+    for (i = 0; i < num_elems; i++) {
+        if (elems[i].u.type != BLE_UUID_TYPE_16) {
+            return BLE_HS_EINVAL;
+        }
+    }
+
     rc = ble_hs_adv_set_hdr(type, num_elems * 2, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
@@ -167,7 +177,10 @@ ble_hs_adv_set_array_uuid16(uint8_t type, uint8_t num_elems,
                 return rc;
             }
         } else {
-            ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            rc = ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            if (rc != 0) {
+                return rc;
+            }
             *dst_len += 2;
         }
     }
@@ -229,6 +242,12 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
         return BLE_HS_EINVAL;
     }
 
+    for (i = 0; i < num_elems; i++) {
+        if (elems[i].u.type != BLE_UUID_TYPE_128) {
+            return BLE_HS_EINVAL;
+        }
+    }
+
     rc = ble_hs_adv_set_hdr(type, num_elems * 16, max_len, dst,
                             dst_len, om);
     if (rc != 0) {
@@ -242,7 +261,10 @@ ble_hs_adv_set_array_uuid128(uint8_t type, uint8_t num_elems,
                 return rc;
             }
         } else {
-            ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            rc = ble_uuid_flat(&elems[i].u, dst + *dst_len);
+            if (rc != 0) {
+                return rc;
+            }
             *dst_len += 16;
         }
     }
@@ -298,8 +320,10 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
     uint8_t type;
     int8_t tx_pwr_lvl;
     uint8_t dst_len_local;
+    bool include_tx_pwr_lvl;
 #if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     uint8_t dev_addr_ad[7];
+    uint8_t le_supp_feat_len;
 #endif
     int rc;
 
@@ -389,25 +413,31 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 
     /*** 0x0a - Tx power level. */
     if (adv_fields->tx_pwr_lvl_is_present) {
+        include_tx_pwr_lvl = true;
         /* Read the power level from the controller if requested; otherwise use
          * the explicitly specified value.
          */
-#if !SOC_ESP_NIMBLE_CONTROLLER
         if (adv_fields->tx_pwr_lvl == BLE_HS_ADV_TX_PWR_LVL_AUTO) {
+#if SOC_ESP_NIMBLE_CONTROLLER
+            /* Integrated controller: omit TX power AD field. */
+            include_tx_pwr_lvl = false;
+#else
             rc = ble_hs_hci_util_read_adv_tx_pwr(&tx_pwr_lvl);
             if (rc != 0) {
                 return rc;
             }
-        } else
 #endif
-	{
+        } else {
             tx_pwr_lvl = adv_fields->tx_pwr_lvl;
         }
 
-        rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_TX_PWR_LVL, 1,
-                                      &tx_pwr_lvl, dst, &dst_len_local, max_len, om);
-        if (rc != 0) {
-            return rc;
+        if (include_tx_pwr_lvl) {
+            rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_TX_PWR_LVL, 1,
+                                          &tx_pwr_lvl, dst, &dst_len_local,
+                                          max_len, om);
+            if (rc != 0) {
+                return rc;
+            }
         }
     }
 
@@ -471,7 +501,12 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 #endif
 
     /*** 0x16 - Service data - 16-bit UUID. */
-    if (adv_fields->svc_data_uuid16 != NULL && adv_fields->svc_data_uuid16_len) {
+    if (adv_fields->svc_data_uuid16 != NULL) {
+        if (adv_fields->svc_data_uuid16_len <
+            BLE_HS_ADV_SVC_DATA_UUID16_MIN_LEN) {
+            return BLE_HS_EBADDATA;
+        }
+
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_SVC_DATA_UUID16,
                                       adv_fields->svc_data_uuid16_len,
                                       adv_fields->svc_data_uuid16, dst, &dst_len_local,
@@ -573,7 +608,12 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 #endif
 
     /*** 0x20 - Service data - 32-bit UUID. */
-    if (adv_fields->svc_data_uuid32 != NULL && adv_fields->svc_data_uuid32_len) {
+    if (adv_fields->svc_data_uuid32 != NULL) {
+        if (adv_fields->svc_data_uuid32_len <
+            BLE_HS_ADV_SVC_DATA_UUID32_MIN_LEN) {
+            return BLE_HS_EBADDATA;
+        }
+
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_SVC_DATA_UUID32,
                                      adv_fields->svc_data_uuid32_len,
                                      adv_fields->svc_data_uuid32, dst, &dst_len_local,
@@ -584,7 +624,12 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
     }
 
     /*** 0x21 - Service data - 128-bit UUID. */
-    if (adv_fields->svc_data_uuid128 != NULL && adv_fields->svc_data_uuid128_len) {
+    if (adv_fields->svc_data_uuid128 != NULL) {
+        if (adv_fields->svc_data_uuid128_len <
+            BLE_HS_ADV_SVC_DATA_UUID128_MIN_LEN) {
+            return BLE_HS_EBADDATA;
+        }
+
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_SVC_DATA_UUID128,
                                       adv_fields->svc_data_uuid128_len,
                                       adv_fields->svc_data_uuid128, dst,
@@ -607,8 +652,17 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 #if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     /*** 0x27 - LE Supported Features. */
     if (adv_fields->le_supp_feat_is_present) {
+        le_supp_feat_len = BLE_HS_ADV_LE_SUPP_FEAT_LEN;
+        while (le_supp_feat_len > 0 &&
+               adv_fields->le_supp_feat[le_supp_feat_len - 1] == 0) {
+            le_supp_feat_len--;
+        }
+        /* CSS Part A 1.19 requires the last transmitted octet to be nonzero. */
+        if (le_supp_feat_len == 0) {
+            return BLE_HS_EINVAL;
+        }
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_LE_SUPP_FEAT,
-                                      BLE_HS_ADV_LE_SUPP_FEAT_LEN,
+                                      le_supp_feat_len,
                                       adv_fields->le_supp_feat, dst, &dst_len_local,
                                       max_len, om);
         if (rc != 0) {
@@ -629,8 +683,12 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 
 #if MYNEWT_VAL(ENC_ADV_DATA)
     /*** 0x31 - Encrypted Advertising Data. */
-    if ((adv_fields->enc_adv_data != NULL) &&
-        (adv_fields->enc_adv_data_len > BLE_EAD_RANDOMIZER_SIZE + BLE_EAD_MIC_SIZE)) {
+    if (adv_fields->enc_adv_data != NULL) {
+        if (adv_fields->enc_adv_data_len <=
+            BLE_EAD_RANDOMIZER_SIZE + BLE_EAD_MIC_SIZE) {
+            return BLE_HS_EBADDATA;
+        }
+
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_ENC_ADV_DATA,
                                       adv_fields->enc_adv_data_len,
                                       adv_fields->enc_adv_data, dst, &dst_len_local,
@@ -643,7 +701,11 @@ adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
 #endif
 
     /*** 0xff - Manufacturer specific data. */
-    if ((adv_fields->mfg_data != NULL) && (adv_fields->mfg_data_len >= 2)) {
+    if (adv_fields->mfg_data != NULL) {
+        if (adv_fields->mfg_data_len < 2) {
+            return BLE_HS_EBADDATA;
+        }
+
         rc = ble_hs_adv_set_flat_mbuf(BLE_HS_ADV_TYPE_MFG_DATA,
                                       adv_fields->mfg_data_len,
                                       adv_fields->mfg_data,
@@ -710,7 +772,8 @@ ble_hs_adv_parse_uuids16(struct ble_hs_adv_fields *adv_fields,
      * This is required when multiple AD structures of the same UUID
      * type are present in advertising data.
      */
-    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint16_t)) - adv_fields->num_uuids16;
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint16_t)) -
+                 adv_fields->num_uuids16;
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
@@ -844,7 +907,8 @@ ble_hs_adv_parse_uuids32(struct ble_hs_adv_fields *adv_fields,
      * type are present in advertising data.
      */
 
-    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint32_t)) - adv_fields->num_uuids32;
+    free_slots = (BLE_HS_ADV_MAX_FIELD_SZ / sizeof(uint32_t)) -
+                 adv_fields->num_uuids32;
 
     if (uuid_cnt > free_slots) {
         /* not enough space to append */
@@ -923,10 +987,10 @@ ble_hs_adv_parse_uuids128(struct ble_hs_adv_fields *adv_fields,
 static int
 ble_hs_adv_uuids_alloc(void)
 {
-    if (ble_hs_adv_uuids) {
-        nimble_platform_mem_free(ble_hs_adv_uuids);
-        ble_hs_adv_uuids = NULL;
+    if (ble_hs_adv_uuids != NULL) {
+        return 0;
     }
+
     ble_hs_adv_uuids = nimble_platform_mem_calloc(1, sizeof(*ble_hs_adv_uuids));
     if (!ble_hs_adv_uuids) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
@@ -1166,6 +1230,30 @@ ble_hs_adv_parse_one_field(struct ble_hs_adv_fields *adv_fields,
 #if MYNEWT_VAL(BLE_EXTRA_ADV_FIELDS)
     case BLE_HS_ADV_TYPE_SOL_UUIDS32:
         return ble_hs_adv_parse_sol_uuids32(adv_fields, data, data_len);
+
+    case BLE_HS_ADV_TYPE_LE_SUPP_FEAT:
+        if (data_len == 0) {
+            return BLE_HS_EBADDATA;
+        }
+        /* Store page 0; accept and truncate higher feature pages. */
+        memset(adv_fields->le_supp_feat, 0,
+               sizeof adv_fields->le_supp_feat);
+        memcpy(adv_fields->le_supp_feat, data,
+               data_len > BLE_HS_ADV_LE_SUPP_FEAT_LEN ?
+               BLE_HS_ADV_LE_SUPP_FEAT_LEN : data_len);
+        adv_fields->le_supp_feat_is_present = 1;
+        break;
+
+    case BLE_HS_ADV_TYPE_ADV_ITVL_LONG:
+        if (data_len == 3) {
+            adv_fields->adv_itvl_long = get_le24(data);
+        } else if (data_len == BLE_HS_ADV_ADV_ITVL_LONG_LEN) {
+            adv_fields->adv_itvl_long = get_le32(data);
+        } else {
+            return BLE_HS_EBADDATA;
+        }
+        adv_fields->adv_itvl_long_is_present = 1;
+        break;
 #endif
 
 #if MYNEWT_VAL(ENC_ADV_DATA)

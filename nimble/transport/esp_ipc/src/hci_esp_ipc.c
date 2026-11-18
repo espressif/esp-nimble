@@ -50,7 +50,14 @@ ble_transport_to_ll_cmd_impl(void *buf)
 int
 ble_transport_to_ll_acl_impl(struct os_mbuf *om)
 {
-    return hci_transport_host_acl_tx((uint8_t *)om, 0);
+    int rc;
+
+    rc = hci_transport_host_acl_tx((uint8_t *)om, 0);
+    if (rc != 0) {
+        /* Controller not enabled returns before it takes the mbuf. */
+        os_mbuf_free_chain(om);
+    }
+    return rc;
 }
 
 void

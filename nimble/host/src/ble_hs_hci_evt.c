@@ -1129,7 +1129,8 @@ ble_hs_hci_evt_le_adv_rpt(uint8_t subevent, const void *data, unsigned int len)
 #else
     if (
 #endif
-        ble_check_adv_list(rpt->addr, rpt->addr_type) == true) {
+        ble_check_adv_list(rpt->addr, rpt->addr_type,
+                           rpt->type == BLE_HCI_ADV_RPT_EVTYPE_SCAN_RSP)) {
         data += sizeof(*rpt) + rpt->data_len + 1;
         continue;
     }
@@ -1548,7 +1549,9 @@ ble_hs_hci_evt_le_ext_adv_rpt(uint8_t subevent, const void *data,
                 desc.data_status = BLE_GAP_EXT_ADV_DATA_STATUS_TRUNCATED;
                 break;
             default:
-                assert(false);
+                /* Reserved data_status; skip report. */
+                report = (const void *) &report->data[report->data_len];
+                continue;
             }
         }
         desc.addr.type = report->addr_type;
@@ -1614,16 +1617,49 @@ static int
 ble_hs_hci_evt_le_periodic_adv_rpt(uint8_t subevent, const void *data,
                                    unsigned int len)
 {
-    const struct ble_hci_ev_le_subev_periodic_adv_rpt *ev = data;
+    struct ble_gap_periodic_adv_report report;
+    const struct ble_hci_ev_le_subev_periodic_adv_rpt *ev;
 
-    if (len < sizeof(*ev) || len != (sizeof(*ev) + ev->data_len)) {
+    memset(&report, 0, sizeof(report));
+
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    if (subevent == BLE_HCI_LE_SUBEV_PERIODIC_ADV_RPT_V2) {
+        const struct ble_hci_ev_le_subev_periodic_adv_rpt_v2 *ev_v2 = data;
+
+        if (len < sizeof(*ev_v2) ||
+            len != sizeof(*ev_v2) + ev_v2->data_len) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
+            return BLE_HS_EBADDATA;
+        }
+
+        report.sync_handle = le16toh(ev_v2->sync_handle);
+        report.tx_power = ev_v2->tx_power;
+        report.rssi = ev_v2->rssi;
+        report.data_status = ev_v2->data_status;
+        report.data_length = ev_v2->data_len;
+        report.data = ev_v2->data;
+        report.event_counter = le16toh(ev_v2->event_counter);
+        report.subevent = ev_v2->subevent;
+        ble_gap_rx_periodic_adv_rpt(&report);
+        return 0;
+    }
+#endif
+
+    ev = data;
+    if (len < sizeof(*ev) || len != sizeof(*ev) + ev->data_len) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EBADDATA);
         return BLE_HS_EBADDATA;
     }
 
-    ble_gap_rx_periodic_adv_rpt(ev);
+    report.sync_handle = le16toh(ev->sync_handle);
+    report.tx_power = ev->tx_power;
+    report.rssi = ev->rssi;
+    report.data_status = ev->data_status;
+    report.data_length = ev->data_len;
+    report.data = ev->data;
+    ble_gap_rx_periodic_adv_rpt(&report);
 
-return 0;
+    return 0;
 }
 #endif
 
@@ -2278,6 +2314,7 @@ ble_hs_hci_evt_acl_process(struct os_mbuf *om)
 struct ble_addr_list_entry
 {
     ble_addr_t addr;
+    bool scan_response;
     SLIST_ENTRY(ble_addr_list_entry) next;
 };
 
@@ -2376,7 +2413,8 @@ void ble_adv_list_refresh(void)
     ble_npl_mutex_release(&adv_list_lock);
 }
 
-bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type)
+bool
+ble_check_adv_list(const uint8_t *addr, uint8_t addr_type, bool scan_response)
 {
     struct ble_addr_list_entry *device;
     struct ble_addr_list_entry *adv_packet;
@@ -2396,7 +2434,9 @@ bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type)
     ble_npl_mutex_pend(&adv_list_lock, BLE_NPL_TIME_FOREVER);
 
     SLIST_FOREACH(device, &ble_adv_list, next) {
-        if (!memcmp(addr, device->addr.val, BLE_DEV_ADDR_LEN) && device->addr.type == addr_type) {
+        if (!memcmp(addr, device->addr.val, BLE_DEV_ADDR_LEN) &&
+            device->addr.type == addr_type &&
+            device->scan_response == scan_response) {
             found = true;
             break;
         }
@@ -2409,6 +2449,7 @@ bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type)
         if (adv_packet) {
             adv_packet->addr.type = addr_type;
             memcpy(adv_packet->addr.val, addr, BLE_DEV_ADDR_LEN);
+            adv_packet->scan_response = scan_response;
             ble_adv_list_add_packet(adv_packet);
         } else {
             BLE_HS_LOG(ERROR, "%s adv_packet malloc failed", __func__);

@@ -147,6 +147,15 @@ extern int ble_store_config_num_local_irks;
 #endif
 #endif /* !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC) */
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+int ble_store_config_compare_bond_count_older_first(const void *a,
+                                                    const void *b);
+int ble_store_config_renumber_bond_counts(struct ble_store_value_sec *secs,
+                                          int num_secs, uint16_t *bond_count);
+int ble_store_config_bond_counts_need_renumber(
+    const struct ble_store_value_sec *secs, int num_secs);
+#endif
+
 #if MYNEWT_VAL(BLE_STORE_CONFIG_PERSIST)
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
 int ble_store_config_persist_our_secs(void);
@@ -161,10 +170,6 @@ int ble_store_config_persist_cccds(void);
 #endif
 #if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
 int ble_store_config_persist_csfcs(void);
-#endif
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
-int ble_restore_our_sec_nvs(void);
-int ble_restore_peer_sec_nvs(void);
 #endif
 #if MYNEWT_VAL(ENC_ADV_DATA)
 int ble_store_config_persist_eads(void);

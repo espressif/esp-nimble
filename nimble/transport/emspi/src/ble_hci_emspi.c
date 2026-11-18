@@ -431,7 +431,10 @@ ble_hci_emspi_rx_evt(void)
 
     rc = ble_transport_to_hs_evt(data);
     if (rc != 0) {
-        goto err;
+        /* The host frees the event buffer before returning an error
+         * (see ble_hs_hci_rx_evt). Do not free it again here; the err path
+         * below is only for failures before the buffer was handed over. */
+        return rc;
     }
 
     return 0;

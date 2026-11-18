@@ -662,7 +662,7 @@ ble_hs_conn_timer(void)
              * passes after a partial packet is received, the connection is
              * terminated.
              */
-            if (conn->rx_len) {
+            if (conn->rx_frags != NULL) {
                 time_diff = conn->rx_frag_tmo - now;
 
                 if (time_diff <= 0) {
@@ -777,9 +777,7 @@ ble_hs_conn_deinit(void)
         return;
     }
 
-    /* The connection objects live in the pool memory released below, so the
-     * list must not keep referencing them; later teardown steps still walk it.
-     */
+    /* Clear list before the connection pool is freed. */
     SLIST_INIT(&ble_hs_conns);
 
 #if !MYNEWT_VAL(MP_RUNTIME_ALLOC)

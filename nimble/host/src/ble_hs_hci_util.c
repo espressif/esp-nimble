@@ -450,7 +450,8 @@ ble_hs_hci_rd_all_local_supp_features(uint8_t* status, uint8_t* max_page,
         return rc;
     }
 
-    *status = rsp.status;
+    /* A non-zero controller Status already returned above as BLE_HS_HCI_ERR. */
+    *status = 0;
     *max_page = rsp.max_page;
 
     memcpy(le_features, rsp.le_features, sizeof(rsp.le_features));

@@ -383,6 +383,7 @@ void ble_sm_sc_deinit(void);
 #define ble_sm_sc_dhkey_check_exec(proc, res, arg)
 #define ble_sm_sc_dhkey_check_rx(conn_handle, op, om, res)
 #define ble_sm_sc_init()
+#define ble_sm_sc_deinit()
 
 #endif
 

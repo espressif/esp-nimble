@@ -105,19 +105,30 @@ int
 ble_hs_id_gen_rnd(int nrpa, ble_addr_t *out_addr)
 {
     int rc;
+    int ones;
 
     out_addr->type = BLE_ADDR_RANDOM;
 
-    rc = ble_hs_hci_util_rand(out_addr->val, 6);
-    if (rc != 0) {
-        return rc;
-    }
+    /* Random part needs a 0 and a 1 (Core Vol 6 B §1.3.2). */
+    do {
+        rc = ble_hs_hci_util_rand(out_addr->val, 6);
+        if (rc != 0) {
+            return rc;
+        }
 
-    if (nrpa) {
-        out_addr->val[5] &= ~0xc0;
-    } else {
-        out_addr->val[5] |= 0xc0;
-    }
+        if (nrpa) {
+            out_addr->val[5] &= ~0xc0;
+        } else {
+            out_addr->val[5] |= 0xc0;
+        }
+
+        ones = __builtin_popcount(out_addr->val[0]) +
+               __builtin_popcount(out_addr->val[1]) +
+               __builtin_popcount(out_addr->val[2]) +
+               __builtin_popcount(out_addr->val[3]) +
+               __builtin_popcount(out_addr->val[4]) +
+               __builtin_popcount(out_addr->val[5] & 0x3f);
+    } while (ones == 0 || ones == 46);
 
     return 0;
 }

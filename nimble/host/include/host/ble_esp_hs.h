@@ -44,9 +44,11 @@ uint32_t ble_get_adv_list_length(void);
 void ble_adv_list_refresh(void);
 
 /**
- * Checks if a Bluetooth address is present in the advertising list; if not, adds it to the list.
+ * Checks if an advertising or scan-response packet from an address is present
+ * in the advertising list; if not, adds it to the list.
  */
-bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type);
+bool ble_check_adv_list(const uint8_t *addr, uint8_t addr_type,
+                        bool scan_response);
 #endif
 
 #ifdef __cplusplus

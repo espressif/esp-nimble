@@ -1154,6 +1154,10 @@ IRAM_ATTR ble_npl_error_t
 npl_freertos_callout_reset(struct ble_npl_callout *co, ble_npl_time_t ticks)
 {
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout) {
+        return BLE_NPL_INVALID_PARAM;
+    }
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
     esp_timer_stop(callout->handle);
     if (callout->evq) {
@@ -1275,6 +1279,10 @@ npl_freertos_callout_remaining_ticks(struct ble_npl_callout *co,
     uint32_t exp = 0;
 
     struct ble_npl_callout_freertos *callout = (struct ble_npl_callout_freertos *)co->co;
+
+    if (!callout) {
+        return 0;
+    }
 
 #if CONFIG_BT_NIMBLE_USE_ESP_TIMER
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)

@@ -41,7 +41,7 @@ struct ble_svc_dis_data _ble_svc_dis_data = {
     .manufacturer_name = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT),
     .system_id         = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT),
     .pnp_id            = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT),
-    .ieee              = "dummy_data",
+    .ieee              = NULL,
     .udi               = NULL,  /** For now no UID fields are supported */
 };
 #define ble_svc_dis_data _ble_svc_dis_data
@@ -483,7 +483,7 @@ ble_svc_dis_init_dynamic(void)
     ble_svc_dis_data_ptr->manufacturer_name = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT);
     ble_svc_dis_data_ptr->system_id         = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT);
     ble_svc_dis_data_ptr->pnp_id            = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT);
-    ble_svc_dis_data_ptr->ieee              = "dummy_data";
+    ble_svc_dis_data_ptr->ieee              = NULL;
     ble_svc_dis_data_ptr->udi               = NULL;
 
     return 0;
@@ -508,7 +508,7 @@ ble_svc_dis_deinit(void)
     ble_svc_dis_data.manufacturer_name = MYNEWT_VAL(BLE_SVC_DIS_MANUFACTURER_NAME_DEFAULT);
     ble_svc_dis_data.system_id         = MYNEWT_VAL(BLE_SVC_DIS_SYSTEM_ID_DEFAULT);
     ble_svc_dis_data.pnp_id            = MYNEWT_VAL(BLE_SVC_DIS_PNP_ID_DEFAULT);
-    ble_svc_dis_data.ieee              = "dummy_data";
+    ble_svc_dis_data.ieee              = NULL;
     ble_svc_dis_data.udi               = NULL;
 #endif
 }

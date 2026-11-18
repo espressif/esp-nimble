@@ -546,8 +546,9 @@ ble_gattc_cache_addr_save(uint8_t *out_index, ble_addr_t addr, uint8_t * hash_ke
             /* If the bd_addr already in the address list, update the hash key in it. */
             insert_ind = index;
         } else {
-            /* Address not found - need to allocate a new slot */
-            if(cache_env->num_addr >= MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) {
+            /* New slot; array capped at MAX_DEVICE_IN_CACHE. */
+            if (cache_env->num_addr >= MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS) ||
+                cache_env->num_addr >= MAX_DEVICE_IN_CACHE) {
                 nimble_platform_mem_free(p_buf);
                 BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
                 return BLE_HS_ENOMEM;
@@ -558,7 +559,8 @@ ble_gattc_cache_addr_save(uint8_t *out_index, ble_addr_t addr, uint8_t * hash_ke
         }
     } else {
         BLE_HS_LOG(DEBUG, "Hash key not present, saving new data");
-        if(cache_env->num_addr >= MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS)) {
+        if (cache_env->num_addr >= MYNEWT_VAL(BLE_GATT_CACHING_MAX_CONNS) ||
+            cache_env->num_addr >= MAX_DEVICE_IN_CACHE) {
             nimble_platform_mem_free(p_buf);
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
             return BLE_HS_ENOMEM;
@@ -844,9 +846,22 @@ ble_gattc_cache_assoc_load(ble_addr_t src_addr, uint8_t src_index, ble_addr_t as
         default:
             break;
         }
+        if (rc != 0) {
+            break;
+        }
     }
 
     nimble_platform_mem_free(nv_attr);
+
+    if (rc != 0) {
+        /*
+         * Discard only the partially loaded in-memory database.  The target's
+         * persisted cache and the source iteration must remain unchanged.
+         */
+        ble_gattc_cache_conn_clear_svcs(assoc_addr);
+        cacheClose(src_addr);
+        return rc;
+    }
 
     /* Copy the database hash from src_addr entry and associate it with assoc_addr */
     ble_gattc_cache_conn_load_hash(assoc_addr,
@@ -940,8 +955,15 @@ ble_gattc_cache_load(ble_addr_t peer_addr)
         default:
             break;
         }
+        if (rc != 0) {
+            break;
+        }
     }
     nimble_platform_mem_free(nv_attr);
+    if (rc != 0) {
+        cacheClose(peer_addr);
+        return rc;
+    }
     cache_index = ble_gattc_cache_find_addr(peer_addr);
     if (cache_index == INVALID_ADDR_NUM) {
         BLE_HS_LOG(ERROR, "Address not found in cache");

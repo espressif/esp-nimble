@@ -202,12 +202,13 @@ ble_svc_gap_device_name_read_access(struct ble_gatt_access_ctxt *ctxt)
     name = ble_svc_gap_name;
 #endif
     name_len = strlen(name);
-    if (ctxt->offset > name_len) {
-        return BLE_ATT_ERR_INVALID_OFFSET;
-    }
-    read_len = name_len - ctxt->offset;
+    /*
+     * Append the whole value. ble_gatts_val_access() applies the Read Blob
+     * offset itself; slicing here shifts the name a second time.
+     */
+    read_len = name_len;
 
-    rc = os_mbuf_append(ctxt->om, name + ctxt->offset, read_len);
+    rc = os_mbuf_append(ctxt->om, name, read_len);
 
     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }

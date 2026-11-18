@@ -570,7 +570,13 @@ ble_hs_startup_go(void)
                                          BLE_HS_CONN_HANDLE_NONE);
 #if MYNEWT_VAL(BLE_HS_PVCY)
         if (key_rc == 0) {
-            ble_hs_pvcy_set_our_irk(gen_key.irk);
+            rc = ble_hs_pvcy_set_our_irk(gen_key.irk);
+            if (rc != 0) {
+                BLE_HS_LOG(WARN,
+                           "Unable to configure stored IRK; rc=%d\n", rc);
+                /* Fall back to the default IRK below. */
+                key_rc = rc;
+            }
         }
 #endif
     } else {
@@ -581,7 +587,11 @@ ble_hs_startup_go(void)
     if (key_rc != 0) {
         ble_hs_pvcy_set_default_irk();
 
-        ble_hs_pvcy_set_our_irk(NULL);
+        rc = ble_hs_pvcy_set_our_irk(NULL);
+        if (rc != 0) {
+            BLE_HS_LOG(WARN,
+                       "Unable to configure default IRK; rc=%d\n", rc);
+        }
     }
 #endif
 

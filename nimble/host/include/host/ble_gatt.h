@@ -1270,8 +1270,8 @@ struct ble_gatt_access_ctxt {
     };
 
     /**
-     * An offset in case of BLE_ATT_OP_READ_BLOB_REQ.
-     * If the value is greater than zero it's an indication of a long attribute read.
+     * The value offset for long reads and queued writes. A nonzero value
+     * indicates BLE_ATT_OP_READ_BLOB_REQ or a partial prepared write.
      */
     uint16_t offset;
 };

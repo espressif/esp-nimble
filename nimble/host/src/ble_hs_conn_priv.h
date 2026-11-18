@@ -118,6 +118,10 @@ struct ble_hs_conn {
     uint16_t bhc_max_rx_octets;
     uint16_t bhc_max_tx_time;
     uint16_t bhc_max_rx_time;
+#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
+    uint16_t bhc_pawr_sync_handle;
+    uint8_t bhc_pawr_adv_handle;
+#endif
 #if MYNEWT_VAL(BT_NIMBLE_MEM_OPTIMIZATION)
     uint16_t bhc_rx_scid;
 #endif
@@ -135,6 +139,8 @@ struct ble_hs_conn {
     uint16_t rx_len;
     /* L2CAP Source CID for ACL RX */
     uint16_t rx_cid;
+    /* Retaining only a signaling identifier for an oversized PDU reject. */
+    uint8_t rx_sig_reject;
 #if MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT) != 0
     /* Timeout for next fragment for ACL RX */
     ble_npl_time_t rx_frag_tmo;

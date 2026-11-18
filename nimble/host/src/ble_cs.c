@@ -18,6 +18,7 @@
  */
 
 #include <inttypes.h>
+#include <string.h>
 #include "syscfg/syscfg.h"
 #include "ble_hs_mbuf_priv.h"
 
@@ -127,12 +128,12 @@ struct ble_cs_create_config_cp {
     uint8_t companion_signal_enable;
 } __attribute__((packed));
 
-#if 0
 struct ble_cs_remove_config_cp {
     uint16_t conn_handle;
     uint8_t config_id;
 } __attribute__((packed));
 
+#if 0
 struct ble_cs_set_chan_class_cp {
     uint8_t channel_classification[10];
 } __attribute__((packed));
@@ -189,6 +190,13 @@ static struct ble_cs_state * cs_state_ptr = NULL;
 #else
 static struct ble_cs_state cs_state;
 #endif
+
+/* Deferred Remove Config after Procedure Enable Complete; lives outside
+ * cs_state because terminate frees cs_state first. Peer matches handle. */
+static struct {
+    uint16_t conn_handle;
+    ble_addr_t peer_ota_addr;
+} ble_cs_pending_remove = { BLE_HS_CONN_HANDLE_NONE, {0} };
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 int
@@ -456,13 +464,14 @@ ble_cs_create_config(const struct ble_cs_create_config_cp *cmd)
     cp.channel_selection_type = cmd->channel_selection_type;
     cp.ch3c_shape = cmd->ch3c_shape;
     cp.ch3c_jump = cmd->ch3c_jump;
+    /* RFU octet for CS v6.3 28-byte parameter length. */
+    cp.companion_signal_enable = 0x00;
 
     return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                         BLE_HCI_OCF_LE_CS_CREATE_CONFIG),
                              &cp, sizeof(cp), NULL, 0);
 }
 
-#if 0
 static int
 ble_cs_remove_config(const struct ble_cs_remove_config_cp *cmd)
 {
@@ -476,6 +485,7 @@ ble_cs_remove_config(const struct ble_cs_remove_config_cp *cmd)
                              &cp, sizeof(cp), NULL, 0);
 }
 
+#if 0
 static int
 ble_cs_set_chan_class(const struct ble_cs_set_chan_class_cp *cmd)
 {
@@ -778,6 +788,12 @@ ble_hs_hci_evt_le_cs_config_complete(uint8_t subevent, const void *data,
         return BLE_HS_ECONTROLLER;
     }
 
+    /* Action 0x00 is config removed; ignore remaining parameters. */
+    if (ev->action != 0x01) {
+        BLE_HS_LOG(DEBUG, "CS config %d removed", ev->config_id);
+        return 0;
+    }
+
     cmd.conn_handle = le16toh(ev->conn_handle);
 
     /* Exchange CS security keys */
@@ -805,11 +821,47 @@ ble_hs_hci_evt_le_cs_proc_enable_complete(uint8_t subevent, const void *data,
                                           unsigned int len)
 {
     const struct ble_hci_ev_le_subev_cs_proc_enable_complete *ev = data;
+    struct ble_cs_remove_config_cp remove_cmd;
+    uint16_t conn_handle;
+    int rc;
 
     if (len != sizeof(*ev) || ev->status) {
+        /* Clear pending removal on failed enable/disable. */
+        if (len == sizeof(*ev) &&
+            le16toh(ev->conn_handle) == ble_cs_pending_remove.conn_handle) {
+            ble_cs_pending_remove.conn_handle = BLE_HS_CONN_HANDLE_NONE;
+        }
 
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ECONTROLLER);
         return BLE_HS_ECONTROLLER;
+    }
+
+    conn_handle = le16toh(ev->conn_handle);
+
+    /* Complete deferred Remove Config from terminate path. */
+    if (ev->state == 0x00 && conn_handle == ble_cs_pending_remove.conn_handle) {
+        struct ble_gap_conn_desc desc;
+        int same_peer;
+
+        /* Match connection handle and peer before Remove Config. */
+        same_peer = (ble_gap_conn_find(conn_handle, &desc) == 0 &&
+                     memcmp(&desc.peer_ota_addr,
+                            &ble_cs_pending_remove.peer_ota_addr,
+                            sizeof(desc.peer_ota_addr)) == 0);
+        ble_cs_pending_remove.conn_handle = BLE_HS_CONN_HANDLE_NONE;
+
+        if (!same_peer) {
+            BLE_HS_LOG(DEBUG, "CS config removal for conn 0x%04x dropped: "
+                       "connection gone or handle reused", conn_handle);
+            return 0;
+        }
+
+        remove_cmd.conn_handle = conn_handle;
+        remove_cmd.config_id = 0x00;
+        rc = ble_cs_remove_config(&remove_cmd);
+        if (rc) {
+            BLE_HS_LOG(DEBUG, "Failed to remove CS config, err %d", rc);
+        }
     }
 
     return 0;
@@ -967,6 +1019,35 @@ ble_cs_initiator_procedure_start(const struct ble_cs_initiator_procedure_start_p
 int
 ble_cs_initiator_procedure_terminate(uint16_t conn_handle)
 {
+    struct ble_gap_conn_desc desc;
+    struct ble_cs_proc_enable_cp enable_cmd;
+    struct ble_cs_remove_config_cp remove_cmd;
+    int rc;
+
+    /* Initiator-only controller cleanup; reflector only deinits cs_state. */
+    rc = ble_gap_conn_find(conn_handle, &desc);
+    if (rc == 0 && desc.role == BLE_GAP_ROLE_MASTER) {
+        enable_cmd.conn_handle = conn_handle;
+        enable_cmd.config_id = 0x00;
+        enable_cmd.enable = 0x00;
+        rc = ble_cs_proc_enable(&enable_cmd);
+        if (rc == 0) {
+            /* Remove Config deferred until Procedure Enable Complete. */
+            ble_cs_pending_remove.conn_handle = conn_handle;
+            ble_cs_pending_remove.peer_ota_addr = desc.peer_ota_addr;
+        } else {
+            /* No active procedure; remove config now. */
+            BLE_HS_LOG(DEBUG, "Failed to disable CS procedure, err %d", rc);
+
+            remove_cmd.conn_handle = conn_handle;
+            remove_cmd.config_id = 0x00;
+            rc = ble_cs_remove_config(&remove_cmd);
+            if (rc) {
+                BLE_HS_LOG(DEBUG, "Failed to remove CS config, err %d", rc);
+            }
+        }
+    }
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     ble_cs_state_deinit();
 #endif
@@ -985,7 +1066,12 @@ ble_cs_reflector_setup(struct ble_cs_reflector_setup_params *params)
         return rc;
     }
 #endif
-    
+
+    if (params == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     cs_state.cb = params->cb;
     cs_state.cb_arg = params->cb_arg;
 

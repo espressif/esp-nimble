@@ -44,6 +44,12 @@ typedef void (*hal_uart_tx_done)(void *arg);
 typedef int (*hal_uart_rx_char)(void *arg, uint8_t byte);
 
 /**
+ * Controller->host octets were discarded (FIFO or ring overflow).
+ * The transport uses this to drop H4 sync and send HCI_Reset.
+ */
+typedef void (*hal_uart_rx_sync_lost)(void *arg);
+
+/**
  * Initializes given uart. Mapping of logical UART number to physical
  * UART/GPIO pins is in BSP.
  */
@@ -54,6 +60,8 @@ int hal_uart_init_cbs(int uart, hal_uart_tx_char tx_func,
  * De Initialize already registerd callbacks
  */
 void hal_uart_deinit_cbs(void);
+
+void hal_uart_set_rx_sync_lost_cb(hal_uart_rx_sync_lost cb, void *arg);
 
 enum hal_uart_parity {
     /** No Parity */

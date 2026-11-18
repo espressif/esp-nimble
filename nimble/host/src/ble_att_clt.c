@@ -51,6 +51,16 @@ ble_att_clt_rx_error(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
 
     rsp = (struct ble_att_error_rsp *)(*rxom)->om_data;
 
+    if (rsp->baep_req_op == BLE_ATT_OP_MTU_REQ) {
+        struct ble_l2cap_chan *chan;
+
+        ble_hs_lock();
+        if (ble_att_conn_chan_find(conn_handle, cid, NULL, &chan) == 0) {
+            chan->flags &= ~BLE_L2CAP_CHAN_F_MTU_REQ_PENDING;
+        }
+        ble_hs_unlock();
+    }
+
     ble_gattc_rx_err(conn_handle, cid, le16toh(rsp->baep_handle),
                      rsp->baep_error_code);
 
@@ -133,6 +143,17 @@ ble_att_clt_rx_mtu(uint16_t conn_handle, uint16_t cid, struct os_mbuf **rxom)
     if (cid != BLE_L2CAP_CID_ATT) {
         return BLE_HS_ENOTSUP;
     }
+
+    ble_hs_lock();
+    rc = ble_att_conn_chan_find(conn_handle, cid, NULL, &chan);
+    if (rc == 0) {
+        if (!(chan->flags & BLE_L2CAP_CHAN_F_MTU_REQ_PENDING)) {
+            ble_hs_unlock();
+            return 0;
+        }
+        chan->flags &= ~BLE_L2CAP_CHAN_F_MTU_REQ_PENDING;
+    }
+    ble_hs_unlock();
 
     rc = ble_hs_mbuf_pullup_base(rxom, sizeof(*cmd));
     if (rc == 0) {
@@ -392,6 +413,7 @@ ble_att_clt_tx_read_type(uint16_t conn_handle, uint16_t cid, uint16_t start_hand
 
     struct ble_att_read_type_req *req;
     struct os_mbuf *txom;
+    int rc;
 
     if (start_handle == 0 || start_handle > end_handle) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
@@ -408,7 +430,11 @@ ble_att_clt_tx_read_type(uint16_t conn_handle, uint16_t cid, uint16_t start_hand
     req->batq_start_handle = htole16(start_handle);
     req->batq_end_handle = htole16(end_handle);
 
-    ble_uuid_flat(uuid, req->uuid);
+    rc = ble_uuid_flat(uuid, req->uuid);
+    if (rc != 0) {
+        os_mbuf_free_chain(txom);
+        return rc;
+    }
 
     return ble_att_tx(conn_handle, cid, txom);
 }
@@ -565,12 +591,21 @@ ble_att_clt_tx_read_mult(uint16_t conn_handle, uint16_t cid,
 
     struct ble_att_read_mult_req *req;
     struct os_mbuf *txom;
+    size_t req_len;
+    uint16_t mtu;
     int i;
     uint8_t op;
 
     if (num_handles < 2) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
+    }
+
+    req_len = BLE_ATT_READ_MULT_REQ_BASE_SZ +
+              sizeof(req->handles[0]) * (size_t)num_handles;
+    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    if (mtu != 0 && req_len > mtu) {
+        return BLE_HS_EMSGSIZE;
     }
 
     op = variable ? BLE_ATT_OP_READ_MULT_VAR_REQ : BLE_ATT_OP_READ_MULT_REQ;
@@ -728,6 +763,7 @@ ble_att_clt_tx_write_req(uint16_t conn_handle, uint16_t cid, uint16_t handle,
                          struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_WRITE
+    os_mbuf_free_chain(txom);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -751,6 +787,7 @@ ble_att_clt_tx_write_cmd(uint16_t conn_handle, uint16_t cid,
                          uint16_t handle, struct os_mbuf *txom)
 {
 #if !NIMBLE_BLE_ATT_CLT_WRITE_NO_RSP
+    os_mbuf_free_chain(txom);
     return BLE_HS_ENOTSUP;
 #endif
 
@@ -808,6 +845,7 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
     uint8_t cmac[16];
     uint8_t *message = NULL;
     uint16_t len;
+    uint16_t mtu;
     uint16_t payload_len;
     int rc;
 
@@ -827,6 +865,12 @@ ble_att_clt_tx_signed_write_cmd(uint16_t conn_handle, uint16_t cid, uint16_t han
 #endif
 
     payload_len = OS_MBUF_PKTLEN(txom);
+    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    if (mtu != 0 &&
+        BLE_ATT_SIGNED_WRITE_CMD_BASE_SZ + payload_len > mtu) {
+        rc = BLE_HS_EMSGSIZE;
+        goto err;
+    }
 
     /* Validate payload length to prevent overflow */
     if (payload_len > (UINT16_MAX - BLE_ATT_SIGNED_WRITE_DATA_OFFSET - sizeof(counter))) {
@@ -1158,22 +1202,47 @@ ble_att_clt_tx_notify_mult(uint16_t conn_handle, struct os_mbuf *txom)
 
     struct os_mbuf *txom2;
     uint16_t cid;
+    uint16_t mtu;
     int rc;
+
+    cid = ble_eatt_get_available_chan_cid(conn_handle, BLE_GATT_OP_DUMMY);
+    mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    if (cid != BLE_L2CAP_CID_ATT && mtu != 0 &&
+        sizeof(struct ble_att_hdr) + OS_MBUF_PKTLEN(txom) > mtu) {
+        /*
+         * The batch is sized for the fixed ATT bearer.  If the selected EATT
+         * bearer has a smaller MTU, use the fixed bearer instead.
+         */
+        ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
+        cid = BLE_L2CAP_CID_ATT;
+        mtu = ble_att_mtu_by_cid(conn_handle, cid);
+    }
+    if (mtu != 0 &&
+        sizeof(struct ble_att_hdr) + OS_MBUF_PKTLEN(txom) > mtu) {
+        rc = BLE_HS_EMSGSIZE;
+        goto err;
+    }
 
     if (ble_att_cmd_get(BLE_ATT_OP_NOTIFY_MULTI_REQ, 0, &txom2) == NULL) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
-        os_mbuf_free_chain(txom);
-        return BLE_HS_ENOMEM;
+        rc = BLE_HS_ENOMEM;
+        goto err;
     }
 
     os_mbuf_concat(txom2, txom);
 
-    cid = ble_eatt_get_available_chan_cid(conn_handle, BLE_GATT_OP_DUMMY);
     rc = ble_att_tx(conn_handle, cid, txom2);
     if (cid != BLE_L2CAP_CID_ATT) {
         ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
     }
 
+    return rc;
+
+err:
+    if (cid != BLE_L2CAP_CID_ATT) {
+        ble_eatt_release_chan(conn_handle, BLE_GATT_OP_DUMMY);
+    }
+    os_mbuf_free_chain(txom);
     return rc;
 }
 

@@ -69,6 +69,7 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
 {
     int rc;
     bool is_request;
+    uint8_t opcode;
     struct os_mbuf_pkthdr *omp;
 
     if (!txom) {
@@ -86,7 +87,8 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
 
     BLE_HS_DBG_ASSERT_EVAL(txom->om_len >= 1);
 
-    is_request = ble_att_is_request_op(txom->om_data[0]);
+    opcode = txom->om_data[0];
+    is_request = ble_att_is_request_op(opcode);
 
     if (is_request) {
         if (conn->client_att_busy) {
@@ -97,7 +99,7 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
         conn->client_att_busy = true;
     }
 
-    ble_att_inc_tx_stat(txom->om_data[0]);
+    ble_att_inc_tx_stat(opcode);
 
     ble_att_truncate_to_mtu(chan, txom);
     /* Save is_request before ble_l2cap_tx, which frees txom */
@@ -107,6 +109,9 @@ ble_att_tx_with_conn(struct ble_hs_conn *conn, struct ble_l2cap_chan *chan, stru
             conn->client_att_busy = false;
         }
         return rc;
+    }
+    if (opcode == BLE_ATT_OP_MTU_REQ) {
+        chan->flags |= BLE_L2CAP_CHAN_F_MTU_REQ_PENDING;
     }
     return 0;
 }
@@ -261,6 +266,9 @@ ble_att_mtu_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_MTU_REQ, payload,
                              BLE_ATT_MTU_CMD_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->bamc_mtu = htole16(src->bamc_mtu);
 }
 
@@ -303,6 +311,9 @@ ble_att_find_info_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_FIND_INFO_REQ, payload,
                              BLE_ATT_FIND_INFO_REQ_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->bafq_start_handle = htole16(src->bafq_start_handle);
     dst->bafq_end_handle = htole16(src->bafq_end_handle);
 }
@@ -364,6 +375,9 @@ ble_att_find_type_value_req_write(
     dst = ble_att_init_write(BLE_ATT_OP_FIND_TYPE_VALUE_REQ, payload,
                              BLE_ATT_FIND_TYPE_VALUE_REQ_BASE_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->bavq_start_handle = htole16(src->bavq_start_handle);
     dst->bavq_end_handle = htole16(src->bavq_end_handle);
     dst->bavq_attr_type = htole16(src->bavq_attr_type);
@@ -394,6 +408,9 @@ ble_att_read_type_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_READ_TYPE_REQ, payload,
                              BLE_ATT_READ_TYPE_REQ_BASE_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->batq_start_handle = htole16(src->batq_start_handle);
     dst->batq_end_handle = htole16(src->batq_end_handle);
 }
@@ -452,6 +469,9 @@ ble_att_read_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_READ_REQ, payload,
                              BLE_ATT_READ_REQ_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->barq_handle = htole16(src->barq_handle);
 }
 
@@ -481,6 +501,9 @@ ble_att_read_blob_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_READ_BLOB_REQ, payload,
                              BLE_ATT_READ_BLOB_REQ_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->babq_handle = htole16(src->babq_handle);
     dst->babq_offset = htole16(src->babq_offset);
 }
@@ -614,6 +637,10 @@ ble_att_write_req_write(void *payload, int len,
 
     dst = ble_att_init_write(BLE_ATT_OP_WRITE_REQ, payload,
                              BLE_ATT_WRITE_REQ_BASE_SZ, len);
+
+    if (dst == NULL) {
+        return;
+    }
     dst->bawq_handle = htole16(src->bawq_handle);
 }
 
@@ -658,6 +685,9 @@ ble_att_prep_write_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_PREP_WRITE_REQ, payload,
                              BLE_ATT_PREP_WRITE_CMD_BASE_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->bapc_handle = htole16(src->bapc_handle);
     dst->bapc_offset = htole16(src->bapc_offset);
 }
@@ -688,6 +718,9 @@ ble_att_prep_write_rsp_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_PREP_WRITE_RSP, payload,
                              BLE_ATT_PREP_WRITE_CMD_BASE_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->bapc_handle = htole16(src->bapc_handle);
     dst->bapc_offset = htole16(src->bapc_offset);
 }
@@ -717,6 +750,9 @@ ble_att_exec_write_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_EXEC_WRITE_REQ, payload,
                              BLE_ATT_EXEC_WRITE_REQ_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->baeq_flags = src->baeq_flags;
 }
 
@@ -759,6 +795,9 @@ ble_att_notify_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_NOTIFY_REQ, payload,
                              BLE_ATT_NOTIFY_REQ_BASE_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->banq_handle = htole16(src->banq_handle);
 }
 
@@ -787,6 +826,9 @@ ble_att_indicate_req_write(void *payload, int len,
     dst = ble_att_init_write(BLE_ATT_OP_INDICATE_REQ, payload,
                              BLE_ATT_INDICATE_REQ_BASE_SZ, len);
 
+    if (dst == NULL) {
+        return;
+    }
     dst->baiq_handle = htole16(src->baiq_handle);
 }
 

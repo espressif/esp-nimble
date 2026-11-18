@@ -84,6 +84,7 @@ struct ble_gattc_cache_conn_svc {
      *     o BLE_GATT_SVC_TYPE_SECONDARY - secondary service
      */
     uint8_t type;
+    uint8_t chrs_discovery_attempted;
     struct ble_gatt_svc svc;
 #if MYNEWT_VAL(BLE_GATT_CACHING_INCLUDE_SERVICES)
     struct ble_gattc_cache_conn_incl_list incl_svc;
@@ -109,10 +110,11 @@ struct ble_gattc_cache_conn_op {
        request comes while the cache is building */
     uint16_t start_handle;
     uint16_t end_handle;
-    const ble_uuid_t *uuid;
+    ble_uuid_any_t uuid;
     void *cb;
     void *cb_arg;
     uint8_t cb_type;
+    uint8_t active;
 };
 struct ble_gattc_cache_conn {
     SLIST_ENTRY(ble_gattc_cache_conn) next;
@@ -305,6 +307,7 @@ int ble_gattc_cache_clean(ble_addr_t peer_addr);
 int ble_gattc_cache_assoc(ble_addr_t peer_addr);
 int ble_gattc_cache_find_source(struct ble_gattc_cache_conn *cache_conn, uint8_t *database_hash);
 int ble_gattc_cache_assoc_load(ble_addr_t src_addr, uint8_t src_index, ble_addr_t assoc_addr);
+void ble_gattc_cache_conn_clear_svcs(ble_addr_t peer_addr);
 #endif
 /* cache search */
 int ble_gattc_cache_conn_search_all_svcs(uint16_t conn_handle,

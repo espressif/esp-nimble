@@ -26,6 +26,7 @@
 #include "os/os_mbuf.h"
 #include "os/os_mempool.h"
 #include "hal/hal_uart.h"
+#include "nimble/hci_common.h"
 #include "nimble/transport.h"
 #include "nimble/transport/hci_h4.h"
 
@@ -73,6 +74,13 @@ hci_uart_rx_char(void *arg, uint8_t data)
     hci_h4_sm_rx(&hci_uart_h4sm, &data, 1);
 
     return 0;
+}
+
+static void
+hci_uart_rx_sync_lost(void *arg)
+{
+    (void)arg;
+    hci_h4_sm_sync_lost(&hci_uart_h4sm);
 }
 
 static int
@@ -147,6 +155,8 @@ hci_uart_configure(void)
         return -1;
     }
 
+    hal_uart_set_rx_sync_lost_cb(hci_uart_rx_sync_lost, NULL);
+
     if (MYNEWT_VAL_CHOICE(BLE_TRANSPORT_UART_PARITY, odd)) {
         parity = HAL_UART_PARITY_ODD;
     } else if (MYNEWT_VAL_CHOICE(BLE_TRANSPORT_UART_PARITY, even)) {
@@ -192,9 +202,26 @@ ble_transport_to_ll_cmd_impl(void *buf)
     txe->idx = 0;
     txe->om = NULL;
 
-    OS_ENTER_CRITICAL(sr);
-    STAILQ_INSERT_TAIL(&tx_q, txe, tx_q_next);
-    OS_EXIT_CRITICAL(sr);
+    /* Read the opcode before the buffer is queued. The TX task can drain
+     * and free it as soon as it is on tx_q. */
+    {
+        const uint8_t *cmd = buf;
+        uint16_t opcode;
+        int is_reset;
+
+        opcode = (uint16_t)cmd[0] | ((uint16_t)cmd[1] << 8);
+        is_reset = opcode == BLE_HCI_OP(BLE_HCI_OGF_CTLR_BASEBAND,
+                                        BLE_HCI_OCF_CB_RESET);
+
+        OS_ENTER_CRITICAL(sr);
+        STAILQ_INSERT_TAIL(&tx_q, txe, tx_q_next);
+        OS_EXIT_CRITICAL(sr);
+
+        /* Arm H4 resync only once this Reset is actually queued. */
+        if (is_reset) {
+            hci_h4_sm_note_host_reset_cmd(&hci_uart_h4sm);
+        }
+    }
 
     hal_uart_start_tx(MYNEWT_VAL(BLE_TRANSPORT_UART_PORT));
 
@@ -236,6 +263,8 @@ ble_transport_ll_init(void)
 
     SYSINIT_ASSERT_ACTIVE();
 
+    hci_h4_sm_init(&hci_uart_h4sm, &hci_h4_allocs_from_ll, hci_uart_frame_cb);
+
     rc = hci_uart_configure();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
@@ -243,17 +272,16 @@ ble_transport_ll_init(void)
                          pool_tx_q_buf, "hci_uart_tx_q");
     SYSINIT_PANIC_ASSERT(rc == 0);
 
-    hci_h4_sm_init(&hci_uart_h4sm, &hci_h4_allocs_from_ll, hci_uart_frame_cb);
-
     STAILQ_INIT(&tx_q);
 }
 
 void
 ble_transport_ll_deinit(void)
 {
-    memset(&hci_uart_h4sm, 0, sizeof(hci_uart_h4sm));
-
+    /* Stop the RX task while the parser is still valid, then drop it. */
     hal_uart_close(MYNEWT_VAL(BLE_TRANSPORT_UART_PORT));
+
+    hci_h4_sm_deinit(&hci_uart_h4sm);
 
     hal_uart_deinit_cbs();
 }

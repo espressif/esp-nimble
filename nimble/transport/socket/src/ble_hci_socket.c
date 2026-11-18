@@ -457,7 +457,8 @@ ble_hci_sock_rx_msg(void)
             rc = ble_transport_to_hs_evt(data);
             OS_EXIT_CRITICAL(sr);
             if (rc) {
-                ble_transport_free(data);
+                /* The host frees the event buffer before returning an error
+                 * (see ble_hs_hci_rx_evt). Do not free it again here. */
                 STATS_INC(hci_sock_stats, ierr);
                 return 0;
             }

@@ -122,6 +122,7 @@ typedef int ble_l2cap_tx_fn(struct ble_hs_conn *conn,
 
 #define BLE_L2CAP_CHAN_F_TXED_MTU       0x01    /* We have sent our MTU. */
 #define BLE_L2CAP_CHAN_F_DISCONNECTING  0x02    /* We have sent L2CAP Disconnect. */
+#define BLE_L2CAP_CHAN_F_MTU_REQ_PENDING 0x04   /* Transmitted MTU request awaits response. */
 
 SLIST_HEAD(ble_l2cap_chan_list, ble_l2cap_chan);
 

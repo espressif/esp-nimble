@@ -100,6 +100,8 @@ static struct ble_hs_stop_listener stop_listener;
 #endif
 
 static bool nimble_port_run_active;
+static void *nimble_host_task_id;   /* Task that runs nimble_port_run() (the host task). */
+static bool nimble_port_stopping;   /* Set while a stop procedure is in progress. */
 
 extern void os_msys_init(void);
 extern void os_mempool_module_init(void);
@@ -139,6 +141,11 @@ ble_npl_reset_deinit_flag(void)
 static void
 ble_hs_stop_cb(int status, void *arg)
 {
+    /* Propagate the host stop status to the waiter, so a failed or timed-out
+     * stop is not reported back to the caller as success. */
+    if (arg != NULL) {
+        *(int *)arg = status;
+    }
     ble_npl_sem_release(&ble_hs_stop_sem);
 }
 
@@ -186,6 +193,17 @@ esp_err_t esp_nimble_init(void)
 #if CONFIG_BT_CONTROLLER_ENABLED
     if(esp_nimble_hci_init() != ESP_OK) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "hci inits failed\n");
+        /* Unwind the NPL state brought up above, so that a retried
+         * nimble_port_init() does not re-run npl_freertos_mempool_init() and
+         * orphan the previously allocated pool buffers. */
+        npl_freertos_mempool_deinit();
+        npl_freertos_funcs_deinit();
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+        if (ble_npl_ctx) {
+            nimble_platform_mem_free(ble_npl_ctx);
+            ble_npl_ctx = NULL;
+        }
+#endif
         return ESP_FAIL;
     }
 #else
@@ -427,29 +445,67 @@ nimble_port_stop(void)
 {
     esp_err_t err = ESP_OK;
     ble_npl_error_t rc;
+    int stop_status = 0;
+    uint32_t ctx;
+
+    /* A call from the host task itself would deadlock: that task is the only
+     * one that services the stop event queued below, so it cannot both block
+     * here and release us. Reject it instead of hanging forever. */
+    if (nimble_host_task_id != NULL &&
+        ble_npl_get_current_task_id() == nimble_host_task_id) {
+        ESP_LOGE(NIMBLE_PORT_LOG_TAG,
+                 "nimble_port_stop() called from the host task; would deadlock");
+        return ESP_FAIL;
+    }
+
+    /* Only one stop procedure may run at a time. Concurrent callers share one
+     * semaphore and one event, so a second caller would pend on a release that
+     * never comes. Serialise with a race-free test-and-set. */
+    ctx = ble_npl_hw_enter_critical();
+    if (nimble_port_stopping) {
+        ble_npl_hw_exit_critical(ctx);
+        ESP_LOGW(NIMBLE_PORT_LOG_TAG, "nimble_port_stop() already in progress");
+        return ESP_FAIL;
+    }
+    nimble_port_stopping = true;
+    ble_npl_hw_exit_critical(ctx);
 
     rc = ble_npl_sem_init(&ble_hs_stop_sem, 0);
 
     if( rc != 0) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG, "sem init failed with reason: %d \n", rc);
-	return rc;
+        err = rc;
+        goto out;
     }
 
     /* Initiate a host stop procedure. */
     err = ble_hs_stop(&stop_listener, ble_hs_stop_cb,
-                     NULL);
+                     &stop_status);
     if (err != 0) {
         if (err != BLE_HS_EALREADY) {
             ble_npl_sem_deinit(&ble_hs_stop_sem);
-            return err;
+            goto out;
         }
         if (!nimble_port_run_active) {
             ble_npl_sem_deinit(&ble_hs_stop_sem);
-            return ESP_OK;
+            err = ESP_OK;
+            goto out;
         }
     } else {
         /* Wait till the host stop procedure is complete */
         ble_npl_sem_pend(&ble_hs_stop_sem, BLE_NPL_TIME_FOREVER);
+
+        if (stop_status != 0) {
+            /* The stop procedure failed (e.g. a connection outlived the
+             * graceful-disconnect timeout) and the host has reverted to the
+             * enabled state. Keep the host task running: stopping it here
+             * would leave an enabled host with no event loop, so a caller
+             * that skips deinit on failure could never retry (the retried
+             * stop would pend on events no task services). */
+            ble_npl_sem_deinit(&ble_hs_stop_sem);
+            err = ESP_FAIL;
+            goto out;
+        }
     }
 
     ble_npl_event_init(&ble_hs_ev_stop, nimble_port_stop_cb,
@@ -461,7 +517,11 @@ nimble_port_stop(void)
 
     ble_npl_sem_deinit(&ble_hs_stop_sem);
 
-    return ESP_OK;
+    err = ESP_OK;
+
+out:
+    nimble_port_stopping = false;
+    return err;
 }
 
 #if !MYNEWT_VAL(BLE_LOW_SPEED_MODE)
@@ -497,13 +557,19 @@ void nimble_port_run(void)
     struct ble_npl_sem  *stop_sem  = &ble_hs_stop_sem;
 
     nimble_port_run_active = true;
+    nimble_host_task_id = ble_npl_get_current_task_id();
     while (1) {
         ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
         if (ev) {
             ble_npl_event_run(ev);
+
+            /* Re-post a latched host reset after each event. */
+            ble_hs_sched_reset_retry();
+
             if (ev == stop_ev) {
                 ble_npl_event_deinit(stop_ev);
                 nimble_port_run_active = false;
+                nimble_host_task_id = NULL;
                 ble_npl_sem_release(stop_sem);
                 break;
             }

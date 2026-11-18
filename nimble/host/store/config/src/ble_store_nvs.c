@@ -232,7 +232,8 @@ get_nvs_peer_record(nvs_handle_t nimble_handle, char *key_string, struct ble_hs_
     if (required_size != sizeof(struct ble_hs_dev_records)) {
         ESP_LOGE(TAG, "NVS data size mismatch for peer record: expected %d, got %d",
                  (int)sizeof(struct ble_hs_dev_records), (int)required_size);
-        return ESP_ERR_NVS_INVALID_LENGTH;
+        /* Same as get_nvs_db_value(): skip the slot, keep the blob. */
+        return ESP_ERR_NVS_NOT_FOUND;
     }
 
     err = nvs_get_blob(nimble_handle, key_string, p_dev_rec,
@@ -284,7 +285,8 @@ get_nvs_db_value(nvs_handle_t nimble_handle, int obj_type, char *key_string, uni
     if (required_size != expected_size) {
         ESP_LOGE(TAG, "NVS data size mismatch for obj_type %d: expected %d, got %d",
                  obj_type, (int)expected_size, (int)required_size);
-        return ESP_ERR_NVS_INVALID_LENGTH;
+        /* Unreadable layout: treat slot as empty for this build. */
+        return ESP_ERR_NVS_NOT_FOUND;
     }
 
     if (obj_type == BLE_STORE_OBJ_TYPE_CCCD) {
@@ -776,6 +778,209 @@ populate_db_from_nvs(nvs_handle_t nimble_handle, int obj_type, void *dst, int *d
     return 0;
 }
 
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+static int
+ble_nvs_peer_has_our_sec(const ble_addr_t *peer_addr)
+{
+    int i;
+
+    for (i = 0; i < ble_store_config_num_our_secs; i++) {
+        if (ble_addr_cmp(&ble_store_config_our_secs[i].peer_addr, peer_addr) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static const ble_addr_t *
+ble_nvs_obj_peer_addr(int obj_type, const union ble_store_value *val)
+{
+    switch (obj_type) {
+    case BLE_STORE_OBJ_TYPE_PEER_SEC:
+        return &val->sec.peer_addr;
+    case BLE_STORE_OBJ_TYPE_CCCD:
+        return &val->cccd.peer_addr;
+    case BLE_STORE_OBJ_TYPE_CSFC:
+        return &val->csfc.peer_addr;
+    case BLE_STORE_OBJ_TYPE_PEER_ADDR:
+        return &val->rpa_rec.peer_addr;
+    default:
+        return NULL;
+    }
+}
+
+/* Erase PEER_SEC, CCCD, CSFC and RPA rows whose address has no OUR_SEC.
+ * OUR_SEC itself is left alone.
+ */
+static int
+ble_nvs_erase_orphans(nvs_handle_t nimble_handle, int obj_type)
+{
+    union ble_store_value cur;
+    const ble_addr_t *peer_addr;
+    char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
+    esp_err_t err;
+    int i;
+    int max_limit;
+    int rc;
+
+    max_limit = get_nvs_max_obj_value(obj_type);
+    for (i = 1; i <= max_limit; i++) {
+        get_nvs_key_string(obj_type, i, key_string);
+        err = get_nvs_db_value(nimble_handle, obj_type, key_string, &cur);
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            continue;
+        }
+        if (err != ESP_OK) {
+            return BLE_HS_ESTORE_FAIL;
+        }
+
+        peer_addr = ble_nvs_obj_peer_addr(obj_type, &cur);
+        if (peer_addr == NULL || ble_nvs_peer_has_our_sec(peer_addr)) {
+            continue;
+        }
+
+        rc = ble_nvs_delete_value(nimble_handle, obj_type, i);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+
+    return 0;
+}
+
+/* Unreadable OUR_SEC present; skip orphan erase. */
+static bool
+ble_nvs_has_unreadable_our_sec(nvs_handle_t nimble_handle)
+{
+    char key_string[NIMBLE_NVS_STR_NAME_MAX_LEN];
+    size_t required_size;
+    int i;
+
+    for (i = 1; i <= get_nvs_max_obj_value(BLE_STORE_OBJ_TYPE_OUR_SEC); i++) {
+        get_nvs_key_string(BLE_STORE_OBJ_TYPE_OUR_SEC, i, key_string);
+        required_size = 0;
+        if (nvs_get_blob(nimble_handle, key_string, NULL,
+                         &required_size) == ESP_OK &&
+            required_size != sizeof(struct ble_store_value_sec)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void
+ble_nvs_forget_orphan_peer_secs(void)
+{
+    int i;
+    int dst;
+
+    dst = 0;
+    for (i = 0; i < ble_store_config_num_peer_secs; i++) {
+        if (!ble_nvs_peer_has_our_sec(&ble_store_config_peer_secs[i].peer_addr)) {
+            continue;
+        }
+        if (dst != i) {
+            ble_store_config_peer_secs[dst] = ble_store_config_peer_secs[i];
+        }
+        dst++;
+    }
+
+    if (dst < ble_store_config_num_peer_secs) {
+        memset(&ble_store_config_peer_secs[dst], 0,
+               (size_t)(ble_store_config_num_peer_secs - dst) *
+               sizeof(ble_store_config_peer_secs[0]));
+    }
+    ble_store_config_num_peer_secs = dst;
+    if (dst > 0) {
+        ble_store_config_peer_bond_count =
+            ble_store_config_peer_secs[dst - 1].bond_count;
+    } else {
+        ble_store_config_peer_bond_count = 0;
+    }
+}
+
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+static void
+ble_nvs_forget_orphan_cccds(void)
+{
+    int i;
+    int dst;
+
+    dst = 0;
+    for (i = 0; i < ble_store_config_num_cccds; i++) {
+        if (!ble_nvs_peer_has_our_sec(&ble_store_config_cccds[i].peer_addr)) {
+            continue;
+        }
+        if (dst != i) {
+            ble_store_config_cccds[dst] = ble_store_config_cccds[i];
+        }
+        dst++;
+    }
+
+    if (dst < ble_store_config_num_cccds) {
+        memset(&ble_store_config_cccds[dst], 0,
+               (size_t)(ble_store_config_num_cccds - dst) *
+               sizeof(ble_store_config_cccds[0]));
+    }
+    ble_store_config_num_cccds = dst;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
+static void
+ble_nvs_forget_orphan_csfcs(void)
+{
+    int i;
+    int dst;
+
+    dst = 0;
+    for (i = 0; i < ble_store_config_num_csfcs; i++) {
+        if (!ble_nvs_peer_has_our_sec(&ble_store_config_csfcs[i].peer_addr)) {
+            continue;
+        }
+        if (dst != i) {
+            ble_store_config_csfcs[dst] = ble_store_config_csfcs[i];
+        }
+        dst++;
+    }
+
+    if (dst < ble_store_config_num_csfcs) {
+        memset(&ble_store_config_csfcs[dst], 0,
+               (size_t)(ble_store_config_num_csfcs - dst) *
+               sizeof(ble_store_config_csfcs[0]));
+    }
+    ble_store_config_num_csfcs = dst;
+}
+#endif
+
+static void
+ble_nvs_forget_orphan_rpas(void)
+{
+    int i;
+    int dst;
+
+    dst = 0;
+    for (i = 0; i < ble_store_config_num_rpa_recs; i++) {
+        if (!ble_nvs_peer_has_our_sec(&ble_store_config_rpa_recs[i].peer_addr)) {
+            continue;
+        }
+        if (dst != i) {
+            ble_store_config_rpa_recs[dst] = ble_store_config_rpa_recs[i];
+        }
+        dst++;
+    }
+
+    if (dst < ble_store_config_num_rpa_recs) {
+        memset(&ble_store_config_rpa_recs[dst], 0,
+               (size_t)(ble_store_config_num_rpa_recs - dst) *
+               sizeof(ble_store_config_rpa_recs[0]));
+    }
+    ble_store_config_num_rpa_recs = dst;
+}
+#endif
+
 /* Gets the database in RAM filled up with keys stored in NVS. The sequence of
  * the keys in database may get lost.
  */
@@ -783,9 +988,13 @@ static int
 ble_nvs_restore_sec_keys(void)
 {
     int err;
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 1
-    int flag = 0;
-    extern int ble_store_config_compare_bond_count(const void *a, const void *b);
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    bool orphans_checked;
+    bool our_renumbered;
+    bool peer_renumbered;
+    extern int
+    ble_store_config_compare_bond_count_older_first(const void *a,
+                                                      const void *b);
 #endif
     nvs_handle_t nimble_handle;
 
@@ -811,48 +1020,52 @@ ble_nvs_restore_sec_keys(void)
         goto end;
     }
 
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS) > 1
-    /* One bond slot has nothing to reorder. Compiling this out avoids a
-     * false -Warray-bounds on [i+1] when the array length is 1.
-     */
-    if (ble_store_config_num_our_secs > 1 || ble_store_config_num_peer_secs > 1) {
-        /* Use actual populated count, not max config value */
-        int our_check_limit = (ble_store_config_num_our_secs > 1) ? (ble_store_config_num_our_secs - 1) : 0;
-        int peer_check_limit = (ble_store_config_num_peer_secs > 1) ? (ble_store_config_num_peer_secs - 1) : 0;
-        int check_limit = (our_check_limit > peer_check_limit) ? our_check_limit : peer_check_limit;
+    qsort(ble_store_config_our_secs, ble_store_config_num_our_secs,
+          sizeof(struct ble_store_value_sec),
+          ble_store_config_compare_bond_count_older_first);
+    qsort(ble_store_config_peer_secs, ble_store_config_num_peer_secs,
+          sizeof(struct ble_store_value_sec),
+          ble_store_config_compare_bond_count_older_first);
 
-        for (int i = 0; i < check_limit; i++) {
-            if ((i < our_check_limit &&
-                 ble_store_config_our_secs[i].bond_count > ble_store_config_our_secs[i+1].bond_count) ||
-                (i < peer_check_limit &&
-                 ble_store_config_peer_secs[i].bond_count > ble_store_config_peer_secs[i+1].bond_count)) {
-                flag = 1;
-                break;
-            }
-        }
-    }
-
-    if (flag) {
-
-        qsort(ble_store_config_our_secs, ble_store_config_num_our_secs,
-            sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
-
-        qsort(ble_store_config_peer_secs, ble_store_config_num_peer_secs,
-            sizeof(struct ble_store_value_sec), ble_store_config_compare_bond_count);
-    }
-#endif
-
-    /* Only access array if we have valid entries to prevent index -1 access */
-    if (ble_store_config_num_our_secs > 0) {
-        ble_store_config_our_bond_count = ble_store_config_our_secs[ble_store_config_num_our_secs - 1].bond_count;
+    our_renumbered = false;
+    if (ble_store_config_bond_counts_need_renumber(ble_store_config_our_secs,
+                                                 ble_store_config_num_our_secs)) {
+        our_renumbered = ble_store_config_renumber_bond_counts(
+                                        ble_store_config_our_secs,
+                                        ble_store_config_num_our_secs,
+                                        &ble_store_config_our_bond_count);
+    } else if (ble_store_config_num_our_secs > 0) {
+        ble_store_config_our_bond_count = (uint16_t)(
+            ble_store_config_our_secs[ble_store_config_num_our_secs - 1].bond_count + 1);
     } else {
         ble_store_config_our_bond_count = 0;
     }
 
-    if (ble_store_config_num_peer_secs > 0) {
-        ble_store_config_peer_bond_count = ble_store_config_peer_secs[ble_store_config_num_peer_secs - 1].bond_count;
+    peer_renumbered = false;
+    if (ble_store_config_bond_counts_need_renumber(ble_store_config_peer_secs,
+                                                 ble_store_config_num_peer_secs)) {
+        peer_renumbered = ble_store_config_renumber_bond_counts(
+                                        ble_store_config_peer_secs,
+                                        ble_store_config_num_peer_secs,
+                                        &ble_store_config_peer_bond_count);
+    } else if (ble_store_config_num_peer_secs > 0) {
+        ble_store_config_peer_bond_count = (uint16_t)(
+            ble_store_config_peer_secs[ble_store_config_num_peer_secs - 1].bond_count + 1);
     } else {
         ble_store_config_peer_bond_count = 0;
+    }
+
+    if (our_renumbered) {
+        ESP_LOGW(TAG, "our_sec bond counts renumbered, rewriting NVS");
+        if (ble_store_config_persist_our_secs() != 0) {
+            ESP_LOGE(TAG, "NVS operation failed for 'our sec' renumber");
+        }
+    }
+    if (peer_renumbered) {
+        ESP_LOGW(TAG, "peer_sec bond counts renumbered, rewriting NVS");
+        if (ble_store_config_persist_peer_secs() != 0) {
+            ESP_LOGE(TAG, "NVS operation failed for 'peer sec' renumber");
+        }
     }
 
     ESP_LOGD(TAG, "ble_store_config_peer_secs restored %d bonds",
@@ -909,7 +1122,47 @@ ble_nvs_restore_sec_keys(void)
     ESP_LOGD(TAG, "ble_store_config_rpa_recs restored %d bonds",
              ble_store_config_num_rpa_recs);
 
-    err = 0;
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    orphans_checked = !ble_nvs_has_unreadable_our_sec(nimble_handle);
+
+    /* Drop leftover peer rows for an address that has no bond (OUR_SEC). */
+    if (orphans_checked) {
+        err = ble_nvs_erase_orphans(nimble_handle, BLE_STORE_OBJ_TYPE_PEER_SEC);
+        if (err != 0) {
+            goto end;
+        }
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+        err = ble_nvs_erase_orphans(nimble_handle, BLE_STORE_OBJ_TYPE_CCCD);
+        if (err != 0) {
+            goto end;
+        }
+#endif
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
+        err = ble_nvs_erase_orphans(nimble_handle, BLE_STORE_OBJ_TYPE_CSFC);
+        if (err != 0) {
+            goto end;
+        }
+#endif
+        err = ble_nvs_erase_orphans(nimble_handle, BLE_STORE_OBJ_TYPE_PEER_ADDR);
+        if (err != 0) {
+            goto end;
+        }
+    }
+#endif
+
+    err = ble_nvs_commit_checked(nimble_handle);
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    if (err == 0 && orphans_checked) {
+        ble_nvs_forget_orphan_peer_secs();
+#if MYNEWT_VAL(BLE_STORE_MAX_CCCDS)
+        ble_nvs_forget_orphan_cccds();
+#endif
+#if MYNEWT_VAL(BLE_STORE_MAX_CSFCS)
+        ble_nvs_forget_orphan_csfcs();
+#endif
+        ble_nvs_forget_orphan_rpas();
+    }
+#endif
 end:
     nvs_close(nimble_handle);
     return err;
@@ -1468,8 +1721,10 @@ int ble_store_config_persist_peer_secs(void)
             nvs_close(nimble_handle);
             return 0;
         }
+        rc = 0;
+    }
 
-        /* Sync updates: Find which record changed and update it */
+    if (rc == 0) {
         for (i = 0; i < ble_store_config_num_peer_secs; i++) {
             val.sec = ble_store_config_peer_secs[i];
             nvs_idx = get_nvs_sec_identity_index(nimble_handle, &val.sec, BLE_STORE_OBJ_TYPE_PEER_SEC);
@@ -1480,12 +1735,13 @@ int ble_store_config_persist_peer_secs(void)
                 if (get_nvs_db_value(nimble_handle, BLE_STORE_OBJ_TYPE_PEER_SEC, key_string, &nvs_val) == 0) {
                     if (memcmp(&nvs_val.sec, &val.sec, sizeof(val.sec)) != 0) {
                         rc = ble_store_nvs_update(nimble_handle, BLE_STORE_OBJ_TYPE_PEER_SEC, nvs_idx, &val);
-                        goto end;
+                        if (rc != 0) {
+                            goto end;
+                        }
                     }
                 }
             }
         }
-        rc = 0;
     }
 
 end:
@@ -1574,8 +1830,10 @@ int ble_store_config_persist_our_secs(void)
             nvs_close(nimble_handle);
             return 0;
         }
+        rc = 0;
+    }
 
-        /* Sync updates: Find which record changed and update it */
+    if (rc == 0) {
         for (i = 0; i < ble_store_config_num_our_secs; i++) {
             val.sec = ble_store_config_our_secs[i];
             nvs_idx = get_nvs_sec_identity_index(nimble_handle, &val.sec, BLE_STORE_OBJ_TYPE_OUR_SEC);
@@ -1586,12 +1844,13 @@ int ble_store_config_persist_our_secs(void)
                 if (get_nvs_db_value(nimble_handle, BLE_STORE_OBJ_TYPE_OUR_SEC, key_string, &nvs_val) == 0) {
                     if (memcmp(&nvs_val.sec, &val.sec, sizeof(val.sec)) != 0) {
                         rc = ble_store_nvs_update(nimble_handle, BLE_STORE_OBJ_TYPE_OUR_SEC, nvs_idx, &val);
-                        goto end;
+                        if (rc != 0) {
+                            goto end;
+                        }
                     }
                 }
             }
         }
-        rc = 0;
     }
 
 end:

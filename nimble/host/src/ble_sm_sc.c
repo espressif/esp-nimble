@@ -267,9 +267,6 @@ ble_sm_sc_ensure_keys_generated(void)
     BLE_HS_LOG(DEBUG, "our pubkey=");
     ble_hs_log_flat_buf(ble_sm_sc_pub_key, 64);
     BLE_HS_LOG(DEBUG, "\n");
-    BLE_HS_LOG(DEBUG, "our privkey=");
-    ble_hs_log_flat_buf(ble_sm_sc_priv_key, 32);
-    BLE_HS_LOG(DEBUG, "\n");
 
     return 0;
 }
@@ -544,10 +541,6 @@ ble_sm_sc_random_rx(struct ble_sm_proc *proc, struct ble_sm_result *res)
         proc->flags & BLE_SM_PROC_F_INITIATOR ||
         ble_sm_sc_responder_verifies_random(proc))) {
 
-        BLE_HS_LOG(DEBUG, "tk=");
-        ble_hs_log_flat_buf(proc->tk, 16);
-        BLE_HS_LOG(DEBUG, "\n");
-
         rc = ble_sm_alg_f4(proc->pub_key_peer.x, ble_sm_sc_pub_key,
                            ble_sm_peer_pair_rand(proc), proc->ri,
                            confirm_val);
@@ -724,9 +717,9 @@ ble_sm_sc_public_key_rx(uint16_t conn_handle, struct os_mbuf **om,
     }
 
     cmd = (struct ble_sm_public_key *)(*om)->om_data;
-    /* Check if the X component of peer public key is same as X
-     * component of our generated public key. Return fail if they match. */
+    /* Reject peer pubkey X equal to ours (SC passkey MITM). */
     if (memcmp(cmd->x, ble_sm_sc_pub_key, 32) == 0) {
+        res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_AUTHREQ);
         res->enc_cb = 1;
         res->sm_err = BLE_SM_ERR_AUTHREQ;
         return;
@@ -911,10 +904,6 @@ ble_sm_dhkey_check_process(struct ble_sm_proc *proc,
     }
 
     ble_sm_sc_dhkey_addrs(proc, &our_addr, &peer_addr);
-    BLE_HS_LOG(DEBUG, "tk=");
-    ble_hs_log_flat_buf(proc->tk, 16);
-    BLE_HS_LOG(DEBUG, "\n");
-
     res->app_status = ble_sm_alg_f6(proc->mackey,
                                     ble_sm_peer_pair_rand(proc),
                                     ble_sm_our_pair_rand(proc),

@@ -775,6 +775,7 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
     case BLE_HCI_EVCODE_COMMAND_COMPLETE:
         if (ev->length < 3 || (cmd_complete->opcode != BLE_HCI_OPCODE_NOP && ev->length < 4)) {
             BLE_HS_LOG(ERROR, "Invalid COMPLETE len=%d\n", ev->length);
+            /* Host frees event buffer; transport does not on error. */
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
             ble_transport_free(BLE_HCI_EVT, hci_ev);
 #else
@@ -799,6 +800,7 @@ ble_hs_hci_rx_evt(uint8_t *hci_ev, void *arg)
     case BLE_HCI_EVCODE_COMMAND_STATUS:
         if (ev->length < sizeof(struct ble_hci_ev_command_status)) {
             BLE_HS_LOG(ERROR, "Invalid STATUS len=%d\n", ev->length);
+            /* Host frees event buffer; see COMMAND_COMPLETE above. */
 #if MYNEWT_VAL(MP_RUNTIME_ALLOC)
             ble_transport_free(BLE_HCI_EVT, hci_ev);
 #else

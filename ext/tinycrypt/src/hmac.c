@@ -60,7 +60,7 @@ int tc_hmac_set_key(TCHmacState_t ctx, const uint8_t *key,
 		return TC_CRYPTO_FAIL;
 	}
 
-	const uint8_t dummy_key[key_size];
+	uint8_t dummy_key[key_size];
 	struct tc_hmac_state_struct dummy_state;
 
 	if (key_size <= TC_SHA256_BLOCK_SIZE) {
@@ -70,7 +70,11 @@ int tc_hmac_set_key(TCHmacState_t ctx, const uint8_t *key,
 		 * adversaries would be able to learn whether the key_size is
 		 * greater than TC_SHA256_BLOCK_SIZE by measuring the time
 		 * consumed in this process.
+		 *
+		 * Initialise the throwaway buffer first so the hash reads
+		 * defined data rather than indeterminate stack contents.
 		 */
+		_set(dummy_key, 0, key_size);
 		(void)tc_sha256_init(&dummy_state.hash_state);
 		(void)tc_sha256_update(&dummy_state.hash_state,
 				       dummy_key,

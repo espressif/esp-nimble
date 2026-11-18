@@ -524,7 +524,7 @@ ble_host_rpa_enabled(void)
 static int
 ble_hs_rand_prand_get(uint8_t *prand)
 {
-    uint16_t sum;
+    int ones;
     int rc;
     int i;
 
@@ -535,9 +535,11 @@ ble_hs_rand_prand_get(uint8_t *prand)
             return rc;
         }
 
-        /* Prand cannot be all zeros or 1's. */
-        sum = prand[0] + prand[1] + prand[2];
-        if ((sum != 0) && (sum != (3 * 0xff))) {
+        /* The 22-bit random part cannot be all zeros or all ones. */
+        ones = __builtin_popcount(prand[0]);
+        ones += __builtin_popcount(prand[1]);
+        ones += __builtin_popcount(prand[2] & 0x3f);
+        if (ones != 0 && ones != 22) {
             /* Upper two bits must be 01 */
             prand[2] &= ~0xc0;
             prand[2] |= 0x40;
@@ -550,20 +552,35 @@ ble_hs_rand_prand_get(uint8_t *prand)
 }
 
 static bool
-is_irk_nonzero(uint8_t *irk)
+ble_hs_resolv_buf_is_nonzero(const uint8_t *buf, int len)
 {
     int i;
-    bool rc = false;
 
-    for (i = 0; i < 16; ++i) {
-        if (*irk != 0) {
-            rc = true;
-            break;
+    for (i = 0; i < len; i++) {
+        if (buf[i] != 0) {
+            return true;
         }
-        ++irk;
     }
 
-    return rc;
+    return false;
+}
+
+static bool
+ble_hs_resolv_entry_is_local(const struct ble_hs_resolv_entry *rl)
+{
+    return rl->rl_addr_type == BLE_ADDR_PUBLIC &&
+           !ble_hs_resolv_buf_is_nonzero(rl->rl_identity_addr,
+                                         BLE_DEV_ADDR_LEN) &&
+           !ble_hs_resolv_buf_is_nonzero(rl->rl_peer_irk,
+                                         sizeof(rl->rl_peer_irk));
+}
+
+static bool
+ble_hs_resolv_local_entry_is_valid(const struct ble_hs_resolv_entry *rl)
+{
+    return ble_hs_resolv_entry_is_local(rl) &&
+           ble_hs_resolv_buf_is_nonzero(rl->rl_local_irk,
+                                        sizeof(rl->rl_local_irk));
 }
 
 /**
@@ -640,6 +657,11 @@ ble_hs_gen_own_private_rnd(void)
 
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[0];
 
+    if (g_ble_hs_resolv_data.rl_cnt == 0 ||
+        !ble_hs_resolv_local_entry_is_valid(rl)) {
+        return BLE_HS_EINVAL;
+    }
+
     ble_hs_resolv_gen_priv_addr(rl, 1);
     return ble_hs_id_set_pseudo_rnd(rl->rl_local_rpa);
 }
@@ -660,6 +682,12 @@ ble_hs_get_rpa_local(void)
 #endif
 
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[0];
+
+    if (g_ble_hs_resolv_data.rl_cnt == 0 ||
+        !ble_hs_resolv_local_entry_is_valid(rl)) {
+        return NULL;
+    }
+
     return rl->rl_local_rpa;
 }
 
@@ -709,7 +737,8 @@ ble_hs_resolv_rpa_timer_cb(struct ble_npl_event *ev)
  * element).
  */
 static int
-ble_hs_is_on_resolv_list(uint8_t *addr, uint8_t addr_type)
+ble_hs_is_on_resolv_list(const uint8_t *addr, uint8_t addr_type,
+                         const uint8_t *peer_irk)
 {
 #if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
     int i;
@@ -717,8 +746,12 @@ ble_hs_is_on_resolv_list(uint8_t *addr, uint8_t addr_type)
 
     for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
         if (rl->rl_addr_type == addr_type &&
-            ((!memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN)) ||
-             (!memcmp(rl->rl_peer_rpa, addr, BLE_DEV_ADDR_LEN)))) {
+            !memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN)) {
+            return i;
+        }
+        if (peer_irk != NULL &&
+            ble_hs_resolv_buf_is_nonzero(peer_irk, sizeof(rl->rl_peer_irk)) &&
+            !memcmp(rl->rl_peer_irk, peer_irk, sizeof(rl->rl_peer_irk))) {
             return i;
         }
         ++rl;
@@ -750,16 +783,25 @@ ble_hs_resolv_list_find(uint8_t *addr)
     int i;
     struct ble_hs_resolv_entry *rl = &g_ble_hs_resolv_list[1];
 
+    if (addr == NULL ||
+        !ble_hs_resolv_buf_is_nonzero(addr, BLE_DEV_ADDR_LEN)) {
+        return NULL;
+    }
+
     for (i = 1; i < g_ble_hs_resolv_data.rl_cnt; ++i) {
         if (memcmp(rl->rl_identity_addr, addr, BLE_DEV_ADDR_LEN) == 0) {
             return rl;
         }
 
-        if (memcmp(rl->rl_pseudo_id, addr, BLE_DEV_ADDR_LEN) == 0) {
+        if (ble_hs_resolv_buf_is_nonzero(rl->rl_pseudo_id,
+                                         BLE_DEV_ADDR_LEN) &&
+            memcmp(rl->rl_pseudo_id, addr, BLE_DEV_ADDR_LEN) == 0) {
             return rl;
         }
 
-        if (memcmp(rl->rl_peer_rpa, addr, BLE_DEV_ADDR_LEN) == 0) {
+        if (ble_hs_resolv_buf_is_nonzero(rl->rl_peer_rpa,
+                                         BLE_DEV_ADDR_LEN) &&
+            memcmp(rl->rl_peer_rpa, addr, BLE_DEV_ADDR_LEN) == 0) {
             return rl;
         }
         ++rl;
@@ -780,10 +822,13 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
 {
     const struct ble_hci_le_add_resolv_list_cp *cmd =
         (const struct ble_hci_le_add_resolv_list_cp *)cmdbuf;
+    uint8_t peer_irk[16];
+    uint8_t local_irk[16];
     uint8_t addr_type;
     const uint8_t *ident_addr;
     struct ble_hs_resolv_entry *rl;
     struct ble_hs_dev_records *p_dev_rec = NULL;
+    bool local_entry;
 
     BLE_HS_DBG_ASSERT(ble_hs_locked_by_cur_task());
 
@@ -798,18 +843,51 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
     }
 #endif
 
-    /* Check if we have any open entries */
+    addr_type = cmd->peer_addr_type;
+    ident_addr = cmd->peer_id_addr;
+    swap_buf(peer_irk, cmd->peer_irk, sizeof(peer_irk));
+    swap_buf(local_irk, cmd->local_irk, sizeof(local_irk));
+
+    local_entry = addr_type == BLE_ADDR_PUBLIC &&
+                  !ble_hs_resolv_buf_is_nonzero(ident_addr,
+                                                BLE_DEV_ADDR_LEN) &&
+                  !ble_hs_resolv_buf_is_nonzero(peer_irk,
+                                                sizeof(peer_irk));
+
+    if (local_entry) {
+        if (!ble_hs_resolv_buf_is_nonzero(local_irk, sizeof(local_irk))) {
+            return BLE_HS_EINVAL;
+        }
+
+        if (g_ble_hs_resolv_data.rl_cnt > 0) {
+            rl = &g_ble_hs_resolv_list[0];
+            if (!ble_hs_resolv_entry_is_local(rl)) {
+                BLE_HS_LOG(ERROR, "Local resolving-list entry is not at index 0\n");
+                return BLE_HS_EINVAL;
+            }
+
+            memcpy(rl->rl_local_irk, local_irk, sizeof(rl->rl_local_irk));
+            ble_hs_resolv_gen_priv_addr(rl, 1);
+            return 0;
+        }
+    } else {
+        if (!ble_hs_resolv_buf_is_nonzero(ident_addr, BLE_DEV_ADDR_LEN) ||
+            g_ble_hs_resolv_data.rl_cnt == 0 ||
+            !ble_hs_resolv_local_entry_is_valid(&g_ble_hs_resolv_list[0])) {
+            BLE_HS_LOG(ERROR, "Resolving-list local entry is missing\n");
+            return BLE_HS_EINVAL;
+        }
+
+        if (ble_hs_is_on_resolv_list(ident_addr, addr_type, peer_irk)) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
+    }
+
+    /* Check if we have any open entries. */
     if (g_ble_hs_resolv_data.rl_cnt >= BLE_RESOLV_LIST_SIZE) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
-    }
-
-    addr_type = cmd->peer_addr_type;
-    ident_addr = cmd->peer_id_addr;
-
-    if (ble_hs_is_on_resolv_list((uint8_t *)ident_addr, addr_type)) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
-        return BLE_HS_EINVAL;
     }
 
     rl = &g_ble_hs_resolv_list[g_ble_hs_resolv_data.rl_cnt];
@@ -817,10 +895,11 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
 
     rl->rl_addr_type = addr_type;
     memcpy(rl->rl_identity_addr, ident_addr, BLE_DEV_ADDR_LEN);
-    swap_buf(rl->rl_peer_irk, cmd->peer_irk, 16);
-    swap_buf(rl->rl_local_irk, cmd->local_irk, 16);
+    memcpy(rl->rl_peer_irk, peer_irk, sizeof(rl->rl_peer_irk));
+    memcpy(rl->rl_local_irk, local_irk, sizeof(rl->rl_local_irk));
 
-    if (is_irk_nonzero(rl->rl_peer_irk)) {
+    if (ble_hs_resolv_buf_is_nonzero(rl->rl_peer_irk,
+                                     sizeof(rl->rl_peer_irk))) {
         p_dev_rec = ble_rpa_find_peer_dev_by_irk(rl->rl_peer_irk);
 
         if (p_dev_rec != NULL) {
@@ -833,7 +912,9 @@ ble_hs_resolv_list_add(uint8_t *cmdbuf)
      * when resolution is enabled
      */
     ble_hs_resolv_gen_priv_addr(rl, 1);
-    ble_hs_resolv_gen_priv_addr(rl, 0);
+    if (!local_entry) {
+        ble_hs_resolv_gen_priv_addr(rl, 0);
+    }
     ++(g_ble_hs_resolv_data.rl_cnt);
     BLE_HS_LOG(DEBUG, "Device added to RL, Resolving list count = %d\n", g_ble_hs_resolv_data.rl_cnt);
 
@@ -863,25 +944,37 @@ ble_hs_resolv_list_rmv(uint8_t addr_type, uint8_t *ident_addr)
 
     rc = BLE_HS_ENOENT;
 
-#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
-    int position;
-
-    /* Remove from IRK records */
-    position = ble_hs_is_on_resolv_list(ident_addr, addr_type);
-
-    if (position) {
-        memmove(&g_ble_hs_resolv_list[position],
-                &g_ble_hs_resolv_list[position + 1],
-                (g_ble_hs_resolv_data.rl_cnt - position - 1) * sizeof (struct
-                        ble_hs_resolv_entry));
-        --g_ble_hs_resolv_data.rl_cnt;
-
-        rc = 0;
+    if (addr_type == BLE_ADDR_PUBLIC &&
+        !ble_hs_resolv_buf_is_nonzero(ident_addr, BLE_DEV_ADDR_LEN) &&
+        g_ble_hs_resolv_data.rl_cnt > 0 &&
+        ble_hs_resolv_local_entry_is_valid(&g_ble_hs_resolv_list[0])) {
+        /*
+         * Keep index 0 reserved so peers never move into the local slot.
+         * The next local add refreshes this slot in place.
+         */
+        memset(&g_ble_hs_resolv_list[0], 0,
+               sizeof(g_ble_hs_resolv_list[0]));
+        return 0;
     }
 
-    /* Only replace identity addr with RPA if the entry was actually removed */
-    if (rc == 0) {
-        ble_rpa_replace_id_with_rand_addr(&addr_type, ident_addr);
+#if MYNEWT_VAL(BLE_STORE_MAX_BONDS)
+    {
+        int position;
+
+        /* Remove from peer IRK records. */
+        position = ble_hs_is_on_resolv_list(ident_addr, addr_type, NULL);
+        if (position) {
+            memmove(&g_ble_hs_resolv_list[position],
+                    &g_ble_hs_resolv_list[position + 1],
+                    (g_ble_hs_resolv_data.rl_cnt - position - 1) *
+                    sizeof(struct ble_hs_resolv_entry));
+            --g_ble_hs_resolv_data.rl_cnt;
+            memset(&g_ble_hs_resolv_list[g_ble_hs_resolv_data.rl_cnt], 0,
+                   sizeof(g_ble_hs_resolv_list[0]));
+
+            rc = 0;
+            ble_rpa_replace_id_with_rand_addr(&addr_type, ident_addr);
+        }
     }
 #endif
 
@@ -910,8 +1003,9 @@ ble_hs_resolv_list_clear_all(void)
     }
 #endif
 
-    /* Preserve local device entry at index 0 if it exists */
-    if (g_ble_hs_resolv_data.rl_cnt > 0) {
+    /* Preserve the valid local device entry at index 0 if it exists. */
+    if (g_ble_hs_resolv_data.rl_cnt > 0 &&
+        ble_hs_resolv_local_entry_is_valid(&g_ble_hs_resolv_list[0])) {
         memcpy(&local_entry, &g_ble_hs_resolv_list[0], sizeof(local_entry));
         restore_local = true;
     }
@@ -1028,11 +1122,7 @@ ble_hs_resolv_set_rpa_tmo(uint16_t tmo_secs)
     }
 #endif
 
-    /* Though the check validates smaller timeout values, it is recommended to
-     * set it to enough bigger value (~15 minutes). There is no point in
-     * changing RPA address aggressively and ending up sacrificing normal BLE
-     * operations. Max RPA_TIMEOUT is ~11.5HRS (Spec v4.2, Vol 2, Part E,
-     * section 7.8.45) */
+    /* Core, Vol 4, Part E, section 7.8.45 permits up to 0xA1B8 seconds. */
     if (!((tmo_secs > 0) && (tmo_secs <= BLE_MAX_RPA_TIMEOUT_VAL))) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
@@ -1102,7 +1192,7 @@ ble_hs_resolv_rpa(uint8_t *rpa, uint8_t *irk)
     int rc;
     struct ble_encryption_block ecb = {0};
 
-    if (!(is_irk_nonzero(irk))) {
+    if (!ble_hs_resolv_buf_is_nonzero(irk, 16)) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
         return BLE_HS_EINVAL;
     }

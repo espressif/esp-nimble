@@ -573,6 +573,12 @@ ble_hs_timer_exp(struct ble_npl_event *ev)
     int32_t ticks_until_next;
 #endif
 
+    if (ble_hs_reset_reason != 0 &&
+        !ble_npl_event_is_queued(&ble_hs_ev_reset)) {
+        ble_hs_reset();
+        return;
+    }
+
     switch (ble_hs_sync_state) {
     case BLE_HS_SYNC_STATE_GOOD:
 #if NIMBLE_BLE_CONNECT
@@ -712,6 +718,11 @@ ble_hs_event_rx_data(struct ble_npl_event *ev)
 static void
 ble_hs_event_reset(struct ble_npl_event *ev)
 {
+    /* No-op if reset request was already cleared. */
+    if (ble_hs_reset_reason == 0) {
+        return;
+    }
+
     ble_hs_reset();
 }
 
@@ -788,11 +799,26 @@ ble_hs_notifications_sched(void)
 }
 
 void
+ble_hs_sched_reset_retry(void)
+{
+    /* Re-post reset event without host lock. */
+    if (!ble_hs_is_enabled() || ble_hs_reset_reason == 0) {
+        return;
+    }
+
+    /* Re-post reset if the queue dropped the event. */
+    if (!ble_npl_event_is_queued(&ble_hs_ev_reset)) {
+        ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_reset);
+    }
+}
+
+void
 ble_hs_sched_reset(int reason)
 {
     ble_hs_lock_nested();
     if (ble_hs_reset_reason != 0) {
         ble_hs_unlock_nested();
+        ble_hs_sched_reset_retry();
         return;
     }
 
@@ -800,6 +826,10 @@ ble_hs_sched_reset(int reason)
     ble_hs_unlock_nested();
 
     ble_npl_eventq_put(ble_hs_evq, &ble_hs_ev_reset);
+
+    if (!ble_npl_event_is_queued(&ble_hs_ev_reset)) {
+        ble_hs_timer_sched(ble_npl_time_ms_to_ticks32(10));
+    }
 }
 
 void
@@ -948,7 +978,7 @@ ble_hs_init(void)
         ble_hs_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_ctx));
         if (!ble_hs_ctx) {
             MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_ctx (%zu bytes)\n", sizeof(*ble_hs_ctx));
-            return;
+            SYSINIT_PANIC_ASSERT(ble_hs_ctx != NULL);
         }
     }
 
@@ -956,9 +986,7 @@ ble_hs_init(void)
         ble_hs_ctx->hci_os_event_buf = (os_membuf_t *)nimble_platform_mem_calloc(1, event_buf_size);
         if (!ble_hs_ctx->hci_os_event_buf) {
             MODLOG_DFLT(ERROR, "Failed to allocate memory for hci_os_event_buf (%zu bytes)\n", event_buf_size);
-            nimble_platform_mem_free(ble_hs_ctx);
-            ble_hs_ctx = NULL;
-            return;
+            SYSINIT_PANIC_ASSERT(ble_hs_ctx->hci_os_event_buf != NULL);
         }
     }
 
@@ -966,11 +994,7 @@ ble_hs_init(void)
         ble_hs_state_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_state_ctx));
         if (!ble_hs_state_ctx) {
             MODLOG_DFLT(ERROR, "Failed to allocate ble_hs_state_ctx (%zu bytes)\n", sizeof(*ble_hs_state_ctx));
-            nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
-            ble_hs_ctx->hci_os_event_buf = NULL;
-            nimble_platform_mem_free(ble_hs_ctx);
-            ble_hs_ctx = NULL;
-            return;
+            SYSINIT_PANIC_ASSERT(ble_hs_state_ctx != NULL);
         }
     }
 
@@ -1151,8 +1175,6 @@ ble_hs_deinit(void)
     ble_monitor_deinit();
 #endif
 
-    ble_npl_mutex_deinit(&ble_hs_mutex);
-
 #if NIMBLE_BLE_CONNECT
     ble_mqueue_deinit(&ble_hs_rx_q);
 #endif
@@ -1210,6 +1232,10 @@ ble_hs_deinit(void)
 #if MYNEWT_VAL(BLE_HS_PVCY)
     ble_hs_pvcy_irk_deinit();
 #endif
+
+    /* Mutex teardown after gatts_stop(); before freeing ble_hs_ctx. */
+    ble_npl_mutex_deinit(&ble_hs_mutex);
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx) {
         ble_hs_ctx->parent_task = NULL;

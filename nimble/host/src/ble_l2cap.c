@@ -273,9 +273,18 @@ ble_l2cap_reconfig_mtu_mps(struct ble_l2cap_chan *chans[], uint8_t num, uint16_t
         return BLE_HS_EINVAL;
     }
 
+    if (chans[0] == NULL) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
     conn_handle = chans[0]->conn_handle;
 
     for (i = 1; i < num; i++) {
+        if (chans[i] == NULL) {
+            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+            return BLE_HS_EINVAL;
+        }
         if (conn_handle != chans[i]->conn_handle) {
             BLE_HS_LOG(ERROR, "All channels should have same conn handle\n");
             return BLE_HS_EINVAL;
@@ -330,6 +339,22 @@ ble_l2cap_rx_free(struct ble_hs_conn *conn)
     conn->rx_frags = NULL;
     conn->rx_len = 0;
     conn->rx_cid = 0;
+    conn->rx_sig_reject = 0;
+#if MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT) != 0
+    conn->rx_frag_tmo = 0;
+#endif
+}
+
+static void
+ble_l2cap_rx_frag_timer_reset(struct ble_hs_conn *conn)
+{
+#if MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT) != 0
+    conn->rx_frag_tmo =
+        ble_npl_time_get() +
+        ble_npl_time_ms_to_ticks32(MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT));
+
+    ble_hs_timer_resched();
+#endif
 }
 
 static int
@@ -342,13 +367,7 @@ ble_l2cap_rx_frags_process(struct ble_hs_conn *conn)
     if (rem_rx_len == 0) {
         rc = 0;
     } else if (rem_rx_len > 0) {
-#if MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT) != 0
-        conn->rx_frag_tmo =
-            ble_npl_time_get() +
-            ble_npl_time_ms_to_ticks32(MYNEWT_VAL(BLE_L2CAP_RX_FRAG_TIMEOUT));
-
-        ble_hs_timer_resched();
-#endif
+        ble_l2cap_rx_frag_timer_reset(conn);
         rc = BLE_HS_EAGAIN;
     } else {
         ble_l2cap_rx_free(conn);
@@ -363,11 +382,19 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
 {
     struct ble_hs_conn *conn;
     struct ble_l2cap_chan *chan;
+    struct ble_l2cap_chan *disconnect_chan;
     struct ble_l2cap_hdr hdr;
     struct os_mbuf *rx_frags;
     uint16_t rx_len;
     uint16_t rx_cid;
+    uint16_t chan_mtu;
+    uint16_t reject_mtu;
+    uint8_t reject_id;
     int rc;
+
+    disconnect_chan = NULL;
+    reject_id = 0;
+    reject_mtu = 0;
 
     ble_hs_lock();
 
@@ -419,14 +446,84 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         rc = ble_l2cap_parse_hdr(conn->rx_frags, &hdr);
         if (rc) {
             /* Incomplete header, wait for continuation */
+            ble_l2cap_rx_frag_timer_reset(conn);
             rc = BLE_HS_EAGAIN;
             goto done;
         }
 
         os_mbuf_adj(conn->rx_frags, BLE_L2CAP_HDR_SZ);
 
-        conn->rx_len = hdr.len;
-        conn->rx_cid = hdr.cid;
+        if (OS_MBUF_PKTLEN(conn->rx_frags) > hdr.len) {
+            ble_l2cap_rx_free(conn);
+            rc = BLE_HS_EBADDATA;
+            goto done;
+        }
+
+        /*
+         * Validate the peer's length claim before retaining continuation
+         * fragments.  Waiting for the declared length would allow an invalid
+         * CID or an oversized PDU to consume the shared ACL receive pool.
+         */
+        chan = ble_hs_conn_chan_find_by_scid(conn, hdr.cid);
+        if (chan == NULL) {
+            ble_l2cap_rx_free(conn);
+            rc = BLE_HS_ENOENT;
+            goto done;
+        }
+
+        chan_mtu = ble_l2cap_get_mtu(chan);
+        if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
+            chan->dcid <= BLE_L2CAP_COC_CID_END) {
+            chan_mtu = chan->my_coc_mps;
+        }
+
+        if (hdr.len > chan_mtu) {
+            if (chan->scid == BLE_L2CAP_CID_SIG) {
+                /*
+                 * Retain at most the command code and identifier when the
+                 * first fragment is too short to identify the signaling
+                 * command.  This permits the required MTU-exceeded reject
+                 * without buffering the peer's oversized length claim.
+                 */
+                conn->rx_len = 2;
+                conn->rx_cid = hdr.cid;
+                conn->rx_sig_reject = 1;
+            } else if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
+                       chan->dcid <= BLE_L2CAP_COC_CID_END) {
+                disconnect_chan = chan;
+            }
+
+            if (!conn->rx_sig_reject) {
+                ble_l2cap_rx_free(conn);
+                rc = BLE_HS_EBADDATA;
+                goto done;
+            }
+        } else {
+            conn->rx_len = hdr.len;
+            conn->rx_cid = hdr.cid;
+        }
+    }
+
+    if (conn->rx_sig_reject) {
+        if (OS_MBUF_PKTLEN(conn->rx_frags) < 2) {
+            ble_l2cap_rx_frag_timer_reset(conn);
+            rc = BLE_HS_EAGAIN;
+            goto done;
+        }
+
+        chan = ble_hs_conn_chan_find_by_scid(conn, conn->rx_cid);
+        if (chan == NULL) {
+            ble_l2cap_rx_free(conn);
+            rc = BLE_HS_ENOENT;
+            goto done;
+        }
+
+        rc = os_mbuf_copydata(conn->rx_frags, 1, sizeof(reject_id),
+                              &reject_id);
+        reject_mtu = htole16(ble_l2cap_get_mtu(chan));
+        ble_l2cap_rx_free(conn);
+        rc = rc == 0 ? BLE_HS_EBADDATA : rc;
+        goto done;
     }
 
     /* Process fragments */
@@ -442,13 +539,13 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
     conn->rx_frags = NULL;
     conn->rx_len = 0;
     conn->rx_cid = 0;
+    conn->rx_sig_reject = 0;
 
     chan = ble_hs_conn_chan_find_by_scid(conn, rx_cid);
 
     ble_hs_unlock();
 
     if (!chan) {
-        ble_l2cap_sig_reject_invalid_cid_tx(conn_handle, 0, 0, rx_cid);
         os_mbuf_free_chain(rx_frags);
         return BLE_HS_ENOENT;
     }
@@ -460,8 +557,23 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
         return BLE_HS_EBADDATA;
     }
 
-    if (rx_len > ble_l2cap_get_mtu(chan)) {
-        ble_l2cap_disconnect(chan);
+    chan_mtu = ble_l2cap_get_mtu(chan);
+    if (rx_len > chan_mtu) {
+        if (chan->scid == BLE_L2CAP_CID_SIG) {
+            struct ble_l2cap_sig_hdr sig_hdr;
+            uint16_t reject_mtu;
+
+            rc = os_mbuf_copydata(rx_frags, 0, sizeof(sig_hdr), &sig_hdr);
+            if (rc == 0 && sig_hdr.identifier != 0) {
+                reject_mtu = htole16(chan_mtu);
+                ble_l2cap_sig_reject_tx(conn_handle, sig_hdr.identifier,
+                                        BLE_L2CAP_SIG_ERR_MTU_EXCEEDED,
+                                        &reject_mtu, sizeof(reject_mtu));
+            }
+        } else if (chan->dcid >= BLE_L2CAP_COC_CID_START &&
+                   chan->dcid <= BLE_L2CAP_COC_CID_END) {
+            ble_l2cap_disconnect(chan);
+        }
         os_mbuf_free_chain(rx_frags);
         return BLE_HS_EBADDATA;
     }
@@ -473,6 +585,14 @@ ble_l2cap_rx(uint16_t conn_handle, uint8_t pb, struct os_mbuf *om)
 
 done:
     ble_hs_unlock();
+
+    if (reject_id != 0) {
+        ble_l2cap_sig_reject_tx(conn_handle, reject_id,
+                                BLE_L2CAP_SIG_ERR_MTU_EXCEEDED,
+                                &reject_mtu, sizeof(reject_mtu));
+    } else if (disconnect_chan != NULL) {
+        ble_l2cap_disconnect(disconnect_chan);
+    }
 
     return rc;
 }

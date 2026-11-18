@@ -174,6 +174,22 @@ static struct ble_sm_proc_list ble_sm_procs;
 
 static void ble_sm_pair_cfg(struct ble_sm_proc *proc);
 
+/*
+ * Keep this local to the SM implementation: ESP-IDF provides
+ * mbedtls_platform_zeroize(), but standalone NimBLE builds do not
+ * necessarily include mbedTLS.
+ */
+static void
+ble_sm_zeroize(void *data, size_t len)
+{
+    volatile uint8_t *p;
+
+    p = data;
+    while (len-- > 0) {
+        *p++ = 0;
+    }
+}
+
 
 /*****************************************************************************
  * $debug                                                                    *
@@ -487,9 +503,7 @@ ble_sm_proc_free(struct ble_sm_proc *proc)
 
     if (proc != NULL) {
         ble_sm_dbg_assert_not_inserted(proc);
-#if MYNEWT_VAL(BLE_HS_DEBUG)
-        memset(proc, 0xff, sizeof *proc);
-#endif
+        ble_sm_zeroize(proc, sizeof *proc);
 
         rc = os_memblock_put(&ble_sm_proc_pool, proc);
 
@@ -707,6 +721,7 @@ ble_sm_persist_keys(struct ble_sm_proc *proc)
     memcpy(value_rpa_rec.peer_rpa_addr.val, peer_rpa_addr.val, sizeof peer_rpa_addr.val);
 
     ble_store_write_rpa_rec(&value_rpa_rec);
+    ble_sm_zeroize(&value_sec, sizeof value_sec);
 }
 
 static int
@@ -1137,10 +1152,7 @@ ble_sm_maybe_remove_bond_on_fail(uint16_t conn_handle,
         !res->enc_cb ||
         res->app_status == 0 ||
         res->app_status == BLE_HS_ENOTCONN) {
-        /* Link drop is not a pairing failure. ble_sm_connection_broken()
-         * still sets enc_cb with ENOTCONN while the conn object exists;
-         * unpairing here would wipe IRK after a successful bond.
-         */
+        /* ENOTCONN from connection_broken() is not a pairing failure. */
         return;
     }
 
@@ -1266,7 +1278,9 @@ ble_sm_process_result(uint16_t conn_handle, struct ble_sm_result *res,
         if (res->enc_cb &&
             res->app_status != BLE_HS_ENOTCONN) {
             /* Do not send this event on broken connection */
-            ble_gap_pairing_complete_event(conn_handle, res->sm_err);
+            ble_gap_pairing_complete_event(conn_handle,
+                                           res->sm_err != 0 ?
+                                           res->sm_err : res->app_status);
         }
         /* Persist keys if bonding has successfully completed. */
         if (res->app_status == 0    &&
@@ -1391,15 +1405,19 @@ static int
 ble_sm_start_encrypt_tx(struct hci_start_encrypt *params)
 {
     struct ble_hci_le_start_encrypt_cp cmd;
+    int rc;
 
     cmd.conn_handle = htole16(params->connection_handle);
     cmd.div = htole16(params->encrypted_diversifier);
     cmd.rand = htole64(params->random_number);
     memcpy(cmd.ltk, params->long_term_key, sizeof(cmd.ltk));
 
-    return ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
-                                        BLE_HCI_OCF_LE_START_ENCRYPT),
-                             &cmd, sizeof(cmd), NULL, 0);
+    rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
+                                      BLE_HCI_OCF_LE_START_ENCRYPT),
+                           &cmd, sizeof(cmd), NULL, 0);
+    ble_sm_zeroize(&cmd, sizeof cmd);
+
+    return rc;
 }
 
 static void
@@ -1417,10 +1435,13 @@ ble_sm_enc_start_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
     memcpy(cmd.long_term_key, proc->ltk, sizeof cmd.long_term_key);
 
     rc = ble_sm_start_encrypt_tx(&cmd);
+    ble_sm_zeroize(&cmd, sizeof cmd);
     if (rc != 0) {
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->app_status = rc;
         res->enc_cb = 1;
+        /* Local HCI failure; keep bond. */
+        res->keep_bond = 1;
     }
 }
 
@@ -1437,8 +1458,8 @@ ble_sm_enc_restore_exec(struct ble_sm_proc *proc, struct ble_sm_result *res,
 
     res->app_status = ble_sm_start_encrypt_tx(cmd);
     if (res->app_status != 0) {
-        res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->enc_cb = 1;
+        res->keep_bond = 1;
     }
 }
 
@@ -1633,6 +1654,7 @@ ble_sm_ltk_req_reply_tx(uint16_t conn_handle, const uint8_t *ltk)
     rc = ble_hs_hci_cmd_tx(BLE_HCI_OP(BLE_HCI_OGF_LE,
                                       BLE_HCI_OCF_LE_LT_KEY_REQ_REPLY),
                            &cmd, sizeof(cmd), &rsp, sizeof(rsp));
+    ble_sm_zeroize(&cmd, sizeof cmd);
     if (rc != 0) {
         return rc;
     }
@@ -1767,6 +1789,9 @@ ble_sm_ltk_req_rx(const struct ble_hci_ev_le_subev_lt_key_req *ev)
 
     memset(&res, 0, sizeof res);
     memset(&restore_ctx, 0, sizeof restore_ctx);
+    memset(&value_sec, 0, sizeof value_sec);
+    memset(&bond, 0, sizeof bond);
+    memset(&key_sec, 0, sizeof key_sec);
 
     ble_hs_lock();
     proc = ble_sm_proc_find(conn_handle, BLE_SM_PROC_STATE_NONE, 0, NULL);
@@ -1828,7 +1853,8 @@ ble_sm_ltk_req_rx(const struct ble_hci_ev_le_subev_lt_key_req *ev)
     ble_hs_unlock();
 
     if (proc == NULL) {
-        return res.app_status;
+        store_rc = res.app_status;
+        goto done;
     }
 
     if (res.app_status == 0) {
@@ -1858,7 +1884,16 @@ ble_sm_ltk_req_rx(const struct ble_hci_ev_le_subev_lt_key_req *ev)
 
     ble_sm_process_result(conn_handle, &res, true);
 
-    return 0;
+    store_rc = 0;
+
+done:
+    ble_sm_zeroize(&value_sec, sizeof value_sec);
+    ble_sm_zeroize(&bond, sizeof bond);
+    ble_sm_zeroize(&key_sec, sizeof key_sec);
+    ble_sm_zeroize(&restore_ctx, sizeof restore_ctx);
+    ble_sm_zeroize(peer_id_addr, sizeof peer_id_addr);
+
+    return store_rc;
 }
 
 /*****************************************************************************
@@ -3055,6 +3090,17 @@ ble_sm_id_addr_info_rx(uint16_t conn_handle, struct os_mbuf **om,
         res->app_status = BLE_HS_ENOENT;
         res->sm_err = BLE_SM_ERR_UNSPECIFIED;
         res->out_of_order = 1;
+    } else if (!(proc->rx_key_flags & BLE_SM_KE_F_ADDR_INFO) ||
+               !proc->peer_keys.irk_valid) {
+        /*
+         * Identity Address Information is only valid when identity key
+         * distribution was negotiated and Identity Information (the IRK)
+         * was received first.  Reject duplicates and reordered / unsolicited
+         * identity addresses conservatively.
+         */
+        res->app_status = BLE_HS_SM_US_ERR(BLE_SM_ERR_INVAL);
+        res->sm_err = BLE_SM_ERR_INVAL;
+        res->enc_cb = 1;
     } else {
         proc->rx_key_flags &= ~BLE_SM_KE_F_ADDR_INFO;
         proc->peer_keys.addr_valid = 1;
@@ -3404,6 +3450,7 @@ ble_sm_enc_initiate(uint16_t conn_handle, uint8_t key_size,
     }
 
     memset(&res, 0, sizeof res);
+    memset(&cmd, 0, sizeof cmd);
 
     /* Make sure a procedure isn't already in progress for this connection. */
     ble_hs_lock();
@@ -3442,6 +3489,7 @@ ble_sm_enc_initiate(uint16_t conn_handle, uint8_t key_size,
     ble_hs_unlock();
 
     ble_sm_process_result(conn_handle, &res, true);
+    ble_sm_zeroize(&cmd, sizeof cmd);
 
     return res.app_status;
 }

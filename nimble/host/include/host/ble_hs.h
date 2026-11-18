@@ -482,6 +482,12 @@ void ble_hs_sched_start(void);
 void ble_hs_sched_reset(int reason);
 
 /**
+ * Re-posts a reset request that is still pending, for a caller that is waiting
+ * for that reset to happen. Requests no new reset.
+ */
+void ble_hs_sched_reset_retry(void);
+
+/**
  * Designates the specified event queue for NimBLE host work. By default, the
  * host uses the default event queue and runs in the main task. This function
  * is useful if you want the host to run in a different task.

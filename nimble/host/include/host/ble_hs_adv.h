@@ -33,7 +33,7 @@ extern "C" {
 /** Max field payload size (account for 2-byte header). */
 #define BLE_HS_ADV_MAX_FIELD_SZ     (BLE_HS_ADV_MAX_SZ - 2)
 
-#define BLE_HS_ADV_LE_SUPP_FEAT_LEN             6
+#define BLE_HS_ADV_LE_SUPP_FEAT_LEN             8
 
 struct ble_hs_adv_field {
     uint8_t length;
@@ -199,7 +199,8 @@ struct ble_hs_adv_fields {
 
 /**
  * Set the tx_pwr_lvl field to this if you want the stack to fill in the tx
- * power level field.
+ * power level field.  On SOC_ESP_NIMBLE_CONTROLLER targets, where the
+ * advertising TX power cannot be queried, the optional field is omitted.
  */
 #define BLE_HS_ADV_TX_PWR_LVL_AUTO              (-128)
 
@@ -227,6 +228,14 @@ int ble_hs_adv_set_fields_mbuf(const struct ble_hs_adv_fields *adv_fields,
 int ble_hs_adv_set_fields(const struct ble_hs_adv_fields *adv_fields,
                           uint8_t *dst, uint8_t *dst_len, uint8_t max_len);
 
+/**
+ * Parses advertising data into a field structure.
+ *
+ * UUID-list pointers in the result refer to shared internal storage.  A
+ * subsequent call can overwrite that storage, so callers that retain UUIDs
+ * must copy them before parsing another report.  Other pointer fields refer
+ * directly to the supplied source buffer.
+ */
 int ble_hs_adv_parse_fields(struct ble_hs_adv_fields *adv_fields,
                             const uint8_t *src, uint8_t src_len);
 

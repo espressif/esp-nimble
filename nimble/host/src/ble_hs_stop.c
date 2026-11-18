@@ -159,10 +159,9 @@ ble_hs_stop_terminate_conn(struct ble_hs_conn *conn, void *arg)
          */
         ble_hs_stop_conn_cnt++;
     } else {
-        /* If failed, just make sure we are not going to wait for connection complete event,
-         * just count it as already disconnected
-         */
+        /* Disconnect failed; include link in stop wait. */
         BLE_HS_LOG(ERROR, "ble_hs_stop: failed to terminate connection; rc=%d\n", rc);
+        ble_hs_stop_conn_cnt++;
     }
 
     return 0;

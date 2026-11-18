@@ -1403,8 +1403,8 @@ struct ble_hci_le_set_periodic_adv_params_v2 {
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_RD_ALL_LOCAL_SUP_FEAT             (0x0087)
+/* Status is stripped by ble_hs_hci_rx_cmd_complete() before this is filled. */
 struct ble_hci_le_rd_all_local_feat_rp {
-    uint8_t status;
     uint8_t max_page;
     uint8_t le_features[248];
 } __attribute__((packed));
@@ -1519,7 +1519,7 @@ struct ble_hci_le_cs_create_config_cp {
     uint8_t channel_selection_type;
     uint8_t ch3c_shape;
     uint8_t ch3c_jump;
-//    uint8_t companion_signal_enable;
+    uint8_t companion_signal_enable;
 } __attribute__((packed));
 
 #define BLE_HCI_OCF_LE_CS_REMOVE_CONFIG                  (0x0091)
@@ -2360,10 +2360,6 @@ struct ble_hci_ev_le_subev_periodic_adv_rpt {
     int8_t   tx_power;
     int8_t   rssi;
     uint8_t  cte_type;
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
-    uint16_t event_counter;
-    uint8_t  subevent;
-#endif
     uint8_t  data_status;
     uint8_t  data_len;
     uint8_t  data[0];
@@ -2375,10 +2371,8 @@ struct ble_hci_ev_le_subev_periodic_adv_rpt_v2 {
     int8_t   tx_power;
     int8_t   rssi;
     uint8_t  cte_type;
-#if MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     uint16_t event_counter;
     uint8_t  subevent;
-#endif // MYNEWT_VAL(BLE_PERIODIC_ADV_WITH_RESPONSES)
     uint8_t  data_status;
     uint8_t  data_len;
     uint8_t  data[0];

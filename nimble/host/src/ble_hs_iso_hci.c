@@ -316,6 +316,11 @@ ble_hs_hci_create_cis(uint8_t cis_cnt, const struct ble_hci_le_create_cis_params
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
+    /* HCI length field is one octet; reject overflow. */
+    if (sizeof(*cmd) + (size_t)cis_cnt * sizeof(*params) > 255) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
     uint8_t cmd_buf[sizeof(*cmd) + cis_cnt * sizeof(*params)];
     cmd_len = sizeof(*cmd);
 
@@ -384,7 +389,9 @@ ble_hs_hci_create_big(uint8_t big_handle, uint8_t adv_handle, uint8_t num_bis,
 {
     struct ble_hci_le_create_big_cp cmd;
 
-    if (num_bis == 0 || (encryption && broadcast_code == NULL)) {
+    if (num_bis == 0 ||
+        num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG) ||
+        (encryption && broadcast_code == NULL)) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -420,7 +427,9 @@ ble_hs_hci_create_big_test(uint8_t big_handle, uint8_t adv_handle, uint8_t num_b
 {
     struct ble_hci_le_create_big_test_cp cmd;
 
-    if (num_bis == 0 || (encryption && broadcast_code == NULL)) {
+    if (num_bis == 0 ||
+        num_bis > MYNEWT_VAL(BLE_ISO_BIS_PER_BIG) ||
+        (encryption && broadcast_code == NULL)) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 

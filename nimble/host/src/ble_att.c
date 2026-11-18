@@ -21,9 +21,9 @@
 #include <errno.h>
 #include "ble_hs_priv.h"
 #include "host/ble_att.h"
+#include "host/ble_gap.h"
 #include "host/ble_hs_log.h"
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
-#include "host/ble_gap.h"
 #include "esp_nimble_mem.h"
 #endif
 
@@ -575,6 +575,7 @@ ble_att_send_outstanding_after_response(uint16_t conn_handle)
 {
     struct ble_hs_conn *conn;
     struct ble_l2cap_chan *chan;
+    int term_rc;
     int rc;
 
     ble_hs_lock();
@@ -585,8 +586,24 @@ ble_att_send_outstanding_after_response(uint16_t conn_handle)
         return;
     }
     conn->client_att_busy = false;
-    ble_att_tx_with_conn(conn, chan, NULL);
+    rc = ble_att_tx_with_conn(conn, chan, NULL);
     ble_hs_unlock();
+
+    if (rc != 0) {
+        /* TX failed after mbuf consumed; terminate the link. */
+        BLE_HS_LOG(ERROR,
+                   "Queued ATT request transmit failed; "
+                   "conn_handle=0x%04x rc=%d\n",
+                   conn_handle, rc);
+        term_rc = ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+        if (term_rc != 0 && term_rc != BLE_HS_EALREADY &&
+            term_rc != BLE_HS_ENOTCONN) {
+            BLE_HS_LOG(ERROR,
+                       "Failed to terminate connection after ATT transmit "
+                       "failure; conn_handle=0x%04x rc=%d\n",
+                       conn_handle, term_rc);
+        }
+    }
 }
 
 #if MYNEWT_VAL(BLE_DEFER_CONN_EVENTS)
@@ -597,6 +614,8 @@ static int
 ble_att_rx_extended(uint16_t conn_handle, uint16_t cid, struct os_mbuf **om)
 {
     const struct ble_att_rx_dispatch_entry *entry;
+    struct ble_l2cap_chan *chan;
+    bool response_expected;
     uint8_t op;
     int rc;
 
@@ -710,11 +729,21 @@ process_att_normally:
 
     ble_att_inc_rx_stat(op);
 
+    response_expected = true;
+    if (cid == BLE_L2CAP_CID_ATT && op == BLE_ATT_OP_MTU_RSP) {
+        ble_hs_lock();
+        rc = ble_att_conn_chan_find(conn_handle, cid, NULL, &chan);
+        response_expected =
+            rc == 0 && (chan->flags & BLE_L2CAP_CHAN_F_MTU_REQ_PENDING);
+        ble_hs_unlock();
+    }
+
     /* Strip L2CAP ATT header from the front of the mbuf. */
     os_mbuf_adj(*om, 1);
 
     rc = entry->bde_fn(conn_handle, cid, om);
-    if (cid == BLE_L2CAP_CID_ATT && ble_att_is_response_op(op)) {
+    if (cid == BLE_L2CAP_CID_ATT && ble_att_is_response_op(op) &&
+        response_expected) {
         ble_att_send_outstanding_after_response(conn_handle);
     }
     if (rc != 0) {

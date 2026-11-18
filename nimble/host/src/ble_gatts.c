@@ -334,8 +334,9 @@ ble_gatts_inc_access(uint16_t conn_handle, uint16_t attr_handle,
                      void *arg)
 {
     const struct ble_gatts_svc_entry *entry;
+    uint8_t value[BLE_GATTS_INCLUDE_SZ];
+    uint16_t value_len;
     uint16_t uuid16;
-    uint8_t *buf;
 
     STATS_INC(ble_gatts_stats, svc_inc_reads);
 
@@ -343,23 +344,24 @@ ble_gatts_inc_access(uint16_t conn_handle, uint16_t attr_handle,
 
     entry = arg;
 
-    buf = os_mbuf_extend(*om, 4);
-    if (buf == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
-        return BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
-    put_le16(buf + 0, entry->handle);
-    put_le16(buf + 2, entry->end_group_handle);
+    put_le16(value + 0, entry->handle);
+    put_le16(value + 2, entry->end_group_handle);
+    value_len = 4;
 
     /* Only include the service UUID if it has a 16-bit representation. */
     uuid16 = ble_uuid_u16(entry->svc->uuid);
     if (uuid16 != 0) {
-        buf = os_mbuf_extend(*om, 2);
-        if (buf == NULL) {
-            BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
-            return BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-        put_le16(buf, uuid16);
+        put_le16(value + value_len, uuid16);
+        value_len += 2;
+    }
+
+    if (offset > value_len) {
+        return BLE_ATT_ERR_INVALID_OFFSET;
+    }
+
+    if (os_mbuf_append(*om, value + offset, value_len - offset) != 0) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
+        return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
     return 0;
@@ -478,7 +480,8 @@ ble_gatts_chr_def_access(uint16_t conn_handle, uint16_t attr_handle,
                          void *arg)
 {
     const struct ble_gatt_chr_def *chr;
-    uint8_t *buf;
+    uint8_t value[BLE_GATTS_CHR_MAX_SZ];
+    uint16_t value_len;
 
     STATS_INC(ble_gatts_stats, chr_def_reads);
 
@@ -486,24 +489,23 @@ ble_gatts_chr_def_access(uint16_t conn_handle, uint16_t attr_handle,
 
     chr = arg;
 
-    buf = os_mbuf_extend(*om, 3);
-    if (buf == NULL) {
-        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
-        return BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
-
-    buf[0] = ble_gatts_chr_properties(chr);
+    value[0] = ble_gatts_chr_properties(chr);
 
     /* The value attribute is always immediately after the declaration. */
-    put_le16(buf + 1, attr_handle + 1);
+    put_le16(value + 1, attr_handle + 1);
+    value_len = 3;
 
-    buf = os_mbuf_extend(*om, ble_uuid_length(chr->uuid));
-    if (buf == NULL) {
+    ble_uuid_flat(chr->uuid, value + value_len);
+    value_len += ble_uuid_length(chr->uuid);
+
+    if (offset > value_len) {
+        return BLE_ATT_ERR_INVALID_OFFSET;
+    }
+
+    if (os_mbuf_append(*om, value + offset, value_len - offset) != 0) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
         return BLE_ATT_ERR_INSUFFICIENT_RES;
     }
-
-    ble_uuid_flat(chr->uuid, buf);
 
     return 0;
 }
@@ -1047,7 +1049,7 @@ ble_gatts_clt_cfg_access_locked(struct ble_hs_conn *conn, uint16_t attr_handle,
     uint16_t chr_val_handle;
     uint16_t flags;
     uint8_t gatt_op;
-    uint8_t *buf;
+    uint8_t value[2];
 
     /* Assume nothing needs to be persisted. */
     out_cccd->chr_val_handle = 0;
@@ -1083,12 +1085,14 @@ ble_gatts_clt_cfg_access_locked(struct ble_hs_conn *conn, uint16_t attr_handle,
     switch (gatt_op) {
     case BLE_GATT_ACCESS_OP_READ_DSC:
         STATS_INC(ble_gatts_stats, dsc_reads);
-        buf = os_mbuf_extend(*om, 2);
-        if (buf == NULL) {
+        if (offset > sizeof(value)) {
+            return BLE_ATT_ERR_INVALID_OFFSET;
+        }
+        put_le16(value, clt_cfg->flags & ~BLE_GATTS_CLT_CFG_F_RESERVED);
+        if (os_mbuf_append(*om, value + offset, sizeof(value) - offset) != 0) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_ATT_ERR_INSUFFICIENT_RES);
             return BLE_ATT_ERR_INSUFFICIENT_RES;
         }
-        put_le16(buf, clt_cfg->flags & ~BLE_GATTS_CLT_CFG_F_RESERVED);
         break;
 
     case BLE_GATT_ACCESS_OP_WRITE_DSC:
@@ -1208,6 +1212,7 @@ ble_gatts_cafd_access(uint16_t conn_handle, uint16_t attr_handle,
                       void *arg)
 {
     struct ble_att_svr_entry * cpfd_entry;
+    uint16_t value_len;
     uint16_t handle;
     int rc;
 
@@ -1216,6 +1221,10 @@ ble_gatts_cafd_access(uint16_t conn_handle, uint16_t attr_handle,
     STATS_INC(ble_gatts_stats, dsc_reads);
 
     cpfd_entry = arg;
+    value_len = (attr_handle - cpfd_entry->ha_handle_id) * sizeof(handle);
+    if (offset > value_len) {
+        return BLE_ATT_ERR_INVALID_OFFSET;
+    }
 
     /**
      * All the Client Presentation Format Descriptors of this characteristic
@@ -1224,7 +1233,14 @@ ble_gatts_cafd_access(uint16_t conn_handle, uint16_t attr_handle,
      */
     rc = 0;
     for (handle = cpfd_entry->ha_handle_id; handle < attr_handle; handle++) {
-        rc += os_mbuf_append(*om, &handle, sizeof(handle));
+        uint8_t handle_buf[2];
+        uint16_t handle_offset;
+
+        handle_offset = offset < sizeof(handle) ? offset : sizeof(handle);
+        put_le16(handle_buf, handle);
+        rc += os_mbuf_append(*om, handle_buf + handle_offset,
+                             sizeof(handle_buf) - handle_offset);
+        offset -= handle_offset;
     }
 
     return ((rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES);
@@ -2261,6 +2277,9 @@ ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn)
     num_copied = 0;
     rc = 0;
 
+    /* Dynamic service add/delete may change the cached CCCD list. */
+    ble_hs_lock_nested();
+
     if (ble_gatts_num_cfgable_chrs > 0) {
         /* Initialize the client configuration with a copy of the cache. */
         STAILQ_FOREACH(clt_cfg, &ble_gatts_clt_cfgs, next) {
@@ -2274,10 +2293,7 @@ ble_gatts_conn_init(struct ble_gatts_conn *gatts_conn)
             num_copied++;
         }
         memcpy(&(gatts_conn->clt_cfgs), &clt_cfgs, sizeof(struct ble_gatts_clt_cfg_list));
-        /* Track the number of nodes actually copied rather than the cached
-         * characteristic count; the two can differ if the global list was
-         * modified by a dynamic service add or delete.
-         */
+        /* Count copied nodes, not ble_gatts_num_cfgable_chrs. */
         gatts_conn->num_clt_cfgs = num_copied;
     } else {
         STAILQ_INIT(&(gatts_conn->clt_cfgs));
@@ -2292,14 +2308,18 @@ done:
             STAILQ_REMOVE_HEAD(&clt_cfgs, next);
             ble_gatts_clt_cfg_free(clt_cfg);
         }
+        ble_hs_unlock_nested();
         return rc;
     }
 #else
+    ble_hs_lock_nested();
+
     if (ble_gatts_num_cfgable_chrs > 0) {
         gatts_conn->clt_cfgs = os_memblock_get(&ble_gatts_clt_cfg_pool);
 
 	if (gatts_conn->clt_cfgs == NULL) {
             BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
+            ble_hs_unlock_nested();
             return BLE_HS_ENOMEM;
         }
 
@@ -2313,6 +2333,7 @@ done:
     }
 #endif
 
+    ble_hs_unlock_nested();
     return 0;
 }
 
@@ -2447,6 +2468,9 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
     svc_change_handle = ble_svc_gatt_changed_handle();
 #endif
 
+    /* Host lock required; cached CCCD list may change. */
+    ble_hs_lock();
+
 #if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
     clt_cfg = ble_gatts_clt_cfg_find(&ble_gatts_clt_cfgs,
                                              chr_val_handle);
@@ -2457,6 +2481,7 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
     if (clt_cfg_idx == -1) {
 #endif
         /* This characteristic does not have a CCCD. */
+        ble_hs_unlock();
         return BLE_HS_ENOENT;
     }
 
@@ -2465,10 +2490,9 @@ ble_gatts_rx_indicate_ack(uint16_t conn_handle, uint16_t chr_val_handle)
 #endif
     if (!(clt_cfg->allowed & BLE_GATTS_CLT_CFG_F_INDICATE)) {
         /* This characteristic does not allow indications. */
+        ble_hs_unlock();
         return BLE_HS_ENOENT;
     }
-
-    ble_hs_lock();
 
     conn = ble_hs_conn_find(conn_handle);
     BLE_HS_DBG_ASSERT(conn != NULL);
@@ -2552,6 +2576,8 @@ ble_gatts_chr_updated(uint16_t chr_val_handle)
     }
 #endif
 
+    ble_hs_lock();
+
     /* Determine if notifications or indications are allowed for this
      * characteristic.  If not, return immediately.
      */
@@ -2564,12 +2590,12 @@ ble_gatts_chr_updated(uint16_t chr_val_handle)
                                              chr_val_handle);
     if (clt_cfg_idx == -1) {
 #endif
+        ble_hs_unlock();
         return;
     }
 
     /*** Send notifications and indications to connected devices. */
 
-    ble_hs_lock();
     for (i = 0; ; i++) {
         /* XXX: This is inefficient when there are a lot of connections.
          * Consider using a "foreach" function to walk the connection list.
@@ -2793,6 +2819,8 @@ ble_gatts_tx_notifications_one_chr(uint16_t chr_val_handle)
 #endif
     int i;
 
+    ble_hs_lock();
+
     /* Determine if notifications / indications are enabled for this
      * characteristic.
      */
@@ -2805,8 +2833,10 @@ ble_gatts_tx_notifications_one_chr(uint16_t chr_val_handle)
                                              chr_val_handle);
     if (clt_cfg_idx == -1) {
 #endif
+        ble_hs_unlock();
         return;
     }
+    ble_hs_unlock();
 
     for (i = 0; ; i++) {
         ble_hs_lock();
@@ -2870,24 +2900,57 @@ void
 ble_gatts_tx_notifications(void)
 {
     uint16_t chr_val_handle;
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    struct ble_gatts_clt_cfg *clt_cfg;
+    uint16_t last_handle;
+#else
+    int i;
+#endif
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_gatts_static_vars == NULL) {
         return;
     }
 #endif
-#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
-    struct ble_gatts_clt_cfg *clt_cfg;
-    STAILQ_FOREACH(clt_cfg, &ble_gatts_clt_cfgs, next) {
-        chr_val_handle = clt_cfg->chr_val_handle;
-#else
-    int i;
 
-    for (i = 0; i < ble_gatts_num_cfgable_chrs; i++) {
+#if MYNEWT_VAL(BLE_DYNAMIC_SERVICE)
+    /*
+     * Do not retain a CCCD pointer across unlock; dynamic service deletion
+     * can free it. Handles are allocated monotonically, so each locked scan
+     * can safely select the next live characteristic.
+     */
+    last_handle = 0;
+    while (last_handle != UINT16_MAX) {
+        chr_val_handle = 0;
+        ble_hs_lock();
+        STAILQ_FOREACH(clt_cfg, &ble_gatts_clt_cfgs, next) {
+            if (clt_cfg->chr_val_handle > last_handle) {
+                chr_val_handle = clt_cfg->chr_val_handle;
+                break;
+            }
+        }
+        ble_hs_unlock();
+
+        if (chr_val_handle == 0) {
+            break;
+        }
+
+        ble_gatts_tx_notifications_one_chr(chr_val_handle);
+        last_handle = chr_val_handle;
+    }
+#else
+    for (i = 0; ; i++) {
+        ble_hs_lock();
+        if (i >= ble_gatts_num_cfgable_chrs) {
+            ble_hs_unlock();
+            break;
+        }
         chr_val_handle = ble_gatts_clt_cfgs[i].chr_val_handle;
-#endif
+        ble_hs_unlock();
+
         ble_gatts_tx_notifications_one_chr(chr_val_handle);
     }
+#endif
 }
 
 void
@@ -3567,11 +3630,9 @@ ble_gatts_rollback_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs,
     ble_gatts_unregister_svcs_entries(svc_start_idx, num_svcs);
 #endif
     ble_gatts_num_cfgable_chrs = cfgable_chrs_start;
-    ble_gatts_free_svc_defs();
 }
 
 int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
-    void *p;
     int i;
     int rc = 0;
     int num_svcs;
@@ -3594,10 +3655,6 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
         num_svcs++;
     }
 
-    p = nimble_platform_mem_calloc(1,sizeof *ble_gatts_svc_defs);
-    if (p == NULL) {
-        return BLE_HS_ENOMEM;
-    }
     ble_hs_lock();
 
     clt_cfg_start = ble_gatts_get_last_cfg(&ble_gatts_clt_cfgs);
@@ -3605,18 +3662,14 @@ int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *svcs) {
     svc_start_idx = ble_gatts_num_svc_entries;
 #endif
 
-    ble_gatts_svc_defs = p;
-    ble_gatts_svc_defs[0] = svcs;
     cfgable_chrs_start = ble_gatts_num_cfgable_chrs;
-    rc = ble_gatts_register_svcs(ble_gatts_svc_defs[0],
+    rc = ble_gatts_register_svcs(svcs,
                                  ble_hs_cfg.gatts_register_cb,
                                  ble_hs_cfg.gatts_register_arg);
     if (rc != 0) {
         ble_gatts_num_cfgable_chrs = cfgable_chrs_start;
-        ble_gatts_free_svc_defs();
         goto done;
     }
-    ble_gatts_free_svc_defs();
      /* Fill the cache. */
     cfg = ble_gatts_get_last_cfg(&ble_gatts_clt_cfgs);
     if (cfg == NULL) {

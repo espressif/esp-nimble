@@ -31,6 +31,7 @@
 
 typedef struct {
     uint8_t pvcy_started;             /* Indicates if privacy is started */
+    uint8_t store_initialized;         /* Store initialized for this host lifetime */
     uint8_t pvcy_irk[16];             /* Static IRK */
     uint8_t pvcy_default_irk[16];     /* Static default IRK */
     uint16_t rpa_timeout;             /* Timeout for RPA rotation */
@@ -56,7 +57,35 @@ uint16_t l_rpa_timeout;
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
 void ble_store_config_init(void);
+
+static int
+ble_hs_pvcy_ctx_ensure_init(void)
+{
+    if (ble_hs_pvcy_ctx == NULL) {
+        ble_hs_pvcy_ctx =
+            nimble_platform_mem_calloc(1, sizeof(*ble_hs_pvcy_ctx));
+        if (ble_hs_pvcy_ctx == NULL) {
+            return BLE_HS_ENOMEM;
+        }
+    }
+
+    return 0;
+}
 #endif
+
+static bool
+ble_hs_pvcy_irk_is_nonzero(const uint8_t *irk)
+{
+    int i;
+
+    for (i = 0; i < 16; i++) {
+        if (irk[i] != 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 const uint8_t *
 ble_hs_pvcy_get_default_irk(void)
@@ -423,36 +452,39 @@ void ble_hs_pvcy_set_default_irk(void)
     /* Read NVS for local IRK */
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (!ble_hs_pvcy_ctx) {
-        ble_hs_pvcy_ctx = nimble_platform_mem_calloc(1, sizeof(*ble_hs_pvcy_ctx));
-        if (!ble_hs_pvcy_ctx) {
-            BLE_HS_LOG(ERROR," Failed to allocate memory for ble_hs_pvcy_ctx");
-            return;
-        }
+    rc = ble_hs_pvcy_ctx_ensure_init();
+    if (rc != 0) {
+        BLE_HS_LOG(ERROR, "Failed to allocate memory for ble_hs_pvcy_ctx");
+        return;
     }
 
     /* Only call ble_store_config_init on the first initialization.
      * Calling it at runtime resets all in-memory bonds/CCCDs.
      */
-    if (!ble_hs_pvcy_ctx->pvcy_started) {
-        void ble_store_config_init(void);
+    if (!ble_hs_pvcy_ctx->store_initialized) {
         ble_store_config_init();
+        ble_hs_pvcy_ctx->store_initialized = 1;
     }
 #endif
 
     rc = ble_store_read_local_irk(&key_local_irk, &value_local_irk);
-    if (!rc) {
+    if (rc == 0 && ble_hs_pvcy_irk_is_nonzero(value_local_irk.irk)) {
         memcpy(ble_hs_pvcy_default_irk, value_local_irk.irk, 16);
     } else {
+        if (rc == 0) {
+            BLE_HS_LOG(WARN, "Stored local IRK is all zeros; regenerating");
+        }
 
-#if !MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-        /* No entry for local IRK found . Generate one and load in NVS */
+        /* No usable local IRK found. Generate one and load it in NVS. */
         memset(ble_hs_pvcy_default_irk, 0x0, 16);
-#endif
         rc = ble_hs_hci_util_rand(ble_hs_pvcy_default_irk, 16);
 
         if (rc != 0) {
             BLE_HS_LOG(ERROR, "Failed to generate local IRK");
+            return;
+        }
+        if (!ble_hs_pvcy_irk_is_nonzero(ble_hs_pvcy_default_irk)) {
+            BLE_HS_LOG(ERROR, "Generated local IRK is all zeros");
             return;
         }
 
@@ -493,8 +525,14 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
     uint8_t new_irk[16];
     int rc;
 
+    if (irk != NULL && !ble_hs_pvcy_irk_is_nonzero(irk)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
+    }
+
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
-    if (ble_hs_pvcy_ctx == NULL) {
+    rc = ble_hs_pvcy_ctx_ensure_init();
+    if (rc != 0) {
         BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_ENOMEM);
         return BLE_HS_ENOMEM;
     }
@@ -504,6 +542,11 @@ ble_hs_pvcy_set_our_irk(const uint8_t *irk)
         memcpy(new_irk, irk, 16);
     } else {
         memcpy(new_irk, ble_hs_pvcy_default_irk, 16);
+    }
+
+    if (!ble_hs_pvcy_irk_is_nonzero(new_irk)) {
+        BLE_HS_LOG(ERROR, "%s rc=%d\n", __func__, BLE_HS_EINVAL);
+        return BLE_HS_EINVAL;
     }
 
     memcpy(ble_hs_pvcy_irk, new_irk, 16);

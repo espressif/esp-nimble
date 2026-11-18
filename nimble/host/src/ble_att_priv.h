@@ -113,6 +113,7 @@ struct ble_att_prep_entry {
     SLIST_ENTRY(ble_att_prep_entry) bape_next;
     uint16_t bape_handle;
     uint16_t bape_offset;
+    uint32_t bape_seq;
 
     /* XXX: This is wasteful; we should use one mbuf chain for the entire
      * prepared write, and compress the data into as few mbufs as possible.
@@ -123,7 +124,7 @@ struct ble_att_prep_entry {
 SLIST_HEAD(ble_att_prep_entry_list, ble_att_prep_entry);
 
 struct ble_att_svr_conn {
-    /** This list is sorted by attribute handle ID. */
+    /** This list is sorted by attribute handle ID and value offset. */
     struct ble_att_prep_entry_list basc_prep_list;
     ble_npl_time_t basc_prep_timeout_at;
 };

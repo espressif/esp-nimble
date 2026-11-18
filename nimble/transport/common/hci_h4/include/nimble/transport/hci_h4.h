@@ -65,6 +65,19 @@ void hci_h4_sm_init(struct hci_h4_sm *h4sm,
                     const struct hci_h4_allocators *allocs,
                     hci_h4_frame_cb *frame_cb);
 
+/* Free a partial frame, then clear the parser. Call after RX has stopped. */
+void hci_h4_sm_deinit(struct hci_h4_sm *h4sm);
+
+/* Controller->host octets were lost. Enter resync and queue HCI_Reset. */
+void hci_h4_sm_sync_lost(struct hci_h4_sm *h4sm);
+
 int hci_h4_sm_rx(struct hci_h4_sm *h4sm, const uint8_t *buf, uint16_t len);
+
+/*
+ * Tell a controller->host framer that HCI_Reset has been queued.
+ * After sync loss the framer ignores bytes until this, then accepts only
+ * the Command Complete for that Reset.
+ */
+void hci_h4_sm_note_host_reset_cmd(struct hci_h4_sm *h4sm);
 
 #endif /* _HCI_H4_H_ */
