@@ -55,6 +55,15 @@ cve-exclude-list:
       Fixed in nimble-1.6.0
       commit:
          8d1b44cc9fbc0eb93ab39b071120f2dffe175be5
+  - cve: CVE-2026-45812
+    reason: >-
+      Fixed in nimble-1.6.0
+      commit:
+         https://github.com/espressif/esp-nimble/commit/88217237dfa971c07ba22d4f4a028d1252341645
+  - cve: CVE-2026-45813
+    reason: >-
+      BASS is not part of nimble-1.6.0. Vulnerable code is not present.
+    justification: vulnerable_code_not_present
   - cve: CVE-2026-45815
     reason: >-
       Fixed in nimble-1.6.0
