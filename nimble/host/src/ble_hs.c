@@ -266,12 +266,16 @@ ble_hs_locked_by_cur_task(void)
 }
 #endif
 
-/**
- * Indicates whether the host's parent task is currently running.
- */
+/** See host/ble_hs.h */
 int
 ble_hs_is_parent_task(void)
 {
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_ctx == NULL) {
+        return 0;
+    }
+#endif
+
     return !ble_npl_os_started() ||
            ble_npl_get_current_task_id() == ble_hs_parent_task;
 }
@@ -1233,12 +1237,19 @@ ble_hs_deinit(void)
     ble_hs_pvcy_irk_deinit();
 #endif
 
+#if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
+    if (ble_hs_ctx) {
+        ble_hs_ctx->parent_task = NULL;
+    }
+#else
+    ble_hs_parent_task = NULL;
+#endif
+
     /* Mutex teardown after gatts_stop(); before freeing ble_hs_ctx. */
     ble_npl_mutex_deinit(&ble_hs_mutex);
 
 #if MYNEWT_VAL(BLE_STATIC_TO_DYNAMIC)
     if (ble_hs_ctx) {
-        ble_hs_ctx->parent_task = NULL;
         if (ble_hs_ctx->hci_os_event_buf) {
             nimble_platform_mem_free(ble_hs_ctx->hci_os_event_buf);
             ble_hs_ctx->hci_os_event_buf = NULL;

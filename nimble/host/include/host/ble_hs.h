@@ -434,6 +434,18 @@ extern struct ble_hs_cfg ble_hs_cfg;
 int ble_hs_is_enabled(void);
 
 /**
+ * Indicates whether the calling task is the host parent task.
+ *
+ * The host parent task is the one that called ble_hs_start().  Before the OS
+ * scheduler has started, this function also returns 1.
+ *
+ * @return 1 if the caller is the host parent task, or the scheduler has not
+ *         started;
+ *         0 otherwise (including when the host context is not allocated).
+ */
+int ble_hs_is_parent_task(void);
+
+/**
  * Indicates whether the host has synchronized with the controller.
  * Synchronization must occur before any host procedures can be performed.
  *

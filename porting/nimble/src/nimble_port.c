@@ -100,7 +100,6 @@ static struct ble_hs_stop_listener stop_listener;
 #endif
 
 static bool nimble_port_run_active;
-static void *nimble_host_task_id;   /* Task that runs nimble_port_run() (the host task). */
 static bool nimble_port_stopping;   /* Set while a stop procedure is in progress. */
 
 extern void os_msys_init(void);
@@ -450,9 +449,11 @@ nimble_port_stop(void)
 
     /* A call from the host task itself would deadlock: that task is the only
      * one that services the stop event queued below, so it cannot both block
-     * here and release us. Reject it instead of hanging forever. */
-    if (nimble_host_task_id != NULL &&
-        ble_npl_get_current_task_id() == nimble_host_task_id) {
+     * here and release us. Reject it instead of hanging forever.
+     *
+     * ESP-IDF stops from a non-host task (e.g. app_main) after sync; a host-task
+     * stop before ble_hs_start() is not a supported API. */
+    if (ble_hs_is_parent_task()) {
         ESP_LOGE(NIMBLE_PORT_LOG_TAG,
                  "nimble_port_stop() called from the host task; would deadlock");
         return ESP_FAIL;
@@ -557,7 +558,6 @@ void nimble_port_run(void)
     struct ble_npl_sem  *stop_sem  = &ble_hs_stop_sem;
 
     nimble_port_run_active = true;
-    nimble_host_task_id = ble_npl_get_current_task_id();
     while (1) {
         ev = ble_npl_eventq_get(&g_eventq_dflt, BLE_NPL_TIME_FOREVER);
         if (ev) {
@@ -569,7 +569,6 @@ void nimble_port_run(void)
             if (ev == stop_ev) {
                 ble_npl_event_deinit(stop_ev);
                 nimble_port_run_active = false;
-                nimble_host_task_id = NULL;
                 ble_npl_sem_release(stop_sem);
                 break;
             }
